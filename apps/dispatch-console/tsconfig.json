@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "noEmit": true,
+    "resolveJsonModule": true,
+    "types": []
+  },
+  "include": ["src", "e2e", "test", "playwright.config.ts", "vite.config.ts"]
+}

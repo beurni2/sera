@@ -1,0 +1,5 @@
+[
+  { "taskId": "task_1", "holder": "dispatch_console_1", "riderId": "r_1", "version": 3, "status": "active" },
+  { "taskId": "task_1", "holder": "rider_self_assign", "riderId": "r_7", "version": 3, "status": "active" },
+  { "taskId": "task_2", "holder": "dispatch_console_1", "riderId": "r_2", "version": 1, "status": "active" }
+]

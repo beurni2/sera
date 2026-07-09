@@ -1,0 +1,13 @@
+{
+  "orderId": "ord_1",
+  "photoRef": {
+    "ref": "r2://evidence/pkg_1/readiness.jpg",
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "mimeType": "image/jpeg"
+  },
+  "readinessChallenge": "RC-4821",
+  "qty": 1,
+  "variant": "pagne-bleu-2m",
+  "availableConfirmed": true,
+  "at": "2026-07-09T09:00:00Z"
+}

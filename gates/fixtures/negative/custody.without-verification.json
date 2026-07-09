@@ -1,0 +1,18 @@
+{
+  "packageId": "pkg_9",
+  "riderId": "r_9",
+  "verification": {
+    "orderId": "ord_9",
+    "riderId": "r_9",
+    "checks": [
+      {
+        "check": "variant_and_colour",
+        "passed": false
+      }
+    ],
+    "result": "refused",
+    "rejectionReason": "wrong_variant",
+    "evidenceBundleId": "eb_pickup_9"
+  },
+  "custodySealId": "seal_009"
+}

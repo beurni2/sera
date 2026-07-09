@@ -1,0 +1,20 @@
+[
+  {
+    "key": "negative.administrative_register",
+    "fr": "Veuillez patienter pendant la vérification du séquestre susmentionné, conformément à la procédure ci-après.",
+    "register": "money",
+    "screenClass": "checkout"
+  },
+  {
+    "key": "negative.marketing_in_money_moment",
+    "fr": "Profitez vite de cette offre limitée : payez maintenant !",
+    "register": "money",
+    "screenClass": "checkout"
+  },
+  {
+    "key": "negative.local_language_in_instruction",
+    "fr": "Barka ! Entrez le code de retrait pour continuer.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  }
+]

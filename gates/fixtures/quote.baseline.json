@@ -1,0 +1,18 @@
+{
+  "sellerBasePrice": 10000,
+  "sellerFundedCommission": 1000,
+  "resellerMarkup": 1500,
+  "deliveryFee": 1000,
+  "paymentMode": "FULL_PREPAY",
+  "productSubtotal": 11500,
+  "buyerTotal": 12500,
+  "sellerPlatformFee": 500,
+  "sellerNet": 8500,
+  "resellerGrossEarnings": 2500,
+  "resellerPlatformFee": 500,
+  "resellerNet": 2000,
+  "platformProductFeeRevenue": 1000,
+  "amountPaidAtCheckout": 12500,
+  "amountDueAtDelivery": 0,
+  "roundingLawVersion": "v1"
+}

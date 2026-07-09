@@ -1,0 +1,29 @@
+{
+  "name": "@sera/commerce-core",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Scaffold against the pinned canonical shapes (ADR-001). Fixture builders over the pinned money waterfall only — no authoritative order state machine, no shape redefinition.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@platform/contracts": "git+https://github.com/beurni2/platform-contracts.git#b10f4822b173c9cd4b162f416ad213bf580ab652&path:packages/contracts",
+    "@platform/kernel-types": "git+https://github.com/beurni2/platform-contracts.git#b10f4822b173c9cd4b162f416ad213bf580ab652&path:packages/kernel-types"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}
