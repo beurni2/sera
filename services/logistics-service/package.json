@@ -1,0 +1,24 @@
+{
+  "name": "@sera/logistics-service",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Workers service stub (WO-SE0.1): folder, types, health endpoint — no features.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@sera/observability": "workspace:*",
+    "@platform/contracts": "git+https://github.com/beurni2/platform-contracts.git#b10f4822b173c9cd4b162f416ad213bf580ab652&path:packages/contracts"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}
