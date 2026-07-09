@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.turbo/
+_evidence/
+*.tsbuildinfo
+.expo/
+test-results/

@@ -1,0 +1,19 @@
+packages:
+  - "apps/*"
+  - "services/*"
+  - "packages/*"
+
+# pnpm 10 blocks dependency build scripts by default; the prepare builds
+# need this allowlist or the packages install without dist/ (CONSUMING.md).
+onlyBuiltDependencies:
+  - "@platform/contracts"
+  - "@platform/kernel-types"
+  - "@platform/i18n"
+  - "@platform/ui-tokens"
+
+# @platform/contracts depends on @platform/kernel-types@0.1.0, which exists
+# on no registry; this override routes that transitive resolution to the
+# same pinned git ref (CONSUMING.md). Pin ref = main sha b10f4822 — no v0.1.0
+# tag exists on origin yet; move to #v0.1.0 in the first version-bump PR.
+overrides:
+  "@platform/kernel-types": "git+https://github.com/beurni2/platform-contracts.git#b10f4822b173c9cd4b162f416ad213bf580ab652&path:packages/kernel-types"
