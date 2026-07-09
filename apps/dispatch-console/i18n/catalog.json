@@ -1,0 +1,20 @@
+[
+  {
+    "key": "app.title",
+    "fr": "Séra",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "console.ready_queue",
+    "fr": "Prêt à assigner",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "console.empty_state",
+    "fr": "Aucune course à assigner pour le moment.",
+    "register": "neutral",
+    "screenClass": "status"
+  }
+]

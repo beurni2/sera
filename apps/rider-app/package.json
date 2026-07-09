@@ -1,0 +1,28 @@
+{
+  "name": "@sera/rider-app",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Shop+ reseller app shell (Expo/RN, WO-SP0.1) \u2014 ui-tokens shop-plus theme; strings from the i18n catalog; net-first earnings surface.",
+  "license": "UNLICENSED",
+  "main": "index.ts",
+  "scripts": {
+    "start": "expo start",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@platform/ui-tokens": "git+https://github.com/beurni2/platform-contracts.git#b10f4822b173c9cd4b162f416ad213bf580ab652&path:packages/ui-tokens",
+    "expo": "~53.0.9",
+    "expo-status-bar": "~2.2.3",
+    "react": "19.0.0",
+    "react-native": "0.79.2"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.2",
+    "@types/react": "~19.0.10",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4",
+    "@platform/contracts": "git+https://github.com/beurni2/platform-contracts.git#b10f4822b173c9cd4b162f416ad213bf580ab652&path:packages/contracts",
+    "@platform/i18n": "git+https://github.com/beurni2/platform-contracts.git#b10f4822b173c9cd4b162f416ad213bf580ab652&path:packages/i18n"
+  }
+}

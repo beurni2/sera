@@ -1,0 +1,20 @@
+[
+  {
+    "key": "app.title",
+    "fr": "Séra",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "shell.work_tab",
+    "fr": "Travail",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "shell.no_task",
+    "fr": "Pas de course pour le moment.",
+    "register": "neutral",
+    "screenClass": "status"
+  }
+]
