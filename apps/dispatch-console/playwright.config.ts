@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /**
- * Buyer PWA Playwright harness (WO-SP0.1). Chromium is preinstalled in this
+ * Dispatch-console Playwright harness (WO-SE0.1). Chromium is preinstalled in this
  * environment (PLAYWRIGHT_BROWSERS_PATH); PW_EXECUTABLE overrides the
  * browser binary when the pinned @playwright/test build differs from the
  * preinstalled one.

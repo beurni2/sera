@@ -1,11 +1,14 @@
 {
-  "orderId": "ord_9",
-  "packageId": "pkg_9",
-  "photoRef": "r2://evidence/pkg_9/readiness.jpg",
-  "readinessChallenge": "RC-9999",
+  "orderId": "ord_1",
+  "photoRef": {
+    "ref": "r2://evidence/pkg_1/readiness.jpg",
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "mimeType": "image/jpeg"
+  },
+  "readinessChallenge": "RC-4821",
   "qty": 1,
-  "variant": "sac-cuir",
+  "variant": "pagne-bleu-2m",
   "availableConfirmed": true,
-  "capturedAt": "2026-07-09T09:00:00Z",
+  "at": "2026-07-09T09:00:00Z",
   "buyerDropCode": "7413"
 }

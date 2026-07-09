@@ -40,6 +40,7 @@ export function beginCourierCustody(input: CustodyBeginInput): CustodyBeginOutco
     return { allowed: false, reason: 'verification_not_accepted' };
   }
   if (
+    typeof input.custodySealId !== 'string' ||
     input.custodySealId.length === 0 ||
     parsed.data.custodySealId !== input.custodySealId
   ) {

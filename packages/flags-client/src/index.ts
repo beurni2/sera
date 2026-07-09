@@ -1,6 +1,6 @@
 /**
  * Read-only flag / kill-switch CLIENT stub (Execution Contract §7.2).
- * Shop+ consumes a remotely served snapshot; it never writes flag state.
+ * Séra consumes a remotely served snapshot; it never writes flag state.
  * The flag/kill-switch service is ecosystem infrastructure (E0 harness),
  * not built in this repo.
  */

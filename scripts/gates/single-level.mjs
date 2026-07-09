@@ -2,14 +2,14 @@
 import { runScanGate } from './scan.mjs';
 
 /**
- * CI gate: single-level (B+I-10, Ten Laws #9).
+ * CI gate: single-level (Ten Laws #9; Séra guardrail "single-level").
  * No recruitment mechanics, no downlines, no multi-level anything, anywhere.
  * `referral` is banned outright at this slice — referral.* event names are
  * excluded from the pinned event union and nothing gated may appear here.
  */
 runScanGate({
   gateName: 'single-level',
-  invariant: 'B+I-10 single-level only — no recruitment/downline mechanics',
+  invariant: 'single-level only — no recruitment/downline mechanics',
   patterns: [
     { name: 'downline', regex: /downline/i },
     { name: 'upline', regex: /upline/i },

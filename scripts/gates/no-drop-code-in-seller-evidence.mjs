@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 import { readFileSync } from 'node:fs';
+import { PackageReadinessConfirmationSchema } from '@platform/contracts';
 
 /**
  * CI gate: four-secrets separation (§5.6: buyerDropCode is "private — never
- * shown to the seller or in readiness evidence"; standing guardrail:
- * "buyerDropCode never in seller/readiness evidence"). Recursively scans a
- * seller/readiness evidence payload for any drop-code or foreign-secret key.
+ * shown to the seller or in readiness evidence"). Enforcement is CANONICAL:
+ * the payload must strict-parse as the pinned PackageReadinessConfirmation —
+ * whose strict schema refuses buyerDropCode, any foreign secret, and any
+ * undeclared key by construction. A key-regex sweep runs after the parse as
+ * belt-and-braces for nested artifact payloads.
  */
 const file = process.argv[2];
 if (!file) {
@@ -18,6 +21,14 @@ try {
 } catch (err) {
   console.error(`no-drop-code-in-seller-evidence: cannot read payload ${file}: ${String(err)}`);
   process.exit(2);
+}
+const parsed = PackageReadinessConfirmationSchema.safeParse(payload);
+if (!parsed.success) {
+  console.error('no-drop-code-in-seller-evidence FAILED — payload is not a canonical PackageReadinessConfirmation (the strict canon schema refuses foreign secrets and undeclared keys):');
+  for (const issue of parsed.error.issues) {
+    console.error(`  - ${issue.path.join('.') || '(root)'}: ${issue.message}`);
+  }
+  process.exit(1);
 }
 const BANNED = [
   { name: 'buyerDropCode', regex: /drop[_-]?code/i },
@@ -41,9 +52,9 @@ function walk(value, path) {
 }
 walk(payload, '$');
 if (hits.length === 0) {
-  console.log(`no-drop-code-in-seller-evidence OK — ${file} carries only the seller readiness secret (four-secrets separation)`);
+  console.log(`no-drop-code-in-seller-evidence OK — ${file} is a canonical PackageReadinessConfirmation carrying only the seller readiness secret`);
   process.exit(0);
 }
-console.error(`no-drop-code-in-seller-evidence FAILED — ${hits.length} foreign secret(s) on a seller/readiness surface:`);
+console.error(`no-drop-code-in-seller-evidence FAILED — ${hits.length} foreign secret(s) nested in a seller/readiness payload:`);
 for (const h of hits) console.error(`  - ${h}`);
 process.exit(1);

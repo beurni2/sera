@@ -23,7 +23,7 @@ describe('dispatch-console catalog', () => {
 
   it('console shell has no runtime import of node-only canon barrels', () => {
     const source = readFileSync(join(appDir, 'src/i18n.ts'), 'utf8');
-    const runtimeImports = [...source.matchAll(/^import (?!type )[^;]*from '([^']+)';/gm)].map(
+    const runtimeImports = [...source.matchAll(/^import (?!type )[^;]*from ['"]([^'"]+)['"];/gm)].map(
       (m) => m[1],
     );
     for (const spec of runtimeImports) {

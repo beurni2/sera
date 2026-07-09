@@ -27,8 +27,8 @@ describe('structured logger', () => {
 describe('hello-world request through a service stub', () => {
   it('carries the inbound correlation id: header → structured log → response header', () => {
     const lines: LogLine[] = [];
-    const fetchHandler = makeHealthFetch('storefront-service', (l) => lines.push(l));
-    const request = new Request('https://storefront.shop.internal/health', {
+    const fetchHandler = makeHealthFetch('logistics-service', (l) => lines.push(l));
+    const request = new Request('https://logistics.sera.internal/health', {
       headers: { [CORRELATION_HEADER]: 'hello-world-chain-1' },
     });
     const response = fetchHandler(request);
@@ -41,8 +41,8 @@ describe('hello-world request through a service stub', () => {
 
   it('mints a correlation id when none arrives, so the chain always exists', () => {
     const lines: LogLine[] = [];
-    const fetchHandler = makeHealthFetch('storefront-service', (l) => lines.push(l));
-    const response = fetchHandler(new Request('https://storefront.shop.internal/health'));
+    const fetchHandler = makeHealthFetch('logistics-service', (l) => lines.push(l));
+    const response = fetchHandler(new Request('https://logistics.sera.internal/health'));
     const echoed = response.headers.get(CORRELATION_HEADER);
     expect(echoed).toBeTruthy();
     expect(lines[0]?.correlation_id).toBe(echoed);

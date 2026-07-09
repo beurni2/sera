@@ -3,7 +3,7 @@ import { runScanGate } from './scan.mjs';
 
 /**
  * CI gate: no-wallet / no-payment-funds architectural check (Ten Laws #2,
- * spec §1: "Boutik+ MUST NOT hold funds or compute an independent balance").
+ * Séra spec SE-I09: "Séra never computes proceeds, never holds product funds, never marks paid").
  * No wallet/balance module exists anywhere; provider webhooks are the only
  * payment truth. Settlement views read SettlementObligation — never a
  * locally computed balance.

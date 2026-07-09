@@ -1,44 +1,27 @@
-import type { SellerReadinessChallenge } from '@platform/contracts';
+import {
+  PackageReadinessConfirmationSchema,
+  type PackageReadinessConfirmation,
+} from '@platform/contracts';
 
 /**
  * Seller/readiness evidence SEED (four-secrets separation, §5.6: the
  * buyerDropCode is "private — never shown to the seller or in readiness
- * evidence"). The seller-facing readiness evidence type carries the
- * sellerReadinessChallenge and ONLY that secret — buyerDropCode is
- * structurally absent, and the four-secrets CI gate scans emitted payloads
- * as the second line of defense.
+ * evidence"). The seller/readiness evidence type IS the canonical
+ * PackageReadinessConfirmation from the pin — no local shape. The canonical
+ * schema is STRICT: a payload carrying buyerDropCode (or any foreign secret,
+ * or any undeclared key) is a parse refusal by canon, and the four-secrets
+ * CI gate strict-parses payloads with exactly this schema.
  */
-export interface SellerReadinessEvidence {
-  orderId: string;
-  packageId: string;
-  photoRef: string;
-  readinessChallenge: SellerReadinessChallenge;
-  qty: number;
-  variant: string;
-  availableConfirmed: boolean;
-  capturedAt: string;
-}
 
-export interface ReadinessEvidenceInput {
-  orderId: string;
-  packageId: string;
-  photoRef: string;
-  readinessChallenge: SellerReadinessChallenge;
-  qty: number;
-  variant: string;
-  availableConfirmed: boolean;
-  capturedAt: string;
-}
+export type ReadinessEvidenceVerdict =
+  | { ok: true; confirmation: PackageReadinessConfirmation }
+  | { ok: false; reason: 'not_canonical_or_foreign_secret' };
+// The refusal branch carries NO confirmation — nothing is repaired or dropped.
 
-export function toSellerReadinessEvidence(input: ReadinessEvidenceInput): SellerReadinessEvidence {
-  return {
-    orderId: input.orderId,
-    packageId: input.packageId,
-    photoRef: input.photoRef,
-    readinessChallenge: input.readinessChallenge,
-    qty: input.qty,
-    variant: input.variant,
-    availableConfirmed: input.availableConfirmed,
-    capturedAt: input.capturedAt,
-  };
+export function acceptSellerReadinessEvidence(payload: unknown): ReadinessEvidenceVerdict {
+  const parsed = PackageReadinessConfirmationSchema.safeParse(payload);
+  if (!parsed.success) {
+    return { ok: false, reason: 'not_canonical_or_foreign_secret' };
+  }
+  return { ok: true, confirmation: parsed.data };
 }

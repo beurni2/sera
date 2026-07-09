@@ -43,6 +43,9 @@ capture tests pass pnpm test
 log "consumption baseline — pinned computeWaterfall reproduces the §5.4 worked baseline"
 capture baseline-check pass node scripts/baseline-check.mjs
 
+log "pinned-Quote shape check — no supplyMode/handlingClass/kittingSealId (§5.6 L69)"
+capture quote-shape-check pass node scripts/quote-shape-check.mjs
+
 log "gate: money-reconciliation (standing guardrail) — §5.4 baseline fixture (must pass)"
 capture money-reconciliation-positive pass node scripts/gates/money-reconciliation.mjs gates/fixtures/quote.baseline.json
 

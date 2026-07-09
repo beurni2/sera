@@ -31,7 +31,7 @@ describe('rider-app catalog discipline', () => {
   it('the shell bundle imports no node-only barrel (runtime imports of contracts/i18n/commerce-core banned)', () => {
     for (const file of ['App.tsx', 'src/i18n.ts']) {
       const source = readFileSync(join(appDir, file), 'utf8');
-      const runtimeImports = [...source.matchAll(/^import (?!type )[^;]*from '([^']+)';/gm)].map(
+      const runtimeImports = [...source.matchAll(/^import (?!type )[^;]*from ['"]([^'"]+)['"];/gm)].map(
         (m) => m[1],
       );
       for (const spec of runtimeImports) {
