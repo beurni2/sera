@@ -1,0 +1,8 @@
+{
+  "name": "negative-imaging-fixture",
+  "private": true,
+  "description": "NEGATIVE FIXTURE: ML dependency — the imaging-architecture gate MUST fail on this manifest.",
+  "dependencies": {
+    "@tensorflow/tfjs": "^4.0.0"
+  }
+}

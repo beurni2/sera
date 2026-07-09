@@ -1,0 +1,34 @@
+{
+  "packageId": "pkg_1",
+  "riderId": "r_1",
+  "verification": {
+    "orderId": "ord_1",
+    "riderId": "r_1",
+    "checks": [
+      {
+        "check": "order_reference",
+        "passed": true
+      },
+      {
+        "check": "variant_and_colour",
+        "passed": true
+      },
+      {
+        "check": "quantity",
+        "passed": true
+      },
+      {
+        "check": "visible_damage",
+        "passed": true
+      },
+      {
+        "check": "external_manufacturer_seal",
+        "passed": true
+      }
+    ],
+    "result": "accepted",
+    "custodySealId": "seal_001",
+    "evidenceBundleId": "eb_pickup_1"
+  },
+  "custodySealId": "seal_001"
+}

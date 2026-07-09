@@ -1,0 +1,6 @@
+[
+  { "taskId": "task_1", "holder": "dispatch_console_1", "riderId": "r_1", "version": 3, "status": "active" },
+  { "taskId": "task_1", "holder": "dispatch_console_1", "riderId": "r_9", "version": 2, "status": "expired" },
+  { "taskId": "task_2", "holder": "dispatch_console_1", "riderId": "r_2", "version": 1, "status": "active" },
+  { "taskId": "task_3", "holder": "dispatch_console_1", "riderId": "r_3", "version": 1, "status": "released" }
+]

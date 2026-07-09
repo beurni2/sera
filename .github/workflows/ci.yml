@@ -1,0 +1,26 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Authorize read access to platform-contracts (CI-only)
+        run: git config --global url."https://x-access-token:${{ secrets.PLATFORM_CONTRACTS_READ_TOKEN }}@github.com/beurni2/platform-contracts".insteadOf "https://github.com/beurni2/platform-contracts"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Install Playwright chromium (dispatch-console harness)
+        run: pnpm --filter @sera/dispatch-console exec playwright install --with-deps chromium
+      - name: Run every invariant gate (positives + negative fixtures)
+        run: bash scripts/run-gates.sh
