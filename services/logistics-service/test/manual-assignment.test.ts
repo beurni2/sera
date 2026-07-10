@@ -177,4 +177,18 @@ describe('manual assignment — §2.3 step 10, refuse closed everywhere', () => 
     const second = book.assign(assignCmd({ command_id: 'cmd-again', riderId: 'r-9', newAssignmentId: 'as-2', at: PAST_ACK_DEADLINE }));
     expect(second.ok).toBe(true);
   });
+
+
+  it('RETRY AFTER HEAL: a refused command re-evaluates — the SAME command_id succeeds once the stale projection heals (WO-1.2 follow-up, was script-proven)', () => {
+    const { funding, book } = world();
+    funding.goStale(1);
+    const first = book.assign(assignCmd());
+    expect(first).toMatchObject({ ok: false, reason: 'task_not_assignable', detail: 'funding_projection_stale' });
+    // The projection heals; the SAME command retried now succeeds (refusals are never cached)…
+    const retry = book.assign(assignCmd());
+    expect(retry).toMatchObject({ ok: true, duplicate: false });
+    // …and the SUCCESS is what replays idempotently, with no double-apply.
+    expect(book.assign(assignCmd())).toMatchObject({ ok: true, duplicate: true });
+    expect(book.findOneActiveViolations()).toEqual([]);
+  });
 });
