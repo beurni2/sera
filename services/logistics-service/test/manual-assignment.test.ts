@@ -1,0 +1,180 @@
+import { describe, expect, it } from 'vitest';
+import { EventEnvelopeSchema, PlatformEventSchema } from '@platform/contracts';
+const SHA256_FIXTURE = 'a3f5c9d21e8b47061234567890abcdef1234567890abcdef1234567890abcdef';
+import { MockBoutikReadiness } from '../src/mocks/boutik-readiness-mock.js';
+import { MockShopPlusFunding } from '../src/mocks/shopplus-funding-mock.js';
+import { AssignmentBook } from '../src/manual-assignment.js';
+import { ReadyQueue } from '../src/ready-queue.js';
+import { PRIVACY_NOTICE_VERSION, RiderRegistry } from '../src/rider-registry.js';
+
+const T = '2026-07-09T12:00:00.000Z';
+const PAST_ACK_DEADLINE = '2026-07-09T12:06:00.000Z';
+const ORDER = 'order-e1-42';
+const CORR = 'corr-e1-42';
+
+function world() {
+  const funding = new MockShopPlusFunding({});
+  const readiness = new MockBoutikReadiness({});
+  funding.initiateCheckout(ORDER, 'FULL_PREPAY', CORR);
+  funding.confirmFunding(ORDER, 'collect-42', T);
+  readiness.recordOrderKnown(ORDER, CORR);
+  readiness.confirmReadiness(
+    {
+      orderId: ORDER,
+      photoRef: { ref: 'media/pkg-42.jpg', sha256: SHA256_FIXTURE, mimeType: 'image/jpeg' },
+      readinessChallenge: 'challenge-42',
+      qty: 1,
+      variant: 'taille unique',
+      availableConfirmed: true,
+      at: T,
+    },
+    T,
+  );
+  const queue = new ReadyQueue({ funding, readiness });
+  queue.onTaskReady(
+    {
+      name: 'logistics.task_ready.v1',
+      envelope: { command_id: 'cmd-ready-1', correlation_id: CORR, aggregateVersion: 1, actor: 'test', serverTime: T, version: '1' },
+      payload: {
+        task: {
+          type: 'delivery', id: 'task-1', orderId: ORDER,
+          location: { pin: { lat: 12.37, lng: -1.52 }, zone: 'Gounghin', landmark: 'Face à la pharmacie', directions: 'Porte bleue', maskedRelay: 'relay-abc' },
+          window: { start: T, end: '2026-07-09T14:00:00.000Z' }, status: 'ready',
+        },
+      },
+    },
+    T,
+  );
+  const registry = new RiderRegistry();
+  registry.register({ riderId: 'r-1', displayName: 'Issa', phoneAlias: 'alias-77', certified: true });
+  registry.acknowledgePrivacyNotice('r-1', PRIVACY_NOTICE_VERSION, T);
+  registry.startShift('r-1', T, 'server_confirmed');
+  const book = new AssignmentBook(registry, queue);
+  return { funding, readiness, queue, registry, book };
+}
+
+const assignCmd = (over: Partial<Parameters<AssignmentBook['assign']>[0]> = {}) => ({
+  command_id: 'cmd-assign-1', taskId: 'task-1', riderId: 'r-1', dispatcherId: 'd-1', at: T, newAssignmentId: 'as-1',
+  ...over,
+});
+
+describe('manual assignment — §2.3 step 10, refuse closed everywhere', () => {
+  it('happy path: eligible rider + admitted fresh task → assignment + enveloped pickup.assigned.v1 with the chain ids', () => {
+    const { book } = world();
+    const outcome = book.assign(assignCmd());
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(outcome.assignment).toMatchObject({ taskId: 'task-1', riderId: 'r-1', status: 'active_unacknowledged', correlationId: CORR });
+    expect(PlatformEventSchema.safeParse(outcome.event).success).toBe(true);
+    expect(EventEnvelopeSchema.safeParse(outcome.event.envelope).success).toBe(true);
+    expect(outcome.event.name).toBe('pickup.assigned.v1');
+    expect(outcome.event.envelope.correlation_id).toBe(CORR);
+    expect(outcome.event.payload).toMatchObject({ delivery_task_id: 'task-1', order_id: ORDER, assignment_id: 'as-1', rider_id: 'r-1' });
+    // Idempotent replay of the same command.
+    expect(book.assign(assignCmd())).toMatchObject({ ok: true, duplicate: true });
+  });
+
+  it('UNCERTIFIED rider refuses closed', () => {
+    const { registry, queue } = world();
+    const uncertified = new RiderRegistry();
+    uncertified.register({ riderId: 'r-2', displayName: 'X', phoneAlias: 'a', certified: false });
+    const book = new AssignmentBook(uncertified, queue);
+    expect(book.assign(assignCmd({ riderId: 'r-2' }))).toEqual({ ok: false, reason: 'rider_not_assignable' });
+    void registry;
+  });
+
+  it('OFF-SHIFT and PENDING-shift riders refuse closed — a queued offline start confers nothing', () => {
+    const { queue } = world();
+    const registry = new RiderRegistry();
+    registry.register({ riderId: 'r-3', displayName: 'Awa', phoneAlias: 'a', certified: true });
+    registry.acknowledgePrivacyNotice('r-3', PRIVACY_NOTICE_VERSION, T);
+    const book = new AssignmentBook(registry, queue);
+    expect(book.assign(assignCmd({ riderId: 'r-3' }))).toEqual({ ok: false, reason: 'rider_not_assignable' }); // off_shift
+    registry.startShift('r-3', T, 'queued_offline'); // pending, NOT on shift
+    expect(book.assign(assignCmd({ command_id: 'cmd-2', riderId: 'r-3' }))).toEqual({ ok: false, reason: 'rider_not_assignable' });
+  });
+
+  it('STALE AT ASSIGNMENT TIME refuses closed even though intake admitted the task (SE1.1)', () => {
+    const { funding, book } = world();
+    funding.goStale(1);
+    const outcome = book.assign(assignCmd());
+    expect(outcome).toMatchObject({ ok: false, reason: 'task_not_assignable', detail: 'funding_projection_stale' });
+  });
+
+  it('CANCELLED after admission refuses closed at assignment time', () => {
+    const { funding, book } = world();
+    funding.cancelOrder(ORDER);
+    expect(book.assign(assignCmd())).toMatchObject({ ok: false, reason: 'task_not_assignable', detail: 'order_cancelled' });
+  });
+
+  it('ONE ACTIVE PER RIDER and PER TASK: second assignment on either axis refuses closed; violations scanner stays empty', () => {
+    const { book, queue, registry } = world();
+    // Second admitted task for the per-rider check.
+    queue.onTaskReady(
+      {
+        name: 'logistics.task_ready.v1',
+        envelope: { command_id: 'cmd-ready-2', correlation_id: CORR, aggregateVersion: 2, actor: 'test', serverTime: T, version: '1' },
+        payload: {
+          task: {
+            type: 'delivery', id: 'task-2', orderId: ORDER,
+            location: { pin: { lat: 12.37, lng: -1.52 }, zone: 'Gounghin', landmark: 'Face à la pharmacie', directions: 'Porte bleue', maskedRelay: 'relay-abc' },
+            window: { start: T, end: '2026-07-09T14:00:00.000Z' }, status: 'ready',
+          },
+        },
+      },
+      T,
+    );
+    // Second eligible rider for the per-task check.
+    registry.register({ riderId: 'r-2', displayName: 'Awa', phoneAlias: 'alias-88', certified: true });
+    registry.acknowledgePrivacyNotice('r-2', PRIVACY_NOTICE_VERSION, T);
+    registry.startShift('r-2', T, 'server_confirmed');
+
+    expect(book.assign(assignCmd()).ok).toBe(true);
+    // Same rider, different task → refused.
+    expect(book.assign(assignCmd({ command_id: 'cmd-b', taskId: 'task-2', newAssignmentId: 'as-2' }))).toEqual({
+      ok: false, reason: 'rider_already_has_active_assignment',
+    });
+    // Same task, different rider → refused (already marked assigned in queue).
+    expect(book.assign(assignCmd({ command_id: 'cmd-c', riderId: 'r-2', newAssignmentId: 'as-3' }))).toMatchObject({
+      ok: false, reason: 'task_not_assignable', detail: 'already_assigned',
+    });
+    expect(book.findOneActiveViolations()).toEqual([]);
+  });
+
+  it('rider ack: server-confirmed → acknowledged; OFFLINE ack is PENDING and the deadline still bites', () => {
+    const { book } = world();
+    const assigned = book.assign(assignCmd());
+    if (!assigned.ok) throw new Error('setup');
+    const offlineAck = book.acknowledge('as-1', 'queued_offline');
+    expect(offlineAck).toEqual({ ok: true, status: 'ack_pending_offline', pending: true }); // queued = pending, never done
+    // Deadline passes with only a pending ack → back to the queue.
+    const { requeued, events } = book.expireUnacknowledged(PAST_ACK_DEADLINE);
+    expect(requeued).toHaveLength(1);
+    expect(requeued[0]!.status).toBe('returned_to_queue');
+    expect(events[0]!.name).toBe('assignment.expired.v1');
+    expect(events[0]!.envelope.correlation_id).toBe(CORR);
+    expect(events[0]!.payload).toMatchObject({ delivery_task_id: 'task-1', assignment_id: 'as-1', requeued: true });
+  });
+
+  it('server-confirmed ack survives the deadline; unknown/settled assignments refuse closed', () => {
+    const { book, queue } = world();
+    book.assign(assignCmd());
+    expect(book.acknowledge('as-1', 'server_confirmed')).toEqual({ ok: true, status: 'acknowledged', pending: false });
+    expect(book.expireUnacknowledged(PAST_ACK_DEADLINE).requeued).toHaveLength(0);
+    expect(book.acknowledge('as-ghost', 'server_confirmed')).toEqual({ ok: false, reason: 'unknown_assignment' });
+    // The task stayed assigned — never silently requeued under an acknowledged assignment.
+    expect(queue.get('task-1')!.status).toBe('assigned');
+  });
+
+  it('unacknowledged past the deadline → task is back in the queue and REASSIGNABLE', () => {
+    const { book, queue, registry } = world();
+    book.assign(assignCmd());
+    book.expireUnacknowledged(PAST_ACK_DEADLINE);
+    expect(queue.get('task-1')!.status).toBe('queued');
+    registry.register({ riderId: 'r-9', displayName: 'Sali', phoneAlias: 'alias-99', certified: true });
+    registry.acknowledgePrivacyNotice('r-9', PRIVACY_NOTICE_VERSION, T);
+    registry.startShift('r-9', PAST_ACK_DEADLINE, 'server_confirmed');
+    const second = book.assign(assignCmd({ command_id: 'cmd-again', riderId: 'r-9', newAssignmentId: 'as-2', at: PAST_ACK_DEADLINE }));
+    expect(second.ok).toBe(true);
+  });
+});

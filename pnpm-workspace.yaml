@@ -11,9 +11,10 @@ onlyBuiltDependencies:
   - "@platform/i18n"
   - "@platform/ui-tokens"
 
-# @platform/contracts depends on @platform/kernel-types@0.1.0, which exists
+# @platform/contracts depends on @platform/kernel-types@0.2.0, which exists
 # on no registry; this override routes that transitive resolution to the
-# same pinned git ref (CONSUMING.md). Pin ref = main sha b10f4822 — no v0.1.0
-# tag exists on origin yet; move to #v0.1.0 in the first version-bump PR.
+# same pinned git ref (CONSUMING.md). Pin = sha b076ff39 (v0.2.0 content;
+# properly-named tag deferred to v0.3.0 — founder ruling: the release ref is
+# the commit).
 overrides:
-  "@platform/kernel-types": "git+https://github.com/beurni2/platform-contracts.git#b10f4822b173c9cd4b162f416ad213bf580ab652&path:packages/kernel-types"
+  "@platform/kernel-types": "git+https://github.com/beurni2/platform-contracts.git#b076ff39b650a0b481cd36759193bcfe497b431c&path:packages/kernel-types"

@@ -17,10 +17,10 @@
     "baseline-check": "node scripts/baseline-check.mjs"
   },
   "dependencies": {
-    "@platform/contracts": "git+https://github.com/beurni2/platform-contracts.git#b10f4822b173c9cd4b162f416ad213bf580ab652&path:packages/contracts",
-    "@platform/kernel-types": "git+https://github.com/beurni2/platform-contracts.git#b10f4822b173c9cd4b162f416ad213bf580ab652&path:packages/kernel-types",
-    "@platform/i18n": "git+https://github.com/beurni2/platform-contracts.git#b10f4822b173c9cd4b162f416ad213bf580ab652&path:packages/i18n",
-    "@platform/ui-tokens": "git+https://github.com/beurni2/platform-contracts.git#b10f4822b173c9cd4b162f416ad213bf580ab652&path:packages/ui-tokens"
+    "@platform/contracts": "git+https://github.com/beurni2/platform-contracts.git#b076ff39b650a0b481cd36759193bcfe497b431c&path:packages/contracts",
+    "@platform/kernel-types": "git+https://github.com/beurni2/platform-contracts.git#b076ff39b650a0b481cd36759193bcfe497b431c&path:packages/kernel-types",
+    "@platform/i18n": "git+https://github.com/beurni2/platform-contracts.git#b076ff39b650a0b481cd36759193bcfe497b431c&path:packages/i18n",
+    "@platform/ui-tokens": "git+https://github.com/beurni2/platform-contracts.git#b076ff39b650a0b481cd36759193bcfe497b431c&path:packages/ui-tokens"
   },
   "devDependencies": {
     "@types/node": "^22.20.1",

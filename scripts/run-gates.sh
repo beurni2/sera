@@ -52,6 +52,24 @@ capture money-reconciliation-positive pass node scripts/gates/money-reconciliati
 log "gate: money-reconciliation — NEGATIVE FIXTURE (independent-multiplication drift, must fail)"
 capture money-reconciliation-negative fail node scripts/gates/money-reconciliation.mjs gates/fixtures/negative/quote.independent-multiplication.json
 
+log "E1 dispatch happy path — manual assignment through the SERVICE path, chain + offline-pending proofs (must pass)"
+capture e1-dispatch-happy-path pass node scripts/e1-dispatch-happy-path.mjs
+
+log "gate: rider-assignability — certified, privacy-acked, server-confirmed on-shift rider (must pass)"
+capture rider-assignability-positive pass node scripts/gates/rider-assignability.mjs gates/fixtures/assignment.eligible-rider.json
+
+log "gate: rider-assignability — NEGATIVE FIXTURE (uncertified rider, must REFUSE CLOSED)"
+capture rider-assignability-uncertified-negative fail node scripts/gates/rider-assignability.mjs gates/fixtures/negative/assignment.uncertified-rider.json
+
+log "gate: rider-assignability — NEGATIVE FIXTURE (offline-pending shift start, must REFUSE CLOSED)"
+capture rider-assignability-offshift-negative fail node scripts/gates/rider-assignability.mjs gates/fixtures/negative/assignment.offline-pending-shift.json
+
+log "gate: no-street-address-location — canonical kernel Location (must pass)"
+capture no-street-address-positive pass node scripts/gates/no-street-address-location.mjs gates/fixtures/location.kernel-canonical.json
+
+log "gate: no-street-address-location — NEGATIVE FIXTURE (streetAddress-bearing location, must fail)"
+capture no-street-address-negative fail node scripts/gates/no-street-address-location.mjs gates/fixtures/negative/location.with-street-address.json
+
 log "gate: one-assignment-authority — single-authority lease set (must pass)"
 capture one-assignment-authority-positive pass node scripts/gates/one-assignment-authority.mjs gates/fixtures/leases.single-authority.json
 
@@ -110,13 +128,13 @@ log "gate: French Voice copy-lint — NEGATIVE FIXTURE (veuillez/séquestre + ma
 capture copy-lint-negative fail pnpm exec copy-lint gates/fixtures/negative/catalog.negative.json
 
 log "gate: contracts drift-check — honest /docs copy vs pinned canon manifest (must pass)"
-capture drift-check-positive pass pnpm exec drift-check docs --pinned-version 0.1.0
+capture drift-check-positive pass pnpm exec drift-check docs --pinned-version 0.2.0
 
 log "gate: contracts drift-check — TAMPERED doc (must fail)"
 DRIFT_TMP="$(mktemp -d)"
 cp -r docs "$DRIFT_TMP/docs"
 printf '\nrogue edit — this consumer copy drifted from canon\n' >> "$DRIFT_TMP/docs/Sera-Build-Spec.md"
-capture drift-check-negative fail pnpm exec drift-check "$DRIFT_TMP/docs" --pinned-version 0.1.0
+capture drift-check-negative fail pnpm exec drift-check "$DRIFT_TMP/docs" --pinned-version 0.2.0
 rm -rf "$DRIFT_TMP"
 
 log "dispatch console — Playwright harness (shell boots on the sera theme)"

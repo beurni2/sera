@@ -19,5 +19,26 @@ test('the console shell boots on the sera theme with catalog strings', async ({ 
 
   await expect(page.locator('body')).toHaveCSS('background-color', hexToRgb(theme.colors.surface));
   await expect(page.locator('h2')).toHaveText('Prêt à assigner');
-  await expect(page.locator('.empty-state')).toHaveText('Aucune course à assigner pour le moment.');
+  // D7 staffed-hours default — copy only.
+  await expect(page.locator('.hours-note')).toHaveText('Service en journée.');
+});
+
+test('WO-1.2 manual assignment: landmark-first task card → « Donner la course » → honest waiting state', async ({ page }) => {
+  await page.goto('/');
+
+  // SE0.3: landmark-first display order — landmark, then directions, then zone.
+  const lines = page.locator('.location-line');
+  await expect(lines).toHaveCount(3);
+  await expect(lines.nth(0)).toHaveText('Face à la pharmacie du marché');
+  await expect(lines.nth(1)).toHaveText('Deuxième porte bleue après le kiosque');
+  await expect(lines.nth(2)).toHaveText('Gounghin');
+
+  // §2.3 step 10: the dispatcher assigns ONE task to ONE rider, manually.
+  await page.locator('select').selectOption('rider-issa');
+  await page.locator('button.assign').click();
+
+  // The task leaves the queue; the console shows the honest waiting state —
+  // acknowledged is a RIDER action, never implied by assignment itself.
+  await expect(page.locator('.status-line')).toHaveText("En attente de l'accord du livreur.");
+  await expect(page.locator('.task-card')).toHaveCount(0);
 });
