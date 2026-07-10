@@ -29,8 +29,11 @@ export const ACTOR_PROVENANCE_V1 = {
     'settlement.supplier_payable.v1': 'commerce_settlement',
     'logistics.task_ready.v1': 'logistics',
   },
-  /** actor prefix → producer class (first match wins). Mock entries are the
-   * §3 stand-ins until assembly. */
+  /** actor → producer class (first match wins). BOUNDARY LAW (WO-2.7 sera
+   * verifier, blocking finding 1): an entry ending in ':' is a NAMESPACE
+   * prefix (anything under it matches); every other entry must match the
+   * actor EXACTLY — 'shop:commerce-core-evil' is not 'shop:commerce-core'.
+   * Mock entries are the §3 stand-ins until assembly. */
   actorPrefixClasses: [
     { prefix: 'shop:commerce-core', producerClass: 'payment_provider' },
     { prefix: 'mock:shop-door-payment-emitter', producerClass: 'payment_provider' },
@@ -40,6 +43,10 @@ export const ACTOR_PROVENANCE_V1 = {
     { prefix: 'dispatcher:', producerClass: 'dispatch' },
   ],
 } as const;
+
+/** ':'-terminated = namespace (prefix match); otherwise EXACT match only. */
+const actorMatches = (actor: string, entry: string): boolean =>
+  entry.endsWith(':') ? actor.startsWith(entry) : actor === entry;
 
 export type ProvenanceCheck =
   | { ok: true; producerClass: string }
@@ -54,7 +61,7 @@ export function checkProducerActor(eventName: string, actor: string): Provenance
   const expectedClass =
     ACTOR_PROVENANCE_V1.producerClassByEvent[eventName as keyof typeof ACTOR_PROVENANCE_V1.producerClassByEvent];
   const actorClass =
-    ACTOR_PROVENANCE_V1.actorPrefixClasses.find((entry) => actor.startsWith(entry.prefix))?.producerClass ?? null;
+    ACTOR_PROVENANCE_V1.actorPrefixClasses.find((entry) => actorMatches(actor, entry.prefix))?.producerClass ?? null;
   if (expectedClass === undefined) {
     return { ok: false, reason: 'producer_actor_mismatch', eventName, actor, expectedClass: 'unregistered_event', actorClass };
   }

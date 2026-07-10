@@ -45,6 +45,27 @@ describe('WO-2.7 item 1 — actor provenance (in-process layer; E3 transport aut
     expect(checkProducerActor('some.unregistered.v1', 'shop:commerce-core')).toMatchObject({ ok: false, expectedClass: 'unregistered_event' });
   });
 
+  it('BOUNDARY LAW (verifier blocking finding 1, attack strings replayed verbatim): prefix tricks on exact-match entries are refused; namespace entries still match their members', () => {
+    // The verifier's exact forged actors — every one must classify as NOTHING.
+    for (const forged of ['shop:commerce-core-evil', 'shop:commerce-coreX', 'mock:shop-door-payment-emitter-evil']) {
+      expect(checkProducerActor('payment.door_leg_confirmed.v1', forged), forged)
+        .toMatchObject({ ok: false, reason: 'producer_actor_mismatch', actorClass: null });
+    }
+    // Namespace entries keep matching their members; exact entries their exact selves.
+    expect(checkProducerActor('delivery.validated.v1', 'custody-service:e1')).toEqual({ ok: true, producerClass: 'custody' });
+    expect(checkProducerActor('payment.door_leg_confirmed.v1', 'mock:shop-door-payment-emitter')).toEqual({ ok: true, producerClass: 'payment_provider' });
+  });
+
+  it('BOUNDARY LAW through the REAL spine: the forged prefix-trick actor is refused closed + alerted, door state untouched', () => {
+    const spine = optionBSpineAtDoor();
+    const forged = doorSignal('shop:commerce-core-evil', 'cmd-prefix-trick-1');
+    expect(spine.consumeDoorPaidSignal(forged, T)).toMatchObject({ ok: false, reason: 'producer_actor_mismatch' });
+    expect(spine.isDoorPaymentConfirmed()).toBe(false);
+    const alerts = spine.allEvents().filter((e) => e.name === 'reconciliation.alert.v1' && (e.payload as Record<string, unknown>)['scenario'] === 'producer_actor_mismatch');
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]!.payload).toMatchObject({ actor: 'shop:commerce-core-evil', actor_class: 'unclassified' });
+  });
+
   it('WRONG-ACTOR door signal: refused closed, ONE reconciliation.alert.v1, door state untouched — and the replay does not re-alert', () => {
     const spine = optionBSpineAtDoor();
     const forged = doorSignal('rider:r-1', 'cmd-forged-1');

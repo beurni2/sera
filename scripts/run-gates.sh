@@ -145,6 +145,9 @@ capture actor-provenance-positive pass node scripts/gates/actor-provenance.mjs g
 log "gate: actor-provenance — NEGATIVE FIXTURE (rider-actor door signal, must REFUSE CLOSED + alert)"
 capture actor-provenance-negative fail node scripts/gates/actor-provenance.mjs gates/fixtures/negative/signal.wrong-actor.json
 
+log "gate: actor-provenance — NEGATIVE FIXTURE (prefix-trick actor shop:commerce-core-evil, must REFUSE CLOSED + alert)"
+capture actor-provenance-prefix-trick-negative fail node scripts/gates/actor-provenance.mjs gates/fixtures/negative/signal.prefix-trick-actor.json
+
 log "gate: no-rider-asserted-payment — repo source (must pass)"
 capture no-rider-asserted-positive pass node scripts/gates/no-rider-asserted-payment.mjs
 
