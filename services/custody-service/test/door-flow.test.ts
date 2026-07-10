@@ -206,3 +206,43 @@ describe('WO-2.4 item 6 — the shop door-paid emitter as a §3-misbehaving mock
     expect(spine.isDoorPaymentConfirmed()).toBe(true);
   });
 });
+
+describe("WO-2.4 verifier findings — the exact attacks, replayed as regression tests", () => {
+  it('BLOCKING: a recorded valid rejection is FINAL — re-inspection, the signal, and the drop all refuse; no contradictory stream can exist', () => {
+    const spine = optionBSpine();
+    spine.recordDoorInspection(inspectionInput({ buyerAccepts: false, refusalColumn: 'valid', custodySealIntact: true }), T);
+    expect(spine.openValidRejectionReturn({ returnSealId: 'rs-b5', at: T })).toMatchObject({ ok: true });
+    expect(spine.recordDoorInspection(inspectionInput(), T)).toEqual({ ok: false, reason: 'inspection_already_recorded' });
+    expect(spine.consumeDoorPaidSignal(doorSignal('cmd-b5'), T)).toMatchObject({ ok: false, reason: 'door_signal_not_awaited' });
+    expect(spine.confirmDropAndEmitEligibility('drop-1', T)).toEqual({ ok: false, reason: 'return_in_progress' });
+    expect(spine.ledger.currentCustodian(CHAIN.package_id)).toBe('courier:r-1');
+    expect(spine.allEvents().filter((e) => e.name === 'delivery.validated.v1')).toHaveLength(0);
+  });
+
+  it('NB②: a FOREIGN-order inspection cannot unlock this door — evidence_chain_mismatch', () => {
+    const spine = optionBSpine();
+    expect(spine.recordDoorInspection(inspectionInput({ orderId: 'order-FOREIGN' }), T))
+      .toEqual({ ok: false, reason: 'evidence_chain_mismatch' });
+    expect(spine.confirmDropAndEmitEligibility('drop-1', T)).toEqual({ ok: false, reason: 'inspection_not_accepted' });
+  });
+
+  it('NB⑥ (the WO-2.2 analog, closed by the same guard): after applyBuyerFaultRefusal the drop refuses on ANY payment mode', () => {
+    const spine = optionBSpine();
+    spine.recordDoorInspection(inspectionInput(), T);
+    spine.recordDoorRefusal('insufficient_balance', T);
+    spine.escalateExpiredWindow(T2);
+    expect(spine.applyBuyerFaultRefusal({ returnSealId: 'rs-nb6', at: T2 })).toMatchObject({ ok: true });
+    expect(spine.confirmDropAndEmitEligibility('drop-1', T2)).toEqual({ ok: false, reason: 'return_in_progress' });
+    expect(spine.ledger.currentCustodian(CHAIN.package_id)).toBe('courier:r-1');
+  });
+
+  it('NB④: a replayed not-awaited signal is alert-idempotent — one reconciliation.alert.v1 per command_id', () => {
+    const spine = optionBSpine();
+    const first = spine.consumeDoorPaidSignal(doorSignal('cmd-b7'), T);
+    expect(first).toMatchObject({ ok: false, reason: 'door_signal_not_awaited' });
+    const alerts = () => spine.allEvents().filter((e) => e.name === 'reconciliation.alert.v1').length;
+    const after1 = alerts();
+    expect(spine.consumeDoorPaidSignal(doorSignal('cmd-b7'), T)).toMatchObject({ ok: false, reason: 'door_signal_not_awaited' });
+    expect(alerts()).toBe(after1);
+  });
+});

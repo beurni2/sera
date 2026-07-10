@@ -58,7 +58,9 @@ export type SpineRefusal =
   | 'inspection_not_accepted'
   | 'door_signal_not_awaited'
   | 'door_signal_invalid'
-  | 'no_valid_rejection';
+  | 'no_valid_rejection'
+  | 'inspection_already_recorded'
+  | 'return_in_progress';
 
 export interface ChainIds {
   order_id: string;
@@ -92,6 +94,7 @@ export class CustodySpine {
   private doorInspection: import('@platform/contracts').InspectionSession | null = null;
   private doorPaymentConfirmed = false;
   private readonly doorSignalCommandIds = new Set<string>();
+  private readonly alertedSignalCommandIds = new Set<string>();
   private validRejection: { faultClass: string } | null = null;
 
   constructor(
@@ -331,6 +334,12 @@ export class CustodySpine {
     }
     if (this.decision?.result !== 'validated') return { ok: false, reason: 'not_validated' };
     if (!this.custodyWithCourier) return { ok: false, reason: 'custody_not_with_courier' };
+    // Verifier blocking finding + NB⑥ (both WOs' analog closed with one
+    // guard): a recorded rejection or an in-flight return means the package
+    // goes HOME — the drop can never complete against it, any payment mode.
+    if (this.validRejection !== null || this.returnFlow !== null) {
+      return { ok: false, reason: 'return_in_progress' };
+    }
     // SE-I11 (payment-before-handoff), enforced: on Option-B, custody MUST
     // NOT transfer before the provider-confirmed door payment — and the
     // payment stage itself required an accepted inspection first.
@@ -389,6 +398,16 @@ export class CustodySpine {
       return { ok: false, reason: 'order_already_delivered' };
     }
     if (!this.custodyWithCourier) return { ok: false, reason: 'custody_not_with_courier' };
+    // Verifier blocking finding (WO-2.4): ONE inspection per delivery
+    // attempt — a recorded outcome (accepted OR rejected) can never be
+    // overwritten, and an open return closes the door for good.
+    if (this.doorInspection !== null || this.validRejection !== null) {
+      return { ok: false, reason: 'inspection_already_recorded' };
+    }
+    if (this.returnFlow !== null) return { ok: false, reason: 'return_in_progress' };
+    // Verifier NB②: the inspection binds to THIS order, like every other
+    // piece of evidence in the spine.
+    if (input.orderId !== this.chain.order_id) return { ok: false, reason: 'evidence_chain_mismatch' };
     const outcome = runDoorInspection(input);
     if (outcome.kind === 'invalid') return { ok: false, reason: outcome.reason };
     this.ledger.append({
@@ -471,9 +490,17 @@ export class CustodySpine {
       this.paymentMode === 'DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR' &&
       payloadOrder === this.chain.order_id &&
       this.doorInspection?.inspectionResult === 'accepted' &&
+      this.validRejection === null &&
+      this.returnFlow === null &&
       !this.doorPaymentConfirmed &&
       !this.eligibilityEmittedForOrder.has(this.chain.order_id);
     if (!awaiting) {
+      // Verifier NB④: the alert path is idempotent per signal — a replayed
+      // not-awaited signal does not mint a second identical alert.
+      if (this.alertedSignalCommandIds.has(event.envelope.command_id)) {
+        return { ok: false, reason: 'door_signal_not_awaited' };
+      }
+      this.alertedSignalCommandIds.add(event.envelope.command_id);
       const alert = this.emit('reconciliation.alert.v1', `door-mismatch-${event.envelope.command_id}`, {
         scenario: 'door_signal_mismatch',
         order_id: this.chain.order_id,

@@ -82,12 +82,12 @@ export function nextAfterEvidence(connectivity: 'online' | 'offline'): CustodySt
  * rider — advances payment_wait. 'confirmed' simulates the received signal;
  * the 'pending' branch is the honest waiting screen the live feed drives at
  * assembly. The rider has NO control over this value. */
-export const SANDBOX_PAYMENT_MODE: 'FULL_PREPAY' | 'PAY_AT_DOOR' = 'PAY_AT_DOOR';
+export const SANDBOX_PAYMENT_MODE: 'FULL_PREPAY' | 'DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR' = 'DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR';
 export const SANDBOX_DOOR_SIGNAL: 'confirmed' | 'pending' = 'confirmed';
 
 export function stepAfterInspection(mode: typeof SANDBOX_PAYMENT_MODE): CustodyStep {
   // Option-B (SE-I11): inspect → PAY (provider-confirmed) → drop code LAST.
-  return mode === 'PAY_AT_DOOR' ? 'payment_wait' : 'drop';
+  return mode === 'DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR' ? 'payment_wait' : 'drop';
 }
 
 export function stepAfterDoorSignal(signal: typeof SANDBOX_DOOR_SIGNAL): CustodyStep {
