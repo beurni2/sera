@@ -32,7 +32,9 @@ export type CustodyStep =
   | 'refusal_reason'
   | 'retry_window'
   | 'refused_final'
-  | 'reschedule_planned';
+  | 'reschedule_planned'
+  | 'door_inspection'
+  | 'payment_wait';
 
 /**
  * WO-2.2 — the refusal ladder's reason ids MIRROR the canonical
@@ -73,4 +75,21 @@ export const CONNECTIVITY: 'online' | 'offline' = 'online';
 export function nextAfterEvidence(connectivity: 'online' | 'offline'): CustodyStep {
   // Offline evidence is queued = pending; the drop step stays locked.
   return connectivity === 'online' ? 'drop' : 'evidence_pending';
+}
+
+/** WO-2.4 sandbox payment mode + door signal (typed data, like CONNECTIVITY):
+ * Option-B so the door flow is walkable; the PROVIDER signal — never the
+ * rider — advances payment_wait. 'confirmed' simulates the received signal;
+ * the 'pending' branch is the honest waiting screen the live feed drives at
+ * assembly. The rider has NO control over this value. */
+export const SANDBOX_PAYMENT_MODE: 'FULL_PREPAY' | 'DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR' = 'DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR';
+export const SANDBOX_DOOR_SIGNAL: 'confirmed' | 'pending' = 'confirmed';
+
+export function stepAfterInspection(mode: typeof SANDBOX_PAYMENT_MODE): CustodyStep {
+  // Option-B (SE-I11): inspect → PAY (provider-confirmed) → drop code LAST.
+  return mode === 'DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR' ? 'payment_wait' : 'drop';
+}
+
+export function stepAfterDoorSignal(signal: typeof SANDBOX_DOOR_SIGNAL): CustodyStep {
+  return signal === 'confirmed' ? 'drop' : 'payment_wait';
 }

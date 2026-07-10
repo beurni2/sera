@@ -188,6 +188,10 @@ if (app) {
   dwellLine.className = 'status-line';
   dwellLine.textContent = `${t('console.dwell_label')} : ${SANDBOX_DWELL.dwellSec} s — ${t(SANDBOX_DWELL.withinTarget ? 'console.dwell_in_target' : 'console.dwell_out_target')}`;
   followCard.appendChild(dwellLine);
+  const doorLine = document.createElement('p');
+  doorLine.className = 'status-line';
+  doorLine.textContent = `${t('console.door_label')} : ${t('console.door_confirmed')}`;
+  followCard.appendChild(doorLine);
   const outcomeHeading = document.createElement('p');
   outcomeHeading.className = 'rider-label';
   outcomeHeading.textContent = t('console.outcome_heading');
