@@ -26,16 +26,6 @@ jobs:
         run: |
           git config --global --add url."https://x-access-token:${{ secrets.PLATFORM_CONTRACTS_READ_TOKEN }}@github.com/beurni2/platform-contracts".insteadOf "git@github.com:beurni2/platform-contracts"
           git config --global --add url."https://x-access-token:${{ secrets.PLATFORM_CONTRACTS_READ_TOKEN }}@github.com/beurni2/platform-contracts".insteadOf "ssh://git@github.com/beurni2/platform-contracts"
-      # TEMPORARY diagnostic (boutik-plus playbook, runs 29066791600→29067960965
-      # red): prints token length/prefix (never the value), an API probe, and a
-      # git ls-remote through the same insteadOf path pnpm uses. Remove when green.
-      - name: Diagnose platform-contracts auth (temporary)
-        env:
-          PLATFORM_CONTRACTS_READ_TOKEN: ${{ secrets.PLATFORM_CONTRACTS_READ_TOKEN }}
-        run: |
-          if [ -z "$PLATFORM_CONTRACTS_READ_TOKEN" ]; then echo "token length: 0 · prefix: EMPTY — secret missing in this repo"; else echo "token length: ${#PLATFORM_CONTRACTS_READ_TOKEN} · prefix: ${PLATFORM_CONTRACTS_READ_TOKEN:0:11}"; fi
-          echo "API probe (200=valid+access, 401=revoked, 404=no repo access): $(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $PLATFORM_CONTRACTS_READ_TOKEN" https://api.github.com/repos/beurni2/platform-contracts)"
-          git ls-remote https://github.com/beurni2/platform-contracts.git HEAD >/dev/null 2>&1 && echo "git ls-remote via insteadOf: OK" || echo "git ls-remote via insteadOf: FAILED"
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - name: Install Playwright chromium (dispatch-console harness)
