@@ -1,27 +1,82 @@
+import { useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { seraTheme as theme } from '@platform/ui-tokens';
 import { t } from './src/i18n';
 
 /**
- * SE0.1 rider shell: one sparse screen on ui-tokens (sera theme —
- * road-and-custody clarity) and catalog strings, with an honest designed
- * empty state. Metro-safe by construction: the RN bundle imports only pure
- * token data; node-only canon barrels stay type-only (sibling lesson,
- * enforced by a ban-test). The shift/work flows arrive at SE0.2+. The
- * canonical « Commencer service » action label is deliberately absent — it
- * fails the maintained reading-level budget (collision instance #2, with
- * the founder). Sparse ≠ ugly.
+ * WO-1.2 rider shell: shift start/end + assignment card, sera theme, catalog
+ * strings. Offline law on every action: queued = PENDING, never done — a
+ * shift start or an ack sent without the network shows « En attente du
+ * réseau » and confers nothing until the server confirms (SE0.2; kernel
+ * offline semantics). The E1 sandbox has no server, so pending stays
+ * honestly pending; live confirmation wiring (RiderRegistry) lands at E1
+ * assembly. Locations render landmark-first (SE0.3). Metro-safe: the bundle
+ * imports only pure token data; canon barrels stay out of the runtime graph.
+ * The canonical « Commencer service » label remains absent — reading-level
+ * collision instance #2, with the founder.
  */
+
+type ShiftView = 'off' | 'pending' | 'on';
+
+interface AssignmentView {
+  /** Landmark-first lines (SE0.3): [landmark, directions, zone]. */
+  locationLines: readonly [string, string, string];
+  ackState: 'none' | 'ack_pending';
+}
+
+// E1: assignments reach this shell at assembly (server push). Typed and
+// honest — no fake course is invented for the demo.
+const assignment: AssignmentView | null = null;
+
 export default function App() {
+  const [shift, setShift] = useState<ShiftView>('off');
+
+  const shiftStatus = shift === 'on' ? t('shift.on') : shift === 'pending' ? t('shift.pending') : t('shift.off');
+  const shiftAction = shift === 'off' ? t('shift.start_action') : t('shift.end_action');
+
   return (
     <SafeAreaView style={styles.screen}>
       <StatusBar style="dark" backgroundColor={theme.colors.surface} />
       <View style={styles.content}>
         <Text style={styles.brand}>{t('app.title')}</Text>
         <Text style={styles.tab}>{t('shell.work_tab')}</Text>
+
         <View style={styles.card}>
-          <Text style={styles.emptyState}>{t('shell.no_task')}</Text>
+          <Text style={styles.statusLine}>{shiftStatus}</Text>
+          <Pressable
+            style={styles.primaryAction}
+            onPress={() => {
+              // No server in the E1 sandbox: a start stays queued = PENDING —
+              // never a fake « En service ». confirmQueuedShiftStart arrives
+              // with the live service at assembly.
+              setShift(shift === 'off' ? 'pending' : 'off');
+            }}
+          >
+            <Text style={styles.primaryActionText}>{shiftAction}</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.card}>
+          {assignment === null ? (
+            <Text style={styles.emptyState}>{t('shell.no_task')}</Text>
+          ) : (
+            <>
+              <Text style={styles.assignmentTitle}>{t('assignment.title')}</Text>
+              {assignment.locationLines.map((line) => (
+                <Text key={line} style={styles.locationLine}>
+                  {line}
+                </Text>
+              ))}
+              {assignment.ackState === 'ack_pending' ? (
+                <Text style={styles.statusLine}>{t('assignment.ack_pending')}</Text>
+              ) : (
+                <Pressable style={styles.primaryAction}>
+                  <Text style={styles.primaryActionText}>{t('assignment.ack_action')}</Text>
+                </Pressable>
+              )}
+            </>
+          )}
         </View>
       </View>
     </SafeAreaView>
@@ -60,11 +115,44 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     padding: theme.spacing.xl,
     marginTop: theme.spacing.lg,
+    gap: theme.spacing.md,
+  },
+  statusLine: {
+    color: theme.colors.inkMuted,
+    fontSize: theme.typeScale.bodyLarge.size,
+    lineHeight: theme.typeScale.bodyLarge.lineHeight,
+    textAlign: 'center',
+  },
+  assignmentTitle: {
+    color: theme.colors.ink,
+    fontSize: theme.typeScale.heading.size,
+    lineHeight: theme.typeScale.heading.lineHeight,
+    fontWeight: theme.typeScale.heading.weight,
+    textAlign: 'center',
+  },
+  locationLine: {
+    color: theme.colors.ink,
+    fontSize: theme.typeScale.bodyLarge.size,
+    lineHeight: theme.typeScale.bodyLarge.lineHeight,
+    textAlign: 'center',
   },
   emptyState: {
     color: theme.colors.inkMuted,
     fontSize: theme.typeScale.bodyLarge.size,
     lineHeight: theme.typeScale.bodyLarge.lineHeight,
     textAlign: 'center',
+  },
+  primaryAction: {
+    minHeight: 44,
+    borderRadius: theme.radius.lg,
+    backgroundColor: theme.colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: theme.spacing.xl,
+  },
+  primaryActionText: {
+    color: theme.colors.surface,
+    fontSize: theme.typeScale.bodyLarge.size,
+    lineHeight: theme.typeScale.bodyLarge.lineHeight,
   },
 });

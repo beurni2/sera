@@ -1,0 +1,10 @@
+{
+  "pin": {
+    "lat": 12.3714,
+    "lng": -1.5197
+  },
+  "zone": "Gounghin",
+  "landmark": "Face à la pharmacie du marché",
+  "directions": "Deuxième porte bleue après le kiosque",
+  "maskedRelay": "relay-e1"
+}

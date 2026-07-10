@@ -16,5 +16,53 @@
     "fr": "Pas de course pour le moment.",
     "register": "neutral",
     "screenClass": "status"
+  },
+  {
+    "key": "shift.start_action",
+    "fr": "Prendre la route",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "shift.end_action",
+    "fr": "Finir la route",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "shift.on",
+    "fr": "En service",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "shift.off",
+    "fr": "Hors service",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "shift.pending",
+    "fr": "Envoyé. En attente du réseau.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "assignment.title",
+    "fr": "Nouvelle course",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "assignment.ack_action",
+    "fr": "Je prends la course",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "assignment.ack_pending",
+    "fr": "Accord envoyé. En attente du réseau.",
+    "register": "neutral",
+    "screenClass": "status"
   }
 ]

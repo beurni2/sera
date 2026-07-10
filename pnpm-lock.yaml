@@ -45,6 +45,9 @@ importers:
       '@platform/ui-tokens':
         specifier: git+https://github.com/beurni2/platform-contracts.git#b076ff39b650a0b481cd36759193bcfe497b431c&path:packages/ui-tokens
         version: git+https://git@github.com:beurni2/platform-contracts.git#b076ff39b650a0b481cd36759193bcfe497b431c&path:packages/ui-tokens
+      '@sera/logistics-service':
+        specifier: workspace:*
+        version: link:../../services/logistics-service
     devDependencies:
       '@playwright/test':
         specifier: ^1.57.0

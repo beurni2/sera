@@ -2,7 +2,7 @@
   "name": "@sera/dispatch-console",
   "version": "0.0.1",
   "private": true,
-  "description": "Séra dispatch-console shell (WO-SE0.1) — web; ui-tokens sera theme; Playwright harness.",
+  "description": "S\u00e9ra dispatch-console shell (WO-SE0.1) \u2014 web; ui-tokens sera theme; Playwright harness.",
   "license": "UNLICENSED",
   "type": "module",
   "scripts": {
@@ -15,7 +15,8 @@
   },
   "dependencies": {
     "@platform/i18n": "git+https://github.com/beurni2/platform-contracts.git#b076ff39b650a0b481cd36759193bcfe497b431c&path:packages/i18n",
-    "@platform/ui-tokens": "git+https://github.com/beurni2/platform-contracts.git#b076ff39b650a0b481cd36759193bcfe497b431c&path:packages/ui-tokens"
+    "@platform/ui-tokens": "git+https://github.com/beurni2/platform-contracts.git#b076ff39b650a0b481cd36759193bcfe497b431c&path:packages/ui-tokens",
+    "@sera/logistics-service": "workspace:*"
   },
   "devDependencies": {
     "@playwright/test": "^1.57.0",

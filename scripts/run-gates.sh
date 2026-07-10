@@ -52,6 +52,24 @@ capture money-reconciliation-positive pass node scripts/gates/money-reconciliati
 log "gate: money-reconciliation — NEGATIVE FIXTURE (independent-multiplication drift, must fail)"
 capture money-reconciliation-negative fail node scripts/gates/money-reconciliation.mjs gates/fixtures/negative/quote.independent-multiplication.json
 
+log "E1 dispatch happy path — manual assignment through the SERVICE path, chain + offline-pending proofs (must pass)"
+capture e1-dispatch-happy-path pass node scripts/e1-dispatch-happy-path.mjs
+
+log "gate: rider-assignability — certified, privacy-acked, server-confirmed on-shift rider (must pass)"
+capture rider-assignability-positive pass node scripts/gates/rider-assignability.mjs gates/fixtures/assignment.eligible-rider.json
+
+log "gate: rider-assignability — NEGATIVE FIXTURE (uncertified rider, must REFUSE CLOSED)"
+capture rider-assignability-uncertified-negative fail node scripts/gates/rider-assignability.mjs gates/fixtures/negative/assignment.uncertified-rider.json
+
+log "gate: rider-assignability — NEGATIVE FIXTURE (offline-pending shift start, must REFUSE CLOSED)"
+capture rider-assignability-offshift-negative fail node scripts/gates/rider-assignability.mjs gates/fixtures/negative/assignment.offline-pending-shift.json
+
+log "gate: no-street-address-location — canonical kernel Location (must pass)"
+capture no-street-address-positive pass node scripts/gates/no-street-address-location.mjs gates/fixtures/location.kernel-canonical.json
+
+log "gate: no-street-address-location — NEGATIVE FIXTURE (streetAddress-bearing location, must fail)"
+capture no-street-address-negative fail node scripts/gates/no-street-address-location.mjs gates/fixtures/negative/location.with-street-address.json
+
 log "gate: one-assignment-authority — single-authority lease set (must pass)"
 capture one-assignment-authority-positive pass node scripts/gates/one-assignment-authority.mjs gates/fixtures/leases.single-authority.json
 

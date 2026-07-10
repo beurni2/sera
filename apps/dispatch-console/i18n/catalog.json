@@ -16,5 +16,35 @@
     "fr": "Aucune course à assigner pour le moment.",
     "register": "neutral",
     "screenClass": "status"
+  },
+  {
+    "key": "console.assign_action",
+    "fr": "Donner la course",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "console.pick_rider",
+    "fr": "Choisir un livreur",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "console.waiting_ack",
+    "fr": "En attente de l'accord du livreur.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "console.requeued",
+    "fr": "Course remise dans la file.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "console.hours_note",
+    "fr": "Service en journée.",
+    "register": "neutral",
+    "screenClass": "status"
   }
 ]
