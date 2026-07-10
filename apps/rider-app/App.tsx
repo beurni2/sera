@@ -59,6 +59,9 @@ export default function App() {
           ) : (
             <>
               <Text style={styles.assignmentTitle}>{t('assignment.title')}</Text>
+              {/* « Repère » returns under the D18 label class (reading-budget
+                  exempt) — it heads the landmark-first location block. */}
+              <Text style={styles.fieldLabel}>{t('assignment.landmark_label')}</Text>
               {assignment.locationLines.map((line) => (
                 <Text key={line} style={styles.locationLine}>
                   {line}
@@ -216,6 +219,13 @@ const styles = StyleSheet.create({
     color: theme.colors.ink,
     fontSize: theme.typeScale.bodyLarge.size,
     lineHeight: theme.typeScale.bodyLarge.lineHeight,
+    textAlign: 'center',
+  },
+  fieldLabel: {
+    color: theme.colors.inkMuted,
+    fontSize: theme.typeScale.label.size,
+    lineHeight: theme.typeScale.label.lineHeight,
+    fontWeight: theme.typeScale.label.weight,
     textAlign: 'center',
   },
   emptyState: {

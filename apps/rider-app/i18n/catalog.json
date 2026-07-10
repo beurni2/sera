@@ -54,6 +54,12 @@
     "screenClass": "general"
   },
   {
+    "key": "assignment.landmark_label",
+    "fr": "Repère",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
     "key": "assignment.ack_action",
     "fr": "Je prends la course",
     "register": "neutral",
