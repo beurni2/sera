@@ -88,6 +88,18 @@ capture actor-separation-positive pass node scripts/gates/custody-actor-separati
 log "gate: custody-actor-separation — NEGATIVE FIXTURE (supplier as its own rider, must REFUSE CLOSED)"
 capture actor-separation-negative fail node scripts/gates/custody-actor-separation.mjs gates/fixtures/negative/custody.supplier-as-rider.json
 
+log "gate: evidence-chain-binding — bundle bound by equality to chain ids + registered seal (must pass)"
+capture evidence-binding-positive pass node scripts/gates/evidence-chain-binding.mjs gates/fixtures/evidence.bound.json
+
+log "gate: evidence-chain-binding — NEGATIVE FIXTURE (foreign packageId, must REFUSE CLOSED)"
+capture evidence-binding-foreign-package-negative fail node scripts/gates/evidence-chain-binding.mjs gates/fixtures/negative/evidence.foreign-package.json
+
+log "gate: evidence-chain-binding — NEGATIVE FIXTURE (foreign seal, must REFUSE CLOSED)"
+capture evidence-binding-foreign-seal-negative fail node scripts/gates/evidence-chain-binding.mjs gates/fixtures/negative/evidence.foreign-seal.json
+
+log "gate: evidence-chain-binding — NEGATIVE FIXTURE (binding field absent, must REFUSE CLOSED)"
+capture evidence-binding-missing-negative fail node scripts/gates/evidence-chain-binding.mjs gates/fixtures/negative/evidence.missing-binding.json
+
 log "gate: offline-never-final — server-confirmed evidence validates (must pass)"
 capture offline-never-final-positive pass node scripts/gates/offline-never-final.mjs gates/fixtures/evidence.server-confirmed.json
 

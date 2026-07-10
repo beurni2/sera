@@ -161,3 +161,72 @@ describe('delivery + SE5.3 — validation gates the drop code; eligibility exact
     expect(spine.ledger.verifyChain()).toEqual({ valid: true });
   });
 });
+
+describe('WO-2.1 finding ① — evidence-to-chain binding (SE-I11: evidence supports THIS delivery only)', () => {
+  it('a FOREIGN packageId is refused closed: no ledger entry, no event, no decision', () => {
+    const spine = spineWithCourierCustody();
+    const eventsBefore = spine.allEvents().length;
+    const ledgerBefore = spine.ledger.all().length;
+    expect(spine.submitDeliveryEvidence(evidenceBundle({ packageId: 'pkg-FOREIGN' }), 'server_confirmed', T))
+      .toEqual({ ok: false, reason: 'evidence_chain_mismatch' });
+    expect(spine.allEvents().length).toBe(eventsBefore);
+    expect(spine.ledger.all().length).toBe(ledgerBefore);
+    expect(spine.decideValidation(T)).toEqual({ ok: false, reason: 'validation_before_evidence' });
+  });
+
+  it('a FOREIGN taskId is refused closed with the same chain-mismatch reason', () => {
+    const spine = spineWithCourierCustody();
+    expect(spine.submitDeliveryEvidence(evidenceBundle({ taskId: 'task-FOREIGN' }), 'server_confirmed', T))
+      .toEqual({ ok: false, reason: 'evidence_chain_mismatch' });
+    expect(spine.decideValidation(T)).toEqual({ ok: false, reason: 'validation_before_evidence' });
+  });
+
+  it('a FOREIGN seal — valid shape, wrong seal — is refused: only the seal REGISTERED at beginCustody binds', () => {
+    const spine = spineWithCourierCustody();
+    expect(spine.submitDeliveryEvidence(evidenceBundle({ custodySealId: 'seal-FOREIGN' }), 'server_confirmed', T))
+      .toEqual({ ok: false, reason: 'evidence_seal_mismatch' });
+    expect(spine.confirmDropAndEmitEligibility('drop-9042', T)).toEqual({ ok: false, reason: 'not_validated' });
+    expect(spine.allEvents().filter((e) => e.name === 'delivery.validated.v1')).toHaveLength(0);
+  });
+
+  it('a bundle MISSING its binding field never reaches the binder — the strict schema refuses it first', () => {
+    const spine = spineWithCourierCustody();
+    const { custodySealId: _dropped, ...unbound } = evidenceBundle();
+    expect(spine.submitDeliveryEvidence(unbound, 'server_confirmed', T))
+      .toEqual({ ok: false, reason: 'evidence_not_canonical' });
+    expect(spine.decideValidation(T)).toEqual({ ok: false, reason: 'validation_before_evidence' });
+  });
+
+  it('the BOUND bundle still validates and completes — binding refuses foreigners, not the delivery', () => {
+    const spine = spineWithCourierCustody();
+    expect(spine.submitDeliveryEvidence(evidenceBundle(), 'server_confirmed', T)).toMatchObject({ ok: true, pending: false });
+    const decided = spine.decideValidation(T);
+    expect(decided.ok && decided.decision.result).toBe('validated');
+    expect(spine.confirmDropAndEmitEligibility('drop-9042', T)).toMatchObject({ ok: true, duplicate: false });
+  });
+});
+
+describe('WO-2.1 finding ③ — the registry door refuses re-arming (the WO-1.3 re-arm attack, replayed)', () => {
+  it('register → consume → RE-REGISTER is refused at the door with secret_already_used — one layer earlier than WO-1.3', () => {
+    const spine = spineWithCourierCustody();
+    // At WO-1.3 this register() silently re-armed the consumed seal and the
+    // attack died only at the spine (custody already with courier). Now it
+    // dies HERE, at the registry door:
+    expect(spine.secrets.register('custody_seal', CHAIN.order_id, 'seal-REARMED'))
+      .toEqual({ ok: false, reason: 'secret_already_used' });
+    // And the presented re-armed value still cannot consume:
+    expect(spine.secrets.consume('custody_seal', CHAIN.order_id, 'seal-REARMED', T))
+      .toEqual({ ok: false, reason: 'secret_already_used' });
+    // Same for the drop code after the happy path spends it:
+    spine.submitDeliveryEvidence(evidenceBundle(), 'server_confirmed', T);
+    spine.decideValidation(T);
+    spine.confirmDropAndEmitEligibility('drop-9042', T);
+    expect(spine.secrets.register('buyer_drop_code', CHAIN.order_id, 'drop-REARMED'))
+      .toEqual({ ok: false, reason: 'secret_already_used' });
+  });
+
+  it('an UNCONSUMED secret may still be (re)registered — the door blocks spent secrets, not arming', () => {
+    const spine = freshSpine();
+    expect(spine.secrets.register('custody_seal', CHAIN.order_id, 'seal-rotated')).toEqual({ ok: true });
+  });
+});

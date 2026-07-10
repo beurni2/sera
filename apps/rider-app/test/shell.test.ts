@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { CatalogSchema } from '@platform/i18n';
+import { POLICY_CHECK_IDS } from '../src/custody-flow.js';
 
 const appDir = join(import.meta.dirname, '..');
 
@@ -16,7 +17,18 @@ describe('rider-app catalog discipline', () => {
     const usedKeys = [...appSource.matchAll(/(?<![\w.])t\('([^']+)'\)/g)].map((m) => m[1]);
     expect(usedKeys.length).toBeGreaterThan(0);
     for (const key of usedKeys) {
-      expect(keys.has(key ?? '')).toBe(true);
+      expect(keys.has(key ?? ''), `static key ${key} missing from catalog`).toBe(true);
+    }
+    // WO-2.1 finding ⑦ — template-literal keys (t(`check.${id}`)) were
+    // invisible to the static regex. Capture every template usage's prefix
+    // and expand it against the shell's one dynamic id source, the policy
+    // checklist; every expanded key must exist in the catalog.
+    const templatePrefixes = [...appSource.matchAll(/(?<![\w.])t\(`([^`$]*)\$\{[^}]+\}`\)/g)].map((m) => m[1]);
+    expect(templatePrefixes.length).toBeGreaterThan(0); // the widening must bite
+    for (const prefix of templatePrefixes) {
+      for (const id of POLICY_CHECK_IDS) {
+        expect(keys.has(`${prefix}${id}`), `template key ${prefix}${id} missing from catalog`).toBe(true);
+      }
     }
     const codeOnly = appSource.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
     expect(codeOnly).not.toMatch(/['"«][^'"»]*[àâçéèêëîïôùûüÀÂÇÉÈÊËÎÏÔÙÛÜ]/);
