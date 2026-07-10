@@ -1148,15 +1148,6 @@ packages:
     resolution: {commit: 9308c641c368ea56d141867d667b122e10db682d, path: packages/certification, repo: https://github.com/beurni2/platform-contracts.git, type: git}
     version: 0.3.0
 
-  '@platform/certification@git+https://github.com/beurni2/platform-contracts.git#9308c641c368ea56d141867d667b122e10db682d&path:packages/certification':
-    resolution: {commit: 9308c641c368ea56d141867d667b122e10db682d, path: packages/certification, repo: https://github.com/beurni2/platform-contracts.git, type: git}
-    version: 0.3.0
-
-  '@platform/contracts@git+https://github.com/beurni2/platform-contracts.git#9308c641c368ea56d141867d667b122e10db682d&path:packages/contracts':
-    resolution: {commit: 9308c641c368ea56d141867d667b122e10db682d, path: packages/contracts, repo: https://github.com/beurni2/platform-contracts.git, type: git}
-    version: 0.3.0
-    hasBin: true
-
   '@platform/contracts@git+https://github.com/beurni2/platform-contracts.git#9308c641c368ea56d141867d667b122e10db682d&path:packages/contracts':
     resolution: {commit: 9308c641c368ea56d141867d667b122e10db682d, path: packages/contracts, repo: https://github.com/beurni2/platform-contracts.git, type: git}
     version: 0.3.0
@@ -1169,14 +1160,6 @@ packages:
 
   '@platform/kernel-types@git+https://github.com/beurni2/platform-contracts.git#9308c641c368ea56d141867d667b122e10db682d&path:packages/kernel-types':
     resolution: {commit: 9308c641c368ea56d141867d667b122e10db682d, path: packages/kernel-types, repo: https://github.com/beurni2/platform-contracts.git, type: git}
-    version: 0.3.0
-
-  '@platform/kernel-types@git+https://github.com/beurni2/platform-contracts.git#9308c641c368ea56d141867d667b122e10db682d&path:packages/kernel-types':
-    resolution: {commit: 9308c641c368ea56d141867d667b122e10db682d, path: packages/kernel-types, repo: https://github.com/beurni2/platform-contracts.git, type: git}
-    version: 0.3.0
-
-  '@platform/ui-tokens@git+https://github.com/beurni2/platform-contracts.git#9308c641c368ea56d141867d667b122e10db682d&path:packages/ui-tokens':
-    resolution: {commit: 9308c641c368ea56d141867d667b122e10db682d, path: packages/ui-tokens, repo: https://github.com/beurni2/platform-contracts.git, type: git}
     version: 0.3.0
 
   '@platform/ui-tokens@git+https://github.com/beurni2/platform-contracts.git#9308c641c368ea56d141867d667b122e10db682d&path:packages/ui-tokens':
@@ -4610,17 +4593,6 @@ snapshots:
       '@platform/ui-tokens': git+https://github.com/beurni2/platform-contracts.git#9308c641c368ea56d141867d667b122e10db682d&path:packages/ui-tokens
       zod: 4.4.3
 
-  '@platform/certification@git+https://github.com/beurni2/platform-contracts.git#9308c641c368ea56d141867d667b122e10db682d&path:packages/certification':
-    dependencies:
-      '@platform/contracts': git+https://github.com/beurni2/platform-contracts.git#9308c641c368ea56d141867d667b122e10db682d&path:packages/contracts
-      '@platform/ui-tokens': git+https://github.com/beurni2/platform-contracts.git#9308c641c368ea56d141867d667b122e10db682d&path:packages/ui-tokens
-      zod: 4.4.3
-
-  '@platform/contracts@git+https://github.com/beurni2/platform-contracts.git#9308c641c368ea56d141867d667b122e10db682d&path:packages/contracts':
-    dependencies:
-      '@platform/kernel-types': git+https://github.com/beurni2/platform-contracts.git#9308c641c368ea56d141867d667b122e10db682d&path:packages/kernel-types
-      zod: 4.4.3
-
   '@platform/contracts@git+https://github.com/beurni2/platform-contracts.git#9308c641c368ea56d141867d667b122e10db682d&path:packages/contracts':
     dependencies:
       '@platform/kernel-types': git+https://github.com/beurni2/platform-contracts.git#9308c641c368ea56d141867d667b122e10db682d&path:packages/kernel-types
@@ -4633,12 +4605,6 @@ snapshots:
   '@platform/kernel-types@git+https://github.com/beurni2/platform-contracts.git#9308c641c368ea56d141867d667b122e10db682d&path:packages/kernel-types':
     dependencies:
       zod: 4.4.3
-
-  '@platform/kernel-types@git+https://github.com/beurni2/platform-contracts.git#9308c641c368ea56d141867d667b122e10db682d&path:packages/kernel-types':
-    dependencies:
-      zod: 4.4.3
-
-  '@platform/ui-tokens@git+https://github.com/beurni2/platform-contracts.git#9308c641c368ea56d141867d667b122e10db682d&path:packages/ui-tokens': {}
 
   '@platform/ui-tokens@git+https://github.com/beurni2/platform-contracts.git#9308c641c368ea56d141867d667b122e10db682d&path:packages/ui-tokens': {}
 
