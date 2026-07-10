@@ -41,6 +41,21 @@ export type AppendOutcome =
   | { ok: true; entry: LedgerEntry }
   | { ok: false; reason: 'custodian_conflict' | 'malformed_transition' };
 
+/** Recursive copy-then-freeze for the JSON-shaped ledger values: every
+ * object and array in the returned structure is a fresh, frozen copy —
+ * nothing aliases the internal store at any depth. */
+function deepFrozenCopy(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return Object.freeze(value.map((item) => deepFrozenCopy(item)));
+  }
+  if (value !== null && typeof value === 'object') {
+    return Object.freeze(
+      Object.fromEntries(Object.entries(value).map(([k, v]) => [k, deepFrozenCopy(v)])),
+    );
+  }
+  return value;
+}
+
 export class CustodyLedger {
   private readonly entries: LedgerEntry[] = [];
   private readonly custodianByPackage = new Map<string, string>();
@@ -88,15 +103,13 @@ export class CustodyLedger {
     return { valid: true };
   }
 
-  /** Read-only view for tests/gates — a FROZEN defensive copy (WO-2.1
-   * finding ②): mutating the returned array or its entries cannot touch the
-   * ledger; only `append` writes, and `verifyChain` polices the committed
-   * bytes. */
+  /** Read-only view for tests/gates — a DEEPLY frozen defensive copy
+   * (WO-2.1 finding ②, deepened after the verifier's blocking finding: a
+   * shallow copy left nested payload arrays — photoRefs, reasons — aliased
+   * to the store). Mutating the returned structure at ANY depth cannot
+   * touch the ledger; only `append` writes, and `verifyChain` polices the
+   * committed bytes. */
   all(): readonly LedgerEntry[] {
-    return Object.freeze(
-      this.entries.map((entry) =>
-        Object.freeze({ ...entry, payload: Object.freeze({ ...entry.payload }) }),
-      ),
-    );
+    return deepFrozenCopy(this.entries) as readonly LedgerEntry[];
   }
 }

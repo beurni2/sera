@@ -36,8 +36,16 @@ describe('custody ledger — SE4.1 append-only, hash-chained, one current custod
     expect(ledger2.verifyChain()).toEqual({ valid: false, brokenAtSeq: 0 });
   });
 
-  it('WO-2.1 finding ② — all() is a FROZEN defensive copy: mutation attempts cannot touch the ledger', () => {
+  it('WO-2.1 finding ② — all() is a DEEPLY frozen defensive copy: mutation attempts at ANY depth cannot touch the ledger', () => {
     const ledger = ledgerWithCourier();
+    // An entry whose payload carries a NESTED ARRAY — the depth the
+    // verifier's blocking finding attacked (photoRefs aliasing the store):
+    ledger.append({
+      packageId: 'pkg-1',
+      kind: 'custody_seal_registered',
+      payload: { photoRefs: ['media/seal.jpg'] },
+      at: T,
+    });
     const view = ledger.all();
     // Array-level mutations throw (frozen) and change nothing:
     expect(() => (view as LedgerEntry[]).push({} as LedgerEntry)).toThrow();
@@ -45,8 +53,14 @@ describe('custody ledger — SE4.1 append-only, hash-chained, one current custod
     // Entry-level and payload-level mutations are equally sealed:
     expect(() => ((view[1] as LedgerEntry).payload['result'] = 'refused')).toThrow();
     expect(() => (((view[0] as LedgerEntry) as LedgerEntry & { at: string }).at = 'x')).toThrow();
+    // THE DEEP ATTACK (verifier blocking finding): pushing into a nested
+    // payload array through the view must throw and must NOT reach the
+    // store — no poisoning, chain stays valid.
+    const sealView = view[3]!;
+    expect(() => (sealView.payload['photoRefs'] as string[]).push('evil-injected.jpg')).toThrow();
+    expect(ledger.all()[3]!.payload['photoRefs']).toEqual(['media/seal.jpg']);
     // The ledger itself is untouched — chain still verifies, length intact:
-    expect(ledger.all()).toHaveLength(3);
+    expect(ledger.all()).toHaveLength(4);
     expect(ledger.all()[1]!.payload['result']).toBe('accepted');
     expect(ledger.verifyChain()).toEqual({ valid: true });
     // Successive calls hand out fresh copies, never a shared alias:
