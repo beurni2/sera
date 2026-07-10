@@ -127,8 +127,13 @@ describe('intake — the happy admission and its refusals', () => {
 });
 
 describe('§3 misbehavior — Shop+ funding mock vs intake', () => {
-  it('① DUPLICATES: task_ready delivered 3× → ONE queued task, duplicates absorbed on command_id', () => {
-    const { queue } = healthyMocks({ eventCopies: 3 });
+  it('① DUPLICATES: the funding mock EMITS 3 copies of the same command_id; intake absorbs duplicate task_ready the same way', () => {
+    const { funding, queue } = healthyMocks({ eventCopies: 3 });
+    // The mock itself misbehaves: three deliveries, ONE command redelivered.
+    const plan = funding.fundingEventPlan();
+    expect(plan).toHaveLength(3);
+    expect(new Set(plan.map((p) => p.event.envelope.command_id)).size).toBe(1);
+    // And the intake absorbs duplicate deliveries on command_id.
     expect(queue.onTaskReady(taskReadyEvent(), T)).toMatchObject({ admitted: true, duplicate: false });
     expect(queue.onTaskReady(taskReadyEvent(), T)).toMatchObject({ admitted: true, duplicate: true });
     expect(queue.onTaskReady(taskReadyEvent(), T)).toMatchObject({ admitted: true, duplicate: true });
@@ -164,6 +169,14 @@ describe('§3 misbehavior — Shop+ funding mock vs intake', () => {
     funding.goStale(1);
     expect(queue.recheckAssignable('task-1')).toEqual({ assignable: false, reason: 'funding_projection_stale' });
     // …and heals: assignable again.
+    expect(queue.recheckAssignable('task-1')).toEqual({ assignable: true });
+  });
+
+  it('④ter READINESS stale at recheck: the Boutik+ projection going stale ALSO makes an admitted task unassignable', () => {
+    const { readiness, queue } = healthyMocks();
+    expect(queue.onTaskReady(taskReadyEvent(), T)).toMatchObject({ admitted: true });
+    readiness.goStale(1);
+    expect(queue.recheckAssignable('task-1')).toEqual({ assignable: false, reason: 'readiness_projection_stale' });
     expect(queue.recheckAssignable('task-1')).toEqual({ assignable: true });
   });
 

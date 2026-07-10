@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // CI gate (SE0.2, acceptance SE1): "uncertified/off-shift not assignable" —
 // REFUSED CLOSED. Validates an assignment fixture through the REAL
-// RiderRegistry + AssignmentBook admission logic (built dist), not a
-// re-implementation. Exit 1 = the invariant caught a violation. Exit 2 =
-// unusable input (a crash must never pass for a working negative fixture).
+// RiderRegistry (built dist) — the same isAssignable() the AssignmentBook
+// consults — not a re-implementation. Exit 1 = the invariant caught a
+// violation. Exit 2 = unusable input (a crash must never pass for a working
+// negative fixture).
 import { readFileSync } from 'node:fs';
 import { RiderRegistry, PRIVACY_NOTICE_VERSION } from '../../services/logistics-service/dist/rider-registry.js';
 

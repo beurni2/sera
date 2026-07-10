@@ -50,7 +50,10 @@ const ACTIVE_STATUSES: readonly AssignmentStatus[] = ['active_unacknowledged', '
 
 export class AssignmentBook {
   private readonly assignments = new Map<string, AssignmentRecord>();
-  private readonly processedCommandIds = new Map<string, AssignOutcome>();
+  /** Only SUCCESSES are remembered (idempotency = never double-apply).
+   * Refusals re-evaluate on retry — a stale projection heals, and the same
+   * command may then succeed (mirrors ReadyQueue.onTaskReady). */
+  private readonly appliedCommandIds = new Map<string, AssignOutcome>();
   private aggregateVersion = 0;
 
   constructor(
@@ -66,30 +69,26 @@ export class AssignmentBook {
     at: string;
     newAssignmentId: string;
   }): AssignOutcome {
-    const replay = this.processedCommandIds.get(cmd.command_id);
-    if (replay) return replay.ok ? { ...replay, duplicate: true } : replay;
+    const replay = this.appliedCommandIds.get(cmd.command_id);
+    if (replay?.ok) return { ...replay, duplicate: true };
 
     // SE1.1 second check — stale at assignment time = unassignable.
     const taskCheck = this.queue.recheckAssignable(cmd.taskId);
     if (!taskCheck.assignable) {
-      return this.remember(cmd.command_id, {
-        ok: false,
-        reason: 'task_not_assignable',
-        detail: taskCheck.reason,
-      });
+      return { ok: false, reason: 'task_not_assignable', detail: taskCheck.reason };
     }
     // SE1 acceptance — uncertified/off-shift (incl. any pending state) refuse closed.
     if (!this.registry.isAssignable(cmd.riderId)) {
-      return this.remember(cmd.command_id, { ok: false, reason: 'rider_not_assignable' });
+      return { ok: false, reason: 'rider_not_assignable' };
     }
     // Store-level one-active invariant: per rider AND per task.
     for (const existing of this.assignments.values()) {
       if (!ACTIVE_STATUSES.includes(existing.status)) continue;
       if (existing.riderId === cmd.riderId) {
-        return this.remember(cmd.command_id, { ok: false, reason: 'rider_already_has_active_assignment' });
+        return { ok: false, reason: 'rider_already_has_active_assignment' };
       }
       if (existing.taskId === cmd.taskId) {
-        return this.remember(cmd.command_id, { ok: false, reason: 'task_already_assigned' });
+        return { ok: false, reason: 'task_already_assigned' };
       }
     }
 
@@ -126,7 +125,7 @@ export class AssignmentBook {
       },
     });
     const outcome: AssignOutcome = { ok: true, assignment, event, duplicate: false };
-    this.processedCommandIds.set(cmd.command_id, outcome);
+    this.appliedCommandIds.set(cmd.command_id, outcome);
     return outcome;
   }
 
@@ -188,7 +187,7 @@ export class AssignmentBook {
     return this.assignments.get(assignmentId);
   }
 
-  /** One-active-per-rider AND per-task — exposed for the CI gate and tests. */
+  /** One-active-per-rider AND per-task — exposed for tests and scripts. */
   findOneActiveViolations(): string[] {
     const violations: string[] = [];
     const byRider = new Map<string, number>();
@@ -201,10 +200,5 @@ export class AssignmentBook {
     for (const [riderId, n] of byRider) if (n > 1) violations.push(`rider ${riderId} holds ${n} active assignments`);
     for (const [taskId, n] of byTask) if (n > 1) violations.push(`task ${taskId} carried by ${n} active assignments`);
     return violations;
-  }
-
-  private remember(command_id: string, outcome: AssignOutcome): AssignOutcome {
-    this.processedCommandIds.set(command_id, outcome);
-    return outcome;
   }
 }

@@ -115,7 +115,7 @@ export class RiderRegistry {
     if (current.status !== 'on_shift' && current.status !== 'shift_end_pending') {
       return { ok: false, reason: 'not_on_shift' };
     }
-    const startedAt = current.status === 'on_shift' ? current.startedAt : current.startedAt;
+    const startedAt = current.startedAt;
     const next: ShiftState =
       confirmation === 'server_confirmed'
         ? { status: 'off_shift' }

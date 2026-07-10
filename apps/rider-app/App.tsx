@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { seraTheme as theme } from '@platform/ui-tokens';
+import { SANDBOX_ASSIGNMENT, type AssignmentView } from './src/sandbox-assignment';
 import { t } from './src/i18n';
 
 /**
@@ -19,18 +20,9 @@ import { t } from './src/i18n';
 
 type ShiftView = 'off' | 'pending' | 'on';
 
-interface AssignmentView {
-  /** Landmark-first lines (SE0.3): [landmark, directions, zone]. */
-  locationLines: readonly [string, string, string];
-  ackState: 'none' | 'ack_pending';
-}
-
-// E1: assignments reach this shell at assembly (server push). Typed and
-// honest — no fake course is invented for the demo.
-const assignment: AssignmentView | null = null;
-
 export default function App() {
   const [shift, setShift] = useState<ShiftView>('off');
+  const [assignment, setAssignment] = useState<AssignmentView | null>(SANDBOX_ASSIGNMENT);
 
   const shiftStatus = shift === 'on' ? t('shift.on') : shift === 'pending' ? t('shift.pending') : t('shift.off');
   const shiftAction = shift === 'off' ? t('shift.start_action') : t('shift.end_action');
@@ -71,7 +63,18 @@ export default function App() {
               {assignment.ackState === 'ack_pending' ? (
                 <Text style={styles.statusLine}>{t('assignment.ack_pending')}</Text>
               ) : (
-                <Pressable style={styles.primaryAction}>
+                <Pressable
+                  style={styles.primaryAction}
+                  onPress={() => {
+                    // The rider's ack, from THIS shell. No server in the E1
+                    // sandbox: the command is queued = PENDING (« Accord
+                    // envoyé. En attente du réseau. ») and confers no
+                    // finality — AssignmentBook.acknowledge('server_confirmed')
+                    // closes it at assembly; the ack deadline still bites a
+                    // pending ack (assignment.expired.v1 → back to queue).
+                    setAssignment({ ...assignment, ackState: 'ack_pending' });
+                  }}
+                >
                   <Text style={styles.primaryActionText}>{t('assignment.ack_action')}</Text>
                 </Pressable>
               )}
