@@ -50,6 +50,9 @@ importers:
       '@platform/ui-tokens':
         specifier: git+https://github.com/beurni2/platform-contracts.git#0ff6696a4d0d89bef24822711e452c9a0ff07f9f&path:packages/ui-tokens
         version: git+https://git@github.com:beurni2/platform-contracts.git#0ff6696a4d0d89bef24822711e452c9a0ff07f9f&path:packages/ui-tokens
+      '@sera/custody-service':
+        specifier: workspace:*
+        version: link:../../services/custody-service
       '@sera/logistics-service':
         specifier: workspace:*
         version: link:../../services/logistics-service

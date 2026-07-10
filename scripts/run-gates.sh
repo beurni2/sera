@@ -139,6 +139,12 @@ capture door-custody-positive pass node scripts/gates/door-custody-gate.mjs gate
 log "gate: door-custody-gate — NEGATIVE FIXTURE (custody without door payment, must REFUSE CLOSED)"
 capture door-custody-negative fail node scripts/gates/door-custody-gate.mjs gates/fixtures/negative/door.custody-without-payment.json
 
+log "gate: actor-provenance — door-paid signal from the payment-provider class (must pass)"
+capture actor-provenance-positive pass node scripts/gates/actor-provenance.mjs gates/fixtures/signal.provider-actor.json
+
+log "gate: actor-provenance — NEGATIVE FIXTURE (rider-actor door signal, must REFUSE CLOSED + alert)"
+capture actor-provenance-negative fail node scripts/gates/actor-provenance.mjs gates/fixtures/negative/signal.wrong-actor.json
+
 log "gate: no-rider-asserted-payment — repo source (must pass)"
 capture no-rider-asserted-positive pass node scripts/gates/no-rider-asserted-payment.mjs
 

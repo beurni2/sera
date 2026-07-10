@@ -25,6 +25,7 @@ export * from './rider-registry.js';
 export * from './delivery-location.js';
 export * from './ready-queue.js';
 export * from './manual-assignment.js';
+export * from './reschedule.js';
 export * from './mocks/shopplus-funding-mock.js';
 export * from './mocks/boutik-readiness-mock.js';
 

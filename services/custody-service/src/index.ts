@@ -26,3 +26,4 @@ export * from './custody-spine.js';
 export * from './refusal-ladder.js';
 export * from './ops-monitor.js';
 export * from './door-flow.js';
+export * from './actor-provenance.js';

@@ -10,6 +10,7 @@ import {
   type ProjectionRead,
   type TransitionAttempt,
 } from '@platform/certification';
+import { checkProducerActor } from '../src/actor-provenance.js';
 
 /**
  * COMMERCE-CORE ELIGIBILITY-CONSUMER MOCK (WO-1.3 §6) — the downstream
@@ -110,6 +111,11 @@ export class CommerceEligibilityConsumerMock implements MockAdapter {
     if (!parsed.success) return { accepted: false, reason: 'not_a_platform_event' };
     const event = parsed.data;
     if (event.name !== 'delivery.validated.v1') return { accepted: false, reason: 'not_an_eligibility_signal' };
+    // WO-2.7 item 1: eligibility-relevant provenance — only Séra's custody
+    // class produces the eligibility signal (in-process layer; E3 adds
+    // transport authenticity). Wrong actor → refused closed.
+    const provenance = checkProducerActor(event.name, event.envelope.actor);
+    if (!provenance.ok) return { accepted: false, reason: 'producer_actor_mismatch' };
     const p = event.payload as Record<string, unknown>;
     if (p['result'] !== 'validated' || p['settlement_eligibility'] !== true) {
       return { accepted: false, reason: 'not_validated' };

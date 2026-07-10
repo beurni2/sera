@@ -54,7 +54,10 @@ export interface QueuedTask {
   orderId: string;
   correlationId: string;
   admittedAt: string;
-  status: 'queued' | 'assigned';
+  /** `closed_rescheduled` (WO-2.7): the attempt ended in a reschedule and a
+   * follow-up task replaced this one — closed lawfully, never assignable
+   * again, custody untouched by the closure. */
+  status: 'queued' | 'assigned' | 'closed_rescheduled';
 }
 
 export class ReadyQueue {
@@ -101,9 +104,10 @@ export class ReadyQueue {
    * The SECOND check — at assignment time (SE1.1: "stale → unassignable").
    * A task admitted an hour ago is not trusted on yesterday's projection.
    */
-  recheckAssignable(taskId: string): { assignable: true } | { assignable: false; reason: IntakeRefusalReason | 'not_in_queue' | 'already_assigned' } {
+  recheckAssignable(taskId: string): { assignable: true } | { assignable: false; reason: IntakeRefusalReason | 'not_in_queue' | 'already_assigned' | 'task_closed' } {
     const queued = this.tasks.get(taskId);
     if (!queued) return { assignable: false, reason: 'not_in_queue' };
+    if (queued.status === 'closed_rescheduled') return { assignable: false, reason: 'task_closed' };
     if (queued.status !== 'queued') return { assignable: false, reason: 'already_assigned' };
     const gate = this.admissionGate(queued.orderId);
     if (gate !== null) return { assignable: false, reason: gate };
@@ -134,7 +138,19 @@ export class ReadyQueue {
 
   requeue(taskId: string): void {
     const queued = this.tasks.get(taskId);
-    if (queued) this.tasks.set(taskId, { ...queued, status: 'queued' });
+    // A closed task stays closed — an expiring stale assignment must not
+    // resurrect an attempt that a follow-up task already replaced (WO-2.7).
+    if (queued && queued.status !== 'closed_rescheduled') {
+      this.tasks.set(taskId, { ...queued, status: 'queued' });
+    }
+  }
+
+  /** WO-2.7 item 4: the rescheduled attempt's task closes — a queue-state
+   * change only; no custody surface exists here. A closed task can never be
+   * re-checked assignable or requeued back to life by accident. */
+  closeRescheduled(taskId: string): void {
+    const queued = this.tasks.get(taskId);
+    if (queued) this.tasks.set(taskId, { ...queued, status: 'closed_rescheduled' });
   }
 
   queuedTasks(): readonly QueuedTask[] {
