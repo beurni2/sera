@@ -110,13 +110,13 @@ log "gate: French Voice copy-lint — NEGATIVE FIXTURE (veuillez/séquestre + ma
 capture copy-lint-negative fail pnpm exec copy-lint gates/fixtures/negative/catalog.negative.json
 
 log "gate: contracts drift-check — honest /docs copy vs pinned canon manifest (must pass)"
-capture drift-check-positive pass pnpm exec drift-check docs --pinned-version 0.1.0
+capture drift-check-positive pass pnpm exec drift-check docs --pinned-version 0.2.0
 
 log "gate: contracts drift-check — TAMPERED doc (must fail)"
 DRIFT_TMP="$(mktemp -d)"
 cp -r docs "$DRIFT_TMP/docs"
 printf '\nrogue edit — this consumer copy drifted from canon\n' >> "$DRIFT_TMP/docs/Sera-Build-Spec.md"
-capture drift-check-negative fail pnpm exec drift-check "$DRIFT_TMP/docs" --pinned-version 0.1.0
+capture drift-check-negative fail pnpm exec drift-check "$DRIFT_TMP/docs" --pinned-version 0.2.0
 rm -rf "$DRIFT_TMP"
 
 log "dispatch console — Playwright harness (shell boots on the sera theme)"
