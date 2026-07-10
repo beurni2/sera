@@ -10,6 +10,7 @@ onlyBuiltDependencies:
   - "@platform/kernel-types"
   - "@platform/i18n"
   - "@platform/ui-tokens"
+  - "@platform/certification"
 
 # @platform/contracts depends on @platform/kernel-types@0.2.0, which exists
 # on no registry; this override routes that transitive resolution to the
@@ -17,4 +18,6 @@ onlyBuiltDependencies:
 # properly-named tag deferred to v0.3.0 — founder ruling: the release ref is
 # the commit).
 overrides:
-  "@platform/kernel-types": "git+https://github.com/beurni2/platform-contracts.git#b076ff39b650a0b481cd36759193bcfe497b431c&path:packages/kernel-types"
+  "@platform/kernel-types": "git+https://github.com/beurni2/platform-contracts.git#9308c641c368ea56d141867d667b122e10db682d&path:packages/kernel-types"
+  "@platform/contracts": "git+https://github.com/beurni2/platform-contracts.git#9308c641c368ea56d141867d667b122e10db682d&path:packages/contracts"
+  "@platform/ui-tokens": "git+https://github.com/beurni2/platform-contracts.git#9308c641c368ea56d141867d667b122e10db682d&path:packages/ui-tokens"
