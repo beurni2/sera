@@ -106,6 +106,33 @@ capture offline-never-final-positive pass node scripts/gates/offline-never-final
 log "gate: offline-never-final — NEGATIVE FIXTURE (queued-offline evidence seeking finality, must REFUSE CLOSED)"
 capture offline-never-final-negative fail node scripts/gates/offline-never-final.mjs gates/fixtures/negative/evidence.queued-offline-finality.json
 
+log "gate: outcome-family — door refusal yields a canonical DeliveryOutcome (must pass)"
+capture outcome-family-positive pass node scripts/gates/outcome-family.mjs gates/fixtures/outcome.retry-canonical.json
+
+log "gate: outcome-family — NEGATIVE FIXTURE (reason outside the taxonomy, must REFUSE CLOSED)"
+capture outcome-family-taxonomy-negative fail node scripts/gates/outcome-family.mjs gates/fixtures/negative/outcome.reason-outside-taxonomy.json
+
+log "gate: outcome-family — NEGATIVE FIXTURE (generic 'failed' family, must refuse at parse)"
+capture outcome-family-failed-negative fail node scripts/gates/outcome-family.mjs gates/fixtures/negative/outcome.generic-failed.json
+
+log "gate: two-key-return — seller + rider keys, both-or-neither (must pass)"
+capture two-key-return-positive pass node scripts/gates/two-key-return.mjs gates/fixtures/return.two-keys.json
+
+log "gate: two-key-return — NEGATIVE FIXTURE (single/wrong key, must REFUSE and burn nothing)"
+capture two-key-return-negative fail node scripts/gates/two-key-return.mjs gates/fixtures/negative/return.single-key.json
+
+log "gate: package-never-unowned — end-shift-with-custody exception flow (must pass)"
+capture package-never-unowned-positive pass node scripts/gates/package-never-unowned.mjs gates/fixtures/shift.end-with-exception.json
+
+log "gate: package-never-unowned — NEGATIVE FIXTURE (orphaned custody end-shift, must REFUSE CLOSED)"
+capture package-never-unowned-negative fail node scripts/gates/package-never-unowned.mjs gates/fixtures/negative/shift.orphaned-custody.json
+
+log "gate: offline-flush-binding — queue drains ONLY through the server_confirmed binding path (must pass)"
+capture offline-flush-binding-positive pass node scripts/gates/offline-flush-binding.mjs
+
+log "gate: offline-flush-binding — NEGATIVE FIXTURE (planted direct-drain bypass, must be caught)"
+capture offline-flush-binding-negative fail node scripts/gates/offline-flush-binding.mjs gates/fixtures/negative/offline-flush-bypass
+
 log "mock certification — commerce-core eligibility consumer 8/8 via the pinned suite (must pass)"
 capture certify-mocks pass node scripts/certify-mocks.mjs
 
@@ -167,13 +194,13 @@ log "gate: French Voice copy-lint — NEGATIVE FIXTURE (veuillez/séquestre + ma
 capture copy-lint-negative fail pnpm exec copy-lint gates/fixtures/negative/catalog.negative.json
 
 log "gate: contracts drift-check — honest /docs copy vs pinned canon manifest (must pass)"
-capture drift-check-positive pass pnpm exec drift-check docs --pinned-version 0.4.0
+capture drift-check-positive pass pnpm exec drift-check docs --pinned-version 0.5.0
 
 log "gate: contracts drift-check — TAMPERED doc (must fail)"
 DRIFT_TMP="$(mktemp -d)"
 cp -r docs "$DRIFT_TMP/docs"
 printf '\nrogue edit — this consumer copy drifted from canon\n' >> "$DRIFT_TMP/docs/Sera-Build-Spec.md"
-capture drift-check-negative fail pnpm exec drift-check "$DRIFT_TMP/docs" --pinned-version 0.4.0
+capture drift-check-negative fail pnpm exec drift-check "$DRIFT_TMP/docs" --pinned-version 0.5.0
 rm -rf "$DRIFT_TMP"
 
 log "dispatch console — Playwright harness (shell boots on the sera theme)"

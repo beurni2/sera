@@ -25,15 +25,20 @@ import {
 const AT = '2026-07-10T12:00:00.000Z';
 
 function eligibilitySequence(seed: string) {
-  const payload = (state: string) => ({
-    orderId: `order_${seed}`,
-    validation: { taskId: `task_${seed}`, result: 'validated' as const, reasons: [] },
-    obligation: { orderId: `order_${seed}`, party: 'supplier', amount: 8_500, state, holds: [] },
+  // v0.5.0 E1-assembly alignment: the domain payload IS the live spine's
+  // amount-free signal (SE-I09 codified in the pinned suite) — the prior
+  // scaffold shape carried an obligation amount no Séra producer may emit.
+  const payload = () => ({
+    order_id: `order_${seed}`,
+    task_id: `task_${seed}`,
+    validation_id: `val-order_${seed}`,
+    result: 'validated' as const,
+    settlement_eligibility: true as const,
   });
   return [
-    { name: 'delivery.evidence_submitted.v1' as const, payload: payload('Pending') },
-    { name: 'delivery.validated.v1' as const, payload: payload('Pending') },
-    { name: 'settlement.supplier_payable.v1' as const, payload: payload('Eligible') },
+    { name: 'delivery.evidence_submitted.v1' as const, payload: payload() },
+    { name: 'delivery.validated.v1' as const, payload: payload() },
+    { name: 'settlement.supplier_payable.v1' as const, payload: payload() },
   ];
 }
 

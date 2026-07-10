@@ -14,8 +14,8 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@platform/i18n": "git+https://github.com/beurni2/platform-contracts.git#be1df7ad79a09d43182a638cc8acdd0a9081302e&path:packages/i18n",
-    "@platform/ui-tokens": "git+https://github.com/beurni2/platform-contracts.git#be1df7ad79a09d43182a638cc8acdd0a9081302e&path:packages/ui-tokens",
+    "@platform/i18n": "git+https://github.com/beurni2/platform-contracts.git#0ff6696a4d0d89bef24822711e452c9a0ff07f9f&path:packages/i18n",
+    "@platform/ui-tokens": "git+https://github.com/beurni2/platform-contracts.git#0ff6696a4d0d89bef24822711e452c9a0ff07f9f&path:packages/ui-tokens",
     "@sera/logistics-service": "workspace:*"
   },
   "devDependencies": {

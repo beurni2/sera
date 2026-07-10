@@ -1,0 +1,6 @@
+{
+  "custody": {
+    "heldPackageIds": ["pkg-1"],
+    "exception": { "dispatcherAckId": "dispatch-ack-77", "nextOwner": { "kind": "return_to_hub_task", "ref": "hub-task-9" } }
+  }
+}

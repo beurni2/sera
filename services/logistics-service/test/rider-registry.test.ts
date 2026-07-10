@@ -53,16 +53,77 @@ describe('rider registry — SE0.2, assignability fails closed', () => {
     expect(registry.isAssignable('r-1')).toBe(false); // off_shift
     expect(registry.isAssignable('r-ghost')).toBe(false); // unknown
     registry.startShift('r-1', T, 'server_confirmed');
-    registry.endShift('r-1', T, 'server_confirmed');
+    registry.endShift('r-1', T, 'server_confirmed', { heldPackageIds: [] });
     expect(registry.isAssignable('r-1')).toBe(false);
   });
 
   it('an OFFLINE shift end is pending: assignability is gone (fail-safe) but the shift is not closed', () => {
     const registry = registryWith(true);
     registry.startShift('r-1', T, 'server_confirmed');
-    const outcome = registry.endShift('r-1', T, 'queued_offline');
+    const outcome = registry.endShift('r-1', T, 'queued_offline', { heldPackageIds: [] });
     expect(outcome).toMatchObject({ ok: true, pending: true, state: { status: 'shift_end_pending' } });
     expect(registry.isAssignable('r-1')).toBe(false);
     expect(registry.shift('r-1').status).not.toBe('off_shift'); // pending ≠ done
+  });
+});
+
+describe('WO-2.2 — SE3.2 end-shift-with-custody exception: package never unowned, enforced at the store', () => {
+  const T = '2026-07-10T18:00:00.000Z';
+  function onShiftRegistry(): RiderRegistry {
+    const registry = new RiderRegistry();
+    registry.register({ riderId: 'r-1', displayName: 'Issa', phoneAlias: 'alias-1', certified: true });
+    registry.acknowledgePrivacyNotice('r-1', PRIVACY_NOTICE_VERSION, T);
+    registry.startShift('r-1', T, 'server_confirmed');
+    return registry;
+  }
+
+  it('ORPHANED CUSTODY REFUSES CLOSED: end-shift holding a package with no exception → custody_would_be_orphaned, shift stays on', () => {
+    const registry = onShiftRegistry();
+    expect(registry.endShift('r-1', T, 'server_confirmed', { heldPackageIds: ['pkg-1'] }))
+      .toEqual({ ok: false, reason: 'custody_would_be_orphaned' });
+    // An exception with an EMPTY ack or next-owner ref is no exception:
+    expect(registry.endShift('r-1', T, 'server_confirmed', {
+      heldPackageIds: ['pkg-1'],
+      exception: { dispatcherAckId: '', nextOwner: { kind: 'return_to_hub_task', ref: 'hub-task-9' } },
+    })).toEqual({ ok: false, reason: 'custody_would_be_orphaned' });
+    expect(registry.shift('r-1').status).toBe('on_shift'); // nothing moved
+  });
+
+  it('THE EXCEPTION FLOW: dispatcher ack + named next owner → shift ends and the exception is logged with the package ids', () => {
+    const registry = onShiftRegistry();
+    const outcome = registry.endShift('r-1', T, 'server_confirmed', {
+      heldPackageIds: ['pkg-1'],
+      exception: { dispatcherAckId: 'dispatch-ack-77', nextOwner: { kind: 'return_to_hub_task', ref: 'hub-task-9' } },
+    });
+    expect(outcome).toMatchObject({ ok: true, pending: false, state: { status: 'off_shift' } });
+    expect(registry.custodyExceptionLog()).toEqual([
+      {
+        riderId: 'r-1', at: T, packageIds: ['pkg-1'],
+        dispatcherAckId: 'dispatch-ack-77',
+        nextOwner: { kind: 'return_to_hub_task', ref: 'hub-task-9' },
+      },
+    ]);
+  });
+
+  it('custody-free end-shift needs no exception and logs nothing', () => {
+    const registry = onShiftRegistry();
+    expect(registry.endShift('r-1', T, 'server_confirmed', { heldPackageIds: [] }))
+      .toMatchObject({ ok: true, state: { status: 'off_shift' } });
+    expect(registry.custodyExceptionLog()).toEqual([]);
+  });
+});
+
+describe('WO-2.2 verifier NB③ — a REFUSED end-shift logs no phantom custody exception', () => {
+  it('off-shift rider with a fabricated valid exception: refused not_on_shift AND the audit log stays empty', () => {
+    const T = '2026-07-10T18:00:00.000Z';
+    const registry = new RiderRegistry();
+    registry.register({ riderId: 'r-1', displayName: 'Issa', phoneAlias: 'alias-1', certified: true });
+    // Never started a shift — the verifier's exact probe:
+    const outcome = registry.endShift('r-1', T, 'server_confirmed', {
+      heldPackageIds: ['pkg-1'],
+      exception: { dispatcherAckId: 'fabricated-ack', nextOwner: { kind: 'return_to_hub_task', ref: 'hub-x' } },
+    });
+    expect(outcome).toEqual({ ok: false, reason: 'not_on_shift' });
+    expect(registry.custodyExceptionLog()).toEqual([]);
   });
 });

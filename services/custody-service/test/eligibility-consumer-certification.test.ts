@@ -11,9 +11,9 @@ const allPass = Object.fromEntries(PICKUP_VERIFICATION_POLICY_V1.checks.map((c) 
 
 function spineThroughEligibility(): CustodySpine {
   const spine = new CustodySpine(CHAIN, 'sup-1');
-  spine.secrets.register('pickup_verification_code', CHAIN.order_id, 'pvc-4711');
-  spine.secrets.register('custody_seal', CHAIN.order_id, 'seal-e1-0001');
-  spine.secrets.register('buyer_drop_code', CHAIN.order_id, 'drop-9042');
+  expect(spine.secrets.register('pickup_verification_code', CHAIN.order_id, 'pvc-4711')).toEqual({ ok: true });
+  expect(spine.secrets.register('custody_seal', CHAIN.order_id, 'seal-e1-0001')).toEqual({ ok: true });
+  expect(spine.secrets.register('buyer_drop_code', CHAIN.order_id, 'drop-9042')).toEqual({ ok: true });
   spine.establishSellerCustody(T);
   spine.verifyPickup({ orderId: CHAIN.order_id, riderId: 'r-1', checkResults: allPass, dwellSec: 150, evidenceBundleId: 'eb-1', custodySealId: 'seal-e1-0001' }, 'pvc-4711', T);
   spine.beginCustody({ riderId: 'r-1', verificationOrderId: CHAIN.order_id, custodySealId: 'seal-e1-0001', sealPhotoRefs: ['media/seal.jpg'], at: T });

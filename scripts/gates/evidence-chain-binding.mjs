@@ -20,8 +20,12 @@ try { fixture = JSON.parse(readFileSync(path, 'utf8')); } catch (e) { console.er
 const T = '2026-07-10T12:00:00.000Z';
 const CHAIN = { order_id: 'order-1', task_id: 'task-1', package_id: 'pkg-1', correlation_id: 'corr-1' };
 const spine = new CustodySpine(CHAIN, 'sup-1');
-spine.secrets.register('pickup_verification_code', CHAIN.order_id, 'pvc-1');
-spine.secrets.register('custody_seal', CHAIN.order_id, 'seal-1');
+const arm = (kind, orderId, secret) => {
+  const armed = spine.secrets.register(kind, orderId, secret);
+  if (!armed.ok) { console.error(`harness: arming ${kind} refused`); process.exit(2); }
+};
+arm('pickup_verification_code', CHAIN.order_id, 'pvc-1');
+arm('custody_seal', CHAIN.order_id, 'seal-1');
 spine.establishSellerCustody(T);
 const allPass = Object.fromEntries(PICKUP_VERIFICATION_POLICY_V1.checks.map((c) => [c, true]));
 spine.verifyPickup({ orderId: CHAIN.order_id, riderId: 'r-1', checkResults: allPass, dwellSec: 150, evidenceBundleId: 'eb-1', custodySealId: 'seal-1' }, 'pvc-1', T);

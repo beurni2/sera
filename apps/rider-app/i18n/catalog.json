@@ -214,5 +214,113 @@
     "fr": "La vente est validée.",
     "register": "money",
     "screenClass": "status"
+  },
+  {
+    "key": "problem.action",
+    "fr": "Un souci ?",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "reason.title",
+    "fr": "Dis-nous ce qui bloque.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "reason.honest_absence",
+    "fr": "Client absent",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "reason.unusable_location",
+    "fr": "Lieu introuvable",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "reason.insufficient_balance",
+    "fr": "Argent pas prêt",
+    "register": "money",
+    "screenClass": "label"
+  },
+  {
+    "key": "reason.change_of_mind",
+    "fr": "Le client ne veut plus",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "reason.repeated_abuse",
+    "fr": "Refus répétés",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "reason.fraud",
+    "fr": "Tromperie",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "reason.provider_failure",
+    "fr": "Panne du paiement",
+    "register": "money",
+    "screenClass": "label"
+  },
+  {
+    "key": "retry.status",
+    "fr": "On attend un peu.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "retry.until",
+    "fr": "Nouvel essai avant :",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "retry.retry_action",
+    "fr": "Réessayer",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "retry.expired_action",
+    "fr": "Le temps est passé",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "refused_final.status",
+    "fr": "La livraison s'arrête ici.",
+    "register": "money",
+    "screenClass": "status"
+  },
+  {
+    "key": "refused_final.fee",
+    "fr": "Les frais de course restent pris.",
+    "register": "money",
+    "screenClass": "status"
+  },
+  {
+    "key": "refused_final.next",
+    "fr": "Le colis retourne au vendeur.",
+    "register": "money",
+    "screenClass": "status"
+  },
+  {
+    "key": "reschedule.status",
+    "fr": "On repasse un autre jour.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "reschedule.next",
+    "fr": "Le client garde sa commande.",
+    "register": "money",
+    "screenClass": "status"
   }
 ]

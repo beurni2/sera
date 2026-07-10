@@ -46,5 +46,101 @@
     "fr": "Service en journée.",
     "register": "neutral",
     "screenClass": "status"
+  },
+  {
+    "key": "console.followup",
+    "fr": "Suivi des colis",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.dwell_label",
+    "fr": "Temps de contrôle au ramassage",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.dwell_in_target",
+    "fr": "Dans la cible",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.dwell_out_target",
+    "fr": "Hors cible",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.outcome_heading",
+    "fr": "Décisions de livraison",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.family_retry",
+    "fr": "Nouvel essai",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.family_reschedule",
+    "fr": "Autre passage",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.family_return",
+    "fr": "Retour au vendeur",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.family_incident",
+    "fr": "Incident",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.reason_honest_absence",
+    "fr": "Client absent",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.reason_unusable_location",
+    "fr": "Lieu introuvable",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.reason_insufficient_balance",
+    "fr": "Argent pas prêt",
+    "register": "money",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.reason_change_of_mind",
+    "fr": "Le client ne veut plus",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.reason_repeated_abuse",
+    "fr": "Refus répétés",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.reason_fraud",
+    "fr": "Tromperie",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.reason_provider_failure",
+    "fr": "Panne du paiement",
+    "register": "money",
+    "screenClass": "label"
   }
 ]

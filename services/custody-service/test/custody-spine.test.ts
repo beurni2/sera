@@ -18,9 +18,9 @@ const evidenceBundle = (over: Record<string, unknown> = {}) => ({
 
 function freshSpine(): CustodySpine {
   const spine = new CustodySpine(CHAIN, 'sup-1');
-  spine.secrets.register('pickup_verification_code', CHAIN.order_id, 'pvc-4711');
-  spine.secrets.register('custody_seal', CHAIN.order_id, 'seal-e1-0001');
-  spine.secrets.register('buyer_drop_code', CHAIN.order_id, 'drop-9042');
+  expect(spine.secrets.register('pickup_verification_code', CHAIN.order_id, 'pvc-4711')).toEqual({ ok: true });
+  expect(spine.secrets.register('custody_seal', CHAIN.order_id, 'seal-e1-0001')).toEqual({ ok: true });
+  expect(spine.secrets.register('buyer_drop_code', CHAIN.order_id, 'drop-9042')).toEqual({ ok: true });
   spine.establishSellerCustody(T);
   return spine;
 }

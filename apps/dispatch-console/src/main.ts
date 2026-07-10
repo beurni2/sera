@@ -1,6 +1,7 @@
 import { seraTheme as theme } from '@platform/ui-tokens';
 import { landmarkFirstLines } from '@sera/logistics-service';
 import { buildSandboxWorld } from './sandbox-world';
+import { SANDBOX_DWELL, SANDBOX_OUTCOMES } from './sandbox-followup';
 import { t } from './i18n';
 
 /**
@@ -65,7 +66,7 @@ style.textContent = `
     font-size: var(--type-heading);
     font-weight: ${theme.typeScale.heading.weight};
   }
-  .task-card, .empty-state {
+  .task-card, .follow-card, .empty-state {
     background: var(--surface-raised);
     border: 1px solid var(--line);
     border-radius: var(--radius-lg);
@@ -175,6 +176,29 @@ if (app) {
     }
   };
   render();
+
+  // WO-2.2 — follow-up section: dwell surfaced (D20: recorded and shown,
+  // never enforced) + the delivery-outcome timeline on the canonical
+  // families. Sandbox data; live feeds arrive at E2 assembly.
+  const followHeading = document.createElement('h2');
+  followHeading.textContent = t('console.followup');
+  const followCard = document.createElement('section');
+  followCard.className = 'follow-card';
+  const dwellLine = document.createElement('p');
+  dwellLine.className = 'status-line';
+  dwellLine.textContent = `${t('console.dwell_label')} : ${SANDBOX_DWELL.dwellSec} s — ${t(SANDBOX_DWELL.withinTarget ? 'console.dwell_in_target' : 'console.dwell_out_target')}`;
+  followCard.appendChild(dwellLine);
+  const outcomeHeading = document.createElement('p');
+  outcomeHeading.className = 'rider-label';
+  outcomeHeading.textContent = t('console.outcome_heading');
+  followCard.appendChild(outcomeHeading);
+  for (const outcome of SANDBOX_OUTCOMES) {
+    const row = document.createElement('p');
+    row.className = 'status-line';
+    row.textContent = `${outcome.at} · ${t(`console.family_${outcome.family}`)} · ${t(`console.reason_${outcome.reason}`)}`;
+    followCard.appendChild(row);
+  }
+  main.append(followHeading, followCard);
 
   // The REAL service-side ack deadline: unacknowledged assignments return to
   // the queue (assignment.expired.v1) and the console says so honestly.

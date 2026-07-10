@@ -28,7 +28,42 @@ export type CustodyStep =
   | 'evidence'
   | 'evidence_pending'
   | 'drop'
-  | 'delivered';
+  | 'delivered'
+  | 'refusal_reason'
+  | 'retry_window'
+  | 'refused_final'
+  | 'reschedule_planned';
+
+/**
+ * WO-2.2 — the refusal ladder's reason ids MIRROR the canonical
+ * DELIVERY_FAILURE_REASONS (the SERVICE owns the ladder policy;
+ * REFUSAL_LADDER_POLICY_V1 owns the escalation split). The shell renders
+ * the picker from these ids via catalog keys `reason.<id>` and walks the
+ * arm the policy dictates.
+ */
+export const FAILURE_REASON_IDS = [
+  'honest_absence',
+  'unusable_location',
+  'insufficient_balance',
+  'change_of_mind',
+  'repeated_abuse',
+  'fraud',
+  'provider_failure',
+] as const;
+export type FailureReasonId = (typeof FAILURE_REASON_IDS)[number];
+
+/** Mirror of the policy's escalation split (Shop §6.4: honest absence /
+ * provider failure do NOT escalate like change-of-mind/abuse). */
+export const ESCALATING_REASON_IDS: readonly FailureReasonId[] = [
+  'insufficient_balance',
+  'change_of_mind',
+  'repeated_abuse',
+  'fraud',
+];
+
+export function stepAfterWindowExpiry(reason: FailureReasonId): CustodyStep {
+  return ESCALATING_REASON_IDS.includes(reason) ? 'refused_final' : 'reschedule_planned';
+}
 
 /** Sandbox connectivity: 'online' at E1 so the flow is walkable end-to-end;
  * the 'offline' branch (pending evidence, locked drop) is the same code the

@@ -3,7 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { seraTheme as theme } from '@platform/ui-tokens';
 import { SANDBOX_ASSIGNMENT, type AssignmentView } from './src/sandbox-assignment';
-import { CONNECTIVITY, POLICY_CHECK_IDS, nextAfterEvidence, type CustodyStep, type PolicyCheckId } from './src/custody-flow';
+import { CONNECTIVITY, FAILURE_REASON_IDS, POLICY_CHECK_IDS, nextAfterEvidence, stepAfterWindowExpiry, type CustodyStep, type FailureReasonId, type PolicyCheckId } from './src/custody-flow';
 import { t } from './src/i18n';
 
 /**
@@ -26,6 +26,8 @@ export default function App() {
   const [assignment, setAssignment] = useState<AssignmentView | null>(SANDBOX_ASSIGNMENT);
   const [step, setStep] = useState<CustodyStep>('verify');
   const [checks, setChecks] = useState<Partial<Record<PolicyCheckId, boolean>>>({});
+  const [failureReason, setFailureReason] = useState<FailureReasonId | null>(null);
+  const [windowUntil, setWindowUntil] = useState('');
   const allChecked = POLICY_CHECK_IDS.every((id) => checks[id] === true);
 
   const shiftStatus = shift === 'on' ? t('shift.on') : shift === 'pending' ? t('shift.pending') : t('shift.off');
@@ -154,6 +156,71 @@ export default function App() {
             <Pressable style={styles.primaryAction} onPress={() => setStep('delivered')}>
               <Text style={styles.primaryActionText}>{t('drop.action')}</Text>
             </Pressable>
+            {/* WO-2.2 refusal ladder entry — the problem path is as
+                dignified as the purchase path; it whispers, never shouts. */}
+            <Pressable style={styles.quietAction} onPress={() => setStep('refusal_reason')}>
+              <Text style={styles.quietActionText}>{t('problem.action')}</Text>
+            </Pressable>
+          </View>
+        )}
+
+        {step === 'refusal_reason' && (
+          <View style={styles.card}>
+            <Text style={styles.assignmentTitle}>{t('reason.title')}</Text>
+            {FAILURE_REASON_IDS.map((id) => (
+              <Pressable
+                key={id}
+                style={styles.checkRow}
+                onPress={() => {
+                  setFailureReason(id);
+                  // The ONE retry window (~15 min policy default; the live
+                  // windowExpiresAt arrives with the service outcome at
+                  // assembly — the display is honest either way).
+                  const until = new Date(Date.now() + 15 * 60_000);
+                  setWindowUntil(`${String(until.getHours()).padStart(2, '0')}:${String(until.getMinutes()).padStart(2, '0')}`);
+                  setStep('retry_window');
+                }}
+              >
+                <Text style={styles.checkOff}>{t(`reason.${id}`)}</Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
+
+        {step === 'retry_window' && (
+          <View style={styles.card}>
+            <Text style={styles.assignmentTitle}>{t('retry.status')}</Text>
+            <Text style={styles.statusLine}>
+              {t('retry.until')} {windowUntil}
+            </Text>
+            <Pressable style={styles.primaryAction} onPress={() => setStep('drop')}>
+              <Text style={styles.primaryActionText}>{t('retry.retry_action')}</Text>
+            </Pressable>
+            <Pressable
+              style={styles.quietAction}
+              onPress={() => setStep(failureReason === null ? 'drop' : stepAfterWindowExpiry(failureReason))}
+            >
+              <Text style={styles.quietActionText}>{t('retry.expired_action')}</Text>
+            </Pressable>
+          </View>
+        )}
+
+        {step === 'refused_final' && (
+          <View style={styles.card}>
+            {/* Buyer-fault refusal, register:money — calm, cause and
+                what-happens-next stated; no shame, no jargon. */}
+            <Text style={styles.assignmentTitle}>{t('refused_final.status')}</Text>
+            <Text style={styles.statusLine}>{t('refused_final.fee')}</Text>
+            <Text style={styles.statusLine}>{t('refused_final.next')}</Text>
+          </View>
+        )}
+
+        {step === 'reschedule_planned' && (
+          <View style={styles.card}>
+            {/* The non-escalating arm: honest absence / provider failure —
+                nothing is lost, the order stays whole. */}
+            <Text style={styles.assignmentTitle}>{t('reschedule.status')}</Text>
+            <Text style={styles.statusLine}>{t('reschedule.next')}</Text>
           </View>
         )}
 
