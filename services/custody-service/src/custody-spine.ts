@@ -46,6 +46,8 @@ export type SpineRefusal =
   | 'unknown_transition'
   | 'evidence_already_submitted'
   | 'refusal_before_custody'
+  | 'order_already_delivered'
+  | 'ladder_already_open'
   | 'no_buyer_fault_refusal'
   | 'return_seal_refused'
   | 'return_not_open'
@@ -333,6 +335,11 @@ export class CustodySpine {
       settlement_eligibility: true,
     }, at);
     this.eligibilityEmittedForOrder.add(this.chain.order_id);
+    // Verifier blocking finding (WO-2.2): delivery CLOSES courier custody —
+    // the stale flag once let the refusal ladder and the two-key return run
+    // on a DELIVERED order, yanking custody off the customer and recording
+    // fee-retained against a settlement-eligible order.
+    this.custodyWithCourier = false;
     return { ok: true, duplicate: false, events: [e1, e2] };
   }
 
@@ -347,7 +354,16 @@ export class CustodySpine {
     | { ok: true; outcome: DeliveryOutcome }
     | { ok: false; reason: SpineRefusal }
     | LadderRefusal {
+    // A delivered order is TERMINAL for the ladder — refuse by name, not by
+    // side effect (verifier blocking finding).
+    if (this.eligibilityEmittedForOrder.has(this.chain.order_id)) {
+      return { ok: false, reason: 'order_already_delivered' };
+    }
     if (!this.custodyWithCourier) return { ok: false, reason: 'refusal_before_custody' };
+    // ONE retry window, ever (Sera §6.4; verifier NB①/②): re-recording a
+    // refusal — to mint a fresh window, slide expiry, or swap the reason
+    // before fault applies — refuses closed.
+    if (this.ladderOutcome !== null) return { ok: false, reason: 'ladder_already_open' };
     const step = openRetryWindow({ taskId: this.chain.task_id, orderId: this.chain.order_id, reasonCode, at });
     if (!step.ok) return step;
     this.ladderOutcome = step.outcome;
@@ -370,6 +386,11 @@ export class CustodySpine {
     | { ok: true; outcome: DeliveryOutcome }
     | { ok: false; reason: SpineRefusal }
     | LadderRefusal {
+    // The buyer settled inside the window and the drop completed → the
+    // order is terminal; the expired window escalates NOTHING.
+    if (this.eligibilityEmittedForOrder.has(this.chain.order_id)) {
+      return { ok: false, reason: 'order_already_delivered' };
+    }
     if (this.ladderOutcome === null) return { ok: false, reason: 'no_buyer_fault_refusal' };
     const step = resolveExpiredWindow({ retryOutcome: this.ladderOutcome, now });
     if (!step.ok) return step;

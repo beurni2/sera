@@ -283,3 +283,41 @@ describe('WO-2.2 NB③ — RegisterOutcome is CHECKED at every caller (source-sc
     expect(bare, `unchecked secrets.register() calls:\n${bare.join('\n')}`).toEqual([]);
   });
 });
+
+describe("WO-2.2 verifier findings — the exact attacks, replayed as regression tests", () => {
+  it('BLOCKING: the ladder and return are UNREACHABLE on a delivered order — custody stays with the customer, no fee-retained after eligibility', () => {
+    const spine = spineWithCourierCustody();
+    expect(spine.submitDeliveryEvidence(evidenceBundle(), 'server_confirmed', T)).toMatchObject({ ok: true });
+    spine.decideValidation(T);
+    expect(spine.confirmDropAndEmitEligibility('drop-1', T)).toMatchObject({ ok: true, duplicate: false });
+    // The verifier's exact post-delivery attack sequence:
+    expect(spine.recordDoorRefusal('fraud', T_PLUS_10MIN)).toEqual({ ok: false, reason: 'order_already_delivered' });
+    expect(spine.escalateExpiredWindow(T_PLUS_16MIN)).toEqual({ ok: false, reason: 'order_already_delivered' });
+    expect(spine.applyBuyerFaultRefusal({ returnSealId: 'x', at: T_PLUS_16MIN })).toEqual({ ok: false, reason: 'no_buyer_fault_refusal' });
+    expect(spine.completeReturnHandover('a', 'b', T_PLUS_16MIN)).toEqual({ ok: false, reason: 'return_not_open' });
+    expect(spine.ledger.currentCustodian(CHAIN.package_id)).toBe('customer');
+    expect(spine.isFeeRetainedRecorded(CHAIN.order_id)).toBe(false);
+    expect(spine.allEvents().filter((e) => e.name === 'delivery.refused.v1')).toHaveLength(0);
+  });
+
+  it('NB①: ONE window ever — a second door refusal (after escalation OR inside the window) refuses; no fresh window, no sliding expiry', () => {
+    const spine = spineWithCourierCustody();
+    const first = spine.recordDoorRefusal('fraud', T);
+    expect(first.ok).toBe(true);
+    // Re-record inside the open window (the expiry-slide attack):
+    expect(spine.recordDoorRefusal('fraud', T_PLUS_10MIN)).toEqual({ ok: false, reason: 'ladder_already_open' });
+    spine.escalateExpiredWindow(T_PLUS_16MIN);
+    // Re-record after escalation (the fresh-window re-arm attack):
+    expect(spine.recordDoorRefusal('honest_absence', T_PLUS_16MIN)).toEqual({ ok: false, reason: 'ladder_already_open' });
+  });
+
+  it('NB②: the reason-swap dodge is dead — fault attribution cannot be downgraded by re-recording before application', () => {
+    const spine = spineWithCourierCustody();
+    spine.recordDoorRefusal('fraud', T);
+    expect(spine.recordDoorRefusal('honest_absence', T)).toEqual({ ok: false, reason: 'ladder_already_open' });
+    const escalated = spine.escalateExpiredWindow(T_PLUS_16MIN);
+    expect(escalated.ok && escalated.outcome.family).toBe('return'); // fraud escalates — the swap never took
+    expect(spine.applyBuyerFaultRefusal({ returnSealId: 'rs-1', at: T_PLUS_16MIN }).ok).toBe(true);
+    expect(spine.isFeeRetainedRecorded(CHAIN.order_id)).toBe(true);
+  });
+});

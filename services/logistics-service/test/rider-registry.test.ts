@@ -112,3 +112,18 @@ describe('WO-2.2 — SE3.2 end-shift-with-custody exception: package never unown
     expect(registry.custodyExceptionLog()).toEqual([]);
   });
 });
+
+describe('WO-2.2 verifier NB③ — a REFUSED end-shift logs no phantom custody exception', () => {
+  it('off-shift rider with a fabricated valid exception: refused not_on_shift AND the audit log stays empty', () => {
+    const T = '2026-07-10T18:00:00.000Z';
+    const registry = new RiderRegistry();
+    registry.register({ riderId: 'r-1', displayName: 'Issa', phoneAlias: 'alias-1', certified: true });
+    // Never started a shift — the verifier's exact probe:
+    const outcome = registry.endShift('r-1', T, 'server_confirmed', {
+      heldPackageIds: ['pkg-1'],
+      exception: { dispatcherAckId: 'fabricated-ack', nextOwner: { kind: 'return_to_hub_task', ref: 'hub-x' } },
+    });
+    expect(outcome).toEqual({ ok: false, reason: 'not_on_shift' });
+    expect(registry.custodyExceptionLog()).toEqual([]);
+  });
+});

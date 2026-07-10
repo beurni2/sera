@@ -148,19 +148,13 @@ export class RiderRegistry {
       ) {
         return { ok: false, reason: 'custody_would_be_orphaned' };
       }
-      this.custodyExceptions.push({
-        riderId,
-        at,
-        packageIds: [...custody.heldPackageIds],
-        dispatcherAckId: exception.dispatcherAckId,
-        nextOwner: { ...exception.nextOwner },
-      });
     }
     const current = this.shift(riderId);
     if (current.status === 'shift_start_pending') {
       // Dropping a pending start is clean — nothing was ever live.
       const next: ShiftState = { status: 'off_shift' };
       this.shifts.set(riderId, next);
+      this.logCustodyException(riderId, at, custody);
       return { ok: true, state: next, pending: false };
     }
     if (current.status !== 'on_shift' && current.status !== 'shift_end_pending') {
@@ -172,7 +166,21 @@ export class RiderRegistry {
         ? { status: 'off_shift' }
         : { status: 'shift_end_pending', queuedAt: at, startedAt };
     this.shifts.set(riderId, next);
+    // Verifier NB③: the audit entry is written AFTER the transition is
+    // decided lawful — a refused end-shift logs no phantom handoff.
+    this.logCustodyException(riderId, at, custody);
     return { ok: true, state: next, pending: next.status === 'shift_end_pending' };
+  }
+
+  private logCustodyException(riderId: string, at: string, custody: EndShiftCustodyDeclaration): void {
+    if (custody.heldPackageIds.length === 0 || custody.exception === undefined) return;
+    this.custodyExceptions.push({
+      riderId,
+      at,
+      packageIds: [...custody.heldPackageIds],
+      dispatcherAckId: custody.exception.dispatcherAckId,
+      nextOwner: { ...custody.exception.nextOwner },
+    });
   }
 
   custodyExceptionLog(): readonly {
