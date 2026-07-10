@@ -18,6 +18,14 @@ jobs:
           cache: pnpm
       - name: Authorize read access to platform-contracts (CI-only)
         run: git config --global url."https://x-access-token:${{ secrets.PLATFORM_CONTRACTS_READ_TOKEN }}@github.com/beurni2/platform-contracts".insteadOf "https://github.com/beurni2/platform-contracts"
+      # The lockfile's resolved git-dep URLs carry a pnpm-mangled scp form
+      # (git@github.com:…) that the https rewrite above does not cover; the
+      # runner has no SSH key, so cover both SSH forms too (WO-1.2
+      # follow-up ③; root cause in Actions run 29066791600).
+      - name: Authorize read access to platform-contracts (CI-only, SSH forms)
+        run: |
+          git config --global url."https://x-access-token:${{ secrets.PLATFORM_CONTRACTS_READ_TOKEN }}@github.com/beurni2/platform-contracts".insteadOf "git@github.com:beurni2/platform-contracts"
+          git config --global url."https://x-access-token:${{ secrets.PLATFORM_CONTRACTS_READ_TOKEN }}@github.com/beurni2/platform-contracts".insteadOf "ssh://git@github.com/beurni2/platform-contracts"
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - name: Install Playwright chromium (dispatch-console harness)
