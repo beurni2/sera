@@ -22,15 +22,35 @@ describe('custody ledger — SE4.1 append-only, hash-chained, one current custod
   });
 
   it('TAMPER TEST: mutating ANY committed entry breaks chain verification at that seq', () => {
+    // WO-2.1 finding ② sealed the all() alias, so hostile mutation is
+    // simulated the only way left: reaching the PRIVATE store directly
+    // (white-box — what a memory-level attacker or a bug inside the class
+    // could do). verifyChain still catches it.
     const ledger = ledgerWithCourier();
-    // A hostile in-memory mutation of a committed entry:
-    (ledger.all()[1] as LedgerEntry & { payload: Record<string, unknown> }).payload['result'] = 'refused';
-    const verdict = ledger.verifyChain();
-    expect(verdict).toEqual({ valid: false, brokenAtSeq: 1 });
+    const internals = (ledger as unknown as { entries: LedgerEntry[] }).entries;
+    internals[1]!.payload['result'] = 'refused';
+    expect(ledger.verifyChain()).toEqual({ valid: false, brokenAtSeq: 1 });
     // And tampering the FIRST entry breaks at seq 0 — no entry is exempt.
     const ledger2 = ledgerWithCourier();
-    (ledger2.all()[0] as LedgerEntry & { at: string }).at = '1999-01-01T00:00:00.000Z';
+    (ledger2 as unknown as { entries: LedgerEntry[] }).entries[0]!.at = '1999-01-01T00:00:00.000Z';
     expect(ledger2.verifyChain()).toEqual({ valid: false, brokenAtSeq: 0 });
+  });
+
+  it('WO-2.1 finding ② — all() is a FROZEN defensive copy: mutation attempts cannot touch the ledger', () => {
+    const ledger = ledgerWithCourier();
+    const view = ledger.all();
+    // Array-level mutations throw (frozen) and change nothing:
+    expect(() => (view as LedgerEntry[]).push({} as LedgerEntry)).toThrow();
+    expect(() => ((view as LedgerEntry[])[1] = {} as LedgerEntry)).toThrow();
+    // Entry-level and payload-level mutations are equally sealed:
+    expect(() => ((view[1] as LedgerEntry).payload['result'] = 'refused')).toThrow();
+    expect(() => (((view[0] as LedgerEntry) as LedgerEntry & { at: string }).at = 'x')).toThrow();
+    // The ledger itself is untouched — chain still verifies, length intact:
+    expect(ledger.all()).toHaveLength(3);
+    expect(ledger.all()[1]!.payload['result']).toBe('accepted');
+    expect(ledger.verifyChain()).toEqual({ valid: true });
+    // Successive calls hand out fresh copies, never a shared alias:
+    expect(ledger.all()).not.toBe(view);
   });
 
   it('ONE CURRENT CUSTODIAN at the store: a second concurrent custodian write is REFUSED, nothing appended', () => {

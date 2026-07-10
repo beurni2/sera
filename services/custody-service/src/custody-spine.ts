@@ -33,6 +33,8 @@ export type SpineRefusal =
   | 'custodian_conflict'
   | 'custody_not_with_courier'
   | 'evidence_not_canonical'
+  | 'evidence_chain_mismatch'
+  | 'evidence_seal_mismatch'
   | 'offline_never_final'
   | 'not_validated'
   | 'drop_code_refused'
@@ -53,6 +55,9 @@ export class CustodySpine {
   private aggregateVersion = 0;
   private verificationAccepted = false;
   private custodyWithCourier = false;
+  /** The ONE seal consumed at beginCustody — evidence must bind to it by
+   * equality (WO-2.1 finding ①). */
+  private registeredSealId: string | null = null;
   private evidenceSubmitted: EvidenceBundle | null = null;
   private decision: ValidationDecision | null = null;
   private eligibilityEmittedForOrder = new Set<string>();
@@ -152,6 +157,7 @@ export class CustodySpine {
       order_id: this.chain.order_id, package_id: this.chain.package_id, rider_id: args.riderId,
     }, args.at);
     this.custodyWithCourier = true;
+    this.registeredSealId = args.custodySealId;
     return { ok: true, events: [e1, e2] };
   }
 
@@ -182,6 +188,21 @@ export class CustodySpine {
     }
     const parsed = EvidenceBundleSchema.safeParse(raw);
     if (!parsed.success) return { ok: false, reason: 'evidence_not_canonical' };
+    // WO-2.1 finding ① — evidence-to-chain binding (SE-I11: evidence only
+    // ever SUPPORTS a decision, and it supports THIS delivery alone).
+    // Before any ValidationDecision can exist, the bundle must bind BY
+    // EQUALITY to the task's chain ids and to the seal registered at
+    // beginCustody. A foreign bundle is REFUSED CLOSED: no ledger entry, no
+    // event, nothing downstream. (The canonical EvidenceBundle carries
+    // task/package/seal ids; order binding is transitive — the ChainIds
+    // record is one immutable unit. A bundle MISSING a binding field never
+    // reaches here: the strict schema already refused it.)
+    if (parsed.data.taskId !== this.chain.task_id || parsed.data.packageId !== this.chain.package_id) {
+      return { ok: false, reason: 'evidence_chain_mismatch' };
+    }
+    if (this.registeredSealId === null || parsed.data.custodySealId !== this.registeredSealId) {
+      return { ok: false, reason: 'evidence_seal_mismatch' };
+    }
     this.evidenceSubmitted = parsed.data;
     this.ledger.append({
       packageId: this.chain.package_id,

@@ -25,10 +25,19 @@ if (fixture.scenario === 'honest') {
   process.exit(0);
 }
 if (fixture.scenario === 'tampered_entry') {
-  ledger.all()[fixture.tamperSeq].payload.result = 'refused'; // hostile mutation
+  // WO-2.1 finding ② sealed all() (frozen defensive copy), so the hostile
+  // mutation must now reach the PRIVATE store directly — the memory-level
+  // attack the hash chain exists to catch. First prove the public path is
+  // sealed, then tamper internally and prove verifyChain still bites.
+  let publicPathThrew = false;
+  try { ledger.all()[fixture.tamperSeq].payload.result = 'refused'; } catch { publicPathThrew = true; }
+  if (!publicPathThrew || ledger.verifyChain().valid !== true) {
+    console.error('PUBLIC MUTATION PATH STILL OPEN — all() is not a frozen copy'); process.exit(2);
+  }
+  ledger.entries[fixture.tamperSeq].payload.result = 'refused'; // hostile internal mutation
   const verdict = ledger.verifyChain();
   if (verdict.valid) { console.error('TAMPER NOT DETECTED — the chain lied'); process.exit(2); }
-  console.error(`VIOLATION (caught): committed entry ${fixture.tamperSeq} was mutated — chain verification FAILED at seq ${verdict.brokenAtSeq}`);
+  console.error(`VIOLATION (caught): committed entry ${fixture.tamperSeq} was mutated (public path frozen; internal store attacked) — chain verification FAILED at seq ${verdict.brokenAtSeq}`);
   process.exit(1);
 }
 if (fixture.scenario === 'double_custodian') {

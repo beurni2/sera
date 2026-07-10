@@ -88,8 +88,15 @@ export class CustodyLedger {
     return { valid: true };
   }
 
-  /** Read-only view for tests/gates — the array is the ledger's own; treat as frozen. */
+  /** Read-only view for tests/gates — a FROZEN defensive copy (WO-2.1
+   * finding ②): mutating the returned array or its entries cannot touch the
+   * ledger; only `append` writes, and `verifyChain` polices the committed
+   * bytes. */
   all(): readonly LedgerEntry[] {
-    return this.entries;
+    return Object.freeze(
+      this.entries.map((entry) =>
+        Object.freeze({ ...entry, payload: Object.freeze({ ...entry.payload }) }),
+      ),
+    );
   }
 }
