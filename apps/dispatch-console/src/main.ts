@@ -1,7 +1,8 @@
 import { seraTheme as theme } from '@platform/ui-tokens';
 import { landmarkFirstLines } from '@sera/logistics-service';
 import { buildSandboxWorld } from './sandbox-world';
-import { SANDBOX_DWELL, SANDBOX_OUTCOMES } from './sandbox-followup';
+import { SANDBOX_DOOR_ORDER, SANDBOX_DOOR_PAID_SIGNAL, SANDBOX_DWELL, SANDBOX_OUTCOMES } from './sandbox-followup';
+import { DoorSignalFollower } from './door-signal';
 import { t } from './i18n';
 
 /**
@@ -95,6 +96,16 @@ style.textContent = `
     cursor: pointer;
   }
   .status-line { color: var(--ink-muted); font-size: var(--type-body); margin: 0; }
+  button.door-demo {
+    min-height: 44px;
+    border: 0;
+    background: none;
+    color: var(--ink-muted);
+    font-size: var(--type-label);
+    text-decoration: underline;
+    cursor: pointer;
+    padding: 0;
+  }
 `;
 document.head.appendChild(style);
 
@@ -188,10 +199,29 @@ if (app) {
   dwellLine.className = 'status-line';
   dwellLine.textContent = `${t('console.dwell_label')} : ${SANDBOX_DWELL.dwellSec} s — ${t(SANDBOX_DWELL.withinTarget ? 'console.dwell_in_target' : 'console.dwell_out_target')}`;
   followCard.appendChild(dwellLine);
+  // WO-2.7 item 2 (NB⑤ closed): the door-payment line is SIGNAL-DRIVEN —
+  // « Confirmé par le réseau » renders ONLY once the provider-class signal
+  // has actually been consumed; before that, the honest pending line. The
+  // sandbox feeds the follower via the explicit « Essai » action (nothing
+  // fakes a live confirmation); live signals arrive at E2 assembly.
+  const doorFollower = new DoorSignalFollower();
   const doorLine = document.createElement('p');
-  doorLine.className = 'status-line';
-  doorLine.textContent = `${t('console.door_label')} : ${t('console.door_confirmed')}`;
+  doorLine.className = 'status-line door-line';
+  const doorDemo = document.createElement('button');
+  doorDemo.className = 'door-demo';
+  doorDemo.textContent = t('console.door_demo');
+  const renderDoorLine = () => {
+    const confirmed = doorFollower.isConfirmed(SANDBOX_DOOR_ORDER);
+    doorLine.textContent = `${t('console.door_label')} : ${t(confirmed ? 'console.door_confirmed' : 'console.door_pending')}`;
+    doorDemo.hidden = confirmed;
+  };
+  doorDemo.addEventListener('click', () => {
+    doorFollower.consume(SANDBOX_DOOR_PAID_SIGNAL);
+    renderDoorLine();
+  });
+  renderDoorLine();
   followCard.appendChild(doorLine);
+  followCard.appendChild(doorDemo);
   const outcomeHeading = document.createElement('p');
   outcomeHeading.className = 'rider-label';
   outcomeHeading.textContent = t('console.outcome_heading');

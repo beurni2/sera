@@ -15,6 +15,7 @@ import { SecretRegistry } from './secret-registry.js';
 import { runPickupVerification, type VerificationInput } from './pickup-verification-policy.js';
 import { openRetryWindow, resolveExpiredWindow, type LadderRefusal } from './refusal-ladder.js';
 import { runDoorInspection, type DoorInspectionInput } from './door-flow.js';
+import { checkProducerActor } from './actor-provenance.js';
 
 /**
  * E1 CUSTODY SPINE (Contract §2.3 steps 11–13; SE4.3 + SE5.3) — single
@@ -60,7 +61,8 @@ export type SpineRefusal =
   | 'door_signal_invalid'
   | 'no_valid_rejection'
   | 'inspection_already_recorded'
-  | 'return_in_progress';
+  | 'return_in_progress'
+  | 'producer_actor_mismatch';
 
 export interface ChainIds {
   order_id: string;
@@ -75,6 +77,11 @@ export class CustodySpine {
   private readonly events: PlatformEvent[] = [];
   private aggregateVersion = 0;
   private verificationAccepted = false;
+  /** WO-2.7 item 3 — the readiness/verification CYCLE. One pickup code per
+   * cycle; a refused verification may open the NEXT cycle (the corrective
+   * round-trip) with a NEW code. Attempt-keyed emissions ride this number. */
+  private verificationCycle = 1;
+  private lastVerificationRefused = false;
   private custodyWithCourier = false;
   /** The ONE seal consumed at beginCustody — evidence must bind to it by
    * equality (WO-2.1 finding ①). */
@@ -129,35 +136,66 @@ export class CustodySpine {
 
   /** Step 11a — bounded verification (SE4.2). The rider's pickup code is a
    * single-use hashed secret consumed HERE — replay refused. A refusal emits
-   * the fault signal; custody never begins. */
+   * the fault signal; custody never begins. WO-2.7 item 3: emissions are
+   * keyed per ATTEMPT (order + verification cycle) so a genuine second
+   * refusal after the corrective round-trip is a NEW event downstream can
+   * count — while a replay of the SAME attempt still carries the same
+   * command_id and dedupes. */
   verifyPickup(input: VerificationInput, presentedPickupCode: string, at: string) {
-    const code = this.secrets.consume('pickup_verification_code', input.orderId, presentedPickupCode, at);
+    const code = this.secrets.consume('pickup_verification_code', input.orderId, presentedPickupCode, at, this.verificationCycle);
     if (!code.ok) {
       return { kind: 'invalid' as const, reason: 'pickup_code_refused' as const, detail: code.reason };
     }
+    const attempt = this.verificationCycle;
     const outcome = runPickupVerification(input);
     if (outcome.kind === 'invalid') return outcome;
     this.ledger.append({
       packageId: this.chain.package_id,
       kind: 'pickup_verification',
-      payload: { result: outcome.verification.result, orderId: input.orderId },
+      payload: { result: outcome.verification.result, orderId: input.orderId, attempt },
       at,
     });
-    this.emit('pickup.verification_recorded.v1', `verify-${input.orderId}`, {
+    this.emit('pickup.verification_recorded.v1', `verify-${input.orderId}-a${attempt}`, {
       order_id: input.orderId,
       task_id: this.chain.task_id,
       result: outcome.verification.result,
+      attempt,
     }, at);
     if (outcome.kind === 'refused') {
-      this.emit('protection.claim_opened.v1', `fault-${input.orderId}`, {
+      this.lastVerificationRefused = true;
+      this.emit('protection.claim_opened.v1', `fault-${input.orderId}-a${attempt}`, {
         order_id: input.orderId,
         faultClass: outcome.faultSignal.faultClass,
         failed_checks: [...outcome.failedChecks],
+        attempt,
       }, at);
       return outcome; // custody never begins; NO refund, NO settlement mutation exists here
     }
     this.verificationAccepted = true;
     return outcome;
+  }
+
+  /**
+   * WO-2.7 item 3 — the corrective round-trip re-arms verification: ONLY
+   * after a REFUSED verification (custody never began) may the next cycle
+   * open, with a NEW pickup code. The spent code stays spent (four-secrets
+   * law untouched); the new cycle's emissions carry the next attempt number.
+   */
+  openNewVerificationCycle(newPickupCode: string, _at: string):
+    | { ok: true; cycle: number }
+    | { ok: false; reason: 'no_refused_verification' | 'verification_already_accepted' | 'secret_already_used' } {
+    if (this.verificationAccepted) return { ok: false, reason: 'verification_already_accepted' };
+    if (!this.lastVerificationRefused) return { ok: false, reason: 'no_refused_verification' };
+    const nextCycle = this.verificationCycle + 1;
+    const armed = this.secrets.register('pickup_verification_code', this.chain.order_id, newPickupCode, nextCycle);
+    if (!armed.ok) return { ok: false, reason: 'secret_already_used' };
+    this.verificationCycle = nextCycle;
+    this.lastVerificationRefused = false;
+    return { ok: true, cycle: nextCycle };
+  }
+
+  currentVerificationCycle(): number {
+    return this.verificationCycle;
   }
 
   /** Step 11b — seal-after-verification custody transition (SE4.3). */
@@ -482,6 +520,26 @@ export class CustodySpine {
       return { ok: false, reason: 'door_signal_invalid' };
     }
     const event = parsed.data;
+    // WO-2.7 item 1 (WO-2.4 NB③): actor provenance — the door-paid signal
+    // may only arrive from the payment-provider class. Wrong actor →
+    // REFUSED CLOSED + reconciliation.alert.v1 (idempotent per command_id).
+    // In-process layer; E3 adds transport-level webhook authenticity on top.
+    const provenance = checkProducerActor(event.name, event.envelope.actor);
+    if (!provenance.ok) {
+      if (this.alertedSignalCommandIds.has(event.envelope.command_id)) {
+        return { ok: false, reason: 'producer_actor_mismatch' };
+      }
+      this.alertedSignalCommandIds.add(event.envelope.command_id);
+      const alert = this.emit('reconciliation.alert.v1', `actor-mismatch-${event.envelope.command_id}`, {
+        scenario: 'producer_actor_mismatch',
+        event_name: event.name,
+        order_id: this.chain.order_id,
+        actor: event.envelope.actor,
+        expected_class: provenance.expectedClass,
+        actor_class: provenance.actorClass ?? 'unclassified',
+      }, at);
+      return { ok: false, reason: 'producer_actor_mismatch', alert };
+    }
     if (this.doorSignalCommandIds.has(event.envelope.command_id)) {
       return { ok: true, duplicate: true }; // absorbed — nothing advances twice
     }

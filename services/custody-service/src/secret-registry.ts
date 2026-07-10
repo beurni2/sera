@@ -41,23 +41,27 @@ export type RegisterOutcome =
 export class SecretRegistry {
   private readonly records = new Map<string, SecretRecord>();
 
-  private key(kind: StoredSecretKind, orderId: string): string {
-    return `${kind}:${orderId}`;
+  /** WO-2.7 item 3: an explicit CYCLE dimension — cycle 1 keys exactly as
+   * before (no key migration); a corrective round-trip arms cycle 2+ under
+   * its own key. Single-use and no-re-arm hold PER (kind, orderId, cycle):
+   * a spent cycle stays spent forever. */
+  private key(kind: StoredSecretKind, orderId: string, cycle: number): string {
+    return cycle === 1 ? `${kind}:${orderId}` : `${kind}:${orderId}:c${cycle}`;
   }
 
-  register(kind: StoredSecretKind, orderId: string, secret: string): RegisterOutcome {
-    const existing = this.records.get(this.key(kind, orderId));
+  register(kind: StoredSecretKind, orderId: string, secret: string, cycle = 1): RegisterOutcome {
+    const existing = this.records.get(this.key(kind, orderId, cycle));
     // A consumed secret is SPENT: re-arming it (to enable a second
     // presentation) dies here at the registry door, not downstream.
     if (existing?.consumedAt !== undefined) {
       return { ok: false, reason: 'secret_already_used' };
     }
-    this.records.set(this.key(kind, orderId), { hash: hashSecret(secret) });
+    this.records.set(this.key(kind, orderId, cycle), { hash: hashSecret(secret) });
     return { ok: true };
   }
 
-  consume(kind: StoredSecretKind, orderId: string, presented: string, at: string): ConsumeOutcome {
-    const record = this.records.get(this.key(kind, orderId));
+  consume(kind: StoredSecretKind, orderId: string, presented: string, at: string, cycle = 1): ConsumeOutcome {
+    const record = this.records.get(this.key(kind, orderId, cycle));
     if (!record) return { ok: false, reason: 'secret_unknown' };
     if (record.consumedAt !== undefined) return { ok: false, reason: 'secret_already_used' };
     if (record.hash !== hashSecret(presented)) return { ok: false, reason: 'secret_mismatch' };
@@ -68,7 +72,7 @@ export class SecretRegistry {
   /** Non-consuming validity check — used ONLY to make two-key consumption
    * both-or-neither; single-use is still enforced by consume(). */
   private isConsumable(kind: StoredSecretKind, orderId: string, presented: string): ConsumeOutcome {
-    const record = this.records.get(this.key(kind, orderId));
+    const record = this.records.get(this.key(kind, orderId, 1));
     if (!record) return { ok: false, reason: 'secret_unknown' };
     if (record.consumedAt !== undefined) return { ok: false, reason: 'secret_already_used' };
     if (record.hash !== hashSecret(presented)) return { ok: false, reason: 'secret_mismatch' };

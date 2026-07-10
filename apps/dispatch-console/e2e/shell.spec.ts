@@ -29,6 +29,22 @@ test('the console shell boots on the sera theme with catalog strings', async ({ 
   await expect(page.locator('.hours-note')).toHaveText('Service en journée.');
 });
 
+test('WO-2.7 item 2 (NB⑤): the door line is SIGNAL-DRIVEN — honest pending BEFORE the signal, « Confirmé par le réseau » only AFTER it', async ({ page }) => {
+  await page.goto('/');
+
+  // BEFORE any signal: the honest pending state — nothing claims the network
+  // confirmed what it has not.
+  await expect(page.locator('.door-line')).toHaveText('Paiement au seuil : En attente du réseau');
+  await expect(page.getByText('Confirmé par le réseau')).toHaveCount(0);
+
+  // The sandbox « Essai » path feeds the follower a REAL provider-class
+  // signal (strict-parsed, provenance-checked, deduped) — only then does the
+  // confirmed state render.
+  await page.locator('button.door-demo').click();
+  await expect(page.locator('.door-line')).toHaveText('Paiement au seuil : Confirmé par le réseau');
+  await expect(page.locator('button.door-demo')).toBeHidden();
+});
+
 test('WO-1.2 manual assignment: landmark-first task card → « Donner la course » → honest waiting state', async ({ page }) => {
   await page.goto('/');
 

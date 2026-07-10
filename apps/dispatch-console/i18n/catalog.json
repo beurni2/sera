@@ -154,5 +154,17 @@
     "fr": "Confirmé par le réseau",
     "register": "money",
     "screenClass": "label"
+  },
+  {
+    "key": "console.door_pending",
+    "fr": "En attente du réseau",
+    "register": "money",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.door_demo",
+    "fr": "Essai : signal du réseau",
+    "register": "neutral",
+    "screenClass": "label"
   }
 ]

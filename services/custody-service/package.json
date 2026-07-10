@@ -11,6 +11,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./actor-provenance": {
+      "types": "./dist/actor-provenance.d.ts",
+      "import": "./dist/actor-provenance.js"
     }
   },
   "scripts": {
