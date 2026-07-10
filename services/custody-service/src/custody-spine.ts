@@ -1,5 +1,6 @@
 import {
   CustodyLiabilityClaimSchema,
+  type PaymentMode,
   EvidenceBundleSchema,
   PlatformEventSchema,
   ValidationDecisionSchema,
@@ -13,6 +14,7 @@ import { CustodyLedger } from './custody-ledger.js';
 import { SecretRegistry } from './secret-registry.js';
 import { runPickupVerification, type VerificationInput } from './pickup-verification-policy.js';
 import { openRetryWindow, resolveExpiredWindow, type LadderRefusal } from './refusal-ladder.js';
+import { runDoorInspection, type DoorInspectionInput } from './door-flow.js';
 
 /**
  * E1 CUSTODY SPINE (Contract §2.3 steps 11–13; SE4.3 + SE5.3) — single
@@ -51,7 +53,12 @@ export type SpineRefusal =
   | 'no_buyer_fault_refusal'
   | 'return_seal_refused'
   | 'return_not_open'
-  | 'return_two_key_refused';
+  | 'return_two_key_refused'
+  | 'door_payment_not_confirmed'
+  | 'inspection_not_accepted'
+  | 'door_signal_not_awaited'
+  | 'door_signal_invalid'
+  | 'no_valid_rejection';
 
 export interface ChainIds {
   order_id: string;
@@ -80,8 +87,20 @@ export class CustodySpine {
   private feeRetainedForOrder = new Set<string>();
   private returnFlow: { state: 'opened' | 'closed'; returnSealId: string } | null = null;
   private readonly liabilityClaims: CustodyLiabilityClaim[] = [];
+  /** WO-2.4 door state. Option-B (SE-I11): inspect BEFORE pay, pay BEFORE
+   * custody — enforced in code, not documented. */
+  private doorInspection: import('@platform/contracts').InspectionSession | null = null;
+  private doorPaymentConfirmed = false;
+  private readonly doorSignalCommandIds = new Set<string>();
+  private validRejection: { faultClass: string } | null = null;
 
-  constructor(private readonly chain: ChainIds, private readonly supplierId: string) {}
+  constructor(
+    private readonly chain: ChainIds,
+    private readonly supplierId: string,
+    /** FULL_PREPAY by default — the E1 paths are untouched; the Option-B
+     * door gate binds only when the task's mode says so. */
+    private readonly paymentMode: PaymentMode = 'FULL_PREPAY',
+  ) {}
 
   private emit(name: PlatformEvent['name'], command_id: string, payload: Record<string, unknown>, at: string): PlatformEvent {
     this.aggregateVersion += 1;
@@ -312,6 +331,15 @@ export class CustodySpine {
     }
     if (this.decision?.result !== 'validated') return { ok: false, reason: 'not_validated' };
     if (!this.custodyWithCourier) return { ok: false, reason: 'custody_not_with_courier' };
+    // SE-I11 (payment-before-handoff), enforced: on Option-B, custody MUST
+    // NOT transfer before the provider-confirmed door payment — and the
+    // payment stage itself required an accepted inspection first.
+    if (this.paymentMode === 'DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR') {
+      if (this.doorInspection?.inspectionResult !== 'accepted') {
+        return { ok: false, reason: 'inspection_not_accepted' };
+      }
+      if (!this.doorPaymentConfirmed) return { ok: false, reason: 'door_payment_not_confirmed' };
+    }
     const code = this.secrets.consume('buyer_drop_code', this.chain.order_id, presentedDropCode, at);
     if (!code.ok) return { ok: false, reason: 'drop_code_refused' };
     const transition = this.ledger.append({
@@ -341,6 +369,133 @@ export class CustodySpine {
     // fee-retained against a settlement-eligible order.
     this.custodyWithCourier = false;
     return { ok: true, duplicate: false, events: [e1, e2] };
+  }
+
+  // ── WO-2.4 — Option-B door flow (SE5.1/§6.3; SE-I11) ─────────────────────
+
+  /**
+   * Doorstep inspection against versioned policy data (Shop+ §6.2 matrix).
+   * accepted → (Option-B) unlocks the payment stage; invalid rejection →
+   * the WO-2.2 ladder (change_of_mind, derived); valid rejection → fault
+   * DERIVED from the custody seal (seller if intact, sera if broken),
+   * protection claim emitted — NEVER the buyer ladder, NEVER a fee.
+   */
+  recordDoorInspection(input: DoorInspectionInput, at: string):
+    | { ok: true; kind: 'accepted' }
+    | { ok: true; kind: 'invalid_rejection'; ladder: ReturnType<CustodySpine['recordDoorRefusal']> }
+    | { ok: true; kind: 'valid_rejection'; faultClass: string }
+    | { ok: false; reason: SpineRefusal | 'category_not_in_policy' | 'refusal_column_missing' } {
+    if (this.eligibilityEmittedForOrder.has(this.chain.order_id)) {
+      return { ok: false, reason: 'order_already_delivered' };
+    }
+    if (!this.custodyWithCourier) return { ok: false, reason: 'custody_not_with_courier' };
+    const outcome = runDoorInspection(input);
+    if (outcome.kind === 'invalid') return { ok: false, reason: outcome.reason };
+    this.ledger.append({
+      packageId: this.chain.package_id,
+      kind: 'validation_decision',
+      payload: { result: 'door_inspection_recorded', inspectionResult: outcome.session.inspectionResult, category: outcome.session.inspectionCategory },
+      at,
+    });
+    if (outcome.kind === 'accepted') {
+      this.doorInspection = outcome.session;
+      return { ok: true, kind: 'accepted' };
+    }
+    if (outcome.kind === 'invalid_rejection') {
+      // Buyer-risk refusal → the ordinary-buyer-fault ladder class (derived).
+      const ladder = this.recordDoorRefusal(outcome.ladderReasonCode, at);
+      return { ok: true, kind: 'invalid_rejection', ladder };
+    }
+    // Valid rejection: fault-attributed protection claim (§6.5), no ladder,
+    // no fee. The canonical reasonCode for this arm does NOT exist at canon
+    // v0.5.0 — gap flagged in derivations/door-inspection-fault-mapping.md.
+    this.validRejection = { faultClass: outcome.faultClass };
+    this.emit('protection.claim_opened.v1', `door-claim-${this.chain.order_id}`, {
+      order_id: this.chain.order_id,
+      faultClass: outcome.faultClass,
+      source: 'door_inspection',
+      rejection_reason: outcome.session.rejectionReason ?? 'refused_valid',
+    }, at);
+    return { ok: true, kind: 'valid_rejection', faultClass: outcome.faultClass };
+  }
+
+  /** A valid rejection sends the package home: re-seal + return flow, NO
+   * fee retention (the fault is the seller's or Séra's, never the buyer's). */
+  openValidRejectionReturn(args: { returnSealId: string; at: string }):
+    | { ok: true; events: readonly PlatformEvent[] }
+    | { ok: false; reason: SpineRefusal } {
+    if (this.validRejection === null) return { ok: false, reason: 'no_valid_rejection' };
+    if (!this.custodyWithCourier) return { ok: false, reason: 'custody_not_with_courier' };
+    const sealArmed = this.secrets.register('return_seal', this.chain.order_id, args.returnSealId);
+    if (!sealArmed.ok) return { ok: false, reason: 'return_seal_refused' };
+    this.ledger.append({
+      packageId: this.chain.package_id,
+      kind: 'custody_seal_registered',
+      payload: { sealKind: 'return_seal' },
+      at: args.at,
+    });
+    const refused = this.emit('delivery.refused.v1', `door-valid-rejection-${this.chain.order_id}`, {
+      order_id: this.chain.order_id,
+      task_id: this.chain.task_id,
+      rejection: 'valid_rejection',
+      fault_class: this.validRejection.faultClass,
+    }, args.at);
+    this.returnFlow = { state: 'opened', returnSealId: args.returnSealId };
+    const returnRequested = this.emit('return.logistics_requested.v1', `return-open-${this.chain.order_id}`, {
+      order_id: this.chain.order_id, task_id: this.chain.task_id, package_id: this.chain.package_id,
+    }, args.at);
+    return { ok: true, events: [refused, returnRequested] };
+  }
+
+  /**
+   * THE door-payment signal (SE-I11): only the provider-confirmed
+   * `payment.door_leg_confirmed.v1` advances the door state — no rider
+   * assertion exists anywhere. Duplicates absorb on command_id (no
+   * double-advance). A signal for a task NOT awaiting door payment →
+   * reconciliation.alert.v1 (provider truth vs local state) and a closed
+   * refusal. Séra stores NO amount from the payload (SE-I09).
+   */
+  consumeDoorPaidSignal(raw: unknown, at: string):
+    | { ok: true; duplicate: boolean }
+    | { ok: false; reason: SpineRefusal; alert?: PlatformEvent } {
+    const parsed = PlatformEventSchema.safeParse(raw);
+    if (!parsed.success || parsed.data.name !== 'payment.door_leg_confirmed.v1') {
+      return { ok: false, reason: 'door_signal_invalid' };
+    }
+    const event = parsed.data;
+    if (this.doorSignalCommandIds.has(event.envelope.command_id)) {
+      return { ok: true, duplicate: true }; // absorbed — nothing advances twice
+    }
+    const payloadOrder = (event.payload as Record<string, unknown>)['order_id'];
+    const awaiting =
+      this.paymentMode === 'DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR' &&
+      payloadOrder === this.chain.order_id &&
+      this.doorInspection?.inspectionResult === 'accepted' &&
+      !this.doorPaymentConfirmed &&
+      !this.eligibilityEmittedForOrder.has(this.chain.order_id);
+    if (!awaiting) {
+      const alert = this.emit('reconciliation.alert.v1', `door-mismatch-${event.envelope.command_id}`, {
+        scenario: 'door_signal_mismatch',
+        order_id: this.chain.order_id,
+        signal_order_id: typeof payloadOrder === 'string' ? payloadOrder : 'unknown',
+        payment_mode: this.paymentMode,
+        inspection_accepted: this.doorInspection?.inspectionResult === 'accepted',
+      }, at);
+      return { ok: false, reason: 'door_signal_not_awaited', alert };
+    }
+    this.doorSignalCommandIds.add(event.envelope.command_id);
+    this.doorPaymentConfirmed = true;
+    this.ledger.append({
+      packageId: this.chain.package_id,
+      kind: 'validation_decision',
+      payload: { result: 'door_payment_confirmed', command_id: event.envelope.command_id },
+      at,
+    });
+    return { ok: true, duplicate: false };
+  }
+
+  isDoorPaymentConfirmed(): boolean {
+    return this.doorPaymentConfirmed;
   }
 
   // ── WO-2.2 — E2 failure flows (SE6.1/§6.4/§6.5) ──────────────────────────

@@ -3,7 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { seraTheme as theme } from '@platform/ui-tokens';
 import { SANDBOX_ASSIGNMENT, type AssignmentView } from './src/sandbox-assignment';
-import { CONNECTIVITY, FAILURE_REASON_IDS, POLICY_CHECK_IDS, nextAfterEvidence, stepAfterWindowExpiry, type CustodyStep, type FailureReasonId, type PolicyCheckId } from './src/custody-flow';
+import { CONNECTIVITY, FAILURE_REASON_IDS, POLICY_CHECK_IDS, SANDBOX_DOOR_SIGNAL, SANDBOX_PAYMENT_MODE, nextAfterEvidence, stepAfterDoorSignal, stepAfterInspection, stepAfterWindowExpiry, type CustodyStep, type FailureReasonId, type PolicyCheckId } from './src/custody-flow';
 import { t } from './src/i18n';
 
 /**
@@ -135,7 +135,15 @@ export default function App() {
         {step === 'evidence' && (
           <View style={styles.card}>
             <Text style={styles.assignmentTitle}>{t('evidence.title')}</Text>
-            <Pressable style={styles.primaryAction} onPress={() => setStep(nextAfterEvidence(CONNECTIVITY))}>
+            <Pressable
+              style={styles.primaryAction}
+              onPress={() => {
+                // WO-2.4: the door inspection precedes the drop in BOTH
+                // modes; offline evidence still locks everything downstream.
+                const next = nextAfterEvidence(CONNECTIVITY);
+                setStep(next === 'drop' ? 'door_inspection' : next);
+              }}
+            >
               <Text style={styles.primaryActionText}>{t('evidence.action')}</Text>
             </Pressable>
           </View>
@@ -146,6 +154,39 @@ export default function App() {
             {/* Offline law: the photo is queued = pending; the drop step is
                 LOCKED — finality never happens offline. */}
             <Text style={styles.statusLine}>{t('evidence.pending')}</Text>
+          </View>
+        )}
+
+        {step === 'door_inspection' && (
+          <View style={styles.card}>
+            <Text style={styles.assignmentTitle}>{t('inspect.title')}</Text>
+            <Pressable style={styles.primaryAction} onPress={() => setStep(stepAfterInspection(SANDBOX_PAYMENT_MODE))}>
+              <Text style={styles.primaryActionText}>{t('inspect.accept_action')}</Text>
+            </Pressable>
+            <Pressable style={styles.quietAction} onPress={() => setStep('refusal_reason')}>
+              <Text style={styles.quietActionText}>{t('problem.action')}</Text>
+            </Pressable>
+          </View>
+        )}
+
+        {step === 'payment_wait' && (
+          <View style={styles.card}>
+            {/* SE-I11: ONLY the provider signal advances this screen — the
+                rider has no action while the payment is unconfirmed. The
+                sandbox constant stands in for the live signal at assembly. */}
+            {SANDBOX_DOOR_SIGNAL === 'confirmed' ? (
+              <>
+                <Text style={styles.assignmentTitle}>{t('pay_ok.status')}</Text>
+                <Pressable style={styles.primaryAction} onPress={() => setStep(stepAfterDoorSignal(SANDBOX_DOOR_SIGNAL))}>
+                  <Text style={styles.primaryActionText}>{t('pay_ok.continue_action')}</Text>
+                </Pressable>
+              </>
+            ) : (
+              <>
+                <Text style={styles.assignmentTitle}>{t('pay_wait.status')}</Text>
+                <Text style={styles.statusLine}>{t('pay_wait.hint')}</Text>
+              </>
+            )}
           </View>
         )}
 

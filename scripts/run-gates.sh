@@ -133,6 +133,18 @@ capture offline-flush-binding-positive pass node scripts/gates/offline-flush-bin
 log "gate: offline-flush-binding — NEGATIVE FIXTURE (planted direct-drain bypass, must be caught)"
 capture offline-flush-binding-negative fail node scripts/gates/offline-flush-binding.mjs gates/fixtures/negative/offline-flush-bypass
 
+log "gate: door-custody-gate — Option-B custody requires the provider-confirmed door payment (must pass)"
+capture door-custody-positive pass node scripts/gates/door-custody-gate.mjs gates/fixtures/door.lawful-path.json
+
+log "gate: door-custody-gate — NEGATIVE FIXTURE (custody without door payment, must REFUSE CLOSED)"
+capture door-custody-negative fail node scripts/gates/door-custody-gate.mjs gates/fixtures/negative/door.custody-without-payment.json
+
+log "gate: no-rider-asserted-payment — repo source (must pass)"
+capture no-rider-asserted-positive pass node scripts/gates/no-rider-asserted-payment.mjs
+
+log "gate: no-rider-asserted-payment — NEGATIVE FIXTURE (planted rider-marks-paid module, must be caught)"
+capture no-rider-asserted-negative fail node scripts/gates/no-rider-asserted-payment.mjs gates/fixtures/negative/rider-asserted-payment
+
 log "mock certification — commerce-core eligibility consumer 8/8 via the pinned suite (must pass)"
 capture certify-mocks pass node scripts/certify-mocks.mjs
 

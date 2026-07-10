@@ -142,5 +142,17 @@
     "fr": "Panne du paiement",
     "register": "money",
     "screenClass": "label"
+  },
+  {
+    "key": "console.door_label",
+    "fr": "Paiement au seuil",
+    "register": "money",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.door_confirmed",
+    "fr": "Confirmé par le réseau",
+    "register": "money",
+    "screenClass": "label"
   }
 ]

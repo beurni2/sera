@@ -322,5 +322,41 @@
     "fr": "Le client garde sa commande.",
     "register": "money",
     "screenClass": "status"
+  },
+  {
+    "key": "inspect.title",
+    "fr": "Le client regarde le colis.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "inspect.accept_action",
+    "fr": "Le client est d'accord",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "pay_wait.status",
+    "fr": "On attend le paiement.",
+    "register": "money",
+    "screenClass": "status"
+  },
+  {
+    "key": "pay_wait.hint",
+    "fr": "La confirmation vient du réseau, pas de toi.",
+    "register": "money",
+    "screenClass": "status"
+  },
+  {
+    "key": "pay_ok.status",
+    "fr": "L'argent est arrivé.",
+    "register": "money",
+    "screenClass": "status"
+  },
+  {
+    "key": "pay_ok.continue_action",
+    "fr": "Continuer",
+    "register": "neutral",
+    "screenClass": "general"
   }
 ]
