@@ -64,5 +64,149 @@
     "fr": "Accord envoyé. En attente du réseau.",
     "register": "neutral",
     "screenClass": "status"
+  },
+  {
+    "key": "verify.title",
+    "fr": "Vérifier le colis",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "check.order_ref",
+    "fr": "Bon numéro de commande",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "check.identity",
+    "fr": "C'est le bon produit",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "check.variant",
+    "fr": "Bon modèle",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "check.colour",
+    "fr": "Bonne couleur",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "check.size_label",
+    "fr": "Bonne taille",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "check.qty",
+    "fr": "Le bon nombre",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "check.damage",
+    "fr": "Pas de casse",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "check.pieces",
+    "fr": "Rien ne manque",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "check.manufacturer_seal",
+    "fr": "Cachet d'usine en place",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "verify.accept_action",
+    "fr": "Tout est bon",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "verify.refuse_action",
+    "fr": "Je refuse le colis",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "refuse.status",
+    "fr": "Le colis ne part pas.",
+    "register": "money",
+    "screenClass": "status"
+  },
+  {
+    "key": "refuse.next",
+    "fr": "Le vendeur va corriger. La commande reste protégée.",
+    "register": "money",
+    "screenClass": "status"
+  },
+  {
+    "key": "seal.title",
+    "fr": "Poser le scellé",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "seal.action",
+    "fr": "Scellé posé",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "evidence.title",
+    "fr": "Photo de remise",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "evidence.action",
+    "fr": "Prendre la photo",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "evidence.pending",
+    "fr": "La photo est partie. En attente du réseau.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "drop.title",
+    "fr": "Code du client",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "drop.hint",
+    "fr": "Le client donne son code. C'est la dernière étape.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "drop.action",
+    "fr": "Valider le code",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "delivered.status",
+    "fr": "Colis remis.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "delivered.next",
+    "fr": "La vente est validée.",
+    "register": "money",
+    "screenClass": "status"
   }
 ]

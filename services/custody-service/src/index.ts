@@ -19,3 +19,7 @@ export * from './custody-transition.js';
 export const handleRequest = makeHealthFetch(SERVICE_NAME);
 
 export default { fetch: handleRequest };
+export * from './custody-ledger.js';
+export * from './secret-registry.js';
+export * from './pickup-verification-policy.js';
+export * from './custody-spine.js';

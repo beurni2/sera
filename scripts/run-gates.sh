@@ -70,6 +70,33 @@ capture no-street-address-positive pass node scripts/gates/no-street-address-loc
 log "gate: no-street-address-location — NEGATIVE FIXTURE (streetAddress-bearing location, must fail)"
 capture no-street-address-negative fail node scripts/gates/no-street-address-location.mjs gates/fixtures/negative/location.with-street-address.json
 
+log "E1 custody happy path — §2.3 steps 11–13 through the SERVICE path, ledger + chain ids (must pass)"
+capture e1-custody-happy-path pass node scripts/e1-custody-happy-path.mjs
+
+log "gate: custody-ledger — honest hash-chained ledger (must pass)"
+capture custody-ledger-positive pass node scripts/gates/custody-ledger.mjs gates/fixtures/ledger.honest.json
+
+log "gate: custody-ledger — NEGATIVE FIXTURE (tampered committed entry, chain must FAIL)"
+capture custody-ledger-tamper-negative fail node scripts/gates/custody-ledger.mjs gates/fixtures/negative/ledger.tampered-entry.json
+
+log "gate: custody-ledger — NEGATIVE FIXTURE (second concurrent custodian, must REFUSE CLOSED)"
+capture custody-ledger-double-custodian-negative fail node scripts/gates/custody-ledger.mjs gates/fixtures/negative/ledger.double-custodian.json
+
+log "gate: custody-actor-separation — distinct supplier and rider (must pass)"
+capture actor-separation-positive pass node scripts/gates/custody-actor-separation.mjs gates/fixtures/custody.distinct-actors.json
+
+log "gate: custody-actor-separation — NEGATIVE FIXTURE (supplier as its own rider, must REFUSE CLOSED)"
+capture actor-separation-negative fail node scripts/gates/custody-actor-separation.mjs gates/fixtures/negative/custody.supplier-as-rider.json
+
+log "gate: offline-never-final — server-confirmed evidence validates (must pass)"
+capture offline-never-final-positive pass node scripts/gates/offline-never-final.mjs gates/fixtures/evidence.server-confirmed.json
+
+log "gate: offline-never-final — NEGATIVE FIXTURE (queued-offline evidence seeking finality, must REFUSE CLOSED)"
+capture offline-never-final-negative fail node scripts/gates/offline-never-final.mjs gates/fixtures/negative/evidence.queued-offline-finality.json
+
+log "mock certification — commerce-core eligibility consumer 8/8 via the pinned suite (must pass)"
+capture certify-mocks pass node scripts/certify-mocks.mjs
+
 log "gate: one-assignment-authority — single-authority lease set (must pass)"
 capture one-assignment-authority-positive pass node scripts/gates/one-assignment-authority.mjs gates/fixtures/leases.single-authority.json
 

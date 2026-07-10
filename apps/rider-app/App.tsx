@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { seraTheme as theme } from '@platform/ui-tokens';
 import { SANDBOX_ASSIGNMENT, type AssignmentView } from './src/sandbox-assignment';
+import { CONNECTIVITY, POLICY_CHECK_IDS, nextAfterEvidence, type CustodyStep, type PolicyCheckId } from './src/custody-flow';
 import { t } from './src/i18n';
 
 /**
@@ -23,6 +24,9 @@ type ShiftView = 'off' | 'pending' | 'on';
 export default function App() {
   const [shift, setShift] = useState<ShiftView>('off');
   const [assignment, setAssignment] = useState<AssignmentView | null>(SANDBOX_ASSIGNMENT);
+  const [step, setStep] = useState<CustodyStep>('verify');
+  const [checks, setChecks] = useState<Partial<Record<PolicyCheckId, boolean>>>({});
+  const allChecked = POLICY_CHECK_IDS.every((id) => checks[id] === true);
 
   const shiftStatus = shift === 'on' ? t('shift.on') : shift === 'pending' ? t('shift.pending') : t('shift.off');
   const shiftAction = shift === 'off' ? t('shift.start_action') : t('shift.end_action');
@@ -81,6 +85,81 @@ export default function App() {
             </>
           )}
         </View>
+
+        {/* WO-1.3 custody flow — verification checklist (policy-driven) →
+            refuse/accept → seal → evidence → drop code (LAST). */}
+        {step === 'verify' && (
+          <View style={styles.card}>
+            <Text style={styles.assignmentTitle}>{t('verify.title')}</Text>
+            {POLICY_CHECK_IDS.map((id) => (
+              <Pressable key={id} style={styles.checkRow} onPress={() => setChecks({ ...checks, [id]: !checks[id] })}>
+                <Text style={checks[id] ? styles.checkOn : styles.checkOff}>{t(`check.${id}`)}</Text>
+              </Pressable>
+            ))}
+            <Pressable
+              style={allChecked ? styles.primaryAction : styles.primaryActionDisabled}
+              disabled={!allChecked}
+              onPress={() => setStep('seal')}
+            >
+              <Text style={styles.primaryActionText}>{t('verify.accept_action')}</Text>
+            </Pressable>
+            <Pressable style={styles.quietAction} onPress={() => setStep('refused')}>
+              <Text style={styles.quietActionText}>{t('verify.refuse_action')}</Text>
+            </Pressable>
+          </View>
+        )}
+
+        {step === 'refused' && (
+          <View style={styles.card}>
+            {/* The refusal path is as dignified as the purchase path: calm
+                money-register — what happened, what happens next. */}
+            <Text style={styles.assignmentTitle}>{t('refuse.status')}</Text>
+            <Text style={styles.statusLine}>{t('refuse.next')}</Text>
+          </View>
+        )}
+
+        {step === 'seal' && (
+          <View style={styles.card}>
+            <Text style={styles.assignmentTitle}>{t('seal.title')}</Text>
+            <Pressable style={styles.primaryAction} onPress={() => setStep('evidence')}>
+              <Text style={styles.primaryActionText}>{t('seal.action')}</Text>
+            </Pressable>
+          </View>
+        )}
+
+        {step === 'evidence' && (
+          <View style={styles.card}>
+            <Text style={styles.assignmentTitle}>{t('evidence.title')}</Text>
+            <Pressable style={styles.primaryAction} onPress={() => setStep(nextAfterEvidence(CONNECTIVITY))}>
+              <Text style={styles.primaryActionText}>{t('evidence.action')}</Text>
+            </Pressable>
+          </View>
+        )}
+
+        {step === 'evidence_pending' && (
+          <View style={styles.card}>
+            {/* Offline law: the photo is queued = pending; the drop step is
+                LOCKED — finality never happens offline. */}
+            <Text style={styles.statusLine}>{t('evidence.pending')}</Text>
+          </View>
+        )}
+
+        {step === 'drop' && (
+          <View style={styles.card}>
+            <Text style={styles.assignmentTitle}>{t('drop.title')}</Text>
+            <Text style={styles.statusLine}>{t('drop.hint')}</Text>
+            <Pressable style={styles.primaryAction} onPress={() => setStep('delivered')}>
+              <Text style={styles.primaryActionText}>{t('drop.action')}</Text>
+            </Pressable>
+          </View>
+        )}
+
+        {step === 'delivered' && (
+          <View style={styles.card}>
+            <Text style={styles.assignmentTitle}>{t('delivered.status')}</Text>
+            <Text style={styles.statusLine}>{t('delivered.next')}</Text>
+          </View>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -155,6 +234,42 @@ const styles = StyleSheet.create({
   },
   primaryActionText: {
     color: theme.colors.surface,
+    fontSize: theme.typeScale.bodyLarge.size,
+    lineHeight: theme.typeScale.bodyLarge.lineHeight,
+  },
+  primaryActionDisabled: {
+    minHeight: 44,
+    borderRadius: theme.radius.lg,
+    backgroundColor: theme.colors.inkMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: theme.spacing.xl,
+    opacity: 0.5,
+  },
+  quietAction: {
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quietActionText: {
+    color: theme.colors.inkMuted,
+    fontSize: theme.typeScale.bodyLarge.size,
+    lineHeight: theme.typeScale.bodyLarge.lineHeight,
+  },
+  checkRow: {
+    minHeight: 44,
+    justifyContent: 'center',
+    borderBottomColor: theme.colors.line,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  checkOn: {
+    color: theme.colors.primary,
+    fontSize: theme.typeScale.bodyLarge.size,
+    lineHeight: theme.typeScale.bodyLarge.lineHeight,
+    fontWeight: '600',
+  },
+  checkOff: {
+    color: theme.colors.inkMuted,
     fontSize: theme.typeScale.bodyLarge.size,
     lineHeight: theme.typeScale.bodyLarge.lineHeight,
   },
