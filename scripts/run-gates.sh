@@ -106,6 +106,33 @@ capture offline-never-final-positive pass node scripts/gates/offline-never-final
 log "gate: offline-never-final — NEGATIVE FIXTURE (queued-offline evidence seeking finality, must REFUSE CLOSED)"
 capture offline-never-final-negative fail node scripts/gates/offline-never-final.mjs gates/fixtures/negative/evidence.queued-offline-finality.json
 
+log "gate: outcome-family — door refusal yields a canonical DeliveryOutcome (must pass)"
+capture outcome-family-positive pass node scripts/gates/outcome-family.mjs gates/fixtures/outcome.retry-canonical.json
+
+log "gate: outcome-family — NEGATIVE FIXTURE (reason outside the taxonomy, must REFUSE CLOSED)"
+capture outcome-family-taxonomy-negative fail node scripts/gates/outcome-family.mjs gates/fixtures/negative/outcome.reason-outside-taxonomy.json
+
+log "gate: outcome-family — NEGATIVE FIXTURE (generic 'failed' family, must refuse at parse)"
+capture outcome-family-failed-negative fail node scripts/gates/outcome-family.mjs gates/fixtures/negative/outcome.generic-failed.json
+
+log "gate: two-key-return — seller + rider keys, both-or-neither (must pass)"
+capture two-key-return-positive pass node scripts/gates/two-key-return.mjs gates/fixtures/return.two-keys.json
+
+log "gate: two-key-return — NEGATIVE FIXTURE (single/wrong key, must REFUSE and burn nothing)"
+capture two-key-return-negative fail node scripts/gates/two-key-return.mjs gates/fixtures/negative/return.single-key.json
+
+log "gate: package-never-unowned — end-shift-with-custody exception flow (must pass)"
+capture package-never-unowned-positive pass node scripts/gates/package-never-unowned.mjs gates/fixtures/shift.end-with-exception.json
+
+log "gate: package-never-unowned — NEGATIVE FIXTURE (orphaned custody end-shift, must REFUSE CLOSED)"
+capture package-never-unowned-negative fail node scripts/gates/package-never-unowned.mjs gates/fixtures/negative/shift.orphaned-custody.json
+
+log "gate: offline-flush-binding — queue drains ONLY through the server_confirmed binding path (must pass)"
+capture offline-flush-binding-positive pass node scripts/gates/offline-flush-binding.mjs
+
+log "gate: offline-flush-binding — NEGATIVE FIXTURE (planted direct-drain bypass, must be caught)"
+capture offline-flush-binding-negative fail node scripts/gates/offline-flush-binding.mjs gates/fixtures/negative/offline-flush-bypass
+
 log "mock certification — commerce-core eligibility consumer 8/8 via the pinned suite (must pass)"
 capture certify-mocks pass node scripts/certify-mocks.mjs
 

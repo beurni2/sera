@@ -18,7 +18,13 @@ test('the console shell boots on the sera theme with catalog strings', async ({ 
   await expect(brand).toHaveCSS('color', hexToRgb(theme.colors.primary));
 
   await expect(page.locator('body')).toHaveCSS('background-color', hexToRgb(theme.colors.surface));
-  await expect(page.locator('h2')).toHaveText('Prêt à assigner');
+  // WO-2.2: two sections — the ready queue and the follow-up (dwell D20 +
+  // outcome timeline on the canonical families).
+  await expect(page.locator('h2')).toHaveCount(2);
+  await expect(page.locator('h2').first()).toHaveText('Prêt à assigner');
+  await expect(page.locator('h2').nth(1)).toHaveText('Suivi des colis');
+  await expect(page.getByText('Temps de contrôle au ramassage : 165 s — Dans la cible')).toBeVisible();
+  await expect(page.getByText('12:18 · Retour au vendeur · Argent pas prêt')).toBeVisible();
   // D7 staffed-hours default — copy only.
   await expect(page.locator('.hours-note')).toHaveText('Service en journée.');
 });
@@ -39,6 +45,6 @@ test('WO-1.2 manual assignment: landmark-first task card → « Donner la course
 
   // The task leaves the queue; the console shows the honest waiting state —
   // acknowledged is a RIDER action, never implied by assignment itself.
-  await expect(page.locator('.status-line')).toHaveText("En attente de l'accord du livreur.");
+  await expect(page.locator('#queue-body .status-line')).toHaveText("En attente de l'accord du livreur.");
   await expect(page.locator('.task-card')).toHaveCount(0);
 });

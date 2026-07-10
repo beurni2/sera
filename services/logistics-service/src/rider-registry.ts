@@ -45,12 +45,37 @@ export type ShiftOutcome =
         | 'privacy_notice_not_acknowledged'
         | 'already_on_shift'
         | 'not_on_shift'
-        | 'nothing_pending';
+        | 'nothing_pending'
+        | 'custody_would_be_orphaned';
     };
+
+/**
+ * SE3.2 end-shift-with-custody exception (WO-2.2): a rider holding custody
+ * may end shift ONLY with an explicit dispatcher acknowledgment AND the
+ * package's next owner named — "package never unowned" is enforced HERE, at
+ * the store where shift state changes.
+ */
+export interface EndShiftCustodyDeclaration {
+  /** Package ids this rider is CURRENT custodian of (from the custody store). */
+  heldPackageIds: readonly string[];
+  exception?: {
+    dispatcherAckId: string;
+    nextOwner: { kind: 'return_to_hub_task' | 'reassignment'; ref: string };
+  };
+}
 
 export class RiderRegistry {
   private readonly riders = new Map<string, RiderRecord>();
   private readonly shifts = new Map<string, ShiftState>();
+  /** SE3.2 exception log — every custody-holding end-shift names its
+   * dispatcher ack and the package's next owner (audit evidence). */
+  private readonly custodyExceptions: {
+    riderId: string;
+    at: string;
+    packageIds: string[];
+    dispatcherAckId: string;
+    nextOwner: { kind: 'return_to_hub_task' | 'reassignment'; ref: string };
+  }[] = [];
 
   register(record: RiderRecord): void {
     this.riders.set(record.riderId, record);
@@ -104,7 +129,33 @@ export class RiderRegistry {
     return { ok: true, state: next, pending: false };
   }
 
-  endShift(riderId: string, at: string, confirmation: ShiftCommandConfirmation): ShiftOutcome {
+  endShift(
+    riderId: string,
+    at: string,
+    confirmation: ShiftCommandConfirmation,
+    custody: EndShiftCustodyDeclaration,
+  ): ShiftOutcome {
+    // SE3.2: ending a shift while holding custody REQUIRES the exception —
+    // dispatcher ack + a named next owner. Without it: refused closed, the
+    // package is never orphaned. (The declaration is a required argument so
+    // no caller can forget to ask the custody store.)
+    if (custody.heldPackageIds.length > 0) {
+      const exception = custody.exception;
+      if (
+        exception === undefined ||
+        exception.dispatcherAckId.length === 0 ||
+        exception.nextOwner.ref.length === 0
+      ) {
+        return { ok: false, reason: 'custody_would_be_orphaned' };
+      }
+      this.custodyExceptions.push({
+        riderId,
+        at,
+        packageIds: [...custody.heldPackageIds],
+        dispatcherAckId: exception.dispatcherAckId,
+        nextOwner: { ...exception.nextOwner },
+      });
+    }
     const current = this.shift(riderId);
     if (current.status === 'shift_start_pending') {
       // Dropping a pending start is clean — nothing was ever live.
@@ -122,6 +173,16 @@ export class RiderRegistry {
         : { status: 'shift_end_pending', queuedAt: at, startedAt };
     this.shifts.set(riderId, next);
     return { ok: true, state: next, pending: next.status === 'shift_end_pending' };
+  }
+
+  custodyExceptionLog(): readonly {
+    riderId: string;
+    at: string;
+    packageIds: string[];
+    dispatcherAckId: string;
+    nextOwner: { kind: 'return_to_hub_task' | 'reassignment'; ref: string };
+  }[] {
+    return [...this.custodyExceptions];
   }
 
   /**

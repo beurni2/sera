@@ -1,0 +1,8 @@
+{
+  "mode": "shape",
+  "outcome": {
+    "taskId": "task-1", "orderId": "order-1", "family": "failed",
+    "reasonCode": "honest_absence", "humanReasonRef": "reason.honest_absence",
+    "faultClass": "buyer", "attempt": { "number": 1, "at": "2026-07-10T12:00:00.000Z" }
+  }
+}

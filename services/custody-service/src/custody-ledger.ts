@@ -61,6 +61,13 @@ export class CustodyLedger {
   private readonly custodianByPackage = new Map<string, string>();
 
   append(body: LedgerEntryBody): AppendOutcome {
+    // WO-2.2 NB⑤ (the WO-2.1 verifier's write-side finding): the store owns
+    // its bytes on write as it does on read — deep-copy the body BEFORE
+    // hashing and storing, so a caller mutating the object it passed in
+    // after append cannot poison the committed entry. (Copied, not frozen:
+    // internal entries stay plain so the tamper-simulation paths in tests
+    // and the ledger gate remain expressible.)
+    body = structuredClone(body);
     if (body.kind === 'custody_transition') {
       const from = body.payload['from'];
       const to = body.payload['to'];

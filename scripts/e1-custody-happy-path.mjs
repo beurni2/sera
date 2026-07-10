@@ -11,9 +11,13 @@ const SHA = 'a3f5c9d21e8b47061234567890abcdef1234567890abcdef1234567890abcdef';
 const CHAIN = { order_id: 'order-e1-0001', task_id: 'task-e1-0001', package_id: 'pkg-e1-0001', correlation_id: 'corr-e1-0001' };
 
 const spine = new CustodySpine(CHAIN, 'supplier-e1');
-spine.secrets.register('pickup_verification_code', CHAIN.order_id, 'pvc-4711');
-spine.secrets.register('custody_seal', CHAIN.order_id, 'seal-e1-0001');
-spine.secrets.register('buyer_drop_code', CHAIN.order_id, 'drop-9042');
+const arm = (kind, orderId, secret) => {
+  const armed = spine.secrets.register(kind, orderId, secret);
+  if (!armed.ok) { console.error(`harness: arming ${kind} refused`); process.exit(2); }
+};
+arm('pickup_verification_code', CHAIN.order_id, 'pvc-4711');
+arm('custody_seal', CHAIN.order_id, 'seal-e1-0001');
+arm('buyer_drop_code', CHAIN.order_id, 'drop-9042');
 spine.establishSellerCustody(T);
 
 // Step 11 — verification (policy v1, all checks pass, dwell recorded) + seal + custody.
