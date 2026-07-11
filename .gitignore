@@ -5,3 +5,7 @@ _evidence/
 *.tsbuildinfo
 .expo/
 test-results/
+
+# WO-4.0d rider: dotenv files never committed
+.env
+.env.*

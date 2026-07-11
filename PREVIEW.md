@@ -38,7 +38,6 @@ scanner.) **Android reste la vérité produit** : l'appareil de référence, les
 budgets de performance et la cible de déploiement ne changent pas — l'aperçu
 iOS existe uniquement pour la revue sur le téléphone du fondateur.
 
-
 ## Note locale (cache Metro)
 
 Après avoir changé de profil (variable `EXPO_PUBLIC_PROFILE`), relancez avec

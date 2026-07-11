@@ -2,7 +2,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 /**
- * Shared scanner for the WO-B0.1 architectural gates. Each gate names banned
+ * Shared scanner for the WO-SE0.1 architectural gates. Each gate names banned
  * patterns and the roots it scans; a hit fails the build.
  *
  * Default scan roots are the PRODUCT code: apps/, services/, packages/.
