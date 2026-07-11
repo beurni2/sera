@@ -199,6 +199,12 @@ capture four-secrets-positive pass node scripts/gates/no-drop-code-in-seller-evi
 log "gate: four-secrets separation — NEGATIVE FIXTURE (buyerDropCode in readiness evidence, must fail)"
 capture four-secrets-negative fail node scripts/gates/no-drop-code-in-seller-evidence.mjs gates/fixtures/negative/readiness-evidence.with-drop-code.json
 
+log "gate: no-expo-token-leak — repo source + workflows + lockfile (must pass)"
+capture no-expo-token-leak-positive pass node scripts/gates/no-expo-token-leak.mjs
+
+log "gate: no-expo-token-leak — NEGATIVE FIXTURE (committed token literal, must fail)"
+capture no-expo-token-leak-negative fail node scripts/gates/no-expo-token-leak.mjs gates/fixtures/negative/no-expo-token-leak
+
 log "gate: single-level — repo source (must pass)"
 capture single-level-positive pass node scripts/gates/single-level.mjs
 

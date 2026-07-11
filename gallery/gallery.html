@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="fr">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Séra — console de dispatch — galerie d'aperçu</title>
+<style>
+  body { margin: 0; font-family: system-ui, sans-serif; background: #FAF7F2; color: #221F1A; padding: 16px; }
+  h1 { font-size: 22px; } h2 { font-size: 17px; margin: 28px 0 10px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+  .card { margin: 0; background: #fff; border: 1px solid #E4DDD3; border-radius: 12px; overflow: hidden; }
+  .card img { width: 100%; height: auto; display: block; }
+  .card figcaption { padding: 10px 12px; font-size: 14px; }
+  .card.gap { padding: 24px 12px; background: #FFF6E8; }
+  .note, .gaps { background: #fff; border: 1px solid #E4DDD3; border-radius: 12px; padding: 12px 16px; font-size: 14px; }
+</style>
+<h1>Séra — console de dispatch — galerie d'aperçu</h1>
+<p class="note">Chaque image est un état RÉELLEMENT construit, capturé automatiquement (bac à sable — aucune donnée réelle).</p>
+<section><h2>File « Prêt à assigner » et suivi</h2><div class="grid"><figure class="card"><img src="img/console-file-prete.png" alt="La file prête (repère d'abord : lieu, directions, zone) + le suivi — temps de contrôle (D20), paiement au seuil EN ATTENTE du réseau, chronologie des issues" loading="lazy"><figcaption>La file prête (repère d'abord : lieu, directions, zone) + le suivi — temps de contrôle (D20), paiement au seuil EN ATTENTE du réseau, chronologie des issues</figcaption></figure>
+<figure class="card"><img src="img/console-course-donnee.png" alt="Course donnée — l'état d'attente honnête : l'accord du livreur n'est jamais supposé" loading="lazy"><figcaption>Course donnée — l'état d'attente honnête : l'accord du livreur n'est jamais supposé</figcaption></figure>
+<figure class="card"><img src="img/console-porte-confirmee.png" alt="Paiement au seuil CONFIRMÉ par le réseau — la ligne ne s'affiche qu'après le vrai signal (chemin « Essai » du bac à sable)" loading="lazy"><figcaption>Paiement au seuil CONFIRMÉ par le réseau — la ligne ne s'affiche qu'après le vrai signal (chemin « Essai » du bac à sable)</figcaption></figure></div></section>
+<section><h2>États nommés sans écran (les manques, jamais silencieux)</h2><ul class="gaps"></ul></section>
+</html>

@@ -1,0 +1,57 @@
+name: expo-preview
+
+# WO-4.0 — the founder's window: publish-on-merge to the Expo "preview"
+# channel. The job SKIPS GRACEFULLY (with a visible annotation) while the
+# EXPO_TOKEN secret is absent; the founder adds it in repo settings to arm
+# the channel. The token is referenced ONLY as a secret via env — it appears
+# in no committed file, no echoed log line, no lockfile (scan-gated).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  publish-preview:
+    runs-on: ubuntu-latest
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+    steps:
+      - name: Check EXPO_TOKEN presence (skip gracefully when absent)
+        id: token
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "::notice title=Aperçu Expo non publié::Le secret EXPO_TOKEN n'est pas configuré — l'ajouter dans Settings → Secrets pour armer la publication automatique (voir PREVIEW.md)."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.token.outputs.present == 'true'
+      - uses: pnpm/action-setup@v4
+        if: steps.token.outputs.present == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.token.outputs.present == 'true'
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Authorize read access to platform-contracts (CI-only)
+        if: steps.token.outputs.present == 'true'
+        run: |
+          git config --global url."https://x-access-token:${{ secrets.PLATFORM_CONTRACTS_READ_TOKEN }}@github.com/beurni2/platform-contracts".insteadOf "https://github.com/beurni2/platform-contracts"
+          git config --global --add url."https://x-access-token:${{ secrets.PLATFORM_CONTRACTS_READ_TOKEN }}@github.com/beurni2/platform-contracts".insteadOf "ssh://git@github.com/beurni2/platform-contracts"
+          git config --global --add url."https://x-access-token:${{ secrets.PLATFORM_CONTRACTS_READ_TOKEN }}@github.com/beurni2/platform-contracts".insteadOf "git@github.com:beurni2/platform-contracts"
+      - run: pnpm install --frozen-lockfile
+        if: steps.token.outputs.present == 'true'
+      - name: Publish rider-app preview update (EAS, non-interactive)
+        if: steps.token.outputs.present == 'true'
+        working-directory: apps/rider-app
+        # The documented non-interactive chain: init links/creates the
+        # project under the token's account on first run; update:configure
+        # writes the runtime/update config into the CI workspace only
+        # (ephemeral — never committed); update publishes to the preview
+        # channel. First REAL publish is founder-verified on his phone.
+        run: |
+          npx eas-cli@latest init --non-interactive --force
+          npx eas-cli@latest update:configure --non-interactive
+          npx eas-cli@latest update --channel preview --non-interactive --auto --message "main@${GITHUB_SHA}"

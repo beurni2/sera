@@ -1,0 +1,4 @@
+# NEGATIVE FIXTURE (WO-4.0): a committed token literal — the gate MUST fail here.
+env:
+  EXPO_TOKEN: "abcdef1234567890abcdef"
+other: expo_pat_AbCdEf123456_planted

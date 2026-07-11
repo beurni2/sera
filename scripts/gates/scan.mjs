@@ -17,6 +17,17 @@ const EXCLUDED_DIRS = new Set(['node_modules', 'dist', '.turbo', '.expo', '.git'
 const SCANNED_EXTENSIONS = /\.(ts|tsx|js|jsx|mjs|cjs|json|sql|ya?ml)$/;
 
 export function* walkFiles(root) {
+  // WO-4.0: a root may be a single FILE (e.g. the lockfile) — scan it
+  // directly; extension-gating still applies below for directory walks,
+  // while an explicit file root is always scanned.
+  try {
+    if (statSync(root).isFile()) {
+      yield root;
+      return;
+    }
+  } catch {
+    return;
+  }
   let entries;
   try {
     entries = readdirSync(root, { withFileTypes: true });
