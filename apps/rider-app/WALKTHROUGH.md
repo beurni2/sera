@@ -29,8 +29,8 @@ les noms portent « (démo) » — ces données ne peuvent jamais passer pour du
    En dessous, discret et digne : « Je refuse le colis ».
    *Test 5 secondes : je vérifie tout, puis j'accepte — ou je refuse, sans drame.*
 4. **Poser le scellé.** Une action : « Scellé posé ». À partir d'ici la
-   garde commence — et « ← Retour » ne revient plus en arrière dans la
-   course : il ramène à la liste, la course garde son état exact.
+   garde commence. (Dans toute la course, « ← Retour » ramène à la liste ;
+   la course garde son état exact — voir §6.)
    *Test 5 secondes : je scelle, le colis est sous ma garde.*
 5. **Photo de remise.** « Prendre la photo ». La preuve accompagne, elle ne
    libère jamais rien.
@@ -104,10 +104,10 @@ et choisissez « Je refuse le colis ».
 
 ## 6. « ← Retour » et « Recommencer la démo »
 
-- Avant le scellé, « ← Retour » revient d'un écran, normalement.
-- Du scellé au code du client, revenir en arrière mentirait sur la garde :
-  « ← Retour » ramène donc à la liste des courses, et la course garde son
-  état exact — on la rouvre là où la garde en est vraiment.
+- Dans une course, une seule règle, partout la même : « ← Retour » ramène à
+  la liste des courses, et la course garde son état exact — on la rouvre là
+  où elle en est vraiment. Revenir écran par écran mentirait sur la garde.
+- Hors d'une course (la liste), « ← Retour » revient à l'accueil.
 - « Recommencer la démo » remet le monde et la pile à zéro, d'un geste.
 
 ## Ce qui est volontairement absent

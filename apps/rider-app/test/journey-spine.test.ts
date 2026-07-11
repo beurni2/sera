@@ -8,7 +8,7 @@ import {
   stepAfterInspection,
   stepAfterWindowExpiry,
 } from '../src/custody-flow.js';
-import { COURSE_OPEN_STEPS, JOURNEY, SEALED_BACK_STEPS, START, type Screen } from '../src/journey.js';
+import { COURSE_BACK_STEPS, COURSE_OPEN_STEPS, JOURNEY, START, type Screen } from '../src/journey.js';
 
 /**
  * WO-4.1 spine coverage: the walkable-world promise as assertions. Every
@@ -85,19 +85,19 @@ describe('rider journey spine', () => {
     expect(dropSources.sort()).toEqual(['courses', 'door_inspection', 'payment_wait']);
   });
 
-  it('mid-custody « Retour » returns to the course list with state kept — sealed steps never pop', () => {
-    expect([...SEALED_BACK_STEPS].sort()).toEqual([
-      'door_inspection',
-      'drop',
-      'evidence',
-      'evidence_pending',
-      'payment_wait',
-    ]);
+  it('in-course « Retour » returns to the course list with state kept — NO course screen ever pops', () => {
+    // The verifier's blocking finding: any in-course pop can re-show a
+    // stale screen (dead primary action; mid-ladder it re-shows the drop
+    // screen). The rule covers EVERY course screen — exactly the journey
+    // minus the two non-course screens — so a stale pop cannot exist.
+    expect([...COURSE_BACK_STEPS].sort()).toEqual(
+      screens.filter((s) => s !== 'service' && s !== 'courses').sort(),
+    );
     const source = readFileSync(join(import.meta.dirname, '..', 'App.tsx'), 'utf8');
-    expect(source).toMatch(/SEALED_BACK_STEPS\.includes\(stack\[stack\.length - 1\] \?\? START\)/);
+    expect(source).toMatch(/COURSE_BACK_STEPS\.includes\(stack\[stack\.length - 1\] \?\? START\)/);
     expect(source).toMatch(/setStack\(\[START, 'courses'\]\)/);
     // every step a course can be saved at reopens from the list, by edge
-    for (const s of SEALED_BACK_STEPS) expect(COURSE_OPEN_STEPS).toContain(s);
+    for (const s of COURSE_OPEN_STEPS) expect(COURSE_BACK_STEPS).toContain(s);
     for (const s of COURSE_OPEN_STEPS) expect(JOURNEY.courses).toContain(s);
   });
 });

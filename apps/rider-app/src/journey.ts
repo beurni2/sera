@@ -36,8 +36,8 @@ const uniq = (steps: readonly CustodyStep[]): readonly CustodyStep[] => [...new 
 
 /**
  * Where a course card may open a course: seed entry steps plus every step
- * the mid-custody « Retour » can deposit a course at (state kept — see
- * SEALED_BACK_STEPS). Closed courses never reopen; their card is not
+ * the in-course « Retour » can deposit a course at (state kept — see
+ * COURSE_BACK_STEPS). Closed courses never reopen; their card is not
  * pressable.
  */
 export const COURSE_OPEN_STEPS: readonly Screen[] = [
@@ -55,20 +55,6 @@ export const COURSE_OPEN_STEPS: readonly Screen[] = [
   'retour_colis',
 ];
 
-/**
- * WO-4.1 back-navigation choice (journaled): once the seal is posed, popping
- * the stack would re-show a pre-seal or pre-payment screen — a lie about
- * custody. On these screens « Retour » returns to the course list instead,
- * and the course keeps its exact step; reopening it resumes where custody
- * truly stands.
- */
-export const SEALED_BACK_STEPS: readonly Screen[] = [
-  'evidence',
-  'evidence_pending',
-  'door_inspection',
-  'payment_wait',
-  'drop',
-];
 
 /** Forward edges only — « Retour » pops the stack (or, mid-custody, returns
  * to the course list) and is always available. */
@@ -113,3 +99,18 @@ export const JOURNEY: Record<Screen, readonly Screen[]> = {
   reschedule_planned: ['courses'],
   retour_colis: ['courses'],
 };
+
+/**
+ * WO-4.1 back-navigation rule (widened after the verifier's blocking
+ * finding — it originally covered only the five sealed steps): a course's
+ * truth lives in `course.step`, so popping the stack ANYWHERE inside a
+ * course can re-show a screen whose actions are stale — the store refuses
+ * the move (custody stays safe) but the rider hits a dead button, and
+ * mid-ladder the pop re-shows the drop screen: a lie about custody. One
+ * uniform rule instead: inside a course, « Retour » returns to the course
+ * list; the course keeps its exact step and reopening it resumes where
+ * custody truly stands. Pops remain only outside courses.
+ */
+export const COURSE_BACK_STEPS: readonly Screen[] = (Object.keys(JOURNEY) as Screen[]).filter(
+  (s) => s !== 'service' && s !== 'courses',
+);

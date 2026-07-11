@@ -10,7 +10,7 @@ import {
 } from './src/custody-flow';
 import { IS_PREVIEW } from './src/preview';
 import { t } from './src/i18n';
-import { JOURNEY, SEALED_BACK_STEPS, START, type Screen } from './src/journey';
+import { COURSE_BACK_STEPS, JOURNEY, START, type Screen } from './src/journey';
 import {
   acceptInspection,
   acknowledgeCourse,
@@ -87,11 +87,13 @@ export default function App() {
     setStack((s) => [...s, next]);
   }, [stack]);
   const back = useCallback(() => {
-    // WO-4.1 choice (journaled): once the seal is posed, popping the stack
-    // would re-show a pre-seal or pre-payment screen — a lie about custody.
-    // Mid-custody « Retour » goes to the course list instead; the course
-    // keeps its exact step and reopens where custody truly stands.
-    if (SEALED_BACK_STEPS.includes(stack[stack.length - 1] ?? START)) {
+    // WO-4.1 rule (journaled; widened after the verifier's blocking
+    // finding): a course's truth lives in course.step, so popping inside a
+    // course can re-show a stale screen — dead buttons at best, a drop
+    // screen mid-refusal-ladder at worst. Inside a course « Retour » goes
+    // to the course list; the course keeps its exact step and reopens
+    // where custody truly stands. Pops remain only outside courses.
+    if (COURSE_BACK_STEPS.includes(stack[stack.length - 1] ?? START)) {
       setStack([START, 'courses']);
       return;
     }
