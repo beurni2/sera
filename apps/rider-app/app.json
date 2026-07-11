@@ -7,7 +7,8 @@
     "userInterfaceStyle": "light",
     "backgroundColor": "#FAF7F2",
     "platforms": [
-      "android"
+      "android",
+      "ios"
     ],
     "android": {
       "package": "bf.sera.rider"
