@@ -23,6 +23,11 @@ mkdirSync(imgDir, { recursive: true });
 for (const group of manifest.groups) {
   for (const state of group.states) {
     test(`gallery: ${state.id}`, async ({ page }) => {
+      // Clock-driven states (the ack-deadline requeue) need the mocked clock
+      // installed BEFORE the page scripts start their interval timers.
+      if (state.actions.some((a) => a.startsWith('clock-'))) {
+        await page.clock.install();
+      }
       await page.goto('/');
       for (const action of state.actions) {
         if (action === 'assign') {
@@ -30,6 +35,8 @@ for (const group of manifest.groups) {
           await page.locator('button.assign').click();
         } else if (action === 'door-demo') {
           await page.locator('button.door-demo').click();
+        } else if (action === 'clock-6min') {
+          await page.clock.fastForward('06:00');
         } else {
           throw new Error(`unknown gallery action: ${action}`);
         }

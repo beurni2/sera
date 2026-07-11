@@ -1,4 +1,4 @@
-# Aperçu Boutik+ dans Expo Go (bac à sable)
+# Aperçu Séra dans Expo Go (bac à sable)
 
 Cette page explique comment ouvrir l'application livreur **Séra** sur votre
 téléphone, en mode **aperçu**. Un aperçu est un **bac à sable** : rien n'y est réel —
@@ -31,6 +31,12 @@ SDK 53 n'a **pas pu être vérifiée** depuis cet environnement. Si Expo Go refu
 l'aperçu : sur Android, une version d'Expo Go correspondant au SDK 53 peut être installée
 depuis expo.dev/go (choisir la version du SDK). La mise à niveau du SDK est prévue comme
 sa propre étape de travail (WO-4.0b) — elle n'a pas été forcée ici.
+
+## Note locale (cache Metro)
+
+Après avoir changé de profil (variable `EXPO_PUBLIC_PROFILE`), relancez avec
+`npx expo start --clear` : le cache de Metro ne se rafraîchit pas tout seul
+quand une variable inline change.
 
 ## Ce que « bac à sable » veut dire ici
 

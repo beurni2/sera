@@ -2,7 +2,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 /**
- * Shared scanner for the E0 architectural gates. Each gate names banned
+ * Shared scanner for the WO-B0.1 architectural gates. Each gate names banned
  * patterns and the roots it scans; a hit fails the build.
  *
  * Default scan roots are the PRODUCT code: apps/, services/, packages/.
@@ -16,7 +16,7 @@ export const DEFAULT_ROOTS = ['apps', 'services', 'packages'];
 const EXCLUDED_DIRS = new Set(['node_modules', 'dist', '.turbo', '.expo', '.git', 'coverage']);
 const SCANNED_EXTENSIONS = /\.(ts|tsx|js|jsx|mjs|cjs|json|sql|ya?ml)$/;
 
-export function* walkFiles(root) {
+export function* walkFiles(root, extensions = SCANNED_EXTENSIONS) {
   // WO-4.0: a root may be a single FILE (e.g. the lockfile) — scan it
   // directly; extension-gating still applies below for directory walks,
   // while an explicit file root is always scanned.
@@ -37,8 +37,8 @@ export function* walkFiles(root) {
   for (const entry of entries) {
     const path = join(root, entry.name);
     if (entry.isDirectory()) {
-      if (!EXCLUDED_DIRS.has(entry.name)) yield* walkFiles(path);
-    } else if (entry.isFile() && SCANNED_EXTENSIONS.test(entry.name)) {
+      if (!EXCLUDED_DIRS.has(entry.name)) yield* walkFiles(path, extensions);
+    } else if (entry.isFile() && extensions.test(entry.name)) {
       yield path;
     }
   }
@@ -47,7 +47,7 @@ export function* walkFiles(root) {
 /**
  * Scan roots for banned patterns. Returns hits as {file, line, lineNo, pattern}.
  */
-export function scanForPatterns(roots, patterns) {
+export function scanForPatterns(roots, patterns, extensions = SCANNED_EXTENSIONS) {
   const hits = [];
   for (const root of roots) {
     try {
@@ -55,7 +55,7 @@ export function scanForPatterns(roots, patterns) {
     } catch {
       continue;
     }
-    for (const file of walkFiles(root)) {
+    for (const file of walkFiles(root, extensions)) {
       const text = readFileSync(file, 'utf8');
       const lines = text.split('\n');
       lines.forEach((line, i) => {
@@ -71,7 +71,7 @@ export function scanForPatterns(roots, patterns) {
 }
 
 /** Count scannable files under the roots (a scan of nothing proves nothing). */
-export function countScannedFiles(roots) {
+export function countScannedFiles(roots, extensions = SCANNED_EXTENSIONS) {
   let count = 0;
   for (const root of roots) {
     try {
@@ -79,7 +79,7 @@ export function countScannedFiles(roots) {
     } catch {
       continue;
     }
-    for (const _ of walkFiles(root)) count += 1;
+    for (const _ of walkFiles(root, extensions)) count += 1;
   }
   return count;
 }
@@ -89,14 +89,14 @@ export function countScannedFiles(roots) {
  * zero files were scanned — a deleted/renamed target must read as "gate
  * could not run", never as a pass (verifier finding, 2026-07-09).
  */
-export function runScanGate({ gateName, invariant, patterns, defaultRoots = DEFAULT_ROOTS }) {
+export function runScanGate({ gateName, invariant, patterns, defaultRoots = DEFAULT_ROOTS, scanExtensions = SCANNED_EXTENSIONS }) {
   const args = process.argv.slice(2);
   const roots = args.length > 0 ? args : defaultRoots;
-  if (countScannedFiles(roots) === 0) {
+  if (countScannedFiles(roots, scanExtensions) === 0) {
     console.error(`${gateName} ERROR — no scannable files under ${roots.join(', ')}; refusing to pass on an empty scan`);
     process.exit(2);
   }
-  const hits = scanForPatterns(roots, patterns);
+  const hits = scanForPatterns(roots, patterns, scanExtensions);
   if (hits.length === 0) {
     console.log(`${gateName} OK — no banned pattern in ${roots.join(', ')} (${invariant})`);
     process.exit(0);

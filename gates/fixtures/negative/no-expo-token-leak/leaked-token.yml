@@ -2,3 +2,5 @@
 env:
   EXPO_TOKEN: "abcdef1234567890abcdef"
 other: expo_pat_AbCdEf123456_planted
+quotedKeyYaml:
+  "EXPO_TOKEN": plantedYamlQuoted123
