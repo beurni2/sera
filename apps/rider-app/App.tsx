@@ -36,7 +36,9 @@ export default function App() {
 
   return (
     <SafeAreaView style={styles.screen}>
-      <StatusBar style="dark" backgroundColor={theme.colors.surface} />
+      {/* SDK 57: StatusBarProps dropped backgroundColor (edge-to-edge is
+          mandatory) — the screen surface shows through; style stays dark. */}
+      <StatusBar style="dark" />
       {IS_PREVIEW && (
         <View style={styles.previewBanner}>
           <Text style={styles.previewBannerText}>{t('preview.banner')}</Text>
