@@ -384,6 +384,18 @@
     "screenClass": "general"
   },
   {
+    "key": "nav.tab_service",
+    "fr": "Service",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "nav.tab_courses",
+    "fr": "Courses",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
     "key": "demo.donnees",
     "fr": "Données d'essai",
     "register": "neutral",
