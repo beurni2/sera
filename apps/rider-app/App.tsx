@@ -28,23 +28,42 @@ import {
   reportProblem,
   retryDelivery,
   validateDropCode,
+  type CourseKind,
   type CourseStep,
   type DemoCourse,
   type DemoWorld,
 } from './src/demo/store';
+import {
+  AppHeader,
+  Card,
+  CheckRow,
+  DangerButton,
+  EmptyState,
+  GhostButton,
+  LandmarkCard,
+  ListRow,
+  Overline,
+  PendingNotice,
+  PrimaryButton,
+  ScreenTransition,
+  SecondaryButton,
+  StatusChip,
+  TabBar,
+  WaxBand,
+  type ChipTone,
+} from './src/ui/kit';
 
 /**
- * WO-4.1 — LE MONDE NAVIGABLE. The WO-1.2/1.3/2.2/2.4 rider flows become a
- * walkable journey over src/journey.ts: prise de service → l'affectation
- * arrive (ack queued = PENDING, honest) → the FULL custody walk routed
- * through custody-flow.ts (verification checklist → refuse OR accept → seal
- * → evidence → door inspection → the Option-B provider-confirmed payment
- * wait → drop code LAST → validé), plus the seeded reschedule (2e passage,
- * lineage visible) and return (two-key) walks from the « Courses d'essai »
- * list. No new business capability: every custody move goes through the
- * demo store, which calls the custody-flow rule functions and throws on any
- * out-of-order move. Offline law unchanged: queued = pending, never done.
- * « Recommencer la démo » resets world + stack.
+ * WO-4.2R — LE VISAGE over WO-4.1's walkable custody world. Same 17
+ * screens, same edges, same TOTAL back law (course → liste → accueil, no
+ * pop arm — ratified), same custody moves through the same demo store
+ * (which calls custody-flow.ts, the rule source, and throws on any
+ * out-of-order move) — the visual layer is the kit (src/ui/kit.tsx,
+ * ui-tokens v2 seraTheme), the navigation and custody SEMANTICS are
+ * untouched. Tabs are waypoint RESETS under the ratified two-level-ladder
+ * law: Service = the root reset, Courses = the toCourses waypoint —
+ * never a new edge, never a push. Offline law unchanged: queued =
+ * pending, never done. « Recommencer la démo » resets world + stack.
  */
 
 type ShiftView = 'off' | 'pending' | 'on';
@@ -70,6 +89,38 @@ const STATUS_KEY: Record<CourseStep, string> = {
 
 const statusKeyFor = (course: DemoCourse): string =>
   course.step === 'retour_colis' && course.closed ? 'courses.statut_retour_fait' : STATUS_KEY[course.step];
+
+/** Chip tones mirror the honest status — never a fake green, never a shame red. */
+const STATUS_TONE: Record<CourseStep, ChipTone> = {
+  affectation: 'info',
+  verify: 'info',
+  seal: 'info',
+  refused: 'muted',
+  evidence: 'info',
+  evidence_pending: 'warn',
+  door_inspection: 'info',
+  payment_wait: 'warn',
+  drop: 'info',
+  delivered: 'ok',
+  refusal_reason: 'warn',
+  retry_window: 'warn',
+  refused_final: 'bad',
+  reschedule_planned: 'info',
+  retour_colis: 'info',
+};
+
+const toneFor = (course: DemoCourse): ChipTone =>
+  course.step === 'retour_colis' && course.closed ? 'ok' : STATUS_TONE[course.step];
+
+/** Course glyphs by kind — icons always paired with text (the chip + title). */
+const KIND_GLYPH: Record<CourseKind, string> = {
+  livraison: '📦',
+  deuxieme_passage: '🔁',
+  retour: '↩️',
+};
+
+/** The bottom hubs (WO-4.2R): Service · Courses — waypoint resets only. */
+const HUBS: readonly Screen[] = ['service', 'courses'];
 
 export default function App() {
   const [world, setWorld] = useState<DemoWorld>(() => createDemoWorld());
@@ -134,96 +185,109 @@ export default function App() {
   const shiftStatus = shift === 'on' ? t('shift.on') : shift === 'pending' ? t('shift.pending') : t('shift.off');
   const shiftAction = shift === 'off' ? t('shift.start_action') : t('shift.end_action');
 
+  const headerTitle =
+    screen === 'service'
+      ? t('app.title')
+      : screen === 'courses'
+        ? t('courses.title')
+        : active !== null
+          ? active.name
+          : t('app.title');
+
   return (
     <SafeAreaView style={styles.screen}>
       {/* SDK 54: backgroundColor restored per the WO-4.0d-prep founder
           ruling ③ — pre-edge-to-edge Android draws a default bar; the
           surface token is the correct fill. */}
       <StatusBar style="dark" backgroundColor={theme.colors.surface} />
+      <WaxBand />
       {IS_PREVIEW && (
         <View style={styles.previewBanner}>
           <Text style={styles.previewBannerText}>{t('preview.banner')}</Text>
         </View>
       )}
 
-      <View style={styles.header}>
-        {stack.length > 1 ? (
-          <Pressable style={styles.backAction} onPress={back}>
-            <Text style={styles.backActionText}>← {t('nav.retour')}</Text>
-          </Pressable>
-        ) : (
-          <Text style={styles.brand}>{t('app.title')}</Text>
-        )}
-      </View>
+      <AppHeader
+        title={headerTitle}
+        subtitle={screen === 'service' ? t('service.tagline') : undefined}
+        backLabel={`← ${t('nav.retour')}`}
+        onBack={stack.length > 1 ? back : undefined}
+      />
 
+      <ScreenTransition screenKey={screen}>
       <View style={styles.content}>
         {screen === 'service' && (
           <View style={styles.stackGap}>
-            <Text style={styles.tab}>{t('shell.work_tab')}</Text>
-            <Text style={styles.message}>{t('service.tagline')}</Text>
-            <View style={styles.card}>
-              <Text style={styles.statusLine}>{shiftStatus}</Text>
-              <Pressable
-                style={styles.primaryAction}
+            <Card>
+              <Overline>{t('shell.work_tab')}</Overline>
+              {shift === 'pending' ? (
+                // Queued = pending, never done — the honest waiting row,
+                // never a fake « En service ».
+                <PendingNotice lines={[shiftStatus]} />
+              ) : (
+                <StatusChip tone={shift === 'on' ? 'ok' : 'muted'} label={shiftStatus} />
+              )}
+              <PrimaryButton
+                label={shiftAction}
                 onPress={() => {
                   // No server in the sandbox: a start stays queued = PENDING —
                   // never a fake « En service ». confirmQueuedShiftStart
                   // arrives with the live service at assembly.
                   setShift(shift === 'off' ? 'pending' : 'off');
                 }}
-              >
-                <Text style={styles.primaryActionText}>{shiftAction}</Text>
-              </Pressable>
-            </View>
+              />
+            </Card>
             {shift !== 'off' && arriving !== null && (
-              <Pressable style={styles.secondaryCard} onPress={() => openCourse(arriving)}>
-                <Text style={styles.secondaryCardText}>{t('assignment.title')}</Text>
-              </Pressable>
+              <ListRow
+                glyph={KIND_GLYPH[arriving.kind]}
+                title={t('assignment.title')}
+                meta={`${t('assignment.landmark_label')} : ${arriving.locationLines[0]}`}
+                chip={<StatusChip tone="info" label={t(statusKeyFor(arriving))} />}
+                onPress={() => openCourse(arriving)}
+              />
             )}
-            <Pressable style={styles.quietAction} onPress={() => go('courses')}>
-              <Text style={styles.quietActionText}>{t('courses.title')}</Text>
-            </Pressable>
+            <GhostButton label={t('courses.title')} onPress={() => go('courses')} />
           </View>
         )}
 
         {screen === 'courses' && (
           <View style={styles.listWrap}>
-            <Text style={styles.heading}>{t('courses.title')}</Text>
             <FlatList
               data={world.courses}
               keyExtractor={(c) => c.id}
               initialNumToRender={6}
               windowSize={5}
-              ListEmptyComponent={<Text style={styles.emptyState}>{t('shell.no_task')}</Text>}
+              contentContainerStyle={styles.listContent}
+              ListEmptyComponent={<EmptyState glyph="🛵" title={t('shell.no_task')} />}
               renderItem={({ item }) => (
-                <Pressable style={styles.listRow} disabled={item.closed} onPress={() => openCourse(item)}>
-                  <Text style={styles.listName}>{item.name}</Text>
-                  <Text style={styles.listMeta}>
-                    {t('assignment.landmark_label')} : {item.locationLines[0]}, {item.locationLines[2]}
-                  </Text>
-                  {item.attempt === 2 && <Text style={styles.lineage}>{t('courses.lineage_2e')}</Text>}
-                  <Text style={item.closed ? styles.badgeDone : styles.badgeOpen}>{t(statusKeyFor(item))}</Text>
-                </Pressable>
+                <ListRow
+                  glyph={KIND_GLYPH[item.kind]}
+                  title={item.name}
+                  meta={`${t('assignment.landmark_label')} : ${item.locationLines[0]}, ${item.locationLines[2]}`}
+                  muted={item.closed}
+                  chip={
+                    <>
+                      <StatusChip tone={toneFor(item)} label={t(statusKeyFor(item))} />
+                      {item.attempt === 2 && <StatusChip tone="info" label={t('courses.lineage_2e')} />}
+                    </>
+                  }
+                  onPress={item.closed ? undefined : () => openCourse(item)}
+                />
               )}
             />
           </View>
         )}
 
         {screen === 'affectation' && (
-          <View style={styles.card}>
+          <Card>
             {active === null ? (
-              <Text style={styles.emptyState}>{t('shell.no_task')}</Text>
+              <EmptyState glyph="🛵" title={t('shell.no_task')} />
             ) : (
               <>
-                <Text style={styles.assignmentTitle}>{t('assignment.title')}</Text>
+                <Text style={styles.stepTitle}>{t('assignment.title')}</Text>
                 {/* « Repère » heads the landmark-first location block (SE0.3,
-                    D18 label class). */}
-                <Text style={styles.fieldLabel}>{t('assignment.landmark_label')}</Text>
-                {active.locationLines.map((line) => (
-                  <Text key={line} style={styles.locationLine}>
-                    {line}
-                  </Text>
-                ))}
+                    D18 label class) — the LandmarkCard is Séra's signature. */}
+                <LandmarkCard label={t('assignment.landmark_label')} lines={active.locationLines} />
                 {active.ack === 'ack_pending' ? (
                   <>
                     {/* The ack is queued = PENDING and confers nothing —
@@ -231,161 +295,151 @@ export default function App() {
                         it at assembly; the ack deadline still bites a pending
                         ack (assignment.expired.v1 → back to queue). Walking
                         to the pickup is navigation, not finality. */}
-                    <Text style={styles.statusLine}>{t('assignment.ack_pending')}</Text>
-                    <Pressable style={styles.primaryAction} onPress={() => walk((w) => beginPickup(w, active.id))}>
-                      <Text style={styles.primaryActionText}>{t('assignment.pickup_action')}</Text>
-                    </Pressable>
+                    <PendingNotice lines={[t('assignment.ack_pending')]} />
+                    <PrimaryButton label={t('assignment.pickup_action')} onPress={() => walk((w) => beginPickup(w, active.id))} />
                   </>
                 ) : (
-                  <Pressable
-                    style={styles.primaryAction}
+                  <PrimaryButton
+                    label={t('assignment.ack_action')}
                     onPress={() => {
                       acknowledgeCourse(world, active.id);
                       setWorld({ ...world });
                     }}
-                  >
-                    <Text style={styles.primaryActionText}>{t('assignment.ack_action')}</Text>
-                  </Pressable>
+                  />
                 )}
               </>
             )}
-          </View>
+          </Card>
         )}
 
         {/* The custody walk — every transition below goes through the demo
             store, which calls custody-flow.ts (the rule source) and throws
             on any out-of-order move. */}
         {screen === 'verify' && active !== null && (
-          <View style={styles.card}>
-            <Text style={styles.assignmentTitle}>{t('verify.title')}</Text>
-            {POLICY_CHECK_IDS.map((id) => (
-              <Pressable key={id} style={styles.checkRow} onPress={() => setChecks({ ...checks, [id]: !checks[id] })}>
-                <Text style={checks[id] ? styles.checkOn : styles.checkOff}>{t(`check.${id}`)}</Text>
-              </Pressable>
-            ))}
-            <Pressable
-              style={allChecked ? styles.primaryAction : styles.primaryActionDisabled}
+          <Card>
+            <Text style={styles.stepTitle}>{t('verify.title')}</Text>
+            <View style={styles.checkList}>
+              {POLICY_CHECK_IDS.map((id) => (
+                <CheckRow key={id} label={t(`check.${id}`)} checked={checks[id] === true} onPress={() => setChecks({ ...checks, [id]: !checks[id] })} />
+              ))}
+            </View>
+            <PrimaryButton
+              label={t('verify.accept_action')}
               disabled={!allChecked}
               onPress={() => walk((w) => passVerification(w, active.id, checks))}
-            >
-              <Text style={styles.primaryActionText}>{t('verify.accept_action')}</Text>
-            </Pressable>
-            {/* The refusal arm is as dignified as acceptance — it whispers,
-                never shames. */}
-            <Pressable style={styles.quietAction} onPress={() => walk((w) => refusePickup(w, active.id))}>
-              <Text style={styles.quietActionText}>{t('verify.refuse_action')}</Text>
-            </Pressable>
-          </View>
+            />
+            {/* The refusal arm is as dignified as acceptance — its own
+                polished danger style, never a shame path. */}
+            <DangerButton label={t('verify.refuse_action')} onPress={() => walk((w) => refusePickup(w, active.id))} />
+          </Card>
         )}
 
         {screen === 'refused' && (
-          <View style={styles.card}>
+          <Card>
             {/* The refusal path, money-register calm — what happened, what
                 happens next; the course closes with dignity. */}
-            <Text style={styles.assignmentTitle}>{t('refuse.status')}</Text>
-            <Text style={styles.statusLine}>{t('refuse.next')}</Text>
-            <Pressable style={styles.secondaryCard} onPress={toCourses}>
-              <Text style={styles.secondaryCardText}>{t('nav.retour_courses')}</Text>
-            </Pressable>
-          </View>
+            <Text style={styles.stepTitle}>{t('refuse.status')}</Text>
+            <Text style={styles.stepHint}>{t('refuse.next')}</Text>
+            <SecondaryButton label={t('nav.retour_courses')} onPress={toCourses} />
+          </Card>
         )}
 
         {screen === 'seal' && active !== null && (
-          <View style={styles.card}>
-            <Text style={styles.assignmentTitle}>{t('seal.title')}</Text>
-            <Pressable style={styles.primaryAction} onPress={() => walk((w) => registerSeal(w, active.id))}>
-              <Text style={styles.primaryActionText}>{t('seal.action')}</Text>
-            </Pressable>
-          </View>
+          <Card style={styles.momentCard}>
+            <Text style={styles.momentGlyph} accessibilityElementsHidden>
+              🔏
+            </Text>
+            <Text style={styles.momentTitle}>{t('seal.title')}</Text>
+            <PrimaryButton label={t('seal.action')} onPress={() => walk((w) => registerSeal(w, active.id))} />
+          </Card>
         )}
 
         {screen === 'evidence' && active !== null && (
-          <View style={styles.card}>
-            <Text style={styles.assignmentTitle}>{t('evidence.title')}</Text>
-            <Pressable
-              style={styles.primaryAction}
+          <Card>
+            <Text style={styles.stepTitle}>{t('evidence.title')}</Text>
+            <View style={styles.photoFrame}>
+              <Text style={styles.photoGlyph} accessibilityElementsHidden>
+                📷
+              </Text>
+            </View>
+            <PrimaryButton
+              label={t('evidence.action')}
               onPress={() => {
                 // WO-2.4: the door inspection precedes the drop in BOTH
                 // modes; offline evidence still locks everything downstream
                 // (queued = pending — the store walks the honest branch).
                 walk((w) => captureEvidence(w, active.id));
               }}
-            >
-              <Text style={styles.primaryActionText}>{t('evidence.action')}</Text>
-            </Pressable>
-          </View>
+            />
+          </Card>
         )}
 
         {screen === 'evidence_pending' && (
-          <View style={styles.card}>
+          <Card>
             {/* Offline law: the photo is queued = pending; the drop step is
                 LOCKED — finality never happens offline. */}
-            <Text style={styles.statusLine}>{t('evidence.pending')}</Text>
-            <Pressable style={styles.secondaryCard} onPress={toCourses}>
-              <Text style={styles.secondaryCardText}>{t('nav.retour_courses')}</Text>
-            </Pressable>
-          </View>
+            <PendingNotice lines={[t('evidence.pending')]} />
+            <SecondaryButton label={t('nav.retour_courses')} onPress={toCourses} />
+          </Card>
         )}
 
         {screen === 'door_inspection' && active !== null && (
-          <View style={styles.card}>
-            <Text style={styles.assignmentTitle}>{t('inspect.title')}</Text>
-            {active.attempt === 2 && <Text style={styles.lineage}>{t('courses.lineage_2e')}</Text>}
-            <Pressable style={styles.primaryAction} onPress={() => walk((w) => acceptInspection(w, active.id))}>
-              <Text style={styles.primaryActionText}>{t('inspect.accept_action')}</Text>
-            </Pressable>
-            <Pressable style={styles.quietAction} onPress={() => walk((w) => reportProblem(w, active.id))}>
-              <Text style={styles.quietActionText}>{t('problem.action')}</Text>
-            </Pressable>
-          </View>
+          <Card>
+            <Text style={styles.stepTitle}>{t('inspect.title')}</Text>
+            {active.attempt === 2 && <StatusChip tone="info" label={t('courses.lineage_2e')} />}
+            {/* The signature card again at the door — the rider stands at
+                the repère, never at a street address. */}
+            <LandmarkCard label={t('assignment.landmark_label')} lines={active.locationLines} />
+            <PrimaryButton label={t('inspect.accept_action')} onPress={() => walk((w) => acceptInspection(w, active.id))} />
+            <GhostButton label={t('problem.action')} onPress={() => walk((w) => reportProblem(w, active.id))} />
+          </Card>
         )}
 
         {screen === 'payment_wait' && active !== null && (
-          <View style={styles.card}>
+          <Card>
             {/* SE-I11: ONLY the provider signal advances this screen — the
                 rider has no action while the payment is unconfirmed. The
                 sandbox constant stands in for the live signal at assembly. */}
             {SANDBOX_DOOR_SIGNAL === 'confirmed' ? (
               <>
-                <Text style={styles.assignmentTitle}>{t('pay_ok.status')}</Text>
-                <Pressable
-                  style={styles.primaryAction}
+                <Text style={styles.stepTitle}>{t('pay_ok.status')}</Text>
+                <PrimaryButton
+                  label={t('pay_ok.continue_action')}
                   onPress={() => walk((w) => applyProviderDoorSignal(w, active.id, SANDBOX_DOOR_SIGNAL))}
-                >
-                  <Text style={styles.primaryActionText}>{t('pay_ok.continue_action')}</Text>
-                </Pressable>
+                />
               </>
             ) : (
               <>
-                <Text style={styles.assignmentTitle}>{t('pay_wait.status')}</Text>
-                <Text style={styles.statusLine}>{t('pay_wait.hint')}</Text>
+                <Text style={styles.stepTitle}>{t('pay_wait.status')}</Text>
+                <PendingNotice lines={[t('pay_wait.hint')]} />
               </>
             )}
-          </View>
+          </Card>
         )}
 
         {screen === 'drop' && active !== null && (
-          <View style={styles.card}>
-            <Text style={styles.assignmentTitle}>{t('drop.title')}</Text>
-            <Text style={styles.statusLine}>{t('drop.hint')}</Text>
-            <Pressable style={styles.primaryAction} onPress={() => walk((w) => validateDropCode(w, active.id))}>
-              <Text style={styles.primaryActionText}>{t('drop.action')}</Text>
-            </Pressable>
+          <Card style={styles.momentCard}>
+            {/* The code moment — centered, strong, calm: the buyer's code is
+                the LAST key and the screen holds it like one. */}
+            <Text style={styles.momentGlyph} accessibilityElementsHidden>
+              🔑
+            </Text>
+            <Text style={styles.momentTitle}>{t('drop.title')}</Text>
+            <Text style={styles.momentHint}>{t('drop.hint')}</Text>
+            <PrimaryButton label={t('drop.action')} onPress={() => walk((w) => validateDropCode(w, active.id))} />
             {/* WO-2.2 refusal ladder entry — the problem path is as
                 dignified as the purchase path; it whispers, never shouts. */}
-            <Pressable style={styles.quietAction} onPress={() => walk((w) => reportProblem(w, active.id))}>
-              <Text style={styles.quietActionText}>{t('problem.action')}</Text>
-            </Pressable>
-          </View>
+            <GhostButton label={t('problem.action')} onPress={() => walk((w) => reportProblem(w, active.id))} />
+          </Card>
         )}
 
         {screen === 'refusal_reason' && active !== null && (
-          <View style={styles.card}>
-            <Text style={styles.assignmentTitle}>{t('reason.title')}</Text>
+          <Card>
+            <Text style={styles.stepTitle}>{t('reason.title')}</Text>
             {FAILURE_REASON_IDS.map((id) => (
-              <Pressable
+              <GhostButton
                 key={id}
-                style={styles.checkRow}
+                label={t(`reason.${id}`)}
                 onPress={() => {
                   // The ONE retry window (~15 min policy default; the live
                   // windowExpiresAt arrives with the service outcome at
@@ -394,87 +448,77 @@ export default function App() {
                   setWindowUntil(`${String(until.getHours()).padStart(2, '0')}:${String(until.getMinutes()).padStart(2, '0')}`);
                   walk((w) => chooseFailureReason(w, active.id, id));
                 }}
-              >
-                <Text style={styles.checkOff}>{t(`reason.${id}`)}</Text>
-              </Pressable>
+              />
             ))}
-          </View>
+          </Card>
         )}
 
         {screen === 'retry_window' && active !== null && (
-          <View style={styles.card}>
-            <Text style={styles.assignmentTitle}>{t('retry.status')}</Text>
-            <Text style={styles.statusLine}>
-              {t('retry.until')} {windowUntil}
-            </Text>
+          <Card>
+            <Text style={styles.stepTitle}>{t('retry.status')}</Text>
+            <StatusChip tone="warn" label={`${t('retry.until')} ${windowUntil}`} />
             {/* The retry re-runs inspection → provider-confirmed payment →
                 drop: the drop code stays LAST (safest default, journaled). */}
-            <Pressable style={styles.primaryAction} onPress={() => walk((w) => retryDelivery(w, active.id))}>
-              <Text style={styles.primaryActionText}>{t('retry.retry_action')}</Text>
-            </Pressable>
-            <Pressable style={styles.quietAction} onPress={() => walk((w) => expireRetryWindow(w, active.id))}>
-              <Text style={styles.quietActionText}>{t('retry.expired_action')}</Text>
-            </Pressable>
-          </View>
+            <PrimaryButton label={t('retry.retry_action')} onPress={() => walk((w) => retryDelivery(w, active.id))} />
+            <GhostButton label={t('retry.expired_action')} onPress={() => walk((w) => expireRetryWindow(w, active.id))} />
+          </Card>
         )}
 
         {screen === 'refused_final' && active !== null && (
-          <View style={styles.card}>
+          <Card>
             {/* Buyer-fault refusal, register:money — calm, cause and
                 what-happens-next stated; no shame, no jargon. */}
-            <Text style={styles.assignmentTitle}>{t('refused_final.status')}</Text>
-            <Text style={styles.statusLine}>{t('refused_final.fee')}</Text>
-            <Text style={styles.statusLine}>{t('refused_final.next')}</Text>
-            <Pressable style={styles.primaryAction} onPress={() => walk((w) => prepareReturn(w, active.id))}>
-              <Text style={styles.primaryActionText}>{t('refused_final.retour_action')}</Text>
-            </Pressable>
-          </View>
+            <Text style={styles.stepTitle}>{t('refused_final.status')}</Text>
+            <Text style={styles.stepHint}>{t('refused_final.fee')}</Text>
+            <Text style={styles.stepHint}>{t('refused_final.next')}</Text>
+            <PrimaryButton label={t('refused_final.retour_action')} onPress={() => walk((w) => prepareReturn(w, active.id))} />
+          </Card>
         )}
 
         {screen === 'reschedule_planned' && (
-          <View style={styles.card}>
+          <Card>
             {/* The non-escalating arm: honest absence / provider failure —
                 nothing is lost, the order stays whole; the 2e passage
                 appears on the course list with its lineage. */}
-            <Text style={styles.assignmentTitle}>{t('reschedule.status')}</Text>
-            <Text style={styles.statusLine}>{t('reschedule.next')}</Text>
-            <Text style={styles.lineage}>{t('reschedule.lineage')}</Text>
-            <Pressable style={styles.secondaryCard} onPress={toCourses}>
-              <Text style={styles.secondaryCardText}>{t('nav.retour_courses')}</Text>
-            </Pressable>
-          </View>
+            <Text style={styles.stepTitle}>{t('reschedule.status')}</Text>
+            <Text style={styles.stepHint}>{t('reschedule.next')}</Text>
+            <StatusChip tone="info" label={t('reschedule.lineage')} />
+            <SecondaryButton label={t('nav.retour_courses')} onPress={toCourses} />
+          </Card>
         )}
 
         {screen === 'retour_colis' && active !== null && (
-          <View style={styles.card}>
+          <Card>
             {/* SE6.2 two-key return, stated calmly: the seller's code and
                 the rider's code, both or neither. */}
-            <Text style={styles.assignmentTitle}>{t('retour.title')}</Text>
-            <Text style={styles.statusLine}>{t('retour.two_keys')}</Text>
-            <Text style={styles.statusLine}>{t('retour.next')}</Text>
-            <Pressable
-              style={styles.primaryAction}
+            <Text style={styles.stepTitle}>{t('retour.title')}</Text>
+            <Text style={styles.stepHint}>{t('retour.two_keys')}</Text>
+            <Text style={styles.stepHint}>{t('retour.next')}</Text>
+            <PrimaryButton
+              label={t('retour.action')}
               onPress={() => {
                 completeReturn(world, active.id);
                 setWorld({ ...world });
                 toCourses();
               }}
-            >
-              <Text style={styles.primaryActionText}>{t('retour.action')}</Text>
-            </Pressable>
-          </View>
+            />
+          </Card>
         )}
 
         {screen === 'delivered' && (
-          <View style={styles.card}>
-            <Text style={styles.assignmentTitle}>{t('delivered.status')}</Text>
-            <Text style={styles.statusLine}>{t('delivered.next')}</Text>
-            <Pressable style={styles.secondaryCard} onPress={toCourses}>
-              <Text style={styles.secondaryCardText}>{t('nav.retour_courses')}</Text>
-            </Pressable>
-          </View>
+          <Card style={styles.momentCard}>
+            {/* The arrival is honored statically — the rider's named joy
+                moment is a future order; nothing animates here. */}
+            <Text style={styles.momentGlyph} accessibilityElementsHidden>
+              ✅
+            </Text>
+            <Text style={styles.momentTitle}>{t('delivered.status')}</Text>
+            <Text style={styles.momentHint}>{t('delivered.next')}</Text>
+            <SecondaryButton label={t('nav.retour_courses')} onPress={toCourses} />
+          </Card>
         )}
       </View>
+      </ScreenTransition>
 
       <View style={styles.footer}>
         <Text style={styles.footerHint}>{t('demo.donnees')}</Text>
@@ -482,247 +526,96 @@ export default function App() {
           <Text style={styles.resetActionText}>{t('nav.recommencer')}</Text>
         </Pressable>
       </View>
+
+      {HUBS.includes(screen) && (
+        <TabBar
+          items={[
+            { key: 'service', icon: '🛵', label: t('nav.tab_service'), active: screen === 'service', onPress: () => setStack([START]) },
+            { key: 'courses', icon: '📦', label: t('nav.tab_courses'), active: screen === 'courses', onPress: () => toCourses() },
+          ]}
+        />
+      )}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: theme.colors.surface,
-  },
-  header: {
-    paddingHorizontal: theme.spacing.xl,
-    paddingTop: theme.spacing.md,
-    minHeight: 44,
-    justifyContent: 'center',
-  },
+  screen: { flex: 1, backgroundColor: theme.colors.surface },
   content: {
     flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: theme.spacing.xl,
+    paddingHorizontal: theme.spacing.lg,
+    paddingTop: theme.spacing.sm,
     gap: theme.spacing.md,
   },
-  stackGap: {
+  stackGap: { gap: theme.spacing.md, paddingTop: theme.spacing.sm },
+  listWrap: { flex: 1, gap: theme.spacing.md },
+  listContent: { gap: theme.spacing.sm, paddingBottom: theme.spacing.sm },
+  checkList: { gap: theme.spacing.sm },
+  stepTitle: {
+    color: theme.colors.ink,
+    fontSize: theme.typeScale.heading.size,
+    lineHeight: theme.typeScale.heading.lineHeight,
+    fontWeight: theme.typeScale.heading.weight,
+  },
+  stepHint: {
+    color: theme.colors.inkMuted,
+    fontSize: theme.typeScale.bodyLarge.size,
+    lineHeight: theme.typeScale.bodyLarge.lineHeight,
+  },
+  momentCard: {
+    borderColor: theme.colors.primary,
+    borderWidth: theme.spacing.xs / 2,
     gap: theme.spacing.lg,
   },
-  brand: {
-    color: theme.colors.primary,
-    fontSize: theme.typeScale.title.size,
-    lineHeight: theme.typeScale.title.lineHeight,
-    fontWeight: theme.typeScale.title.weight,
+  momentGlyph: {
+    fontSize: theme.typeScale.displayFcfa.size,
+    lineHeight: theme.typeScale.displayFcfa.lineHeight,
     textAlign: 'center',
   },
-  tab: {
+  momentTitle: {
+    color: theme.colors.ink,
+    fontSize: theme.typeScale.heading.size,
+    lineHeight: theme.typeScale.heading.lineHeight,
+    fontWeight: theme.typeScale.heading.weight,
+    textAlign: 'center',
+  },
+  momentHint: {
     color: theme.colors.inkMuted,
-    fontSize: theme.typeScale.label.size,
-    lineHeight: theme.typeScale.label.lineHeight,
-    fontWeight: theme.typeScale.label.weight,
+    fontSize: theme.typeScale.bodyLarge.size,
+    lineHeight: theme.typeScale.bodyLarge.lineHeight,
     textAlign: 'center',
   },
-  card: {
-    backgroundColor: theme.colors.surfaceRaised,
-    borderRadius: theme.radius.lg,
-    borderColor: theme.colors.line,
+  photoFrame: {
+    minHeight: theme.spacing.xxxl * 2,
+    borderRadius: theme.radius.md,
     borderWidth: StyleSheet.hairlineWidth,
-    padding: theme.spacing.xl,
-    gap: theme.spacing.md,
-  },
-  listWrap: {
-    flex: 1,
-    gap: theme.spacing.md,
-    paddingVertical: theme.spacing.md,
-  },
-  listRow: {
-    backgroundColor: theme.colors.surfaceRaised,
-    borderRadius: theme.radius.lg,
     borderColor: theme.colors.line,
-    borderWidth: StyleSheet.hairlineWidth,
+    backgroundColor: theme.colors.surfaceSunken,
+    alignItems: 'center',
+    justifyContent: 'center',
     padding: theme.spacing.lg,
-    marginBottom: theme.spacing.md,
-    gap: theme.spacing.xs,
-    minHeight: 44,
   },
-  listName: {
-    color: theme.colors.ink,
-    fontSize: theme.typeScale.bodyLarge.size,
-    lineHeight: theme.typeScale.bodyLarge.lineHeight,
-    fontWeight: theme.typeScale.heading.weight,
-  },
-  listMeta: {
-    color: theme.colors.inkMuted,
-    fontSize: theme.typeScale.label.size,
-    lineHeight: theme.typeScale.label.lineHeight,
-  },
-  lineage: {
-    color: theme.colors.info,
-    fontSize: theme.typeScale.label.size,
-    lineHeight: theme.typeScale.label.lineHeight,
-    fontWeight: theme.typeScale.heading.weight,
-    textAlign: 'center',
-  },
-  badgeOpen: {
-    color: theme.colors.primary,
-    fontSize: theme.typeScale.label.size,
-    lineHeight: theme.typeScale.label.lineHeight,
-    fontWeight: theme.typeScale.heading.weight,
-  },
-  badgeDone: {
-    color: theme.colors.inkMuted,
-    fontSize: theme.typeScale.label.size,
-    lineHeight: theme.typeScale.label.lineHeight,
-  },
-  heading: {
-    color: theme.colors.ink,
-    fontSize: theme.typeScale.heading.size,
-    lineHeight: theme.typeScale.heading.lineHeight,
-    fontWeight: theme.typeScale.heading.weight,
-    textAlign: 'center',
-  },
-  message: {
-    color: theme.colors.ink,
-    fontSize: theme.typeScale.bodyLarge.size,
-    lineHeight: theme.typeScale.bodyLarge.lineHeight,
-    textAlign: 'center',
-  },
-  statusLine: {
-    color: theme.colors.inkMuted,
-    fontSize: theme.typeScale.bodyLarge.size,
-    lineHeight: theme.typeScale.bodyLarge.lineHeight,
-    textAlign: 'center',
-  },
-  assignmentTitle: {
-    color: theme.colors.ink,
-    fontSize: theme.typeScale.heading.size,
-    lineHeight: theme.typeScale.heading.lineHeight,
-    fontWeight: theme.typeScale.heading.weight,
-    textAlign: 'center',
-  },
-  locationLine: {
-    color: theme.colors.ink,
-    fontSize: theme.typeScale.bodyLarge.size,
-    lineHeight: theme.typeScale.bodyLarge.lineHeight,
-    textAlign: 'center',
-  },
-  fieldLabel: {
-    color: theme.colors.inkMuted,
-    fontSize: theme.typeScale.label.size,
-    lineHeight: theme.typeScale.label.lineHeight,
-    fontWeight: theme.typeScale.label.weight,
-    textAlign: 'center',
-  },
-  emptyState: {
-    color: theme.colors.inkMuted,
-    fontSize: theme.typeScale.bodyLarge.size,
-    lineHeight: theme.typeScale.bodyLarge.lineHeight,
-    textAlign: 'center',
-  },
-  primaryAction: {
-    minHeight: 44,
-    borderRadius: theme.radius.lg,
-    backgroundColor: theme.colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: theme.spacing.xl,
-  },
-  primaryActionText: {
-    color: theme.colors.surface,
-    fontSize: theme.typeScale.bodyLarge.size,
-    lineHeight: theme.typeScale.bodyLarge.lineHeight,
-  },
-  primaryActionDisabled: {
-    minHeight: 44,
-    borderRadius: theme.radius.lg,
-    backgroundColor: theme.colors.inkMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: theme.spacing.xl,
-    opacity: 0.5,
-  },
-  secondaryCard: {
-    minHeight: 44,
-    borderRadius: theme.radius.lg,
-    borderColor: theme.colors.line,
-    borderWidth: StyleSheet.hairlineWidth,
-    backgroundColor: theme.colors.surfaceRaised,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: theme.spacing.lg,
-  },
-  secondaryCardText: {
-    color: theme.colors.ink,
-    fontSize: theme.typeScale.bodyLarge.size,
-    lineHeight: theme.typeScale.bodyLarge.lineHeight,
-  },
-  quietAction: {
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  quietActionText: {
-    color: theme.colors.inkMuted,
-    fontSize: theme.typeScale.bodyLarge.size,
-    lineHeight: theme.typeScale.bodyLarge.lineHeight,
-  },
-  checkRow: {
-    minHeight: 44,
-    justifyContent: 'center',
-    borderBottomColor: theme.colors.line,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  checkOn: {
-    color: theme.colors.primary,
-    fontSize: theme.typeScale.bodyLarge.size,
-    lineHeight: theme.typeScale.bodyLarge.lineHeight,
-    fontWeight: '600',
-  },
-  checkOff: {
-    color: theme.colors.inkMuted,
-    fontSize: theme.typeScale.bodyLarge.size,
-    lineHeight: theme.typeScale.bodyLarge.lineHeight,
-  },
-  backAction: {
-    minHeight: 44,
-    justifyContent: 'center',
-    alignSelf: 'flex-start',
-    paddingHorizontal: theme.spacing.md,
-  },
-  backActionText: {
-    color: theme.colors.ink,
-    fontSize: theme.typeScale.bodyLarge.size,
-    lineHeight: theme.typeScale.bodyLarge.lineHeight,
-  },
+  photoGlyph: { fontSize: theme.typeScale.displayFcfa.size, lineHeight: theme.typeScale.displayFcfa.lineHeight },
   footer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: theme.spacing.xl,
-    paddingBottom: theme.spacing.md,
-    minHeight: 44,
+    paddingHorizontal: theme.spacing.lg,
+    minHeight: theme.touch.minTargetPx,
   },
-  footerHint: {
-    color: theme.colors.inkMuted,
-    fontSize: theme.typeScale.label.size,
-    lineHeight: theme.typeScale.label.lineHeight,
-  },
-  resetAction: {
-    minHeight: 44,
-    justifyContent: 'center',
-    paddingHorizontal: theme.spacing.md,
-  },
-  resetActionText: {
-    color: theme.colors.inkMuted,
-    fontSize: theme.typeScale.label.size,
-    lineHeight: theme.typeScale.label.lineHeight,
-  },
+  footerHint: { color: theme.colors.inkFaint, fontSize: theme.typeScale.caption.size },
+  resetAction: { minHeight: theme.touch.minTargetPx, justifyContent: 'center', paddingHorizontal: theme.spacing.md },
+  resetActionText: { color: theme.colors.inkMuted, fontSize: theme.typeScale.caption.size, fontWeight: theme.typeScale.label.weight },
   previewBanner: {
-    backgroundColor: theme.colors.ink,
-    paddingVertical: theme.spacing.md,
+    backgroundColor: theme.colors.surfaceSunken,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: theme.colors.line,
+    paddingVertical: theme.spacing.xs,
     alignItems: 'center',
   },
   previewBannerText: {
-    color: theme.colors.surface,
-    fontSize: theme.typeScale.label.size,
-    lineHeight: theme.typeScale.label.lineHeight,
+    color: theme.colors.inkMuted,
+    fontSize: theme.typeScale.caption.size,
+    lineHeight: theme.typeScale.caption.lineHeight,
   },
 });
