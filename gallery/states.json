@@ -1,0 +1,47 @@
+{
+  "surface": "Séra — console de dispatch",
+  "viewport": {
+    "width": 800,
+    "height": 950
+  },
+  "groups": [
+    {
+      "title": "File « Prêt à assigner » et suivi",
+      "states": [
+        {
+          "id": "console-file-prete",
+          "actions": [],
+          "caption": "La file prête (repère d'abord : lieu, directions, zone) + le suivi — temps de contrôle (D20), paiement au seuil EN ATTENTE du réseau, chronologie des issues"
+        },
+        {
+          "id": "console-course-donnee",
+          "actions": [
+            "assign"
+          ],
+          "caption": "Course donnée — l'état d'attente honnête : l'accord du livreur n'est jamais supposé"
+        },
+        {
+          "id": "console-porte-confirmee",
+          "actions": [
+            "door-demo"
+          ],
+          "caption": "Paiement au seuil CONFIRMÉ par le réseau — la ligne ne s'affiche qu'après le vrai signal (chemin « Essai » du bac à sable)"
+        },
+        {
+          "id": "console-course-remise",
+          "actions": [
+            "assign",
+            "clock-6min"
+          ],
+          "caption": "Course remise dans la file — le livreur n'a pas accepté à temps (5 min) : l'état est dit, la carte revient"
+        }
+      ]
+    }
+  ],
+  "gaps": [
+    {
+      "name": "File vide (console.empty_state)",
+      "reason": "Copie construite (« Aucune course à assigner pour le moment. ») mais inatteignable dans le monde bac à sable : la file initiale porte toujours une course et l'après-assignation affiche la ligne d'attente. Nommé plutôt que passé sous silence."
+    }
+  ]
+}

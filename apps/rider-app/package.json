@@ -14,6 +14,7 @@
     "@platform/ui-tokens": "git+https://github.com/beurni2/platform-contracts.git#0ff6696a4d0d89bef24822711e452c9a0ff07f9f&path:packages/ui-tokens",
     "expo": "~53.0.9",
     "expo-status-bar": "~2.2.3",
+    "expo-updates": "~0.28.18",
     "react": "19.0.0",
     "react-native": "0.79.2"
   },

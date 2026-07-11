@@ -358,5 +358,11 @@
     "fr": "Continuer",
     "register": "neutral",
     "screenClass": "general"
+  },
+  {
+    "key": "preview.banner",
+    "fr": "Aperçu — bac à sable",
+    "register": "neutral",
+    "screenClass": "label"
   }
 ]

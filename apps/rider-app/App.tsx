@@ -4,6 +4,7 @@ import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { seraTheme as theme } from '@platform/ui-tokens';
 import { SANDBOX_ASSIGNMENT, type AssignmentView } from './src/sandbox-assignment';
 import { CONNECTIVITY, FAILURE_REASON_IDS, POLICY_CHECK_IDS, SANDBOX_DOOR_SIGNAL, SANDBOX_PAYMENT_MODE, nextAfterEvidence, stepAfterDoorSignal, stepAfterInspection, stepAfterWindowExpiry, type CustodyStep, type FailureReasonId, type PolicyCheckId } from './src/custody-flow';
+import { IS_PREVIEW } from './src/preview';
 import { t } from './src/i18n';
 
 /**
@@ -36,6 +37,11 @@ export default function App() {
   return (
     <SafeAreaView style={styles.screen}>
       <StatusBar style="dark" backgroundColor={theme.colors.surface} />
+      {IS_PREVIEW && (
+        <View style={styles.previewBanner}>
+          <Text style={styles.previewBannerText}>{t('preview.banner')}</Text>
+        </View>
+      )}
       <View style={styles.content}>
         <Text style={styles.brand}>{t('app.title')}</Text>
         <Text style={styles.tab}>{t('shell.work_tab')}</Text>
@@ -390,5 +396,15 @@ const styles = StyleSheet.create({
     color: theme.colors.inkMuted,
     fontSize: theme.typeScale.bodyLarge.size,
     lineHeight: theme.typeScale.bodyLarge.lineHeight,
+  },
+  previewBanner: {
+    backgroundColor: theme.colors.ink,
+    paddingVertical: theme.spacing.md,
+    alignItems: 'center',
+  },
+  previewBannerText: {
+    color: theme.colors.surface,
+    fontSize: theme.typeScale.label.size,
+    lineHeight: theme.typeScale.label.lineHeight,
   },
 });

@@ -1,14 +1,19 @@
 {
   "expo": {
-    "name": "Séra",
+    "name": "S\u00e9ra",
     "slug": "sera-rider",
     "version": "0.0.1",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "backgroundColor": "#FAF7F2",
-    "platforms": ["android"],
+    "platforms": [
+      "android"
+    ],
     "android": {
       "package": "bf.sera.rider"
+    },
+    "runtimeVersion": {
+      "policy": "sdkVersion"
     }
   }
 }
