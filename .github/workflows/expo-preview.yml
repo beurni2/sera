@@ -52,6 +52,6 @@ jobs:
         # (ephemeral — never committed); update publishes to the preview
         # channel. First REAL publish is founder-verified on his phone.
         run: |
-          npx eas-cli@latest init --non-interactive --force
-          npx eas-cli@latest update:configure --non-interactive
-          npx eas-cli@latest update --channel preview --non-interactive --auto --message "main@${GITHUB_SHA}"
+          npx eas-cli@20.5.1 init --non-interactive --force
+          npx eas-cli@20.5.1 update:configure --non-interactive
+          npx eas-cli@20.5.1 update --channel preview --non-interactive --auto --message "main@${GITHUB_SHA}"
