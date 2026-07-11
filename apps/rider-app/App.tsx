@@ -36,9 +36,10 @@ export default function App() {
 
   return (
     <SafeAreaView style={styles.screen}>
-      {/* SDK 57: StatusBarProps dropped backgroundColor (edge-to-edge is
-          mandatory) — the screen surface shows through; style stays dark. */}
-      <StatusBar style="dark" />
+      {/* SDK 54: backgroundColor restored per the WO-4.0d-prep founder
+          ruling ③ — pre-edge-to-edge Android draws a default bar; the
+          surface token is the correct fill. */}
+      <StatusBar style="dark" backgroundColor={theme.colors.surface} />
       {IS_PREVIEW && (
         <View style={styles.previewBanner}>
           <Text style={styles.previewBannerText}>{t('preview.banner')}</Text>
