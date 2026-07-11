@@ -86,18 +86,26 @@ export default function App() {
     if (!JOURNEY[stack[stack.length - 1] ?? START].includes(next)) return;
     setStack((s) => [...s, next]);
   }, [stack]);
+  // The course list is a fixed waypoint, never a pushed layer: every
+  // in-course « Retour aux courses » lands here, so the list can never sit
+  // above a stale course screen (the verifier's push-then-pop route).
+  const toCourses = useCallback(() => setStack([START, 'courses']), []);
   const back = useCallback(() => {
-    // WO-4.1 rule (journaled; widened after the verifier's blocking
-    // finding): a course's truth lives in course.step, so popping inside a
-    // course can re-show a stale screen — dead buttons at best, a drop
-    // screen mid-refusal-ladder at worst. Inside a course « Retour » goes
-    // to the course list; the course keeps its exact step and reopens
-    // where custody truly stands. Pops remain only outside courses.
-    if (COURSE_BACK_STEPS.includes(stack[stack.length - 1] ?? START)) {
-      setStack([START, 'courses']);
+    // WO-4.1 rule (journaled; a TOTAL rule after two verifier findings —
+    // stale in-course screens must be unreachable BY CONSTRUCTION): a
+    // course's truth lives in course.step, so no course screen is ever
+    // revealed by popping. « Retour » on a course screen goes to the
+    // course list (the course keeps its exact step and reopens there);
+    // on the list it goes home; on the root it does nothing. No pop arm
+    // exists — nothing is ever revealed from underneath.
+    const current = stack[stack.length - 1] ?? START;
+    if (current === 'courses') {
+      setStack([START]);
       return;
     }
-    setStack((s) => (s.length > 1 ? s.slice(0, -1) : s));
+    if (COURSE_BACK_STEPS.includes(current)) {
+      setStack([START, 'courses']);
+    }
   }, [stack]);
   const reset = useCallback(() => {
     setWorld(createDemoWorld());
@@ -276,7 +284,7 @@ export default function App() {
                 happens next; the course closes with dignity. */}
             <Text style={styles.assignmentTitle}>{t('refuse.status')}</Text>
             <Text style={styles.statusLine}>{t('refuse.next')}</Text>
-            <Pressable style={styles.secondaryCard} onPress={() => go('courses')}>
+            <Pressable style={styles.secondaryCard} onPress={toCourses}>
               <Text style={styles.secondaryCardText}>{t('nav.retour_courses')}</Text>
             </Pressable>
           </View>
@@ -313,7 +321,7 @@ export default function App() {
             {/* Offline law: the photo is queued = pending; the drop step is
                 LOCKED — finality never happens offline. */}
             <Text style={styles.statusLine}>{t('evidence.pending')}</Text>
-            <Pressable style={styles.secondaryCard} onPress={() => go('courses')}>
+            <Pressable style={styles.secondaryCard} onPress={toCourses}>
               <Text style={styles.secondaryCardText}>{t('nav.retour_courses')}</Text>
             </Pressable>
           </View>
@@ -431,7 +439,7 @@ export default function App() {
             <Text style={styles.assignmentTitle}>{t('reschedule.status')}</Text>
             <Text style={styles.statusLine}>{t('reschedule.next')}</Text>
             <Text style={styles.lineage}>{t('reschedule.lineage')}</Text>
-            <Pressable style={styles.secondaryCard} onPress={() => go('courses')}>
+            <Pressable style={styles.secondaryCard} onPress={toCourses}>
               <Text style={styles.secondaryCardText}>{t('nav.retour_courses')}</Text>
             </Pressable>
           </View>
@@ -449,7 +457,7 @@ export default function App() {
               onPress={() => {
                 completeReturn(world, active.id);
                 setWorld({ ...world });
-                go('courses');
+                toCourses();
               }}
             >
               <Text style={styles.primaryActionText}>{t('retour.action')}</Text>
@@ -461,7 +469,7 @@ export default function App() {
           <View style={styles.card}>
             <Text style={styles.assignmentTitle}>{t('delivered.status')}</Text>
             <Text style={styles.statusLine}>{t('delivered.next')}</Text>
-            <Pressable style={styles.secondaryCard} onPress={() => go('courses')}>
+            <Pressable style={styles.secondaryCard} onPress={toCourses}>
               <Text style={styles.secondaryCardText}>{t('nav.retour_courses')}</Text>
             </Pressable>
           </View>

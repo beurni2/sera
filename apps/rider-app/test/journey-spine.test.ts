@@ -86,16 +86,26 @@ describe('rider journey spine', () => {
   });
 
   it('in-course « Retour » returns to the course list with state kept — NO course screen ever pops', () => {
-    // The verifier's blocking finding: any in-course pop can re-show a
-    // stale screen (dead primary action; mid-ladder it re-shows the drop
-    // screen). The rule covers EVERY course screen — exactly the journey
-    // minus the two non-course screens — so a stale pop cannot exist.
+    // The verifier's blocking findings (both rounds): any pop that reveals
+    // a course screen can re-show a stale one (dead primary action;
+    // mid-ladder it re-shows the drop screen). The rule is TOTAL: back on
+    // a course screen goes to the list, back on the list goes home, and
+    // no pop arm exists — nothing is ever revealed from underneath.
     expect([...COURSE_BACK_STEPS].sort()).toEqual(
       screens.filter((s) => s !== 'service' && s !== 'courses').sort(),
     );
     const source = readFileSync(join(import.meta.dirname, '..', 'App.tsx'), 'utf8');
-    expect(source).toMatch(/COURSE_BACK_STEPS\.includes\(stack\[stack\.length - 1\] \?\? START\)/);
+    expect(source).toMatch(/COURSE_BACK_STEPS\.includes\(current\)/);
     expect(source).toMatch(/setStack\(\[START, 'courses'\]\)/);
+    // the list is a fixed waypoint, never a pushed layer: the ONLY go()
+    // push of 'courses' is the home screen's; every in-course « Retour aux
+    // courses » resets via toCourses (round-2 push-then-pop route closed)
+    expect(source.match(/go\('courses'\)/g)).toHaveLength(1);
+    expect(source).toMatch(/const toCourses = useCallback\(\(\) => setStack\(\[START, 'courses'\]\), \[\]\);/);
+    // back() has no stack-pop: nothing can be revealed from underneath
+    expect(source).not.toMatch(/s\.slice\(0, -1\)/);
+    // back on the list goes home — WALKTHROUGH §6's promise, by construction
+    expect(source).toMatch(/if \(current === 'courses'\) \{\s*setStack\(\[START\]\);/);
     // every step a course can be saved at reopens from the list, by edge
     for (const s of COURSE_OPEN_STEPS) expect(COURSE_BACK_STEPS).toContain(s);
     for (const s of COURSE_OPEN_STEPS) expect(JOURNEY.courses).toContain(s);
