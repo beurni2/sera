@@ -29,6 +29,16 @@ Cette application est sur **Expo SDK 57** (la version stable courante au registr
 juillet 2026 — mise à niveau WO-4.0b). **L'Expo Go du Play Store est la voie normale** :
 installez-le, scannez le QR, l'aperçu s'ouvre directement.
 
+## Aperçu sur iPhone (Expo Go iOS)
+
+Connectez-vous dans **Expo Go** avec le compte Expo du projet : l'application
+apparaît sous « Projects ». Ouvrez le projet → branche `preview` → la dernière
+mise à jour. (Sur expo.dev, la page de chaque mise à jour porte aussi un QR à
+scanner.) **Android reste la vérité produit** : l'appareil de référence, les
+budgets de performance et la cible de déploiement ne changent pas — l'aperçu
+iOS existe uniquement pour la revue sur le téléphone du fondateur.
+
+
 ## Note locale (cache Metro)
 
 Après avoir changé de profil (variable `EXPO_PUBLIC_PROFILE`), relancez avec
