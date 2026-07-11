@@ -364,5 +364,113 @@
     "fr": "Aperçu — bac à sable",
     "register": "neutral",
     "screenClass": "label"
+  },
+  {
+    "key": "nav.retour",
+    "fr": "Retour",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "nav.recommencer",
+    "fr": "Recommencer la démo",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "nav.retour_courses",
+    "fr": "Retour aux courses",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "demo.donnees",
+    "fr": "Données d'essai",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "service.tagline",
+    "fr": "Prends la route. Les courses t'attendent.",
+    "register": "selling",
+    "screenClass": "general"
+  },
+  {
+    "key": "courses.title",
+    "fr": "Courses d'essai",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "courses.statut_a_ramasser",
+    "fr": "À ramasser",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "courses.statut_en_route",
+    "fr": "En route. Colis scellé.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "courses.statut_retour_en_cours",
+    "fr": "Retour au vendeur en cours.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "courses.statut_retour_fait",
+    "fr": "Colis rendu au vendeur.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "courses.lineage_2e",
+    "fr": "2e passage — le client était absent.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "assignment.pickup_action",
+    "fr": "Aller au ramassage",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "retour.title",
+    "fr": "Rendre le colis au vendeur",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "retour.two_keys",
+    "fr": "Deux codes pour ce retour : le tien et celui du vendeur.",
+    "register": "money",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "retour.next",
+    "fr": "Les deux codes vont ensemble. Sans les deux, le colis reste avec toi.",
+    "register": "money",
+    "screenClass": "status"
+  },
+  {
+    "key": "retour.action",
+    "fr": "Échanger les deux codes",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "refused_final.retour_action",
+    "fr": "Préparer le retour",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "reschedule.lineage",
+    "fr": "Une autre course arrive : 2e passage.",
+    "register": "neutral",
+    "screenClass": "status"
   }
 ]
