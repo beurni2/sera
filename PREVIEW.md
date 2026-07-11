@@ -23,14 +23,11 @@ aucun paiement, aucune commande, aucune donnée de production. Le bandeau
 2. Un QR s'affiche dans le terminal. Scannez-le avec **Expo Go** — le téléphone et
    l'ordinateur doivent être sur le même réseau Wi-Fi.
 
-## Note honnête sur la version
+## Version du SDK
 
-Cette application est sur **Expo SDK 53** ; la version courante d'Expo est plus récente
-(SDK 57 au registre npm, juillet 2026). La compatibilité d'Expo Go du Play Store avec le
-SDK 53 n'a **pas pu être vérifiée** depuis cet environnement. Si Expo Go refuse d'ouvrir
-l'aperçu : sur Android, une version d'Expo Go correspondant au SDK 53 peut être installée
-depuis expo.dev/go (choisir la version du SDK). La mise à niveau du SDK est prévue comme
-sa propre étape de travail (WO-4.0b) — elle n'a pas été forcée ici.
+Cette application est sur **Expo SDK 57** (la version stable courante au registre npm,
+juillet 2026 — mise à niveau WO-4.0b). **L'Expo Go du Play Store est la voie normale** :
+installez-le, scannez le QR, l'aperçu s'ouvre directement.
 
 ## Note locale (cache Metro)
 
