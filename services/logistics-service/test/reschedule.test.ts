@@ -155,11 +155,14 @@ describe('reschedule → new DeliveryTask (WO-2.2 verifier\'s named path)', () =
     registry.acknowledgePrivacyNotice('rider-awa', PRIVACY_NOTICE_VERSION, T);
     registry.startShift('rider-awa', T, 'server_confirmed');
     const assignments = new AssignmentBook(registry, queue);
+    // WO-4.3: assign() requires a lease ref (this witness-less store-level
+    // book still binds the ref-identity check; the DO path has its own suite).
+    const lease = { taskId: 'task-77-2', riderId: 'rider-awa', version: 1 };
     funding.goStale(1);
-    expect(assignments.assign({ command_id: 'cmd-assign-stale', taskId: 'task-77-2', riderId: 'rider-awa', dispatcherId: 'd-1', at: T, newAssignmentId: 'as-77-2' }))
+    expect(assignments.assign({ command_id: 'cmd-assign-stale', taskId: 'task-77-2', riderId: 'rider-awa', dispatcherId: 'd-1', at: T, newAssignmentId: 'as-77-2', lease }))
       .toEqual({ ok: false, reason: 'task_not_assignable', detail: 'funding_projection_stale' });
     // Fresh → the same command may then succeed (refusals re-evaluate).
-    expect(assignments.assign({ command_id: 'cmd-assign-stale', taskId: 'task-77-2', riderId: 'rider-awa', dispatcherId: 'd-1', at: T, newAssignmentId: 'as-77-2' }))
+    expect(assignments.assign({ command_id: 'cmd-assign-stale', taskId: 'task-77-2', riderId: 'rider-awa', dispatcherId: 'd-1', at: T, newAssignmentId: 'as-77-2', lease }))
       .toMatchObject({ ok: true, duplicate: false });
   });
 

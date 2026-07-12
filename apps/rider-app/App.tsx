@@ -20,6 +20,8 @@ import {
   chooseFailureReason,
   completeReturn,
   createDemoWorld,
+  declineCourse,
+  expireProposal,
   expireRetryWindow,
   passVerification,
   prepareReturn,
@@ -88,7 +90,15 @@ const STATUS_KEY: Record<CourseStep, string> = {
 };
 
 const statusKeyFor = (course: DemoCourse): string =>
-  course.step === 'retour_colis' && course.closed ? 'courses.statut_retour_fait' : STATUS_KEY[course.step];
+  course.proposalOutcome === 'declined'
+    ? 'courses.statut_rendue'
+    : course.proposalOutcome === 'expired'
+      ? 'courses.statut_expiree'
+      : course.step === 'affectation' && course.ack === 'decline_pending'
+        ? 'assignment.decline_pending'
+        : course.step === 'retour_colis' && course.closed
+          ? 'courses.statut_retour_fait'
+          : STATUS_KEY[course.step];
 
 /** Chip tones mirror the honest status — never a fake green, never a shame red. */
 const STATUS_TONE: Record<CourseStep, ChipTone> = {
@@ -110,7 +120,13 @@ const STATUS_TONE: Record<CourseStep, ChipTone> = {
 };
 
 const toneFor = (course: DemoCourse): ChipTone =>
-  course.step === 'retour_colis' && course.closed ? 'ok' : STATUS_TONE[course.step];
+  course.proposalOutcome !== null
+    ? 'muted' // a closed proposal is honest and at rest — never a shame red
+    : course.step === 'affectation' && course.ack === 'decline_pending'
+      ? 'warn' // queued = pending, never done
+      : course.step === 'retour_colis' && course.closed
+        ? 'ok'
+        : STATUS_TONE[course.step];
 
 /** Course glyphs by kind — icons always paired with text (the chip + title). */
 const KIND_GLYPH: Record<CourseKind, string> = {
@@ -122,6 +138,16 @@ const KIND_GLYPH: Record<CourseKind, string> = {
 /** The bottom hubs (WO-4.2R): Service · Courses — waypoint resets only. */
 const HUBS: readonly Screen[] = ['service', 'courses'];
 
+/** WO-4.3 — the demo's answer window for a proposed course (« Réponds
+ * avant : HH:MM »). ⚠ CTO safest default: reuses WO-1.2's founder-reviewed
+ * ACK_DEADLINE_MS (5 min — assignment-lease-ttl.v1); the live
+ * per-assignment expiresAt arrives with the service at assembly (the
+ * retry_window windowUntil pattern — the display is honest either way). */
+const proposalDeadlineHhmm = (): string => {
+  const until = new Date(Date.now() + 5 * 60_000);
+  return `${String(until.getHours()).padStart(2, '0')}:${String(until.getMinutes()).padStart(2, '0')}`;
+};
+
 export default function App() {
   const [world, setWorld] = useState<DemoWorld>(() => createDemoWorld());
   const [stack, setStack] = useState<Screen[]>([START]);
@@ -129,6 +155,7 @@ export default function App() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [checks, setChecks] = useState<Partial<Record<PolicyCheckId, boolean>>>({});
   const [windowUntil, setWindowUntil] = useState('');
+  const [proposalUntil, setProposalUntil] = useState(proposalDeadlineHhmm);
   const screen = stack[stack.length - 1] ?? START;
   const active = world.courses.find((c) => c.id === activeId) ?? null;
   const allChecked = POLICY_CHECK_IDS.every((id) => checks[id] === true);
@@ -165,6 +192,7 @@ export default function App() {
     setActiveId(null);
     setChecks({});
     setWindowUntil('');
+    setProposalUntil(proposalDeadlineHhmm());
   }, []);
 
   /** Every custody move: the store calls custody-flow (throws out-of-order),
@@ -288,7 +316,15 @@ export default function App() {
                 {/* « Repère » heads the landmark-first location block (SE0.3,
                     D18 label class) — the LandmarkCard is Séra's signature. */}
                 <LandmarkCard label={t('assignment.landmark_label')} lines={active.locationLines} />
-                {active.ack === 'ack_pending' ? (
+                {/* WO-4.3 — the honest answer window: the proposal is not
+                    forever; the deadline is said, calmly, up front. */}
+                <StatusChip tone="warn" label={`${t('assignment.deadline')} ${proposalUntil}`} />
+                {active.ack === 'decline_pending' ? (
+                  /* The refusal went out WITHOUT the network: queued =
+                     PENDING, it confers nothing — only a server-confirmed
+                     decline releases; the window still runs. */
+                  <PendingNotice lines={[t('assignment.decline_pending')]} />
+                ) : active.ack === 'ack_pending' ? (
                   <>
                     {/* The ack is queued = PENDING and confers nothing —
                         AssignmentBook.acknowledge('server_confirmed') closes
@@ -297,16 +333,49 @@ export default function App() {
                         to the pickup is navigation, not finality. */}
                     <PendingNotice lines={[t('assignment.ack_pending')]} />
                     <PrimaryButton label={t('assignment.pickup_action')} onPress={() => walk((w) => beginPickup(w, active.id))} />
+                    <DangerButton
+                      label={t('assignment.decline_action')}
+                      onPress={() => {
+                        declineCourse(world, active.id);
+                        setWorld({ ...world });
+                        toCourses();
+                      }}
+                    />
                   </>
                 ) : (
-                  <PrimaryButton
-                    label={t('assignment.ack_action')}
-                    onPress={() => {
-                      acknowledgeCourse(world, active.id);
-                      setWorld({ ...world });
-                    }}
-                  />
+                  <>
+                    <PrimaryButton
+                      label={t('assignment.ack_action')}
+                      onPress={() => {
+                        acknowledgeCourse(world, active.id);
+                        setWorld({ ...world });
+                      }}
+                    />
+                    {/* WO-4.3 — giving the course back is as dignified as
+                        taking it (server-confirmed in the sandbox walk; the
+                        offline arm is the seeded pending course). */}
+                    <DangerButton
+                      label={t('assignment.decline_action')}
+                      onPress={() => {
+                        declineCourse(world, active.id);
+                        setWorld({ ...world });
+                        toCourses();
+                      }}
+                    />
+                  </>
                 )}
+                {/* WO-4.3 — the expiry demo lever (the retry_window
+                    « Le temps est passé » pattern): the live sweep drives
+                    this at assembly; the honest expired state is designed,
+                    not hidden. */}
+                <GhostButton
+                  label={t('assignment.expired_action')}
+                  onPress={() => {
+                    expireProposal(world, active.id);
+                    setWorld({ ...world });
+                    toCourses();
+                  }}
+                />
               </>
             )}
           </Card>

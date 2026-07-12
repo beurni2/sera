@@ -72,6 +72,42 @@
     "screenClass": "status"
   },
   {
+    "key": "assignment.deadline",
+    "fr": "Réponds avant :",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "assignment.decline_action",
+    "fr": "Je ne prends pas la course",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "assignment.decline_pending",
+    "fr": "Refus envoyé. En attente du réseau.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "assignment.expired_action",
+    "fr": "Le temps est passé",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "courses.statut_rendue",
+    "fr": "Course rendue à la liste.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "courses.statut_expiree",
+    "fr": "Temps passé. Course rendue à la liste.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
     "key": "verify.title",
     "fr": "Vérifier le colis",
     "register": "neutral",

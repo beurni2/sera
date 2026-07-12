@@ -16,6 +16,8 @@ import {
   chooseFailureReason,
   completeReturn,
   createDemoWorld,
+  declineCourse,
+  expireProposal,
   expireRetryWindow,
   passVerification,
   prepareReturn,
@@ -157,6 +159,49 @@ describe('demo world custody walk', () => {
       expect(c.name).toContain('(démo)');
       expect(c.locationLines).toHaveLength(3);
     }
+  });
+
+  it('WO-4.3 DECLINE, offline arm: queued = PENDING, it confers nothing — the course stays proposed, the window still bites; the seeded Fatou course carries the state', () => {
+    const world = createDemoWorld();
+    const id = 'course-awa';
+    expect(declineCourse(world, id, 'offline')).toBe('affectation');
+    const pending = world.courses.find((c) => c.id === id)!;
+    expect(pending.ack).toBe('decline_pending');
+    expect(pending.closed).toBe(false); // still his — nothing released
+    expect(pending.proposalOutcome).toBeNull();
+    // the window still bites a pending decline (queued = pending, never done)
+    expect(expireProposal(world, id)).toBe('affectation');
+    expect(world.courses.find((c) => c.id === id)!).toMatchObject({ proposalOutcome: 'expired', closed: true });
+    // the offline-decline state ships seeded and walkable (the Issouf pattern)
+    const fatou = seedCourses().find((c) => c.id === 'course-fatou')!;
+    expect(fatou).toMatchObject({ step: 'affectation', ack: 'decline_pending', closed: false });
+    expect(fatou.name).toContain('(démo)');
+  });
+
+  it('WO-4.3 DECLINE, server-confirmed arm: the course closes with its honest outcome and never reopens; out-of-order declines throw', () => {
+    const world = createDemoWorld();
+    const id = 'course-awa';
+    expect(declineCourse(world, id, 'online')).toBe('affectation');
+    const declined = world.courses.find((c) => c.id === id)!;
+    expect(declined).toMatchObject({ proposalOutcome: 'declined', closed: true });
+    // closed = closed: no ack, no pickup, no second decline, no expiry
+    expect(() => acknowledgeCourse(world, id)).toThrow();
+    expect(() => beginPickup(world, id)).toThrow();
+    expect(() => declineCourse(world, id)).toThrow();
+    expect(() => expireProposal(world, id)).toThrow();
+    // and a course past the proposal cannot be declined — custody has begun
+    const w2 = createDemoWorld();
+    beginPickup(w2, id);
+    expect(() => declineCourse(w2, id)).toThrow();
+    expect(() => expireProposal(w2, id)).toThrow();
+  });
+
+  it('WO-4.3 EXPIRY: a pending ACK does not save the proposal — the window bites and the course closes expired', () => {
+    const world = createDemoWorld();
+    const id = 'course-awa';
+    acknowledgeCourse(world, id); // queued = pending, confers nothing
+    expect(expireProposal(world, id)).toBe('affectation');
+    expect(world.courses.find((c) => c.id === id)!).toMatchObject({ proposalOutcome: 'expired', closed: true });
   });
 
   it('reset restores the exact seed; the seeded return course obeys the expiry rule', () => {

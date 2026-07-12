@@ -64,3 +64,35 @@ test('WO-1.2 manual assignment: landmark-first task card → « Donner la course
   await expect(page.locator('#queue-body .status-line')).toHaveText("En attente de l'accord du livreur.");
   await expect(page.locator('.task-card')).toHaveCount(0);
 });
+
+test('WO-4.3 lease: the PROPOSED assignment states its deadline — « Course proposée — répondez avant HH:MM » from the lease expiresAt', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('select').selectOption('rider-issa');
+  await page.locator('button.assign').click();
+
+  // The waiting line stays (never implies the rider's accord)…
+  await expect(page.locator('#queue-body .status-line')).toHaveText("En attente de l'accord du livreur.");
+  // …and the trust line says what happens next, on the LEASE's own clock.
+  await expect(page.locator('#queue-body .deadline-line')).toHaveText(
+    /^Course proposée — répondez avant \d{2}:\d{2}$/,
+  );
+  await expect(page.locator('.task-card')).toHaveCount(0);
+});
+
+test('WO-4.3 lease expiry: past the 5-min window the honest expired state shows and the task is BACK in the queue', async ({ page }) => {
+  // The mocked clock must exist before the page arms its sweep interval.
+  await page.clock.install();
+  await page.goto('/');
+  await page.locator('select').selectOption('rider-issa');
+  await page.locator('button.assign').click();
+  await expect(page.locator('.task-card')).toHaveCount(0);
+
+  // No answer within the lease window: ONE sweep expires the lease at THE
+  // authority and returns the assignment to the queue (assignment.expired.v1).
+  await page.clock.fastForward('06:00');
+  await expect(page.locator('#queue-body .status-line')).toHaveText(
+    'Temps passé sans réponse. La course revient dans la file.',
+  );
+  await expect(page.locator('.task-card')).toHaveCount(1);
+  await expect(page.locator('#queue-body .deadline-line')).toHaveCount(0); // no stale deadline claim
+});
