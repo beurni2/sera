@@ -63,9 +63,9 @@ for name in names:
     inner = "".join(children_svg)
     pwa_parts.append(
         f"  {name}: (size = 20) =>\n"
-        f'    `<svg width="${{size}}" height="${{size}}" viewBox="0 0 24 24" fill="none" '
-        f'stroke="currentColor" stroke-width="{sw}" stroke-linecap="round" '
-        f'stroke-linejoin="round" aria-hidden="true">{inner}</svg>`,'
+        f'    `<svg xmlns="http://www.w3.org/2000/svg" width="${{size}}" height="${{size}}" '
+        f'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{sw}" '
+        f'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{inner}</svg>`,'
     )
     pwa_names.append(name)
 
