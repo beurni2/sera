@@ -7,14 +7,34 @@ import type { RiderRegistry } from './rider-registry.js';
  * courier manually"). A dispatcher assigns ONE intake task to ONE eligible
  * rider. Store-level invariant seed: at most ONE active assignment per rider
  * AND per task — checked before every insert and exposed for the CI gate.
- * The atomic AssignmentLease Durable Object is E4/M2 and is explicitly NOT
- * built here. Rider acknowledgment is server-confirmed only: an
- * offline-queued ack is PENDING and confers no finality; unacknowledged
- * assignments go back to the queue (assignment.expired.v1). No candidate
+ * WO-4.3 (SE2.1): the atomic AssignmentLease Durable Object now EXISTS
+ * (worker/assignment-lease-do.ts, orchestrated by leased-assignment.ts) and
+ * this book is its defense-in-depth second wall — assign() REQUIRES a lease
+ * ref, and with a LeaseWitness wired (the production path) a ref the witness
+ * doesn't recognize as a real grant from THE authority refuses closed
+ * ('no_valid_lease', SE-I01). Rider acknowledgment is server-confirmed only:
+ * an offline-queued ack is PENDING and confers no finality; unacknowledged
+ * assignments go back to the queue (assignment.expired.v1); a decline is
+ * final only when server-confirmed (assignment.declined.v1). No candidate
  * ranking, no auto-assign, no ETA — the dispatcher chooses.
  */
 
 export const ACK_DEADLINE_MS = 5 * 60 * 1000;
+
+/** The lease the assignment proceeds under — taskId/riderId/version name one
+ * exact grant of the dispatch authority. */
+export interface LeaseRef {
+  taskId: string;
+  riderId: string;
+  version: number;
+}
+
+/** Defense in depth (never a second authority): answers "did THE authority
+ * really grant this exact ref" — provenance, not liveness; liveness is the
+ * Durable Object's job. */
+export interface LeaseWitness {
+  isGranted(lease: LeaseRef): boolean;
+}
 
 export type AssignmentStatus = 'active_unacknowledged' | 'ack_pending_offline' | 'acknowledged' | 'returned_to_queue';
 
@@ -28,6 +48,8 @@ export interface AssignmentRecord {
   assignedAt: string;
   ackDeadline: string;
   status: AssignmentStatus;
+  /** LOCAL audit field — the lease this assignment proceeds under (WO-4.3). */
+  lease: LeaseRef;
 }
 
 export type AssignOutcome =
@@ -35,6 +57,7 @@ export type AssignOutcome =
   | {
       ok: false;
       reason:
+        | 'no_valid_lease'
         | 'task_not_assignable'
         | 'rider_not_assignable'
         | 'rider_already_has_active_assignment'
@@ -44,6 +67,11 @@ export type AssignOutcome =
 
 export type AckOutcome =
   | { ok: true; status: AssignmentStatus; pending: boolean }
+  | { ok: false; reason: 'unknown_assignment' | 'not_active' };
+
+export type DeclineOutcome =
+  | { ok: true; pending: true; status: AssignmentStatus }
+  | { ok: true; pending: false; status: 'returned_to_queue'; event: PlatformEvent }
   | { ok: false; reason: 'unknown_assignment' | 'not_active' };
 
 const ACTIVE_STATUSES: readonly AssignmentStatus[] = ['active_unacknowledged', 'ack_pending_offline', 'acknowledged'];
@@ -59,6 +87,9 @@ export class AssignmentBook {
   constructor(
     private readonly registry: RiderRegistry,
     private readonly queue: ReadyQueue,
+    /** Optional = test harness; the production path (LeasedDispatch) always
+     * wires one. Without it, the ref-identity check below still binds. */
+    private readonly witness?: LeaseWitness,
   ) {}
 
   assign(cmd: {
@@ -68,9 +99,21 @@ export class AssignmentBook {
     dispatcherId: string;
     at: string;
     newAssignmentId: string;
+    lease: LeaseRef;
   }): AssignOutcome {
     const replay = this.appliedCommandIds.get(cmd.command_id);
     if (replay?.ok) return { ...replay, duplicate: true };
+
+    // WO-4.3 defense in depth: the assignment proceeds only under a lease
+    // ref that (i) names this exact task+rider and (ii) the wired witness
+    // recognizes as a real grant from THE authority (SE-I01). A fabricated
+    // or foreign ref refuses closed.
+    if (cmd.lease == null || cmd.lease.taskId !== cmd.taskId || cmd.lease.riderId !== cmd.riderId) {
+      return { ok: false, reason: 'no_valid_lease' };
+    }
+    if (this.witness !== undefined && !this.witness.isGranted(cmd.lease)) {
+      return { ok: false, reason: 'no_valid_lease' };
+    }
 
     // SE1.1 second check — stale at assignment time = unassignable.
     const taskCheck = this.queue.recheckAssignable(cmd.taskId);
@@ -103,6 +146,7 @@ export class AssignmentBook {
       assignedAt: cmd.at,
       ackDeadline: new Date(Date.parse(cmd.at) + ACK_DEADLINE_MS).toISOString(),
       status: 'active_unacknowledged',
+      lease: { ...cmd.lease },
     };
     this.assignments.set(assignment.assignmentId, assignment);
     this.queue.markAssigned(cmd.taskId);
@@ -144,6 +188,48 @@ export class AssignmentBook {
       confirmation === 'server_confirmed' ? 'acknowledged' : 'ack_pending_offline';
     this.assignments.set(assignmentId, { ...assignment, status });
     return { ok: true, status, pending: status === 'ack_pending_offline' };
+  }
+
+  /**
+   * WO-4.3 — rider decline. Only a SERVER-CONFIRMED decline is final:
+   * returned_to_queue + requeue + assignment.declined.v1 (actor the rider).
+   * An OFFLINE-queued decline is PENDING and confers NOTHING (kernel law:
+   * queued = pending, never done) — the assignment stays as it was and the
+   * ack deadline still runs. Lease release is the orchestrator's arm
+   * (LeasedDispatch.decline), never this store's.
+   */
+  decline(assignmentId: string, confirmation: 'server_confirmed' | 'queued_offline', at: string): DeclineOutcome {
+    const assignment = this.assignments.get(assignmentId);
+    if (!assignment) return { ok: false, reason: 'unknown_assignment' };
+    if (assignment.status !== 'active_unacknowledged' && assignment.status !== 'ack_pending_offline') {
+      return { ok: false, reason: 'not_active' };
+    }
+    if (confirmation === 'queued_offline') {
+      return { ok: true, pending: true, status: assignment.status };
+    }
+    const returned: AssignmentRecord = { ...assignment, status: 'returned_to_queue' };
+    this.assignments.set(assignmentId, returned);
+    this.queue.requeue(assignment.taskId);
+    this.aggregateVersion += 1;
+    const event = PlatformEventSchema.parse({
+      name: 'assignment.declined.v1',
+      envelope: {
+        command_id: `decline-${assignmentId}`,
+        correlation_id: assignment.correlationId,
+        aggregateVersion: this.aggregateVersion,
+        actor: `rider:${assignment.riderId}`,
+        serverTime: at,
+        version: '1',
+      },
+      payload: {
+        delivery_task_id: assignment.taskId,
+        order_id: assignment.orderId,
+        assignment_id: assignment.assignmentId,
+        rider_id: assignment.riderId,
+        requeued: true,
+      },
+    });
+    return { ok: true, pending: false, status: 'returned_to_queue', event };
   }
 
   /** Unacknowledged past deadline → back to the queue (assignment.expired.v1). */

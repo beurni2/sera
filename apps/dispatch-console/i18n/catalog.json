@@ -36,8 +36,14 @@
     "screenClass": "status"
   },
   {
+    "key": "console.proposed_deadline",
+    "fr": "Course proposée — répondez avant",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
     "key": "console.requeued",
-    "fr": "Course remise dans la file.",
+    "fr": "Temps passé sans réponse. La course revient dans la file.",
     "register": "neutral",
     "screenClass": "status"
   },

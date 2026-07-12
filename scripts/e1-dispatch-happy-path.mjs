@@ -62,11 +62,17 @@ const offlineStart = registry.startShift('rider-issa', T, 'queued_offline');
 const assignableWhilePending = registry.isAssignable('rider-issa');
 registry.confirmQueuedShiftStart('rider-issa', LATER);
 
-// §2.3 step 10: manual assignment.
-const book = new AssignmentBook(registry, queue);
+// §2.3 step 10: manual assignment. WO-4.3: assign() now proceeds only under
+// a lease ref its witness recognizes — this script pre-grants exactly the
+// ref it uses (the real DO grant path is proven in the vitest e2e suites);
+// every pre-WO-4.3 assertion below is unchanged.
+const LEASE = { taskId: 'task-e1-0001', riderId: 'rider-issa', version: 1 };
+const leaseKey = (l) => `${l.taskId}|${l.riderId}|${l.version}`;
+const witness = { granted: new Set([leaseKey(LEASE)]), isGranted(l) { return this.granted.has(leaseKey(l)); } };
+const book = new AssignmentBook(registry, queue, witness);
 const assigned = book.assign({
   command_id: 'cmd-assign-1', taskId: 'task-e1-0001', riderId: 'rider-issa',
-  dispatcherId: 'dispatcher-awa', at: LATER, newAssignmentId: 'as-e1-0001',
+  dispatcherId: 'dispatcher-awa', at: LATER, newAssignmentId: 'as-e1-0001', lease: LEASE,
 });
 if (!assigned.ok) { console.error('assignment refused:', assigned.reason); process.exit(1); }
 

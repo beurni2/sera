@@ -8,12 +8,21 @@ import { t } from './i18n';
 /**
  * WO-1.2 dispatch-console: the E1 MANUAL assignment form (§2.3 step 10) on
  * the REAL logistics-service intake + assignment logic (see sandbox-world).
+ * WO-4.3: the assign action runs the LEASED grant path — the proposed state
+ * carries its honest deadline (the lease's expiresAt) and the sweep drives
+ * BOTH stores (lease expiry + assignment requeue) through one entry.
  * One primary action: assign. No auto-assign, no ranking, no routing.
  * Locations render landmark-first (SE0.3). D7 dispatch-hours is an open
  * Decision — the staffed-hours default appears in COPY ONLY.
  */
 
-const { queue, book, riders } = buildSandboxWorld(new Date().toISOString());
+const { queue, dispatch, riders } = buildSandboxWorld(new Date().toISOString());
+
+/** HH:MM of a lease deadline, for « répondez avant HH:MM ». */
+const hhmm = (iso: string): string => {
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+};
 
 const root = document.documentElement;
 root.style.setProperty('--surface', theme.colors.surface);
@@ -96,6 +105,7 @@ style.textContent = `
     cursor: pointer;
   }
   .status-line { color: var(--ink-muted); font-size: var(--type-body); margin: 0; }
+  .deadline-line { color: var(--ink); font-size: var(--type-body); margin: 0; }
   button.door-demo {
     min-height: 44px;
     border: 0;
@@ -126,17 +136,25 @@ if (app) {
   body.id = 'queue-body';
   main.append(heading, body);
 
-  const render = (statusKey?: string) => {
+  const render = (status?: { key: string; deadlineIso?: string }) => {
     body.replaceChildren();
     const queued = queue.queuedTasks();
-    if (statusKey) {
-      const status = document.createElement('p');
-      status.className = 'status-line';
-      status.textContent = t(statusKey);
-      body.appendChild(status);
+    if (status) {
+      const line = document.createElement('p');
+      line.className = 'status-line';
+      line.textContent = t(status.key);
+      body.appendChild(line);
+      // WO-4.3 trust line — what happens next, with the lease's own clock:
+      // « Course proposée — répondez avant HH:MM » (HH:MM = lease expiresAt).
+      if (status.deadlineIso !== undefined) {
+        const deadline = document.createElement('p');
+        deadline.className = 'deadline-line';
+        deadline.textContent = `${t('console.proposed_deadline')} ${hhmm(status.deadlineIso)}`;
+        body.appendChild(deadline);
+      }
     }
     if (queued.length === 0) {
-      if (!statusKey) {
+      if (!status) {
         const empty = document.createElement('p');
         empty.className = 'empty-state';
         empty.textContent = t('console.empty_state');
@@ -170,16 +188,24 @@ if (app) {
       assign.className = 'assign';
       assign.textContent = t('console.assign_action');
       assign.addEventListener('click', () => {
-        const outcome = book.assign({
-          command_id: `cmd-console-assign-${entry.task.id}`,
-          taskId: entry.task.id,
-          riderId: riderPick.value,
-          dispatcherId: 'dispatcher-console',
-          at: new Date().toISOString(),
-          newAssignmentId: `as-${entry.task.id}`,
-        });
-        // A refusal keeps the task visible in the queue — no false claims.
-        render(outcome.ok ? 'console.waiting_ack' : undefined);
+        // WO-4.3: the FULL leased path — SE1.1 recheck, atomic grant at THE
+        // authority, witnessed book entry. The command is minted per attempt
+        // (the click instant) so a task honestly requeued after an expiry can
+        // be proposed again as a NEW command with a FRESH lease.
+        const at = new Date().toISOString();
+        void dispatch
+          .assign({
+            command_id: `cmd-console-assign-${entry.task.id}-${at}`,
+            taskId: entry.task.id,
+            riderId: riderPick.value,
+            dispatcherId: 'dispatcher-console',
+            at,
+            newAssignmentId: `as-${entry.task.id}-${at}`,
+          })
+          .then((outcome) => {
+            // A refusal keeps the task visible in the queue — no false claims.
+            render(outcome.ok ? { key: 'console.waiting_ack', deadlineIso: outcome.lease.expiresAt } : undefined);
+          });
       });
       riderRow.append(riderLabel, riderPick, assign);
       card.appendChild(riderRow);
@@ -234,11 +260,14 @@ if (app) {
   }
   main.append(followHeading, followCard);
 
-  // The REAL service-side ack deadline: unacknowledged assignments return to
-  // the queue (assignment.expired.v1) and the console says so honestly.
+  // The REAL service-side deadline, ONE sweep for BOTH stores (WO-4.3):
+  // the lease expires at THE authority and the unacknowledged assignment
+  // returns to the queue (assignment.expired.v1) — the console states the
+  // honest expired state and the card comes back.
   setInterval(() => {
-    const { requeued } = book.expireUnacknowledged(new Date().toISOString());
-    if (requeued.length > 0) render('console.requeued');
+    void dispatch.expireDue(new Date().toISOString()).then(({ requeued }) => {
+      if (requeued.length > 0) render({ key: 'console.requeued' });
+    });
   }, 60_000);
 
   app.append(header, main);

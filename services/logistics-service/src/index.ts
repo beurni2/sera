@@ -6,8 +6,10 @@ import type { AssignmentLease, DeliveryTask, PickupTask, RouteManifest } from '@
  * authority (SE-I01). Canonical shapes imported from the pin, never
  * redefined. WO-1.2 adds E1 dispatch-thin: rider registry (SE0.2), kernel
  * delivery locations (SE0.3), ready-queue intake (SE1.1), and MANUAL
- * assignment (§2.3 step 10). Still no Durable Objects, no auto-assign, no
- * routing — the atomic AssignmentLease DO is E4/M2.
+ * assignment (§2.3 step 10). WO-4.3 (SE2.1) adds the atomic AssignmentLease
+ * Durable Object (worker/assignment-lease-do.ts — ONE object, THE dispatch
+ * authority) with its pure decision core + the leased grant path. Still no
+ * auto-assign, no ranking, no routing — the dispatcher chooses.
  */
 export const SERVICE_NAME = 'logistics-service';
 
@@ -20,6 +22,8 @@ export type LogisticsServiceShapes = {
 };
 
 export * from './assignment-authority.js';
+export * from './assignment-lease.js';
+export * from './leased-assignment.js';
 export * from './shift-location.js';
 export * from './rider-registry.js';
 export * from './delivery-location.js';

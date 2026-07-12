@@ -3,9 +3,24 @@ import { EventEnvelopeSchema, PlatformEventSchema } from '@platform/contracts';
 const SHA256_FIXTURE = 'a3f5c9d21e8b47061234567890abcdef1234567890abcdef1234567890abcdef';
 import { MockBoutikReadiness } from '../src/mocks/boutik-readiness-mock.js';
 import { MockShopPlusFunding } from '../src/mocks/shopplus-funding-mock.js';
-import { AssignmentBook } from '../src/manual-assignment.js';
+import { AssignmentBook, type LeaseRef } from '../src/manual-assignment.js';
 import { ReadyQueue } from '../src/ready-queue.js';
 import { PRIVACY_NOTICE_VERSION, RiderRegistry } from '../src/rider-registry.js';
+
+/** WO-4.3: assign() now REQUIRES a lease ref and, with a witness wired,
+ * refuses refs THE authority never granted. These store-level scenarios
+ * pre-grant exactly what they lease through a test-local witness — the real
+ * grant path (DO + orchestrator) is covered in leased-dispatch.e2e.test.ts. */
+class TestWitness {
+  private readonly grants = new Set<string>();
+  grant(ref: LeaseRef): LeaseRef {
+    this.grants.add(`${ref.taskId}|${ref.riderId}|${ref.version}`);
+    return ref;
+  }
+  isGranted(ref: LeaseRef): boolean {
+    return this.grants.has(`${ref.taskId}|${ref.riderId}|${ref.version}`);
+  }
+}
 
 const T = '2026-07-09T12:00:00.000Z';
 const PAST_ACK_DEADLINE = '2026-07-09T12:06:00.000Z';
@@ -49,12 +64,15 @@ function world() {
   registry.register({ riderId: 'r-1', displayName: 'Issa', phoneAlias: 'alias-77', certified: true });
   registry.acknowledgePrivacyNotice('r-1', PRIVACY_NOTICE_VERSION, T);
   registry.startShift('r-1', T, 'server_confirmed');
-  const book = new AssignmentBook(registry, queue);
-  return { funding, readiness, queue, registry, book };
+  const witness = new TestWitness();
+  witness.grant({ taskId: 'task-1', riderId: 'r-1', version: 1 });
+  const book = new AssignmentBook(registry, queue, witness);
+  return { funding, readiness, queue, registry, witness, book };
 }
 
 const assignCmd = (over: Partial<Parameters<AssignmentBook['assign']>[0]> = {}) => ({
   command_id: 'cmd-assign-1', taskId: 'task-1', riderId: 'r-1', dispatcherId: 'd-1', at: T, newAssignmentId: 'as-1',
+  lease: { taskId: 'task-1', riderId: 'r-1', version: 1 },
   ...over,
 });
 
@@ -79,7 +97,7 @@ describe('manual assignment — §2.3 step 10, refuse closed everywhere', () => 
     const uncertified = new RiderRegistry();
     uncertified.register({ riderId: 'r-2', displayName: 'X', phoneAlias: 'a', certified: false });
     const book = new AssignmentBook(uncertified, queue);
-    expect(book.assign(assignCmd({ riderId: 'r-2' }))).toEqual({ ok: false, reason: 'rider_not_assignable' });
+    expect(book.assign(assignCmd({ riderId: 'r-2', lease: { taskId: 'task-1', riderId: 'r-2', version: 1 } }))).toEqual({ ok: false, reason: 'rider_not_assignable' });
     void registry;
   });
 
@@ -89,9 +107,10 @@ describe('manual assignment — §2.3 step 10, refuse closed everywhere', () => 
     registry.register({ riderId: 'r-3', displayName: 'Awa', phoneAlias: 'a', certified: true });
     registry.acknowledgePrivacyNotice('r-3', PRIVACY_NOTICE_VERSION, T);
     const book = new AssignmentBook(registry, queue);
-    expect(book.assign(assignCmd({ riderId: 'r-3' }))).toEqual({ ok: false, reason: 'rider_not_assignable' }); // off_shift
+    const lease = { taskId: 'task-1', riderId: 'r-3', version: 1 };
+    expect(book.assign(assignCmd({ riderId: 'r-3', lease }))).toEqual({ ok: false, reason: 'rider_not_assignable' }); // off_shift
     registry.startShift('r-3', T, 'queued_offline'); // pending, NOT on shift
-    expect(book.assign(assignCmd({ command_id: 'cmd-2', riderId: 'r-3' }))).toEqual({ ok: false, reason: 'rider_not_assignable' });
+    expect(book.assign(assignCmd({ command_id: 'cmd-2', riderId: 'r-3', lease }))).toEqual({ ok: false, reason: 'rider_not_assignable' });
   });
 
   it('STALE AT ASSIGNMENT TIME refuses closed even though intake admitted the task (SE1.1)', () => {
@@ -108,7 +127,7 @@ describe('manual assignment — §2.3 step 10, refuse closed everywhere', () => 
   });
 
   it('ONE ACTIVE PER RIDER and PER TASK: second assignment on either axis refuses closed; violations scanner stays empty', () => {
-    const { book, queue, registry } = world();
+    const { book, queue, registry, witness } = world();
     // Second admitted task for the per-rider check.
     queue.onTaskReady(
       {
@@ -131,11 +150,17 @@ describe('manual assignment — §2.3 step 10, refuse closed everywhere', () => 
 
     expect(book.assign(assignCmd()).ok).toBe(true);
     // Same rider, different task → refused.
-    expect(book.assign(assignCmd({ command_id: 'cmd-b', taskId: 'task-2', newAssignmentId: 'as-2' }))).toEqual({
+    expect(book.assign(assignCmd({
+      command_id: 'cmd-b', taskId: 'task-2', newAssignmentId: 'as-2',
+      lease: witness.grant({ taskId: 'task-2', riderId: 'r-1', version: 1 }),
+    }))).toEqual({
       ok: false, reason: 'rider_already_has_active_assignment',
     });
     // Same task, different rider → refused (already marked assigned in queue).
-    expect(book.assign(assignCmd({ command_id: 'cmd-c', riderId: 'r-2', newAssignmentId: 'as-3' }))).toMatchObject({
+    expect(book.assign(assignCmd({
+      command_id: 'cmd-c', riderId: 'r-2', newAssignmentId: 'as-3',
+      lease: witness.grant({ taskId: 'task-1', riderId: 'r-2', version: 2 }),
+    }))).toMatchObject({
       ok: false, reason: 'task_not_assignable', detail: 'already_assigned',
     });
     expect(book.findOneActiveViolations()).toEqual([]);
@@ -167,14 +192,17 @@ describe('manual assignment — §2.3 step 10, refuse closed everywhere', () => 
   });
 
   it('unacknowledged past the deadline → task is back in the queue and REASSIGNABLE', () => {
-    const { book, queue, registry } = world();
+    const { book, queue, registry, witness } = world();
     book.assign(assignCmd());
     book.expireUnacknowledged(PAST_ACK_DEADLINE);
     expect(queue.get('task-1')!.status).toBe('queued');
     registry.register({ riderId: 'r-9', displayName: 'Sali', phoneAlias: 'alias-99', certified: true });
     registry.acknowledgePrivacyNotice('r-9', PRIVACY_NOTICE_VERSION, T);
     registry.startShift('r-9', PAST_ACK_DEADLINE, 'server_confirmed');
-    const second = book.assign(assignCmd({ command_id: 'cmd-again', riderId: 'r-9', newAssignmentId: 'as-2', at: PAST_ACK_DEADLINE }));
+    const second = book.assign(assignCmd({
+      command_id: 'cmd-again', riderId: 'r-9', newAssignmentId: 'as-2', at: PAST_ACK_DEADLINE,
+      lease: witness.grant({ taskId: 'task-1', riderId: 'r-9', version: 2 }),
+    }));
     expect(second.ok).toBe(true);
   });
 
@@ -190,5 +218,38 @@ describe('manual assignment — §2.3 step 10, refuse closed everywhere', () => 
     // …and the SUCCESS is what replays idempotently, with no double-apply.
     expect(book.assign(assignCmd())).toMatchObject({ ok: true, duplicate: true });
     expect(book.findOneActiveViolations()).toEqual([]);
+  });
+
+  it('WO-4.3 DECLINE at the store: OFFLINE decline is PENDING (no state change, no event, the deadline still bites); server-confirmed returns the task; settled/unknown refuse closed', () => {
+    const { book, queue } = world();
+    book.assign(assignCmd());
+    // queued offline = pending, never done — nothing moves, nothing emits
+    expect(book.decline('as-1', 'queued_offline', T)).toEqual({ ok: true, pending: true, status: 'active_unacknowledged' });
+    expect(queue.get('task-1')!.status).toBe('assigned'); // still assigned
+    // …and the ack deadline still bites the pending decline
+    const { requeued } = book.expireUnacknowledged(PAST_ACK_DEADLINE);
+    expect(requeued).toHaveLength(1);
+    // a settled assignment cannot decline
+    expect(book.decline('as-1', 'server_confirmed', PAST_ACK_DEADLINE)).toEqual({ ok: false, reason: 'not_active' });
+    expect(book.decline('as-ghost', 'server_confirmed', T)).toEqual({ ok: false, reason: 'unknown_assignment' });
+  });
+
+  it('WO-4.3 DECLINE server-confirmed: returned_to_queue + requeue + canonical assignment.declined.v1 with actor rider:<id>; an ACKNOWLEDGED assignment cannot decline', () => {
+    const { book, queue } = world();
+    book.assign(assignCmd());
+    const declined = book.decline('as-1', 'server_confirmed', T);
+    expect(declined).toMatchObject({ ok: true, pending: false, status: 'returned_to_queue' });
+    if (!declined.ok || declined.pending) throw new Error('setup');
+    expect(PlatformEventSchema.safeParse(declined.event).success).toBe(true);
+    expect(declined.event.name).toBe('assignment.declined.v1');
+    expect(declined.event.envelope.actor).toBe('rider:r-1');
+    expect(declined.event.envelope.correlation_id).toBe(CORR);
+    expect(declined.event.payload).toMatchObject({ delivery_task_id: 'task-1', order_id: ORDER, assignment_id: 'as-1', rider_id: 'r-1', requeued: true });
+    expect(queue.get('task-1')!.status).toBe('queued');
+    // acknowledged = the course proceeds; decline refuses closed
+    const w2 = world();
+    w2.book.assign(assignCmd());
+    w2.book.acknowledge('as-1', 'server_confirmed');
+    expect(w2.book.decline('as-1', 'server_confirmed', T)).toEqual({ ok: false, reason: 'not_active' });
   });
 });

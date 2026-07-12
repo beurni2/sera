@@ -37,9 +37,13 @@ export interface DemoCourse {
   /** Lineage: a 2e passage carries attempt 2 and shows it. */
   readonly attempt: 1 | 2;
   readonly step: CourseStep;
-  /** Offline law: an ack is queued = PENDING, it confers nothing. */
-  readonly ack: 'none' | 'ack_pending';
+  /** Offline law: an ack — or a decline (WO-4.3) — queued without the
+   * network is PENDING, it confers nothing. */
+  readonly ack: 'none' | 'ack_pending' | 'decline_pending';
   readonly failureReason: FailureReasonId | null;
+  /** WO-4.3 — how a proposal ended, when it did not become a pickup: the
+   * rider gave it back (server-confirmed decline) or the window passed. */
+  readonly proposalOutcome: 'declined' | 'expired' | null;
   /** A closed course stays on the list with its honest status; it no longer
    * opens. */
   readonly closed: boolean;
@@ -57,7 +61,8 @@ const seed = (
   attempt: 1 | 2,
   step: CourseStep,
   failureReason: FailureReasonId | null = null,
-): DemoCourse => ({ id, name, locationLines, kind, attempt, step, ack: 'none', failureReason, closed: false });
+  ack: DemoCourse['ack'] = 'none',
+): DemoCourse => ({ id, name, locationLines, kind, attempt, step, ack, failureReason, proposalOutcome: null, closed: false });
 
 export function seedCourses(): DemoCourse[] {
   return [
@@ -96,6 +101,20 @@ export function seedCourses(): DemoCourse[] {
       1,
       'evidence_pending',
     ),
+    // WO-4.3, the offline-DECLINE branch, honest and walkable (the Issouf
+    // pattern): the refusal went out without the network — queued = PENDING,
+    // it confers nothing; the course is still proposed and the window still
+    // runs.
+    seed(
+      'course-fatou',
+      'Colis pour Fatou (démo)',
+      ['En face du maquis', 'Cour au portail rouge', 'Cissin'],
+      'livraison',
+      1,
+      'affectation',
+      null,
+      'decline_pending',
+    ),
   ];
 }
 
@@ -124,6 +143,39 @@ function update(world: DemoWorld, id: string, patch: Partial<DemoCourse>): DemoC
 export function acknowledgeCourse(world: DemoWorld, id: string): void {
   expectStep(courseById(world, id), ['affectation']);
   update(world, id, { ack: 'ack_pending' });
+}
+
+/**
+ * WO-4.3 — the rider gives the course back. The captureEvidence convention:
+ * both connectivity arms are real code paths. OFFLINE: the decline is
+ * queued = PENDING, it confers NOTHING — the course stays proposed and the
+ * answer window still runs (only a server-confirmed decline releases;
+ * kernel law). ONLINE (server-confirmed): the course returns to the
+ * dispatch list — closed here with its honest outcome, as dignified as an
+ * acceptance.
+ */
+export function declineCourse(
+  world: DemoWorld,
+  id: string,
+  connectivity: typeof CONNECTIVITY = CONNECTIVITY,
+): CourseStep {
+  expectStep(courseById(world, id), ['affectation']);
+  if (connectivity === 'offline') {
+    return update(world, id, { ack: 'decline_pending' }).step;
+  }
+  return update(world, id, { proposalOutcome: 'declined', closed: true }).step;
+}
+
+/**
+ * WO-4.3 — the answer window passed (5 min — the WO-1.2 ack deadline; the
+ * live sweep drives this at assembly, the demo exposes it as an explicit
+ * lever). Expiry bites PENDING acks and PENDING declines alike — queued =
+ * pending, never done. The course closes with its honest outcome; the
+ * dispatcher's list gets the task back.
+ */
+export function expireProposal(world: DemoWorld, id: string): CourseStep {
+  expectStep(courseById(world, id), ['affectation']);
+  return update(world, id, { proposalOutcome: 'expired', closed: true }).step;
 }
 
 /** Walking to the pickup — navigation, custody has not begun. */

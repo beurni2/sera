@@ -10,8 +10,10 @@
   "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p worker/tsconfig.json",
+    "test": "vitest run",
+    "bundle:worker": "esbuild worker/assignment-lease-do.ts --bundle --format=esm --outfile=dist-worker/assignment-worker.mjs --platform=neutral --conditions=import",
+    "pretest": "pnpm bundle:worker"
   },
   "dependencies": {
     "@sera/observability": "workspace:*",

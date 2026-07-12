@@ -1,9 +1,13 @@
 import {
   AssignmentBook,
+  GrantedLeaseWitness,
+  InMemoryLeaseAuthority,
+  LeasedDispatch,
   MockBoutikReadiness,
   MockShopPlusFunding,
   PRIVACY_NOTICE_VERSION,
   ReadyQueue,
+  RescheduleBook,
   RiderRegistry,
 } from '@sera/logistics-service';
 
@@ -11,9 +15,12 @@ import {
  * E1 SANDBOX WORLD for the console — the REAL logistics-service intake and
  * assignment logic driven against the §3 mocks in their well-behaved
  * configuration (funded + readiness-confirmed + non-cancelled, fresh
- * projections). This is runtime DATA feeding the shell, not interface copy —
- * UI strings live in the i18n catalog. At E1 assembly the world is replaced
- * by the live services; nothing in here is a second implementation.
+ * projections). WO-4.3: assignment goes through the REAL leased grant path
+ * (LeasedDispatch + witness-wired AssignmentBook); the authority is the
+ * in-memory adapter over the SAME pure decideLease core because a browser
+ * cannot host workerd — the AssignmentLeaseDO replaces it at assembly.
+ * This is runtime DATA feeding the shell, not interface copy — UI strings
+ * live in the i18n catalog; nothing in here is a second implementation.
  */
 export function buildSandboxWorld(nowIso: string) {
   const funding = new MockShopPlusFunding({});
@@ -72,6 +79,15 @@ export function buildSandboxWorld(nowIso: string) {
   registry.register({ riderId: 'rider-issa', displayName: 'Issa', phoneAlias: 'alias-77', certified: true });
   registry.acknowledgePrivacyNotice('rider-issa', PRIVACY_NOTICE_VERSION, nowIso);
   registry.startShift('rider-issa', nowIso, 'server_confirmed');
-  const book = new AssignmentBook(registry, queue);
-  return { queue, book, registry, riders: [{ riderId: 'rider-issa', displayName: 'Issa' }] };
+  const witness = new GrantedLeaseWitness();
+  const book = new AssignmentBook(registry, queue, witness);
+  const dispatch = new LeasedDispatch({
+    authority: new InMemoryLeaseAuthority(),
+    witness,
+    registry,
+    queue,
+    book,
+    reschedules: new RescheduleBook(queue),
+  });
+  return { queue, book, dispatch, registry, riders: [{ riderId: 'rider-issa', displayName: 'Issa' }] };
 }
