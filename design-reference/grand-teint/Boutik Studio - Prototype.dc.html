@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..900&amp;display=swap">
+<style>
+body{margin:0;background:#EBE6DC;font-family:'Archivo',system-ui,sans-serif}
+a{color:#1F4D36}a:hover{color:#163A28}
+@keyframes gtBar{0%{transform:scaleX(0.12)}50%{transform:scaleX(0.92)}100%{transform:scaleX(0.12)}}
+@keyframes gtFlash{0%{opacity:0.85}100%{opacity:0}}
+@keyframes celHalo{0%{transform:scale(0.35);opacity:0}30%{opacity:0.55}100%{transform:scale(1.18);opacity:0}}
+@keyframes celRing{0%{transform:scale(0.5);opacity:0.8}100%{transform:scale(1.32);opacity:0}}
+@keyframes celFlyFar{0%{transform:translateY(0) scale(0.4);opacity:0}18%{opacity:1}100%{transform:translateY(-118px) scale(1);opacity:0}}
+@keyframes celFlyNear{0%{transform:translateY(0) scale(0.5);opacity:0}18%{opacity:1}100%{transform:translateY(-76px) scale(0.9);opacity:0}}
+@keyframes celPop{0%{transform:scale(0.55);opacity:0}55%{transform:scale(1.07);opacity:1}100%{transform:scale(1);opacity:1}}
+</style>
+</helmet>
+
+<div style="display:flex;min-height:100vh;align-items:stretch">
+
+<!-- ============ RAIL ============ -->
+<div style="width:292px;flex:none;background:#FFFDF7;border-right:1px solid rgba(27,20,13,0.14);padding:20px 18px 28px;box-sizing:border-box;height:100vh;overflow-y:auto;position:sticky;top:0">
+  <div style="display:flex;align-items:center;gap:8px">
+    <span style="background:#1F4D36;color:#F2F7F1;font:800 10px 'Archivo',sans-serif;letter-spacing:1.5px;padding:4px 8px">BOUTIK+</span>
+    <span style="font:800 12px 'Archivo',sans-serif;letter-spacing:1.8px">LE STUDIO → PRODUIT PRÊT</span>
+  </div>
+  <div style="font:500 12px/1.5 'Archivo',sans-serif;color:#6E6154;margin-top:6px">B4–B7 : la capture guidée, l'aperçu WYSIWYG, l'offre au filet d'eau réel, la confirmation. Cliquez dans l'écran — le parcours entier est réel.</div>
+
+  <div style="margin-top:16px;border:1.5px solid #1B140D">
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid rgba(27,20,13,0.14);cursor:pointer" onClick="{{ toggleOffline }}">
+      <span style="flex:1;font:700 12px 'Archivo',sans-serif;letter-spacing:0.5px">Hors ligne</span>
+      <span style="width:34px;height:20px;border-radius:999px;background:{{ offSwBg }};position:relative;display:inline-block;transition:background 150ms"><span style="position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:999px;background:#FFFDF7;transform:{{ offSwKnob }};transition:transform 150ms"></span></span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer" onClick="{{ toggleRm }}">
+      <span style="flex:1;font:700 12px 'Archivo',sans-serif;letter-spacing:0.5px">Réduire le mouvement</span>
+      <span style="width:34px;height:20px;border-radius:999px;background:{{ rmSwBg }};position:relative;display:inline-block;transition:background 150ms"><span style="position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:999px;background:#FFFDF7;transform:{{ rmSwKnob }};transition:transform 150ms"></span></span>
+    </div>
+  </div>
+
+  <sc-for list="{{ railSections }}" as="sec" hint-placeholder-count="4">
+    <div style="margin-top:16px">
+      <div style="display:flex;align-items:baseline;gap:7px">
+        <span style="font:800 10.5px ui-monospace,Menlo,monospace;background:{{ sec.idBg }};color:{{ sec.idColor }};padding:2px 6px">{{ sec.id }}</span>
+        <span style="font:700 12px 'Archivo',sans-serif">{{ sec.name }}</span>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
+        <sc-for list="{{ sec.states }}" as="st" hint-placeholder-count="3">
+          <span style="{{ st.style }}" onClick="{{ st.go }}">{{ st.label }}</span>
+        </sc-for>
+      </div>
+    </div>
+  </sc-for>
+
+  <div style="margin-top:20px;border-left:3px solid #1F4D36;padding:2px 0 2px 12px">
+    <div style="font:800 10px 'Archivo',sans-serif;letter-spacing:2px;color:#6E6154">TEST 5 SECONDES</div>
+    <div style="font:600 13px/1.45 'Archivo',sans-serif;margin-top:4px">{{ fiveSecond }}</div>
+  </div>
+
+  <div style="margin-top:14px;font:500 11.5px/1.55 'Archivo',sans-serif;color:#6E6154">Lois tenues : filet d'eau réel (8&#8239;500 = 10&#8239;000 − 1&#8239;000 − 500) · plancher de catégorie, refus gentil · aucun dépôt, jamais · pas de vert menteur hors confirmation serveur.</div>
+</div>
+
+<!-- ============ STAGE ============ -->
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:28px 20px;gap:14px">
+  <div style="display:flex;align-items:baseline;gap:9px">
+    <span style="font:800 11px ui-monospace,Menlo,monospace;background:#1B140D;color:#FFF8F1;padding:3px 7px">{{ screenId }}</span>
+    <span style="font:700 13px 'Archivo',sans-serif;letter-spacing:0.5px">{{ screenTitle }}</span>
+  </div>
+
+  <div style="width:360px;height:800px;background:#FFFDF7;border:1px solid rgba(27,20,13,0.22);box-shadow:0 18px 44px rgba(27,20,13,0.16);position:relative;overflow:hidden;display:flex;flex-direction:column;color:#1B140D;flex:none">
+
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px 6px;flex:none">
+      <span style="font:600 13px 'Archivo',sans-serif">09:20</span>
+      <span style="display:flex;gap:5px;align-items:center">
+        <svg width="15" height="11" viewBox="0 0 15 11" fill="#1B140D"><rect x="0" y="7" width="2.6" height="4" rx="0.8"></rect><rect x="4" y="4.5" width="2.6" height="6.5" rx="0.8"></rect><rect x="8" y="2" width="2.6" height="9" rx="0.8"></rect><rect x="12" y="0" width="2.6" height="11" rx="0.8" opacity="0.35"></rect></svg>
+        <svg width="22" height="11" viewBox="0 0 24 11"><rect x="0.5" y="0.5" width="19" height="10" rx="3" fill="none" stroke="#1B140D" opacity="0.4"></rect><rect x="2.5" y="2.5" width="12" height="6" rx="1.5" fill="#1B140D"></rect><path d="M22 3.5v4" stroke="#1B140D" stroke-width="1.6" stroke-linecap="round"></path></svg>
+      </span>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid rgba(27,20,13,0.14);flex:none">
+      <span style="font:800 12px 'Archivo',sans-serif;letter-spacing:1.8px">BOUTIK+ · WENDKUNI</span>
+      <span style="font:500 11.5px 'Archivo',sans-serif;color:#6E6154">Rood Woko</span>
+    </div>
+    <div style="height:4px;background:#1F4D36;flex:none"></div>
+
+    <sc-if value="{{ offline }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:none;background:#1B140D;color:#FFF8F1;display:flex;align-items:center;gap:8px;padding:7px 14px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFF8F1" stroke-width="1.8" stroke-linecap="round"><path d="M3 6.5a13 13 0 0 1 18 0"></path><path d="M6.5 10a8.5 8.5 0 0 1 11 0"></path><circle cx="12" cy="16.5" r="1.6" fill="#FFF8F1" stroke="none"></circle><path d="M4 20L20 4"></path></svg>
+        <span style="font:600 11.5px 'Archivo',sans-serif">Hors ligne : vos actions sont en attente, jamais perdues.</span>
+      </div>
+    </sc-if>
+
+    <div style="flex:1;position:relative;overflow:hidden">
+      <div style="{{ animStyle }}">
+
+        <!-- ======== B4 · LE STUDIO ======== -->
+        <sc-if value="{{ isB4 }}" hint-placeholder-val="{{ true }}">
+          <div data-screen-label="B4 Le Studio — capture guidée" style="height:100%;background:#171310;position:relative;display:flex;flex-direction:column">
+            <div style="margin:12px 14px 0;background:#FFFDF7;border:1px solid rgba(27,20,13,0.2);padding:9px 12px;display:flex;align-items:center;gap:10px;flex:none">
+              <span style="background:#1F4D36;color:#F2F7F1;font:800 9px 'Archivo',sans-serif;letter-spacing:1.2px;padding:3px 7px;white-space:nowrap">VÊTEMENTS</span>
+              <span style="font:600 12.5px/1.35 'Archivo',sans-serif">{{ guidance }}</span>
+            </div>
+            <div style="flex:1;position:relative">
+              <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:272px;height:340px">
+                <div style="position:absolute;top:0;left:0;width:22px;height:22px;border-top:2.5px solid rgba(255,253,247,0.85);border-left:2.5px solid rgba(255,253,247,0.85)"></div>
+                <div style="position:absolute;top:0;right:0;width:22px;height:22px;border-top:2.5px solid rgba(255,253,247,0.85);border-right:2.5px solid rgba(255,253,247,0.85)"></div>
+                <div style="position:absolute;bottom:0;left:0;width:22px;height:22px;border-bottom:2.5px solid rgba(255,253,247,0.85);border-left:2.5px solid rgba(255,253,247,0.85)"></div>
+                <div style="position:absolute;bottom:0;right:0;width:22px;height:22px;border-bottom:2.5px solid rgba(255,253,247,0.85);border-right:2.5px solid rgba(255,253,247,0.85)"></div>
+                <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px">
+                  <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="rgba(255,253,247,0.4)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7.5 4.2v9.6L12 21l-7.5-4.2V7.2L12 3z"></path><path d="M4.5 7.2L12 11.5l7.5-4.3"></path><path d="M12 11.5V21"></path></svg>
+                  <span style="font:600 11px 'Archivo',sans-serif;letter-spacing:1.5px;color:rgba(255,253,247,0.45)">{{ frameHint }}</span>
+                </div>
+              </div>
+              <sc-if value="{{ capFlash }}" hint-placeholder-val="{{ false }}">
+                <div style="position:absolute;inset:0;background:#FFFDF7;animation:gtFlash 220ms ease-out forwards"></div>
+              </sc-if>
+            </div>
+            <sc-if value="{{ capFail }}" hint-placeholder-val="{{ false }}">
+              <div style="margin:0 14px 10px;background:#F9E9E6;border-left:4px solid #B3382C;padding:10px 12px;font:600 12.5px/1.45 'Archivo',sans-serif;color:#7A2418;flex:none">La photo n'a pas pu être prise — réessayez.</div>
+            </sc-if>
+            <div style="flex:none;padding:0 22px 26px;display:flex;align-items:center;justify-content:space-between">
+              <div style="width:44px;height:44px;border:1.5px solid rgba(255,253,247,0.45);border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer" onClick="{{ importGallery }}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,253,247,0.85)" stroke-width="1.8" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"></rect><circle cx="9.2" cy="9.2" r="1.7"></circle><path d="M4 16.5l4.8-4.5 3.6 3.3 3-2.6L20 16.5"></path></svg></div>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:9px">
+                <span style="font:800 10.5px 'Archivo',sans-serif;letter-spacing:2px;color:rgba(255,253,247,0.8)">{{ shotLabel }}</span>
+                <div style="width:74px;height:74px;border-radius:999px;border:3px solid #FFFDF7;display:flex;align-items:center;justify-content:center;cursor:pointer" style-active="transform:scale(0.94)" onClick="{{ shutter }}">
+                  <div style="width:56px;height:56px;border-radius:999px;background:#FFFDF7"></div>
+                </div>
+              </div>
+              <div style="width:44px;display:flex;justify-content:center">
+                <div style="display:flex;gap:4px">
+                  <div style="width:8px;height:8px;border-radius:999px;background:{{ dot1Bg }}"></div>
+                  <div style="width:8px;height:8px;border-radius:999px;background:{{ dot2Bg }}"></div>
+                </div>
+              </div>
+            </div>
+
+            <sc-if value="{{ permAsk }}" hint-placeholder-val="{{ false }}">
+              <div style="position:absolute;inset:0;background:rgba(23,19,16,0.88);display:flex;align-items:center;justify-content:center;padding:24px">
+                <div style="background:#FFFDF7;border:2px solid #1B140D;padding:20px 18px;width:100%">
+                  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#1B140D" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-2.5h6L17 8h3v11H4V8z"></path><circle cx="12" cy="13" r="3.2"></circle></svg>
+                  <div style="font:900 19px/1.15 'Archivo',sans-serif;font-stretch:110%;margin-top:10px">Pour vendre, il faut montrer.</div>
+                  <div style="font:500 14px/1.5 'Archivo',sans-serif;color:#4A3F33;margin-top:7px">Boutik+ utilise l'appareil photo seulement ici, pour vos produits. Rien d'autre.</div>
+                  <div style="height:50px;background:#1F4D36;color:#F2F7F1;display:flex;align-items:center;justify-content:center;font:800 12.5px 'Archivo',sans-serif;letter-spacing:1.8px;border-radius:6px;cursor:pointer;margin-top:14px" onClick="{{ permAllow }}">AUTORISER L'APPAREIL PHOTO</div>
+                  <div style="text-align:center;margin-top:11px"><span style="font:800 10.5px 'Archivo',sans-serif;letter-spacing:1.2px;color:#6E6154;cursor:pointer" onClick="{{ permLater }}">PLUS TARD</span></div>
+                </div>
+              </div>
+            </sc-if>
+            <sc-if value="{{ permRefused }}" hint-placeholder-val="{{ false }}">
+              <div style="position:absolute;inset:0;background:rgba(23,19,16,0.88);display:flex;align-items:center;justify-content:center;padding:24px">
+                <div style="background:#FFFDF7;border:2px solid #1B140D;padding:20px 18px;width:100%">
+                  <div style="font:900 19px/1.15 'Archivo',sans-serif;font-stretch:110%">Pas d'appareil photo&#8239;? Pas grave.</div>
+                  <div style="font:500 14px/1.5 'Archivo',sans-serif;color:#4A3F33;margin-top:7px">Importez une photo depuis la galerie — ça marche aussi bien. Les mêmes guides s'appliquent.</div>
+                  <div style="height:50px;background:#1B140D;color:#FFF8F1;display:flex;align-items:center;justify-content:center;gap:9px;font:800 12.5px 'Archivo',sans-serif;letter-spacing:1.8px;border-radius:6px;cursor:pointer;margin-top:14px" onClick="{{ importGallery }}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FFF8F1" stroke-width="1.8" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"></rect><circle cx="9.2" cy="9.2" r="1.7"></circle><path d="M4 16.5l4.8-4.5 3.6 3.3 3-2.6L20 16.5"></path></svg>IMPORTER DE LA GALERIE</div>
+                  <div style="text-align:center;margin-top:11px"><span style="font:800 10.5px 'Archivo',sans-serif;letter-spacing:1.2px;color:#1F4D36;border-bottom:1.5px solid #1F4D36;padding-bottom:2px;cursor:pointer" onClick="{{ permRetry }}">RÉESSAYER L'AUTORISATION</span></div>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+        </sc-if>
+
+        <!-- ======== B5 · L'APERÇU ======== -->
+        <sc-if value="{{ isB5 }}" hint-placeholder-val="{{ false }}">
+          <div data-screen-label="B5 L'aperçu — ce que l'acheteur verra" style="height:100%;overflow-y:auto">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 16px;border-bottom:1px solid rgba(27,20,13,0.14)">
+              <div style="width:34px;height:34px;border:1.5px solid rgba(27,20,13,0.35);display:flex;align-items:center;justify-content:center;border-radius:6px;cursor:pointer" onClick="{{ backToStudio }}"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#1B140D" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 18l-6-6 6-6"></path></svg></div>
+              <span style="font:800 12.5px 'Archivo',sans-serif;letter-spacing:2.4px">L'APERÇU</span>
+              <div style="width:34px"></div>
+            </div>
+            <div style="padding:14px 16px 0;font:900 21px/1.1 'Archivo',sans-serif;font-stretch:110%;text-transform:uppercase">Ce que l'acheteur verra</div>
+            <div style="padding:5px 16px 0;font:500 13px/1.5 'Archivo',sans-serif;color:#4A3F33">Exactement ces images, exactement ces octets. Rien de retouché en route.</div>
+            <div style="display:flex;gap:8px;padding:12px 16px 0">
+              <span style="{{ tabHeroStyle }}" onClick="{{ pickHero }}">1 · HÉRO</span>
+              <span style="{{ tabPreuveStyle }}" onClick="{{ pickPreuve }}">2 · PREUVE</span>
+            </div>
+            <div style="margin:12px 16px 0;border:1px solid rgba(27,20,13,0.22)">
+              <div style="height:300px;background:{{ previewBg }};position:relative;border-bottom:1px solid rgba(27,20,13,0.14)">
+                <div style="position:absolute;top:12px;left:12px;width:14px;height:14px;border-top:2px solid rgba(27,20,13,0.5);border-left:2px solid rgba(27,20,13,0.5)"></div>
+                <div style="position:absolute;top:12px;right:12px;width:14px;height:14px;border-top:2px solid rgba(27,20,13,0.5);border-right:2px solid rgba(27,20,13,0.5)"></div>
+                <div style="position:absolute;bottom:12px;left:12px;width:14px;height:14px;border-bottom:2px solid rgba(27,20,13,0.5);border-left:2px solid rgba(27,20,13,0.5)"></div>
+                <div style="position:absolute;bottom:12px;right:12px;width:14px;height:14px;border-bottom:2px solid rgba(27,20,13,0.5);border-right:2px solid rgba(27,20,13,0.5)"></div>
+                <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#8D7C64" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7.5 4.2v9.6L12 21l-7.5-4.2V7.2L12 3z"></path><path d="M4.5 7.2L12 11.5l7.5-4.3"></path><path d="M12 11.5V21"></path></svg>
+                  <span style="font:700 11px 'Archivo',sans-serif;letter-spacing:2px;color:#8D7C64">{{ previewLabel }}</span>
+                </div>
+                <div style="position:absolute;left:12px;bottom:12px;background:rgba(255,253,247,0.94);border:1px solid rgba(27,20,13,0.2);padding:4px 9px;font:700 10.5px 'Archivo',sans-serif;letter-spacing:0.6px;font-feature-settings:'tnum'">{{ previewBytes }}</div>
+              </div>
+              <div style="display:flex;justify-content:space-between;gap:10px;padding:9px 12px">
+                <span style="font:500 12px 'Archivo',sans-serif;color:#6E6154">Photo réelle — ce que vous recevrez.</span>
+                <span style="font:700 12px 'Archivo',sans-serif;white-space:nowrap">Vendu par Aïcha</span>
+              </div>
+            </div>
+            <div style="padding:9px 16px 0;font:500 12px/1.5 'Archivo',sans-serif;color:#6E6154">La légende ci-dessus est celle que verra l'acheteur — votre nom n'y apparaît jamais.</div>
+            <div style="display:flex;gap:10px;margin:14px 16px 0">
+              <div style="flex:1;height:56px;border:1.5px solid rgba(27,20,13,0.35);display:flex;align-items:center;justify-content:center;gap:8px;font:800 12.5px 'Archivo',sans-serif;letter-spacing:1.5px;border-radius:6px;cursor:pointer" onClick="{{ backToStudio }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#1B140D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10a8 8 0 1 1 2 5.3"></path><path d="M4 5.5V10h4.5"></path></svg>REPRENDRE</div>
+              <div style="flex:1;height:56px;background:#1F4D36;color:#F2F7F1;display:flex;align-items:center;justify-content:center;font:800 12.5px 'Archivo',sans-serif;letter-spacing:1.5px;border-radius:6px;cursor:pointer" style-active="transform:scale(0.98)" onClick="{{ keepPhotos }}">GARDER</div>
+            </div>
+            <div style="text-align:center;padding:11px 16px 22px;font:500 12px 'Archivo',sans-serif;color:#6E6154">Reprendre coûte le même geste que garder — c'est voulu.</div>
+          </div>
+        </sc-if>
+
+        <!-- ======== B6 · L'OFFRE ======== -->
+        <sc-if value="{{ isB6 }}" hint-placeholder-val="{{ false }}">
+          <div data-screen-label="B6 L'offre" style="height:100%;overflow-y:auto">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 16px;border-bottom:1px solid rgba(27,20,13,0.14)">
+              <div style="width:34px;height:34px;border:1.5px solid rgba(27,20,13,0.35);display:flex;align-items:center;justify-content:center;border-radius:6px;cursor:pointer" onClick="{{ backToB5 }}"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#1B140D" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 18l-6-6 6-6"></path></svg></div>
+              <span style="font:800 12.5px 'Archivo',sans-serif;letter-spacing:2.4px">L'OFFRE</span>
+              <div style="width:34px"></div>
+            </div>
+            <sc-if value="{{ isV2 }}" hint-placeholder-val="{{ false }}">
+              <div style="margin:12px 16px 0;background:#F7EED7;border-left:4px solid #6B4E0C;padding:10px 12px;font:600 12.5px/1.5 'Archivo',sans-serif;color:#6B4E0C">Version 2 de votre offre. La v1 reste servie tant que la v2 n'est pas validée.</div>
+            </sc-if>
+            <div style="margin-top:14px;background:{{ netBandBg }};padding:14px 16px;transition:background 200ms">
+              <div style="font:800 10px 'Archivo',sans-serif;letter-spacing:2.2px;color:#CFE0D4">VOUS RECEVREZ</div>
+              <div style="font:900 44px/1 'Archivo',sans-serif;font-feature-settings:'tnum';color:#F2F7F1;margin-top:5px">{{ netStr }}</div>
+              <div style="font:500 11.5px/1.4 'Archivo',sans-serif;color:#CFE0D4;margin-top:5px">Payé après livraison validée. Aucun dépôt, jamais.</div>
+            </div>
+            <div style="padding:16px 16px 0;font:800 11px 'Archivo',sans-serif;letter-spacing:2px;color:#6E6154">VOTRE PRIX</div>
+            <div style="display:flex;align-items:stretch;gap:8px;margin:8px 16px 0">
+              <div style="width:48px;border:1.5px solid rgba(27,20,13,0.35);display:flex;align-items:center;justify-content:center;font:900 20px 'Archivo',sans-serif;border-radius:6px;cursor:pointer" style-active="transform:scale(0.95)" onClick="{{ bMinus }}">−</div>
+              <div style="flex:1;border:1.5px solid #1B140D;display:flex;align-items:center;justify-content:center;font:900 22px 'Archivo',sans-serif;font-feature-settings:'tnum';border-radius:6px;min-height:52px">{{ priceBStr }}</div>
+              <div style="width:48px;border:1.5px solid rgba(27,20,13,0.35);display:flex;align-items:center;justify-content:center;font:900 20px 'Archivo',sans-serif;border-radius:6px;cursor:pointer" style-active="transform:scale(0.95)" onClick="{{ bPlus }}">+</div>
+            </div>
+            <sc-if value="{{ belowFloor }}" hint-placeholder-val="{{ false }}">
+              <div style="margin:10px 16px 0;background:#F7EED7;border-left:4px solid #6B4E0C;padding:10px 12px;font:600 12.5px/1.5 'Archivo',sans-serif;color:#6B4E0C;font-feature-settings:'tnum'">Le prix plancher des vêtements est 8&#8239;000&#8239;F — remontez un peu. C'est pour protéger la valeur de votre travail.</div>
+            </sc-if>
+            <div style="padding:14px 16px 0;font:800 11px 'Archivo',sans-serif;letter-spacing:2px;color:#6E6154">LA PART DE LA REVENDEUSE</div>
+            <div style="display:flex;align-items:stretch;gap:8px;margin:8px 16px 0">
+              <div style="width:48px;border:1.5px solid rgba(27,20,13,0.35);display:flex;align-items:center;justify-content:center;font:900 20px 'Archivo',sans-serif;border-radius:6px;cursor:pointer" style-active="transform:scale(0.95)" onClick="{{ cMinus }}">−</div>
+              <div style="flex:1;border:1.5px solid #1B140D;display:flex;align-items:center;justify-content:center;font:900 18px 'Archivo',sans-serif;font-feature-settings:'tnum';border-radius:6px;min-height:52px">{{ commCStr }}</div>
+              <div style="width:48px;border:1.5px solid rgba(27,20,13,0.35);display:flex;align-items:center;justify-content:center;font:900 20px 'Archivo',sans-serif;border-radius:6px;cursor:pointer" style-active="transform:scale(0.95)" onClick="{{ cPlus }}">+</div>
+            </div>
+            <div style="padding:5px 16px 0;font:500 12px/1.5 'Archivo',sans-serif;color:#6E6154">Une part motivante fait vendre plus vite. C'est vous qui décidez.</div>
+            <div style="margin:14px 16px 0;border:1.5px solid #1B140D">
+              <div style="display:flex;justify-content:space-between;gap:10px;padding:10px 12px;border-bottom:1px solid rgba(27,20,13,0.14)"><span style="font:500 13px 'Archivo',sans-serif">Votre prix</span><span style="font:700 13.5px 'Archivo',sans-serif;font-feature-settings:'tnum'">{{ priceBStr }}</span></div>
+              <div style="display:flex;justify-content:space-between;gap:10px;padding:10px 12px;border-bottom:1px solid rgba(27,20,13,0.14)"><span style="font:500 13px 'Archivo',sans-serif;color:#4A3F33">Part de la revendeuse</span><span style="font:700 13.5px 'Archivo',sans-serif;font-feature-settings:'tnum'">−&#8239;{{ commCStr }}</span></div>
+              <div style="display:flex;justify-content:space-between;gap:10px;padding:10px 12px;border-bottom:1px solid rgba(27,20,13,0.14)"><span style="font:500 13px 'Archivo',sans-serif;color:#4A3F33">Frais de service (5&#8239;%)</span><span style="font:700 13.5px 'Archivo',sans-serif;font-feature-settings:'tnum'">−&#8239;{{ feeStr }}</span></div>
+              <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:11px 12px;border-top:1.5px solid #1B140D;margin-top:-1px"><span style="font:800 12px 'Archivo',sans-serif;letter-spacing:1.5px">VOUS RECEVREZ</span><span style="font:900 17px 'Archivo',sans-serif;font-feature-settings:'tnum'">{{ netStr }}</span></div>
+            </div>
+            <div style="padding:6px 16px 0;text-align:right;font:600 11px 'Archivo',sans-serif;color:#6E6154;font-feature-settings:'tnum'">{{ reconcileStr }}</div>
+            <div style="margin:14px 16px 0">
+              <div style="height:56px;background:{{ b6CtaBg }};color:{{ b6CtaColor }};display:flex;align-items:center;justify-content:center;font:800 13.5px 'Archivo',sans-serif;letter-spacing:2px;border-radius:6px;cursor:pointer;transition:background 150ms" style-active="transform:scale(0.98)" onClick="{{ publishOffer }}">{{ b6CtaLabel }}</div>
+            </div>
+            <div style="height:22px"></div>
+          </div>
+        </sc-if>
+
+        <!-- ======== B7 · PRODUIT PRÊT ======== -->
+        <sc-if value="{{ isB7 }}" hint-placeholder-val="{{ false }}">
+          <div data-screen-label="B7 Produit prêt" style="height:100%;overflow-y:auto">
+            <div style="background:#F3EBDB;text-align:center;padding:6px 16px;font:800 9.5px 'Archivo',sans-serif;letter-spacing:2px;color:#6E6154;border-bottom:1px solid rgba(27,20,13,0.12)">PLUS TARD — UNE COMMANDE ARRIVE</div>
+            <div style="margin:14px 16px 0;border:1.5px solid #1B140D">
+              <div style="display:flex;align-items:center;gap:9px;padding:11px 12px;border-bottom:1px solid rgba(27,20,13,0.14)">
+                <span style="font:700 11px ui-monospace,Menlo,monospace;border:1.5px solid #1B140D;padding:2px 6px">CMD-2417</span>
+                <span style="font:700 14px 'Archivo',sans-serif;flex:1">Robe brodée bogolan · M</span>
+                <span style="background:#1F4D36;color:#F2F7F1;font:800 9.5px 'Archivo',sans-serif;letter-spacing:0.8px;padding:3px 7px">PAYÉE</span>
+              </div>
+              <div style="padding:10px 12px;font:500 13px/1.5 'Archivo',sans-serif;color:#4A3F33">Commande payée. Préparez le colis — Séra viendra le chercher.</div>
+            </div>
+            <div style="margin:12px 16px 0;border:1.5px solid rgba(27,20,13,0.35)">
+              <div style="display:flex;align-items:center;gap:11px;padding:12px;border-bottom:1px solid rgba(27,20,13,0.14);cursor:pointer" onClick="{{ toggleCheck1 }}">
+                <div style="{{ check1Style }}">
+                  <sc-if value="{{ check1On }}" hint-placeholder-val="{{ true }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#F2F7F1" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></sc-if>
+                </div>
+                <span style="font:600 14px 'Archivo',sans-serif">Le colis correspond à la photo</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:11px;padding:12px;cursor:pointer" onClick="{{ toggleCheck2 }}">
+                <div style="{{ check2Style }}">
+                  <sc-if value="{{ check2On }}" hint-placeholder-val="{{ true }}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#F2F7F1" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></sc-if>
+                </div>
+                <span style="font:600 14px 'Archivo',sans-serif">Fermé, prêt à partir</span>
+              </div>
+            </div>
+            <sc-if value="{{ b7Ready }}" hint-placeholder-val="{{ true }}">
+              <div style="margin:16px 16px 0">
+                <div style="height:56px;background:{{ b7CtaBg }};color:{{ b7CtaColor }};display:flex;align-items:center;justify-content:center;font:800 13.5px 'Archivo',sans-serif;letter-spacing:2px;border-radius:6px;cursor:pointer;transition:background 150ms" style-active="transform:scale(0.98)" onClick="{{ confirmReady }}">CONFIRMER : PRODUIT PRÊT</div>
+              </div>
+              <div style="text-align:center;padding:10px 16px 0;font:500 12px 'Archivo',sans-serif;color:#6E6154">Avant ce soir 18&#8239;h.</div>
+            </sc-if>
+            <sc-if value="{{ b7Submitting }}" hint-placeholder-val="{{ false }}">
+              <div style="margin:16px 16px 0;border:1.5px solid rgba(27,20,13,0.35);padding:13px 14px">
+                <div style="font:700 12px 'Archivo',sans-serif;letter-spacing:1px">ENVOI…</div>
+                <div style="width:100%;height:3px;background:rgba(27,20,13,0.12);margin-top:10px;overflow:hidden"><div style="width:100%;height:100%;background:#1F4D36;transform-origin:left;animation:gtBar 1.2s ease-in-out infinite"></div></div>
+              </div>
+            </sc-if>
+            <sc-if value="{{ b7Pending }}" hint-placeholder-val="{{ false }}">
+              <div style="margin:16px 16px 0;background:#F7EED7;border-left:4px solid #6B4E0C;padding:12px 13px;font:600 13px/1.5 'Archivo',sans-serif;color:#6B4E0C">Envoyé — en attente de confirmation. Le réseau est lent, rien n'est perdu.</div>
+            </sc-if>
+            <sc-if value="{{ b7Queued }}" hint-placeholder-val="{{ false }}">
+              <div style="margin:16px 16px 0;background:#F7EED7;border-left:4px solid #6B4E0C;padding:12px 13px;font:600 13px/1.5 'Archivo',sans-serif;color:#6B4E0C">C'est noté. En attente du réseau — votre confirmation partira toute seule.</div>
+            </sc-if>
+            <sc-if value="{{ b7Confirmed }}" hint-placeholder-val="{{ false }}">
+              <div style="margin:16px 16px 0;border:2px solid #1F4D36;padding:16px;background:#F2F7F1">
+                <div style="display:flex;align-items:center;gap:10px">
+                  <svg width="22" height="22" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#1F4D36"></circle><path d="M7.5 12.5l3 3 6-6.5" fill="none" stroke="#F2F7F1" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                  <span style="font:900 19px 'Archivo',sans-serif;font-stretch:110%">Produit prêt</span>
+                </div>
+                <div style="font:500 14px/1.5 'Archivo',sans-serif;color:#4A3F33;margin-top:8px">Dès que c'est confirmé, Séra vient chercher le colis.</div>
+                <div style="display:flex;align-items:center;gap:8px;margin-top:10px">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#1B140D" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3.5 2"></path></svg>
+                  <span style="font:700 13.5px 'Archivo',sans-serif">Avant ce soir 18&#8239;h.</span>
+                </div>
+              </div>
+              <div style="margin:12px 16px 0;border:1.5px solid #1B140D">
+                <div style="display:flex;justify-content:space-between;gap:10px;padding:11px 12px"><span style="font:600 13px 'Archivo',sans-serif">Vous recevrez, après livraison validée</span><span style="font:900 15px 'Archivo',sans-serif;font-feature-settings:'tnum';color:#1F4D36">{{ netStr }}</span></div>
+              </div>
+              <div style="text-align:center;padding:12px 16px 0"><span style="font:800 10.5px 'Archivo',sans-serif;letter-spacing:1px;color:#1F4D36;border-bottom:1.5px solid #1F4D36;padding-bottom:2px;cursor:pointer" onClick="{{ resetB7 }}">REVENIR À L'ÉTAT INITIAL</span></div>
+            </sc-if>
+            {{ celB }}
+          </div>
+        </sc-if>
+
+      </div>
+    </div>
+  </div>
+
+  <div style="font:500 12px 'Archivo',sans-serif;color:#6E6154">B4 capture → B5 aperçu → B6 offre → B7 produit prêt. Le filet d'eau recalcule en direct.</div>
+</div>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;startScreen&quot;: {&quot;editor&quot;: &quot;enum&quot;, &quot;options&quot;: [&quot;b4&quot;, &quot;b5&quot;, &quot;b6&quot;, &quot;b7&quot;], &quot;default&quot;: &quot;b4&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Prototype&quot;}, &quot;reducedMotion&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: false, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Prototype&quot;}}">
+class Component extends DCLogic {
+  state = {
+    view: this.props.startScreen ?? 'b4',
+    entered: true, offline: false, rm: this.props.reducedMotion ?? false,
+    perm: 'ask', shot: 1, cap: 'framing',
+    tab: 'hero',
+    priceB: 10000, commC: 1000, ver: 1, netShown: 8500,
+    check1: true, check2: true,
+    b7: 'ready', celKey: 0, celOn: false
+  };
+
+  _timers = [];
+  _t(fn, ms) { const id = setTimeout(fn, ms); this._timers.push(id); return id; }
+  componentWillUnmount() { this._timers.forEach(clearTimeout); if (this._raf) cancelAnimationFrame(this._raf); }
+
+  nav(view, patch) {
+    patch = patch || {};
+    if (this.state.rm) { this.setState({ view, entered: true, ...patch }); return; }
+    this.setState({ view, entered: false, ...patch });
+    this._t(() => this.setState({ entered: true }), 30);
+  }
+
+  net(B, C) { return B - C - Math.round(0.05 * B); }
+
+  animateNet(to) {
+    if (this._raf) cancelAnimationFrame(this._raf);
+    if (this.state.rm) { this.setState({ netShown: to }); return; }
+    const from = this.state.netShown, start = performance.now(), dur = 300;
+    const tick = now => {
+      const t = Math.min(1, (now - start) / dur);
+      const v = Math.round(from + (to - from) * (1 - Math.pow(1 - t, 3)));
+      this.setState({ netShown: v });
+      if (t < 1) this._raf = requestAnimationFrame(tick);
+    };
+    this._raf = requestAnimationFrame(tick);
+    this._t(() => this.setState({ netShown: to }), dur + 80);
+  }
+
+  setB(d) {
+    const B = Math.max(6000, Math.min(20000, this.state.priceB + d));
+    this.setState({ priceB: B });
+    this.animateNet(this.net(B, this.state.commC));
+  }
+  setC(d) {
+    const C = Math.max(250, Math.min(3000, this.state.commC + d));
+    this.setState({ commC: C });
+    this.animateNet(this.net(this.state.priceB, C));
+  }
+
+  playCel() {
+    if (this.state.rm) return;
+    this.setState(s => ({ celKey: s.celKey + 1, celOn: true }));
+    this._t(() => this.setState({ celOn: false }), 860);
+  }
+
+  buildCel(keyN, on) {
+    if (!on) return null;
+    const h = React.createElement;
+    const parts = [];
+    for (let i = 0; i < 10; i++) {
+      const ang = i * 36, far = i % 2 === 0, sz = far ? 17 : 12;
+      const col = i % 3 === 2 ? '#D9A441' : '#1F4D36';
+      parts.push(h('div', { key: 'w' + i, style: { position: 'absolute', transform: 'rotate(' + ang + 'deg)' } },
+        h('div', { style: { animation: (far ? 'celFlyFar' : 'celFlyNear') + ' 640ms cubic-bezier(0.16,0.8,0.3,1) forwards', animationDelay: (i * 14) + 'ms', opacity: 0 } },
+          h('svg', { width: sz, height: sz, viewBox: '0 0 20 20' },
+            h('path', { d: 'M10 1.5L18.5 10 10 18.5 1.5 10z', fill: 'none', stroke: col, strokeWidth: 1.9 }),
+            h('path', { d: 'M10 6.2L13.8 10 10 13.8 6.2 10z', fill: col })))));
+    }
+    return h('div', { key: 'cel' + keyN, onClick: () => this.setState({ celOn: false }), style: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5, cursor: 'pointer' } },
+      h('div', { style: { position: 'absolute', width: 220, height: 220, borderRadius: 999, background: 'rgba(31,77,54,0.20)', animation: 'celHalo 700ms cubic-bezier(0.2,0.8,0.25,1) forwards' } }),
+      h('div', { style: { position: 'absolute', width: 132, height: 132, borderRadius: 999, border: '2px solid #1F4D36', animation: 'celRing 620ms cubic-bezier(0.2,0.8,0.25,1) forwards', boxSizing: 'border-box' } }),
+      parts,
+      h('div', { style: { position: 'relative', background: '#1F4D36', color: '#F2F7F1', padding: '11px 20px', font: '900 15px Archivo,sans-serif', letterSpacing: '2.5px', animation: 'celPop 260ms cubic-bezier(0.34,1.56,0.64,1) both', animationDelay: '50ms', boxShadow: '0 10px 26px rgba(27,20,13,0.25)' } }, 'PRODUIT PRÊT'));
+  }
+
+  renderVals() {
+    const s = this.state;
+    const ink = '#1B140D', paper = '#FFF8F1', green = '#1F4D36';
+    const fmt = n => n.toLocaleString('fr-FR').replace(/[\u00a0\u202f,]/g, '\u202f') + '\u202fF';
+    const below = s.priceB < 8000;
+    const fee = Math.round(0.05 * s.priceB);
+    const netNow = this.net(s.priceB, s.commC);
+    const checksOk = s.check1 && s.check2;
+
+    const railChip = on => 'display:inline-flex;align-items:center;cursor:pointer;font:600 11px Archivo,sans-serif;padding:5px 9px;border-radius:4px;' +
+      (on ? 'background:#1B140D;color:#FFF8F1;' : 'background:rgba(27,20,13,0.06);color:#1B140D;');
+    const segChip = on => 'cursor:pointer;white-space:nowrap;font:800 10.5px Archivo,sans-serif;letter-spacing:1px;padding:7px 12px;border-radius:4px;' +
+      (on ? 'background:#1B140D;color:#FFF8F1;border:1.5px solid #1B140D;' : 'background:#FFFDF7;color:#1B140D;border:1.5px solid rgba(27,20,13,0.3);');
+
+    const railSections = [
+      { id: 'B4', name: 'Le Studio', states: [
+        { label: 'permission', on: s.view==='b4' && s.perm==='ask', go: () => this.nav('b4', { perm:'ask', shot:1, cap:'framing' }) },
+        { label: 'refusée', on: s.view==='b4' && s.perm==='refused', go: () => this.nav('b4', { perm:'refused' }) },
+        { label: 'cadrage 1/2', on: s.view==='b4' && s.perm==='ok' && s.shot===1 && s.cap==='framing', go: () => this.nav('b4', { perm:'ok', shot:1, cap:'framing' }) },
+        { label: 'cadrage 2/2', on: s.view==='b4' && s.perm==='ok' && s.shot===2 && s.cap==='framing', go: () => this.nav('b4', { perm:'ok', shot:2, cap:'framing' }) },
+        { label: 'échec', on: s.view==='b4' && s.cap==='fail', go: () => this.nav('b4', { perm:'ok', cap:'fail' }) } ] },
+      { id: 'B5', name: "L'aperçu — WYSIWYG", states: [
+        { label: 'héro', on: s.view==='b5' && s.tab==='hero', go: () => this.nav('b5', { tab:'hero' }) },
+        { label: 'preuve', on: s.view==='b5' && s.tab==='preuve', go: () => this.nav('b5', { tab:'preuve' }) } ] },
+      { id: 'B6', name: "L'offre", states: [
+        { label: 'saisie', on: s.view==='b6' && !below && s.ver===1, go: () => { this.nav('b6', { priceB:10000, commC:1000, ver:1 }); this.animateNet(8500); } },
+        { label: 'sous le plancher', on: s.view==='b6' && below, go: () => { this.nav('b6', { priceB:7500, ver:1 }); this.animateNet(this.net(7500, this.state.commC)); } },
+        { label: 'offre v2', on: s.view==='b6' && s.ver===2, go: () => { this.nav('b6', { ver:2, priceB:10000, commC:1000 }); this.animateNet(8500); } } ] },
+      { id: 'B7', name: 'Produit prêt', states: [
+        { label: 'à confirmer', on: s.view==='b7' && s.b7==='ready', go: () => this.nav('b7', { b7:'ready', check1:true, check2:true, offline:false }) },
+        { label: 'célébration', on: s.view==='b7' && s.b7==='confirmed', go: () => { this.nav('b7', { b7:'confirmed', offline:false }); this._t(() => this.playCel(), 80); } },
+        { label: 'attente réseau', on: s.view==='b7' && s.b7==='pending', go: () => this.nav('b7', { b7:'pending' }) },
+        { label: 'hors ligne (file)', on: s.view==='b7' && s.b7==='queued', go: () => this.nav('b7', { b7:'queued', offline:true }) } ] }
+    ].map(sec => {
+      const active = sec.id.toLowerCase() === s.view;
+      return { ...sec, idBg: active ? ink : 'rgba(27,20,13,0.08)', idColor: active ? paper : ink,
+        states: sec.states.map(st => ({ ...st, style: railChip(st.on) })) };
+    });
+
+    const five = {
+      b4: "« Cadrez, appuyez — l'appli vous guide, photo par photo. »",
+      b5: "« Voici exactement ce que l'acheteur verra. »",
+      b6: '« Votre prix, votre part — et ce que vous recevrez, en grand. »',
+      b7: '« Confirmez : le colis est prêt. Séra s\u2019en occupe. »'
+    };
+    const titles = { b4: 'Le Studio — la capture guidée', b5: "L'aperçu — « Ce que l'acheteur verra »", b6: "L'offre", b7: '« Produit prêt »' };
+
+    const animStyle = {
+      height: '100%', opacity: s.entered ? 1 : 0,
+      transform: s.entered ? 'none' : 'translateY(14px)',
+      transition: s.rm ? 'none' : (s.entered ? 'opacity 180ms ease, transform 240ms cubic-bezier(0.2,0.8,0.25,1)' : 'none')
+    };
+    const sw = on => on ? 'translateX(14px)' : 'translateX(0)';
+    const checkBox = on => ({ width: '20px', height: '20px', borderRadius: '3px', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none', boxSizing: 'border-box', background: on ? green : '#FFFDF7', border: on ? '2px solid ' + green : '2px solid rgba(27,20,13,0.35)' });
+
+    return {
+      offline: s.offline,
+      toggleOffline: () => this.setState({ offline: !s.offline }),
+      toggleRm: () => this.setState({ rm: !s.rm }),
+      offSwBg: s.offline ? ink : 'rgba(27,20,13,0.2)', offSwKnob: sw(s.offline),
+      rmSwBg: s.rm ? ink : 'rgba(27,20,13,0.2)', rmSwKnob: sw(s.rm),
+      railSections, fiveSecond: five[s.view],
+      screenId: s.view.toUpperCase(), screenTitle: titles[s.view],
+      animStyle,
+
+      isB4: s.view === 'b4', isB5: s.view === 'b5', isB6: s.view === 'b6', isB7: s.view === 'b7',
+
+      // B4
+      guidance: s.shot === 1 ? 'Posez la robe bien à plat, en pleine lumière — rien autour.' : 'Approchez sur la broderie et l\u2019étiquette — c\u2019est la preuve.',
+      frameHint: s.shot === 1 ? 'TOUT LE PRODUIT DANS LE CADRE' : 'LE DÉTAIL QUI PROUVE',
+      shotLabel: s.shot === 1 ? '1/2 · LA PHOTO HÉRO' : '2/2 · LA PREUVE',
+      dot1Bg: '#FFFDF7',
+      dot2Bg: s.shot === 2 ? '#FFFDF7' : 'rgba(255,253,247,0.3)',
+      permAsk: s.perm === 'ask', permRefused: s.perm === 'refused',
+      permAllow: () => this.setState({ perm: 'ok', cap: 'framing' }),
+      permLater: () => this.setState({ perm: 'refused' }),
+      permRetry: () => this.setState({ perm: 'ask' }),
+      importGallery: () => this.nav('b5', { perm: 'ok', tab: 'hero' }),
+      capFlash: s.cap === 'capturing', capFail: s.cap === 'fail',
+      shutter: () => {
+        if (s.perm !== 'ok' || s.cap === 'capturing') return;
+        this.setState({ cap: 'capturing' });
+        this._t(() => {
+          if (this.state.shot === 1) this.setState({ shot: 2, cap: 'framing' });
+          else this.nav('b5', { cap: 'framing', shot: 1, tab: 'hero' });
+        }, 260);
+      },
+
+      // B5
+      tabHeroStyle: segChip(s.tab === 'hero'), tabPreuveStyle: segChip(s.tab === 'preuve'),
+      pickHero: () => this.setState({ tab: 'hero' }),
+      pickPreuve: () => this.setState({ tab: 'preuve' }),
+      previewBg: s.tab === 'hero' ? 'linear-gradient(160deg,#F2E7D3,#E8D8BE)' : 'linear-gradient(160deg,#EADCC5,#E0CBA8)',
+      previewLabel: s.tab === 'hero' ? 'PHOTO HÉRO' : 'PHOTO PREUVE — LA BRODERIE',
+      previewBytes: s.tab === 'hero' ? '84\u202fKo' : '61\u202fKo',
+      backToStudio: () => this.nav('b4', { perm: 'ok', shot: s.tab === 'preuve' ? 2 : 1, cap: 'framing' }),
+      keepPhotos: () => { this.nav('b6', {}); this.animateNet(this.net(s.priceB, s.commC)); },
+
+      // B6
+      isV2: s.ver === 2,
+      netBandBg: below ? '#8D7C64' : green,
+      netStr: fmt(s.netShown),
+      priceBStr: fmt(s.priceB), commCStr: fmt(s.commC), feeStr: fmt(fee),
+      reconcileStr: fmt(netNow).replace('\u202fF','') + ' = ' + fmt(s.priceB).replace('\u202fF','') + ' − ' + fmt(s.commC).replace('\u202fF','') + ' − ' + fmt(fee).replace('\u202fF','') + ' — chaque franc a sa place.',
+      bMinus: () => this.setB(-500), bPlus: () => this.setB(500),
+      cMinus: () => this.setC(-250), cPlus: () => this.setC(250),
+      belowFloor: below,
+      b6CtaBg: below ? 'rgba(27,20,13,0.18)' : green,
+      b6CtaColor: below ? 'rgba(27,20,13,0.5)' : '#F2F7F1',
+      b6CtaLabel: s.ver === 2 ? "PUBLIER L'OFFRE — V2" : "PUBLIER L'OFFRE",
+      publishOffer: () => { if (!below) this.nav('b7', { b7: 'ready' }); },
+      backToB5: () => this.nav('b5', {}),
+
+      // B7
+      check1On: s.check1, check2On: s.check2,
+      check1Style: checkBox(s.check1), check2Style: checkBox(s.check2),
+      toggleCheck1: () => this.setState({ check1: !s.check1 }),
+      toggleCheck2: () => this.setState({ check2: !s.check2 }),
+      b7Ready: s.b7 === 'ready', b7Submitting: s.b7 === 'submitting',
+      b7Pending: s.b7 === 'pending', b7Queued: s.b7 === 'queued', b7Confirmed: s.b7 === 'confirmed',
+      b7CtaBg: checksOk ? green : 'rgba(27,20,13,0.18)',
+      b7CtaColor: checksOk ? '#F2F7F1' : 'rgba(27,20,13,0.5)',
+      confirmReady: () => {
+        if (!checksOk) return;
+        if (s.offline) { this.setState({ b7: 'queued' }); return; }
+        this.setState({ b7: 'submitting' });
+        this._t(() => { this.setState({ b7: 'confirmed' }); this.playCel(); }, 550);
+      },
+      resetB7: () => this.setState({ b7: 'ready', celOn: false }),
+      celB: this.buildCel(s.celKey, s.celOn)
+    };
+  }
+}
+</script>
+</body>
+</html>

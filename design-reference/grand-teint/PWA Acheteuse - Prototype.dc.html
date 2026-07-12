@@ -1,0 +1,890 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..900&amp;display=swap">
+<style>
+body{margin:0;background:#EBE6DC;font-family:'Archivo',system-ui,sans-serif}
+a{color:#C2571B}a:hover{color:#9E4512}
+@keyframes gtPulse{0%,100%{opacity:1}50%{opacity:0.35}}
+@keyframes gtBar{0%{transform:scaleX(0.12)}50%{transform:scaleX(0.92)}100%{transform:scaleX(0.12)}}
+@keyframes gtDot1{0%,100%{opacity:0.25}20%{opacity:1}}
+@keyframes gtDot2{0%,100%{opacity:0.25}40%{opacity:1}}
+@keyframes gtDot3{0%,100%{opacity:0.25}60%{opacity:1}}
+</style>
+</helmet>
+
+<div style="display:flex;min-height:100vh;align-items:stretch">
+
+<!-- ============ RAIL ============ -->
+<div style="width:292px;flex:none;background:#FFFDF7;border-right:1px solid rgba(27,20,13,0.14);padding:20px 18px 28px;box-sizing:border-box;height:100vh;overflow-y:auto;position:sticky;top:0">
+  <div style="display:flex;align-items:center;gap:8px">
+    <span style="background:#1B140D;color:#FFF8F1;font:800 10px 'Archivo',sans-serif;letter-spacing:1.5px;padding:4px 8px">1B</span>
+    <span style="font:800 12px 'Archivo',sans-serif;letter-spacing:1.8px">GRAND TEINT</span>
+  </div>
+  <div style="font:500 12px/1.5 'Archivo',sans-serif;color:#6E6154;margin-top:6px">PWA acheteuse — prototype tappable. Cliquez dans l'écran, ou sautez à un état précis ici.</div>
+
+  <div style="margin-top:16px;border:1.5px solid #1B140D">
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid rgba(27,20,13,0.14);cursor:pointer" onClick="{{ toggleOffline }}">
+      <span style="flex:1;font:700 12px 'Archivo',sans-serif;letter-spacing:0.5px">Hors ligne</span>
+      <span style="width:34px;height:20px;border-radius:999px;background:{{ offSwBg }};position:relative;display:inline-block;transition:background 150ms"><span style="position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:999px;background:#FFFDF7;transform:{{ offSwKnob }};transition:transform 150ms"></span></span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid rgba(27,20,13,0.14);cursor:pointer" onClick="{{ toggleSandbox }}">
+      <span style="flex:1;font:700 12px 'Archivo',sans-serif;letter-spacing:0.5px">Ruban bac à sable</span>
+      <span style="width:34px;height:20px;border-radius:999px;background:{{ sbSwBg }};position:relative;display:inline-block;transition:background 150ms"><span style="position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:999px;background:#FFFDF7;transform:{{ sbSwKnob }};transition:transform 150ms"></span></span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer" onClick="{{ toggleMotion }}">
+      <span style="flex:1;font:700 12px 'Archivo',sans-serif;letter-spacing:0.5px">Réduire le mouvement</span>
+      <span style="width:34px;height:20px;border-radius:999px;background:{{ rmSwBg }};position:relative;display:inline-block;transition:background 150ms"><span style="position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:999px;background:#FFFDF7;transform:{{ rmSwKnob }};transition:transform 150ms"></span></span>
+    </div>
+  </div>
+
+  <sc-for list="{{ railSections }}" as="sec" hint-placeholder-count="4">
+    <div style="margin-top:16px">
+      <div style="display:flex;align-items:baseline;gap:7px">
+        <span style="font:800 10.5px ui-monospace,Menlo,monospace;background:{{ sec.idBg }};color:{{ sec.idColor }};padding:2px 6px">{{ sec.id }}</span>
+        <span style="font:700 12px 'Archivo',sans-serif">{{ sec.name }}</span>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
+        <sc-for list="{{ sec.states }}" as="st" hint-placeholder-count="3">
+          <span style="{{ st.style }}" onClick="{{ st.go }}">{{ st.label }}</span>
+        </sc-for>
+      </div>
+    </div>
+  </sc-for>
+
+  <div style="margin-top:20px;border-left:3px solid #C2571B;padding:2px 0 2px 12px">
+    <div style="font:800 10px 'Archivo',sans-serif;letter-spacing:2px;color:#6E6154">TEST 5 SECONDES</div>
+    <div style="font:600 13px/1.45 'Archivo',sans-serif;margin-top:4px">{{ fiveSecond }}</div>
+  </div>
+</div>
+
+<!-- ============ STAGE ============ -->
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:28px 20px;gap:14px">
+  <div style="display:flex;align-items:baseline;gap:9px">
+    <span style="font:800 11px ui-monospace,Menlo,monospace;background:#1B140D;color:#FFF8F1;padding:3px 7px">{{ screenId }}</span>
+    <span style="font:700 13px 'Archivo',sans-serif;letter-spacing:0.5px">{{ screenTitle }}</span>
+  </div>
+
+  <div style="width:360px;height:800px;background:#FFFDF7;border:1px solid rgba(27,20,13,0.22);box-shadow:0 18px 44px rgba(27,20,13,0.16);position:relative;overflow:hidden;display:flex;flex-direction:column;color:#1B140D;flex:none">
+
+    <!-- status bar -->
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px 6px;flex:none">
+      <span style="font:600 13px 'Archivo',sans-serif">12:52</span>
+      <span style="display:flex;gap:5px;align-items:center">
+        <svg width="15" height="11" viewBox="0 0 15 11" fill="#1B140D"><rect x="0" y="7" width="2.6" height="4" rx="0.8"></rect><rect x="4" y="4.5" width="2.6" height="6.5" rx="0.8"></rect><rect x="8" y="2" width="2.6" height="9" rx="0.8"></rect><rect x="12" y="0" width="2.6" height="11" rx="0.8" opacity="0.35"></rect></svg>
+        <svg width="22" height="11" viewBox="0 0 24 11"><rect x="0.5" y="0.5" width="19" height="10" rx="3" fill="none" stroke="#1B140D" opacity="0.4"></rect><rect x="2.5" y="2.5" width="12" height="6" rx="1.5" fill="#1B140D"></rect><path d="M22 3.5v4" stroke="#1B140D" stroke-width="1.6" stroke-linecap="round"></path></svg>
+      </span>
+    </div>
+
+    <!-- sandbox ribbon -->
+    <sc-if value="{{ sandbox }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:none;background:repeating-linear-gradient(45deg,#F7EED7 0 10px,#F1DFAE 10px 20px);border-top:1px solid rgba(27,20,13,0.14);border-bottom:1px solid rgba(27,20,13,0.14);text-align:center;padding:4px 0;font:800 10px 'Archivo',sans-serif;letter-spacing:1.8px;color:#6B4E0C">APERÇU — BAC À SABLE</div>
+    </sc-if>
+
+    <!-- offline banner -->
+    <sc-if value="{{ offline }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:none;background:#1B140D;color:#FFF8F1;display:flex;align-items:center;gap:8px;padding:7px 14px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFF8F1" stroke-width="1.8" stroke-linecap="round"><path d="M3 6.5a13 13 0 0 1 18 0"></path><path d="M6.5 10a8.5 8.5 0 0 1 11 0"></path><circle cx="12" cy="16.5" r="1.6" fill="#FFF8F1" stroke="none"></circle><path d="M4 20L20 4"></path></svg>
+        <span style="font:600 11.5px 'Archivo',sans-serif">Hors ligne : vos actions sont en attente, jamais perdues.</span>
+      </div>
+    </sc-if>
+
+    <!-- screens -->
+    <div style="flex:1;position:relative;overflow:hidden">
+      <div style="{{ animStyle }}">
+
+        <!-- ======== C1 · PAGE PRODUIT ======== -->
+        <sc-if value="{{ isC1 }}" hint-placeholder-val="{{ true }}">
+          <div data-screen-label="C1 La page produit" style="height:100%;overflow-y:auto">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid rgba(27,20,13,0.14)">
+              <div style="display:flex;align-items:center;gap:7px">
+                <span style="font:800 12px 'Archivo',sans-serif;letter-spacing:1.8px">CHEZ AÏCHA</span>
+                <svg width="14" height="14" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#1B140D"></circle><path d="M8 12.5l2.6 2.6L16.5 9" fill="none" stroke="#FFFDF7" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                <span style="font:500 11.5px 'Archivo',sans-serif;color:#6E6154">Vérifiée</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;cursor:pointer;min-height:44px" onClick="{{ openSheet }}">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#1B140D" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.2l6.8 2.7v5.1c0 4.3-2.9 7.2-6.8 8.8-3.9-1.6-6.8-4.5-6.8-8.8V5.9L12 3.2z"></path><path d="M9.2 11.8l2 2 3.6-3.9"></path></svg>
+              </div>
+            </div>
+            <div style="position:relative;height:262px;background:#F3EBDB;border-bottom:1px solid rgba(27,20,13,0.14);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px">
+              <div style="position:absolute;top:12px;left:12px;width:14px;height:14px;border-top:2px solid rgba(27,20,13,0.5);border-left:2px solid rgba(27,20,13,0.5)"></div>
+              <div style="position:absolute;top:12px;right:12px;width:14px;height:14px;border-top:2px solid rgba(27,20,13,0.5);border-right:2px solid rgba(27,20,13,0.5)"></div>
+              <div style="position:absolute;bottom:12px;left:12px;width:14px;height:14px;border-bottom:2px solid rgba(27,20,13,0.5);border-left:2px solid rgba(27,20,13,0.5)"></div>
+              <div style="position:absolute;bottom:12px;right:12px;width:14px;height:14px;border-bottom:2px solid rgba(27,20,13,0.5);border-right:2px solid rgba(27,20,13,0.5)"></div>
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#8D7C64" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7.5 4.2v9.6L12 21l-7.5-4.2V7.2L12 3z"></path><path d="M4.5 7.2L12 11.5l7.5-4.3"></path><path d="M12 11.5V21"></path></svg>
+              <div style="font:700 11px 'Archivo',sans-serif;letter-spacing:2.2px;color:#8D7C64">PHOTO DU PRODUIT</div>
+              <sc-if value="{{ isOut }}" hint-placeholder-val="{{ false }}">
+                <div style="position:absolute;inset:0;background:rgba(255,253,247,0.72);display:flex;align-items:center;justify-content:center"><span style="border:2px solid #1B140D;background:#FFFDF7;padding:8px 16px;font:900 13px 'Archivo',sans-serif;letter-spacing:2.5px">ÉPUISÉ</span></div>
+              </sc-if>
+            </div>
+            <div style="display:flex;justify-content:space-between;gap:10px;padding:9px 16px;border-bottom:1px solid rgba(27,20,13,0.14)">
+              <span style="font:500 12px 'Archivo',sans-serif;color:#6E6154">Photo réelle — ce que vous recevrez.</span>
+              <span style="font:700 12px 'Archivo',sans-serif;white-space:nowrap">Vendu par Aïcha</span>
+            </div>
+            <div style="padding:14px 16px 0">
+              <div style="font:900 24px/1.06 'Archivo',sans-serif;font-stretch:112%;text-transform:uppercase">Robe brodée bogolan</div>
+              <div style="display:flex;gap:9px;margin-top:8px;align-items:center">
+                <span style="border:1.5px solid #1B140D;padding:4px 9px;font:800 10.5px 'Archivo',sans-serif;letter-spacing:1.2px">TAILLE M</span>
+                <span style="font:500 12.5px 'Archivo',sans-serif;color:#6E6154">Rood Woko · Ouagadougou</span>
+              </div>
+            </div>
+            <div style="margin-top:14px;background:{{ priceBandBg }};padding:12px 16px;display:flex;justify-content:space-between;align-items:center;gap:12px;transition:background 200ms">
+              <div>
+                <div style="font:800 10px 'Archivo',sans-serif;letter-spacing:2.2px;color:#F4CFB4">PRIX</div>
+                <div style="font:900 38px/1 'Archivo',sans-serif;font-feature-settings:'tnum';color:#FFF8F1;margin-top:4px">11&#8239;500&#8239;F</div>
+              </div>
+              <div style="width:118px;text-align:right;font:500 11px/1.4 'Archivo',sans-serif;color:#F4CFB4">Livraison Séra en plus — affichée à part, jamais cachée.</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:11px;height:42px;padding:0 16px;border-bottom:1px solid rgba(27,20,13,0.12)">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#1B140D" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="5.5" cy="17.5" r="2.4"></circle><circle cx="18.5" cy="17.5" r="2.4"></circle><path d="M7.9 17.5h5.6l2.2-6h3.4"></path><path d="M15.8 6.8h2.4l1.4 4.7"></path><path d="M11 11.5H7.2c-1.8 0-3 1.3-3.4 3"></path></svg>
+              <span style="flex:1;font:600 13.5px 'Archivo',sans-serif">Livré par Séra, à votre repère</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:11px;height:42px;padding:0 16px;border-bottom:1px solid rgba(27,20,13,0.12)">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#1B140D" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.2l6.8 2.7v5.1c0 4.3-2.9 7.2-6.8 8.8-3.9-1.6-6.8-4.5-6.8-8.8V5.9L12 3.2z"></path><path d="M9.2 11.8l2 2 3.6-3.9"></path></svg>
+              <span style="flex:1;font:600 13.5px 'Archivo',sans-serif">Paiement protégé — inspectez avant de payer</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:11px;height:42px;padding:0 16px;border-bottom:1px solid rgba(27,20,13,0.12);cursor:pointer" onClick="{{ openSheet }}">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#A34312" stroke-width="1.9" stroke-linecap="round"><rect x="5.5" y="10.5" width="13" height="9.5" rx="2.5"></rect><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"></path></svg>
+              <span style="flex:1;font:700 13.5px 'Archivo',sans-serif;color:#A34312">Vos protections</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#A34312" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 6l6 6-6 6"></path></svg>
+            </div>
+            <sc-if value="{{ isOut }}" hint-placeholder-val="{{ false }}">
+              <div style="margin:14px 16px 0;padding:11px 14px;background:#F3EBDB;font:500 13.5px/1.45 'Archivo',sans-serif;color:#4A3F33">Ce produit est épuisé pour le moment. Revenez voir la boutique d'Aïcha — elle ajoute souvent de nouveaux articles.</div>
+            </sc-if>
+            <div style="margin:14px 16px 0">
+              <div style="height:56px;background:#1B140D;color:#FFF8F1;display:flex;align-items:center;justify-content:center;font:800 14px 'Archivo',sans-serif;letter-spacing:2.2px;border-radius:6px;cursor:pointer;opacity:{{ orderBtnOpacity }};transition:transform 90ms" style-active="transform:scale(0.98)" onClick="{{ commander }}">COMMANDER</div>
+            </div>
+            <div style="text-align:center;padding:10px 16px 22px;font:500 11.5px 'Archivo',sans-serif;color:#6E6154">Votre numéro reste privé.</div>
+          </div>
+        </sc-if>
+
+        <!-- ======== C3 · LOCALISATION ======== -->
+        <sc-if value="{{ isC3 }}" hint-placeholder-val="{{ false }}">
+          <div data-screen-label="C3 La localisation" style="height:100%;overflow-y:auto">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 16px;border-bottom:1px solid rgba(27,20,13,0.14)">
+              <div style="width:34px;height:34px;border:1.5px solid rgba(27,20,13,0.35);display:flex;align-items:center;justify-content:center;border-radius:6px;cursor:pointer" onClick="{{ goC1 }}"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#1B140D" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 18l-6-6 6-6"></path></svg></div>
+              <span style="font:800 12.5px 'Archivo',sans-serif;letter-spacing:2.4px">OÙ LIVRER ?</span>
+              <div style="width:34px"></div>
+            </div>
+            <div style="padding:14px 16px 0;font:500 13px/1.5 'Archivo',sans-serif;color:#4A3F33">Pas besoin d'adresse — ici, un bon repère vaut mieux. Le livreur connaît la ville.</div>
+            <div style="padding:16px 16px 0;font:800 11px 'Archivo',sans-serif;letter-spacing:2px;color:#6E6154">VOTRE ZONE</div>
+            <div style="display:flex;flex-wrap:wrap;gap:7px;padding:9px 16px 0">
+              <sc-for list="{{ zones }}" as="z" hint-placeholder-count="8">
+                <span style="{{ z.style }}" onClick="{{ z.pick }}">{{ z.name }}</span>
+              </sc-for>
+            </div>
+            <div style="padding:16px 16px 0;font:800 11px 'Archivo',sans-serif;letter-spacing:2px;color:#6E6154">LE REPÈRE</div>
+            <div style="margin:8px 16px 0;border:1.5px solid rgba(27,20,13,0.35);min-height:50px;display:flex;align-items:center;padding:6px 13px;cursor:text" onClick="{{ fillRepere }}">
+              <span style="font:{{ repereFont }};color:{{ repereColor }}">{{ repereText }}</span>
+            </div>
+            <div style="margin:8px 16px 0;border:1.5px solid rgba(27,20,13,0.2);min-height:46px;display:flex;align-items:center;padding:6px 13px;cursor:text" onClick="{{ fillIndic }}">
+              <span style="font:{{ indicFont }};color:{{ indicColor }}">{{ indicText }}</span>
+            </div>
+            <div style="padding:16px 16px 0;font:800 11px 'Archivo',sans-serif;letter-spacing:2px;color:#6E6154">OU DITES-LE DE VIVE VOIX</div>
+            <sc-if value="{{ voiceIdle }}" hint-placeholder-val="{{ false }}">
+              <div style="margin:8px 16px 0;border:1.5px solid #1B140D;height:50px;display:flex;align-items:center;justify-content:center;gap:9px;cursor:pointer;border-radius:6px" onClick="{{ startRec }}">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1B140D" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3z"></path><path d="M6 11a6 6 0 0 0 12 0"></path><path d="M12 17v3.5"></path></svg>
+                <span style="font:800 12px 'Archivo',sans-serif;letter-spacing:1.5px">ENREGISTRER LE REPÈRE</span>
+              </div>
+            </sc-if>
+            <sc-if value="{{ voiceRecording }}" hint-placeholder-val="{{ false }}">
+              <div style="margin:8px 16px 0;background:#1B140D;height:54px;display:flex;align-items:center;gap:11px;padding:0 14px;border-radius:6px">
+                <span style="width:10px;height:10px;border-radius:999px;background:#E4572E;animation:gtPulse 1s infinite"></span>
+                <span style="font:700 15px 'Archivo',sans-serif;color:#FFF8F1;font-feature-settings:'tnum';flex:1">{{ recTime }}</span>
+                <span style="background:#FFFDF7;color:#1B140D;font:800 11px 'Archivo',sans-serif;letter-spacing:1.5px;padding:8px 13px;cursor:pointer;border-radius:4px" onClick="{{ stopRec }}">ARRÊTER</span>
+              </div>
+              <div style="padding:8px 16px 0;font:500 12px 'Archivo',sans-serif;color:#6E6154">Parlez comme au marché : « Face à la pharmacie, portail bleu. »</div>
+            </sc-if>
+            <sc-if value="{{ voiceRecorded }}" hint-placeholder-val="{{ false }}">
+              <div style="margin:8px 16px 0;border:1.5px solid #1B140D;height:54px;display:flex;align-items:center;gap:11px;padding:0 8px 0 8px;border-radius:6px">
+                <span style="width:38px;height:38px;background:#1B140D;display:flex;align-items:center;justify-content:center;border-radius:4px;cursor:pointer"><svg width="13" height="14" viewBox="0 0 10 12"><path d="M0.5 0.8l9 5.2-9 5.2z" fill="#FFF8F1"></path></svg></span>
+                <svg width="120" height="22" viewBox="0 0 120 22" fill="#1B140D"><rect x="0" y="8" width="3" height="6" rx="1.5"></rect><rect x="6" y="5" width="3" height="12" rx="1.5"></rect><rect x="12" y="2" width="3" height="18" rx="1.5"></rect><rect x="18" y="6" width="3" height="10" rx="1.5"></rect><rect x="24" y="3" width="3" height="16" rx="1.5"></rect><rect x="30" y="8" width="3" height="6" rx="1.5"></rect><rect x="36" y="4" width="3" height="14" rx="1.5"></rect><rect x="42" y="1" width="3" height="20" rx="1.5"></rect><rect x="48" y="6" width="3" height="10" rx="1.5"></rect><rect x="54" y="3" width="3" height="16" rx="1.5"></rect><rect x="60" y="7" width="3" height="8" rx="1.5"></rect><rect x="66" y="2" width="3" height="18" rx="1.5"></rect><rect x="72" y="6" width="3" height="10" rx="1.5"></rect><rect x="78" y="9" width="3" height="4" rx="1.5"></rect><rect x="84" y="4" width="3" height="14" rx="1.5"></rect><rect x="90" y="7" width="3" height="8" rx="1.5"></rect><rect x="96" y="2" width="3" height="18" rx="1.5"></rect><rect x="102" y="6" width="3" height="10" rx="1.5"></rect><rect x="108" y="8" width="3" height="6" rx="1.5"></rect><rect x="114" y="5" width="3" height="12" rx="1.5"></rect></svg>
+                <span style="font:700 13px 'Archivo',sans-serif;font-feature-settings:'tnum'">{{ recTime }}</span>
+                <span style="margin-left:auto;font:800 10.5px 'Archivo',sans-serif;letter-spacing:1px;color:#A34312;border-bottom:1.5px solid #A34312;padding-bottom:2px;cursor:pointer;white-space:nowrap" onClick="{{ reRec }}">REFAIRE</span>
+              </div>
+            </sc-if>
+            <sc-if value="{{ voiceQueued }}" hint-placeholder-val="{{ false }}">
+              <div style="margin:8px 16px 0;background:#F7EED7;display:flex;align-items:center;gap:10px;padding:12px 14px">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6B4E0C" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3.5 2"></path></svg>
+                <span style="font:600 13px 'Archivo',sans-serif;color:#6B4E0C">Note vocale gardée. C'est noté — en attente du réseau.</span>
+              </div>
+            </sc-if>
+            <sc-if value="{{ voiceRefused }}" hint-placeholder-val="{{ false }}">
+              <div style="margin:8px 16px 0;background:#F3EBDB;display:flex;align-items:flex-start;gap:10px;padding:12px 14px">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4A3F33" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3z"></path><path d="M6 11a6 6 0 0 0 12 0"></path><path d="M12 17v3.5"></path><path d="M4 20L20 4"></path></svg>
+                <span style="font:500 13px/1.45 'Archivo',sans-serif;color:#4A3F33">Le micro n'est pas disponible. Écrivez le repère au-dessus — ça marche aussi bien.</span>
+              </div>
+            </sc-if>
+            <div style="display:flex;align-items:center;gap:8px;padding:14px 16px 0">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6E6154" stroke-width="1.9" stroke-linecap="round"><rect x="5.5" y="10.5" width="13" height="9.5" rx="2.5"></rect><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"></path></svg>
+              <span style="font:500 12px 'Archivo',sans-serif;color:#6E6154">Le livreur passe par un relais. Votre numéro reste privé.</span>
+            </div>
+            <div style="margin:14px 16px 0">
+              <div style="height:56px;background:{{ c3CtaBg }};color:{{ c3CtaColor }};display:flex;align-items:center;justify-content:center;font:800 14px 'Archivo',sans-serif;letter-spacing:2.2px;border-radius:6px;cursor:pointer;transition:background 150ms" style-active="transform:scale(0.98)" onClick="{{ c3Continue }}">CONTINUER</div>
+            </div>
+            <div style="height:22px"></div>
+          </div>
+        </sc-if>
+
+        <!-- ======== C4 · LIVRAISON ======== -->
+        <sc-if value="{{ isC4 }}" hint-placeholder-val="{{ false }}">
+          <div data-screen-label="C4 La livraison" style="height:100%;overflow-y:auto">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 16px;border-bottom:1px solid rgba(27,20,13,0.14)">
+              <div style="width:34px;height:34px;border:1.5px solid rgba(27,20,13,0.35);display:flex;align-items:center;justify-content:center;border-radius:6px;cursor:pointer" onClick="{{ goC3 }}"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#1B140D" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 18l-6-6 6-6"></path></svg></div>
+              <span style="font:800 12.5px 'Archivo',sans-serif;letter-spacing:2.4px">LA LIVRAISON</span>
+              <div style="width:34px"></div>
+            </div>
+            <div style="margin:14px 16px 0;background:#F3EBDB;padding:12px 14px;display:flex;gap:11px;align-items:flex-start">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1B140D" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 21V4"></path><path d="M6 5h11l-2.5 3.5L17 12H6"></path></svg>
+              <div style="flex:1">
+                <div style="font:800 10.5px 'Archivo',sans-serif;letter-spacing:1.8px;color:#6E6154">{{ zoneUpper }}</div>
+                <div style="font:600 14px/1.4 'Archivo',sans-serif;margin-top:2px">{{ repereRecap }}</div>
+              </div>
+              <span style="font:800 10.5px 'Archivo',sans-serif;letter-spacing:1px;color:#A34312;border-bottom:1.5px solid #A34312;padding-bottom:2px;cursor:pointer" onClick="{{ goC3 }}">MODIFIER</span>
+            </div>
+            <div style="padding:16px 16px 0;font:500 13px/1.5 'Archivo',sans-serif;color:#4A3F33">Le prix de la course est fixé par Séra. Il est affiché à part — jamais caché dans le prix du produit.</div>
+            <div style="{{ delTodayStyle }}" onClick="{{ pickToday }}">
+              <sc-if value="{{ delTodaySel }}" hint-placeholder-val="{{ false }}">
+                <div style="position:absolute;left:0;top:0;bottom:0;width:5px;background:#C2571B"></div>
+                <div style="position:absolute;top:0;right:0;width:26px;height:26px;background:#1B140D;display:flex;align-items:center;justify-content:center"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFF8F1" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></div>
+              </sc-if>
+              <div style="display:flex;align-items:center;gap:10px">
+                <span style="font:800 12.5px 'Archivo',sans-serif;letter-spacing:0.8px;flex:1">AUJOURD'HUI, AVANT 19&#8239;H</span>
+                <span style="font:900 16px 'Archivo',sans-serif;font-feature-settings:'tnum';padding-right:20px">1&#8239;000&#8239;F</span>
+              </div>
+              <div style="font:400 14px/1.45 'Archivo',sans-serif;color:#4A3F33;margin-top:6px">Un livreur Séra vérifie et scelle le colis avant de partir.</div>
+            </div>
+            <div style="{{ delTmrwStyle }}" onClick="{{ pickTomorrow }}">
+              <sc-if value="{{ delTmrwSel }}" hint-placeholder-val="{{ false }}">
+                <div style="position:absolute;left:0;top:0;bottom:0;width:5px;background:#C2571B"></div>
+                <div style="position:absolute;top:0;right:0;width:26px;height:26px;background:#1B140D;display:flex;align-items:center;justify-content:center"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFF8F1" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></div>
+              </sc-if>
+              <div style="display:flex;align-items:center;gap:10px">
+                <span style="font:800 12.5px 'Archivo',sans-serif;letter-spacing:0.8px;flex:1">DEMAIN, 9&#8239;H – 12&#8239;H</span>
+                <span style="font:900 16px 'Archivo',sans-serif;font-feature-settings:'tnum';padding-right:20px">800&#8239;F</span>
+              </div>
+              <div style="font:400 14px/1.45 'Archivo',sans-serif;color:#4A3F33;margin-top:6px">Course groupée dans votre zone — un peu moins chère.</div>
+            </div>
+            <div style="margin:16px 16px 0;border-left:3px solid #1B140D;padding:2px 0 2px 12px;font:600 13px/1.45 'Archivo',sans-serif">La course est payée à Séra. Chaque franc a sa place.</div>
+            <div style="margin:14px 16px 0">
+              <div style="height:56px;background:{{ c4CtaBg }};color:{{ c4CtaColor }};display:flex;align-items:center;justify-content:center;font:800 14px 'Archivo',sans-serif;letter-spacing:2.2px;border-radius:6px;cursor:pointer;transition:background 150ms" style-active="transform:scale(0.98)" onClick="{{ c4Continue }}">CONTINUER</div>
+            </div>
+            <div style="height:22px"></div>
+          </div>
+        </sc-if>
+
+        <!-- ======== C5 · PAIEMENT ======== -->
+        <sc-if value="{{ isC5 }}" hint-placeholder-val="{{ false }}">
+          <div data-screen-label="C5 Le paiement" style="height:100%;overflow-y:auto">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 16px;border-bottom:1px solid rgba(27,20,13,0.14)">
+              <div style="width:34px;height:34px;border:1.5px solid rgba(27,20,13,0.35);display:flex;align-items:center;justify-content:center;border-radius:6px;cursor:pointer" onClick="{{ goC4 }}"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#1B140D" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 18l-6-6 6-6"></path></svg></div>
+              <span style="font:800 12.5px 'Archivo',sans-serif;letter-spacing:2.4px">LE PAIEMENT</span>
+              <div style="width:34px"></div>
+            </div>
+            <sc-if value="{{ payChoosing }}" hint-placeholder-val="{{ true }}">
+              <div style="margin:12px 16px 0;border:1.5px solid #1B140D">
+                <div style="display:flex;justify-content:space-between;gap:10px;padding:10px 12px;border-bottom:1px solid rgba(27,20,13,0.14)"><span style="font:500 13.5px 'Archivo',sans-serif">Robe brodée bogolan · M</span><span style="font:700 14px 'Archivo',sans-serif;font-feature-settings:'tnum';white-space:nowrap">11&#8239;500&#8239;F</span></div>
+                <div style="display:flex;justify-content:space-between;gap:10px;padding:10px 12px;border-bottom:1px solid rgba(27,20,13,0.14)"><span style="font:500 13.5px 'Archivo',sans-serif;color:#4A3F33">Livraison Séra — jamais cachée</span><span style="font:700 14px 'Archivo',sans-serif;font-feature-settings:'tnum';white-space:nowrap">{{ deliveryFeeStr }}</span></div>
+                <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:11px 12px;border-top:1.5px solid #1B140D;margin-top:-1px"><span style="font:800 12px 'Archivo',sans-serif;letter-spacing:1.5px">TOTAL</span><span style="font:900 18px 'Archivo',sans-serif;font-feature-settings:'tnum'">{{ totalStr }}</span></div>
+              </div>
+              <div style="padding:6px 16px 0;text-align:right;font:600 11px 'Archivo',sans-serif;color:#6E6154;font-feature-settings:'tnum'">{{ reconcileStr }}</div>
+              <div style="padding:15px 16px 0;font:800 11.5px 'Archivo',sans-serif;letter-spacing:2.2px">COMMENT PAYER ?</div>
+              <div style="{{ optAStyle }}" onClick="{{ pickA }}">
+                <sc-if value="{{ paySelA }}" hint-placeholder-val="{{ false }}">
+                  <div style="position:absolute;left:0;top:0;bottom:0;width:5px;background:#C2571B"></div>
+                  <div style="position:absolute;top:0;right:0;width:26px;height:26px;background:#1B140D;display:flex;align-items:center;justify-content:center"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFF8F1" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></div>
+                </sc-if>
+                <div style="display:flex;align-items:center;gap:10px">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1B140D" stroke-width="1.9" stroke-linecap="round"><rect x="5.5" y="10.5" width="13" height="9.5" rx="2.5"></rect><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"></path><circle cx="12" cy="15.2" r="1.4" fill="#1B140D" stroke="none"></circle></svg>
+                  <span style="font:800 12.5px 'Archivo',sans-serif;letter-spacing:0.8px">TOUT PAYER MAINTENANT</span>
+                </div>
+                <div style="font:400 15px/1.45 'Archivo',sans-serif;color:#4A3F33;margin-top:8px"><span style="font-weight:800;color:#1B140D;font-feature-settings:'tnum'">{{ totalStr }}</span> maintenant, en sécurité. Rien à payer à la porte.</div>
+                <div style="margin-top:9px"><span style="display:inline-flex;align-items:center;gap:6px;font:800 11px 'Archivo',sans-serif;letter-spacing:1px;color:#A34312;border-bottom:1.5px solid #A34312;padding-bottom:2px"><svg width="10" height="11" viewBox="0 0 10 12"><path d="M0.5 0.8l9 5.2-9 5.2z" fill="#A34312"></path></svg>ÉCOUTER LA NOTE</span></div>
+              </div>
+              <sc-if value="{{ bAvailable }}" hint-placeholder-val="{{ true }}">
+                <div style="{{ optBStyle }}" onClick="{{ pickB }}">
+                  <sc-if value="{{ paySelB }}" hint-placeholder-val="{{ false }}">
+                    <div style="position:absolute;left:0;top:0;bottom:0;width:5px;background:#C2571B"></div>
+                    <div style="position:absolute;top:0;right:0;width:26px;height:26px;background:#1B140D;display:flex;align-items:center;justify-content:center"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFF8F1" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></div>
+                  </sc-if>
+                  <div style="display:flex;align-items:center;gap:10px">
+                    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#1B140D" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="5.5" cy="17.5" r="2.4"></circle><circle cx="18.5" cy="17.5" r="2.4"></circle><path d="M7.9 17.5h5.6l2.2-6h3.4"></path><path d="M15.8 6.8h2.4l1.4 4.7"></path><path d="M11 11.5H7.2c-1.8 0-3 1.3-3.4 3"></path></svg>
+                    <span style="font:800 12.5px 'Archivo',sans-serif;letter-spacing:0.8px">PAYER À LA LIVRAISON</span>
+                  </div>
+                  <div style="font:400 15px/1.45 'Archivo',sans-serif;color:#4A3F33;margin-top:8px"><span style="font-weight:800;color:#1B140D;font-feature-settings:'tnum'">{{ deliveryFeeStr }}</span> maintenant — et <span style="font-weight:800;color:#1B140D;font-feature-settings:'tnum'">11&#8239;500&#8239;F</span> à la porte, après votre inspection.</div>
+                  <div style="margin-top:9px"><span style="display:inline-flex;align-items:center;gap:6px;font:800 11px 'Archivo',sans-serif;letter-spacing:1px;color:#A34312;border-bottom:1.5px solid #A34312;padding-bottom:2px"><svg width="10" height="11" viewBox="0 0 10 12"><path d="M0.5 0.8l9 5.2-9 5.2z" fill="#A34312"></path></svg>ÉCOUTER LA NOTE</span></div>
+                </div>
+              </sc-if>
+              <sc-if value="{{ bIneligible }}" hint-placeholder-val="{{ false }}">
+                <div style="margin:11px 16px 0;border:1.5px solid rgba(27,20,13,0.2);padding:14px;background:#FBF7EC">
+                  <div style="display:flex;align-items:center;gap:10px;opacity:0.45">
+                    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#1B140D" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="5.5" cy="17.5" r="2.4"></circle><circle cx="18.5" cy="17.5" r="2.4"></circle><path d="M7.9 17.5h5.6l2.2-6h3.4"></path><path d="M15.8 6.8h2.4l1.4 4.7"></path><path d="M11 11.5H7.2c-1.8 0-3 1.3-3.4 3"></path></svg>
+                    <span style="font:800 12.5px 'Archivo',sans-serif;letter-spacing:0.8px">PAYER À LA LIVRAISON</span>
+                  </div>
+                  <div style="font:500 13.5px/1.5 'Archivo',sans-serif;color:#4A3F33;margin-top:8px">Pas disponible pour cette commande. Vous pouvez tout payer maintenant, en sécurité — et toujours inspecter avant d'accepter.</div>
+                </div>
+              </sc-if>
+              <div style="margin:14px 16px 0;border-left:3px solid #1B140D;padding:2px 0 2px 12px;font:600 13.5px/1.45 'Archivo',sans-serif">Vous inspectez le colis avant de payer le reste.</div>
+              <div style="margin:14px 16px 0">
+                <div style="height:56px;background:{{ c5CtaBg }};color:{{ c5CtaColor }};display:flex;align-items:center;justify-content:center;font:900 15px 'Archivo',sans-serif;letter-spacing:1.5px;font-feature-settings:'tnum';border-radius:6px;cursor:pointer;transition:background 150ms" style-active="transform:scale(0.98)" onClick="{{ payNow }}">{{ c5CtaLabel }}</div>
+              </div>
+              <div style="text-align:center;padding:10px 16px 0;font:700 10.5px 'Archivo',sans-serif;letter-spacing:1.5px;color:#6E6154">ORANGE MONEY · MOOV MONEY</div>
+              <div style="text-align:center;padding:6px 16px 22px;font:500 11.5px 'Archivo',sans-serif;color:#6E6154">Votre numéro reste privé.</div>
+            </sc-if>
+            <sc-if value="{{ paySubmitting }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:60px 24px 0;display:flex;flex-direction:column;align-items:center;text-align:center">
+                <div style="font:800 11px 'Archivo',sans-serif;letter-spacing:2.2px;color:#6E6154">ENVOI SÉCURISÉ</div>
+                <div style="font:900 30px/1.1 'Archivo',sans-serif;font-stretch:110%;margin-top:10px">Un instant.</div>
+                <div style="font:500 15px/1.5 'Archivo',sans-serif;color:#4A3F33;margin-top:10px">Nous envoyons votre demande de paiement de <span style="font-weight:800;color:#1B140D;font-feature-settings:'tnum'">{{ payNowAmountStr }}</span> à l'opérateur.</div>
+                <div style="width:180px;height:3px;background:rgba(27,20,13,0.12);margin-top:26px;overflow:hidden"><div style="width:100%;height:100%;background:#C2571B;transform-origin:left;animation:gtBar 1.4s ease-in-out infinite"></div></div>
+              </div>
+            </sc-if>
+            <sc-if value="{{ payProvider }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:44px 24px 0;display:flex;flex-direction:column;align-items:center;text-align:center">
+                <div style="width:58px;height:58px;border:2px solid #1B140D;display:flex;align-items:center;justify-content:center"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#1B140D" stroke-width="1.7" stroke-linecap="round"><rect x="6" y="2.5" width="12" height="19" rx="2.5"></rect><path d="M10 5.5h4"></path><circle cx="12" cy="17.5" r="1.3" fill="#1B140D" stroke="none"></circle></svg></div>
+                <div style="font:900 26px/1.15 'Archivo',sans-serif;font-stretch:110%;margin-top:16px">Confirmez sur votre téléphone</div>
+                <div style="font:500 15px/1.55 'Archivo',sans-serif;color:#4A3F33;margin-top:10px">Composez votre code secret <span style="font-weight:700;color:#1B140D">Orange Money</span> pour valider <span style="font-weight:800;color:#1B140D;font-feature-settings:'tnum'">{{ payNowAmountStr }}</span>.</div>
+                <div style="margin-top:22px;border:1.5px solid rgba(27,20,13,0.35);padding:11px 16px;display:flex;align-items:center;gap:10px">
+                  <span style="display:inline-flex;gap:4px"><span style="width:7px;height:7px;border-radius:999px;background:#1B140D;animation:gtDot1 1.2s infinite"></span><span style="width:7px;height:7px;border-radius:999px;background:#1B140D;animation:gtDot2 1.2s infinite"></span><span style="width:7px;height:7px;border-radius:999px;background:#1B140D;animation:gtDot3 1.2s infinite"></span></span>
+                  <span style="font:700 12.5px 'Archivo',sans-serif;letter-spacing:0.5px">En attente de la confirmation de l'opérateur…</span>
+                </div>
+                <div style="font:500 12.5px/1.5 'Archivo',sans-serif;color:#6E6154;margin-top:16px">Rien n'est confirmé tant que l'opérateur n'a pas répondu. Nous ne dirons jamais le contraire.</div>
+              </div>
+            </sc-if>
+          </div>
+        </sc-if>
+
+        <!-- ======== C6 · CONFIRMATION ======== -->
+        <sc-if value="{{ isC6 }}" hint-placeholder-val="{{ false }}">
+          <div data-screen-label="C6 La confirmation" style="height:100%;overflow-y:auto">
+            <sc-if value="{{ confOk }}" hint-placeholder-val="{{ true }}">
+              <div style="padding:46px 24px 0;display:flex;flex-direction:column;align-items:center;text-align:center">
+                <div style="width:64px;height:64px;background:#1B140D;display:flex;align-items:center;justify-content:center"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#FFF8F1" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></div>
+                <div style="font:900 28px/1.1 'Archivo',sans-serif;font-stretch:110%;margin-top:18px">Commande enregistrée.</div>
+                <div style="font:500 15px/1.55 'Archivo',sans-serif;color:#4A3F33;margin-top:10px">Paiement de <span style="font-weight:800;color:#1B140D;font-feature-settings:'tnum'">{{ payNowAmountStr }}</span> confirmé par l'opérateur.</div>
+              </div>
+              <div style="margin:24px 16px 0;border:1.5px solid #1B140D">
+                <div style="display:flex;align-items:center;gap:11px;padding:12px;border-bottom:1px solid rgba(27,20,13,0.14)"><span style="font:800 11px ui-monospace,Menlo,monospace;background:#1B140D;color:#FFF8F1;padding:2px 6px">1</span><span style="font:600 13.5px 'Archivo',sans-serif">Aïcha prépare votre commande</span></div>
+                <div style="display:flex;align-items:center;gap:11px;padding:12px;border-bottom:1px solid rgba(27,20,13,0.14)"><span style="font:800 11px ui-monospace,Menlo,monospace;background:#1B140D;color:#FFF8F1;padding:2px 6px">2</span><span style="font:600 13.5px 'Archivo',sans-serif">Séra vérifie et scelle le colis</span></div>
+                <div style="display:flex;align-items:center;gap:11px;padding:12px"><span style="font:800 11px ui-monospace,Menlo,monospace;background:#1B140D;color:#FFF8F1;padding:2px 6px">3</span><span style="font:600 13.5px 'Archivo',sans-serif">Nous vous prévenons à chaque étape</span></div>
+              </div>
+            </sc-if>
+            <sc-if value="{{ confPending }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:46px 24px 0;display:flex;flex-direction:column;align-items:center;text-align:center">
+                <div style="width:64px;height:64px;border:2px solid #1B140D;display:flex;align-items:center;justify-content:center"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#1B140D" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3.5 2"></path></svg></div>
+                <div style="font:900 26px/1.15 'Archivo',sans-serif;font-stretch:110%;margin-top:18px">C'est noté.</div>
+                <div style="font:500 15px/1.55 'Archivo',sans-serif;color:#4A3F33;margin-top:10px">En attente du réseau. Votre commande est gardée sur ce téléphone — elle part dès que le réseau revient.</div>
+                <div style="margin-top:18px;background:#F7EED7;padding:10px 16px;font:700 12px 'Archivo',sans-serif;letter-spacing:0.5px;color:#6B4E0C">EN ATTENTE — JAMAIS PERDUE</div>
+              </div>
+            </sc-if>
+            <sc-if value="{{ confOffline }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:46px 24px 0;display:flex;flex-direction:column;align-items:center;text-align:center">
+                <div style="width:64px;height:64px;border:2px solid #1B140D;display:flex;align-items:center;justify-content:center"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#1B140D" stroke-width="1.8" stroke-linecap="round"><path d="M3 6.5a13 13 0 0 1 18 0"></path><path d="M6.5 10a8.5 8.5 0 0 1 11 0"></path><circle cx="12" cy="16.5" r="1.6" fill="#1B140D" stroke="none"></circle><path d="M4 20L20 4"></path></svg></div>
+                <div style="font:900 26px/1.15 'Archivo',sans-serif;font-stretch:110%;margin-top:18px">Hors ligne — rien n'est perdu.</div>
+                <div style="font:500 15px/1.55 'Archivo',sans-serif;color:#4A3F33;margin-top:10px">Votre commande attend sur ce téléphone. Le paiement partira quand le réseau reviendra. Nous ne dirons jamais « payé » avant l'opérateur.</div>
+              </div>
+            </sc-if>
+            <div style="margin:22px 16px 0">
+              <div style="height:56px;background:#1B140D;color:#FFF8F1;display:flex;align-items:center;justify-content:center;font:800 14px 'Archivo',sans-serif;letter-spacing:2.2px;border-radius:6px;cursor:pointer" style-active="transform:scale(0.98)" onClick="{{ goC7 }}">SUIVRE MA COMMANDE</div>
+            </div>
+            <div style="text-align:center;padding:12px 16px 22px;font:500 11.5px 'Archivo',sans-serif;color:#6E6154">Votre numéro reste privé.</div>
+          </div>
+        </sc-if>
+
+        <!-- ======== C7 · SUIVI ======== -->
+        <sc-if value="{{ isC7 }}" hint-placeholder-val="{{ false }}">
+          <div data-screen-label="C7 Le suivi" style="height:100%;overflow-y:auto">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid rgba(27,20,13,0.14)">
+              <span style="font:800 12.5px 'Archivo',sans-serif;letter-spacing:2.4px">LE SUIVI</span>
+              <span style="font:700 11px ui-monospace,Menlo,monospace;border:1.5px solid #1B140D;padding:3px 7px">CMD-2417</span>
+            </div>
+            <div style="padding:12px 16px 0;font:500 13px/1.5 'Archivo',sans-serif;color:#4A3F33">Nous vous prévenons à chaque étape. Pas besoin de rester sur cette page.</div>
+            <sc-if value="{{ problem }}" hint-placeholder-val="{{ false }}">
+              <div style="margin:12px 16px 0;background:#F9E9E6;border-left:4px solid #B3382C;padding:11px 13px;font:600 13px/1.5 'Archivo',sans-serif;color:#7A2418">Problème signalé. Une personne s'en occupe. La commande reste protégée.</div>
+            </sc-if>
+            <div style="padding:14px 16px 0">
+              <sc-for list="{{ steps }}" as="stp" hint-placeholder-count="6">
+                <div style="display:flex;gap:13px">
+                  <div style="display:flex;flex-direction:column;align-items:center;width:22px;flex:none">
+                    <div style="{{ stp.dotStyle }}">
+                      <sc-if value="{{ stp.done }}" hint-placeholder-val="{{ false }}">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#FFF8F1" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>
+                      </sc-if>
+                      <sc-if value="{{ stp.current }}" hint-placeholder-val="{{ false }}">
+                        <div style="width:8px;height:8px;border-radius:999px;background:#C2571B"></div>
+                      </sc-if>
+                    </div>
+                    <sc-if value="{{ stp.hasLine }}" hint-placeholder-val="{{ true }}">
+                      <div style="{{ stp.lineStyle }}"></div>
+                    </sc-if>
+                  </div>
+                  <div style="padding-bottom:14px;flex:1">
+                    <div style="display:flex;align-items:center;gap:8px;padding-top:1px">
+                      <span style="{{ stp.titleStyle }}">{{ stp.t }}</span>
+                      <sc-if value="{{ stp.current }}" hint-placeholder-val="{{ false }}">
+                        <span style="background:#C2571B;color:#FFF8F1;font:800 9px 'Archivo',sans-serif;letter-spacing:1.2px;padding:2px 6px">MAINTENANT</span>
+                      </sc-if>
+                    </div>
+                    <div style="font:400 12.5px/1.45 'Archivo',sans-serif;color:#6E6154;margin-top:2px">{{ stp.d }}</div>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+            <sc-if value="{{ atDoorStep }}" hint-placeholder-val="{{ false }}">
+              <div style="margin:4px 16px 0">
+                <div style="height:56px;background:#1B140D;color:#FFF8F1;display:flex;align-items:center;justify-content:center;font:800 14px 'Archivo',sans-serif;letter-spacing:2.2px;border-radius:6px;cursor:pointer" style-active="transform:scale(0.98)" onClick="{{ goC8 }}">JE SUIS À LA PORTE</div>
+              </div>
+            </sc-if>
+            <div style="display:flex;gap:10px;margin:12px 16px 0">
+              <div style="flex:1;height:50px;border:1.5px solid rgba(27,20,13,0.35);display:flex;align-items:center;justify-content:center;font:800 11.5px 'Archivo',sans-serif;letter-spacing:1.2px;border-radius:6px;cursor:pointer" onClick="{{ openSheet }}">VOS PROTECTIONS</div>
+              <div style="flex:1;height:50px;border:1.5px solid #B3382C;color:#B3382C;display:flex;align-items:center;justify-content:center;font:800 11.5px 'Archivo',sans-serif;letter-spacing:1.2px;border-radius:6px;cursor:pointer" onClick="{{ reportFromC7 }}">SIGNALER UN PROBLÈME</div>
+            </div>
+            <div style="text-align:center;padding:12px 16px 22px;font:500 11.5px 'Archivo',sans-serif;color:#6E6154">Pas de point GPS — des étapes claires, et nous vous prévenons.</div>
+          </div>
+        </sc-if>
+
+        <!-- ======== C8 · À LA PORTE ======== -->
+        <sc-if value="{{ isC8 }}" hint-placeholder-val="{{ false }}">
+          <div data-screen-label="C8 À la porte" style="height:100%;overflow-y:auto">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 16px;border-bottom:1px solid rgba(27,20,13,0.14)">
+              <div style="width:34px;height:34px;border:1.5px solid rgba(27,20,13,0.35);display:flex;align-items:center;justify-content:center;border-radius:6px;cursor:pointer" onClick="{{ goC7 }}"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#1B140D" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 18l-6-6 6-6"></path></svg></div>
+              <span style="font:800 12.5px 'Archivo',sans-serif;letter-spacing:2.4px">À LA PORTE</span>
+              <div style="width:34px"></div>
+            </div>
+            <sc-if value="{{ doorInspecting }}" hint-placeholder-val="{{ true }}">
+              <div style="padding:22px 16px 0">
+                <div style="font:900 27px/1.08 'Archivo',sans-serif;font-stretch:110%;text-transform:uppercase">Ouvrez. Vérifiez. Ensuite seulement, payez.</div>
+                <div style="font:500 14px/1.5 'Archivo',sans-serif;color:#4A3F33;margin-top:10px">Prenez votre temps — 2 à 4 minutes, c'est votre droit. Le livreur attend.</div>
+              </div>
+              <div style="margin:16px 16px 0;border:1.5px solid #1B140D">
+                <div style="display:flex;align-items:center;gap:11px;padding:12px;border-bottom:1px solid rgba(27,20,13,0.14)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#1B140D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M8.5 12.5l2.4 2.4 4.8-5"></path></svg><span style="font:600 14px 'Archivo',sans-serif">C'est le bon article — celui de la photo</span></div>
+                <div style="display:flex;align-items:center;gap:11px;padding:12px;border-bottom:1px solid rgba(27,20,13,0.14)"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#1B140D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M8.5 12.5l2.4 2.4 4.8-5"></path></svg><span style="font:600 14px 'Archivo',sans-serif">La bonne taille — M</span></div>
+                <div style="display:flex;align-items:center;gap:11px;padding:12px"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#1B140D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M8.5 12.5l2.4 2.4 4.8-5"></path></svg><span style="font:600 14px 'Archivo',sans-serif">En bon état</span></div>
+              </div>
+              <sc-if value="{{ doorOwing }}" hint-placeholder-val="{{ true }}">
+                <div style="margin:14px 16px 0;background:#F3EBDB;padding:12px 14px;display:flex;justify-content:space-between;align-items:baseline"><span style="font:600 13.5px 'Archivo',sans-serif">Reste à payer, après inspection</span><span style="font:900 17px 'Archivo',sans-serif;font-feature-settings:'tnum'">11&#8239;500&#8239;F</span></div>
+              </sc-if>
+              <div style="display:flex;gap:10px;margin:16px 16px 0">
+                <div style="flex:1;height:56px;background:#1B140D;color:#FFF8F1;display:flex;align-items:center;justify-content:center;font:800 13px 'Archivo',sans-serif;letter-spacing:1.5px;border-radius:6px;cursor:pointer" style-active="transform:scale(0.98)" onClick="{{ doorGood }}">TOUT EST BON</div>
+                <div style="flex:1;height:56px;border:1.5px solid #B3382C;color:#B3382C;display:flex;align-items:center;justify-content:center;font:800 13px 'Archivo',sans-serif;letter-spacing:1.5px;border-radius:6px;cursor:pointer" onClick="{{ doorReport }}">UN PROBLÈME</div>
+              </div>
+              <div style="text-align:center;padding:12px 16px 22px;font:500 12px 'Archivo',sans-serif;color:#6E6154">Les deux chemins se valent. Un refus justifié ne compte jamais contre vous.</div>
+            </sc-if>
+            <sc-if value="{{ doorPaying }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:44px 24px 0;display:flex;flex-direction:column;align-items:center;text-align:center">
+                <div style="width:58px;height:58px;border:2px solid #1B140D;display:flex;align-items:center;justify-content:center"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#1B140D" stroke-width="1.7" stroke-linecap="round"><rect x="6" y="2.5" width="12" height="19" rx="2.5"></rect><path d="M10 5.5h4"></path><circle cx="12" cy="17.5" r="1.3" fill="#1B140D" stroke="none"></circle></svg></div>
+                <div style="font:900 26px/1.15 'Archivo',sans-serif;font-stretch:110%;margin-top:16px">Payez le reste, en sécurité</div>
+                <div style="font:500 15px/1.55 'Archivo',sans-serif;color:#4A3F33;margin-top:10px">Composez votre code secret <span style="font-weight:700;color:#1B140D">Orange Money</span> pour valider <span style="font-weight:800;color:#1B140D;font-feature-settings:'tnum'">11&#8239;500&#8239;F</span>.</div>
+                <div style="margin-top:22px;border:1.5px solid rgba(27,20,13,0.35);padding:11px 16px;display:flex;align-items:center;gap:10px">
+                  <span style="display:inline-flex;gap:4px"><span style="width:7px;height:7px;border-radius:999px;background:#1B140D;animation:gtDot1 1.2s infinite"></span><span style="width:7px;height:7px;border-radius:999px;background:#1B140D;animation:gtDot2 1.2s infinite"></span><span style="width:7px;height:7px;border-radius:999px;background:#1B140D;animation:gtDot3 1.2s infinite"></span></span>
+                  <span style="font:700 12.5px 'Archivo',sans-serif;letter-spacing:0.5px">En attente de la confirmation de l'opérateur…</span>
+                </div>
+                <div style="font:500 12.5px/1.5 'Archivo',sans-serif;color:#6E6154;margin-top:16px">Le livreur ne peut pas dire « payé » à votre place. Seul l'opérateur confirme.</div>
+              </div>
+            </sc-if>
+            <sc-if value="{{ doorReporting }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:22px 16px 0">
+                <div style="font:900 24px/1.1 'Archivo',sans-serif;font-stretch:110%">Qu'est-ce qui ne va pas ?</div>
+                <div style="font:500 14px/1.5 'Archivo',sans-serif;color:#4A3F33;margin-top:8px">Dites-le simplement. Vous ne payez rien de plus.</div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px;margin:14px 16px 0">
+                <sc-for list="{{ reasons }}" as="r" hint-placeholder-count="3">
+                  <div style="{{ r.style }}" onClick="{{ r.pick }}">{{ r.label }}</div>
+                </sc-for>
+              </div>
+              <sc-if value="{{ reasonPicked }}" hint-placeholder-val="{{ false }}">
+                <div style="margin:16px 16px 0;background:#F9E9E6;border-left:4px solid #B3382C;padding:12px 14px;font:600 13.5px/1.55 'Archivo',sans-serif;color:#7A2418">Le colis repart avec le livreur. Vous ne payez rien de plus. La commande reste protégée.</div>
+                <div style="margin:14px 16px 0">
+                  <div style="height:54px;background:#1B140D;color:#FFF8F1;display:flex;align-items:center;justify-content:center;font:800 13px 'Archivo',sans-serif;letter-spacing:1.8px;border-radius:6px;cursor:pointer" onClick="{{ confirmReport }}">C'EST NOTÉ</div>
+                </div>
+              </sc-if>
+            </sc-if>
+          </div>
+        </sc-if>
+
+        <!-- ======== C9 · CODE DE REMISE ======== -->
+        <sc-if value="{{ isC9 }}" hint-placeholder-val="{{ false }}">
+          <div data-screen-label="C9 Le code de remise" style="height:100%;overflow-y:auto">
+            <div style="display:flex;align-items:center;justify-content:center;padding:10px 16px;border-bottom:1px solid rgba(27,20,13,0.14)">
+              <span style="font:800 12.5px 'Archivo',sans-serif;letter-spacing:2.4px">LE CODE DE REMISE</span>
+            </div>
+            <sc-if value="{{ codeHidden }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:52px 24px 0;display:flex;flex-direction:column;align-items:center;text-align:center">
+                <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#8D7C64" stroke-width="1.7" stroke-linecap="round"><rect x="5.5" y="10.5" width="13" height="9.5" rx="2.5"></rect><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"></path></svg>
+                <div style="font:900 34px/1 'Archivo',sans-serif;letter-spacing:10px;color:#8D7C64;margin-top:26px;font-feature-settings:'tnum'">••• •••</div>
+                <div style="font:500 15px/1.55 'Archivo',sans-serif;color:#4A3F33;margin-top:22px">Votre code apparaîtra ici dès que le paiement sera confirmé par l'opérateur. Jamais avant.</div>
+              </div>
+            </sc-if>
+            <sc-if value="{{ codeRevealed }}" hint-placeholder-val="{{ true }}">
+              <div style="padding:34px 20px 0;display:flex;flex-direction:column;align-items:center;text-align:center">
+                <div style="font:800 10.5px 'Archivo',sans-serif;letter-spacing:2.4px;color:#6E6154">VOTRE PREUVE</div>
+                <div style="position:relative;margin-top:14px;border:2px solid #1B140D;padding:26px 34px;background:#FFFDF7">
+                  <div style="position:absolute;top:6px;left:6px;width:12px;height:12px;border-top:2px solid #C2571B;border-left:2px solid #C2571B"></div>
+                  <div style="position:absolute;top:6px;right:6px;width:12px;height:12px;border-top:2px solid #C2571B;border-right:2px solid #C2571B"></div>
+                  <div style="position:absolute;bottom:6px;left:6px;width:12px;height:12px;border-bottom:2px solid #C2571B;border-left:2px solid #C2571B"></div>
+                  <div style="position:absolute;bottom:6px;right:6px;width:12px;height:12px;border-bottom:2px solid #C2571B;border-right:2px solid #C2571B"></div>
+                  <div style="font:900 52px/1 'Archivo',sans-serif;font-feature-settings:'tnum';letter-spacing:6px">734&#8239;921</div>
+                </div>
+                <div style="font:700 16px/1.4 'Archivo',sans-serif;margin-top:18px">Ce code est votre preuve.</div>
+                <div style="font:500 14px/1.55 'Archivo',sans-serif;color:#4A3F33;margin-top:8px;max-width:280px">Donnez-le au livreur seulement au moment de la remise. Montrez-le, ou dites-le à voix haute.</div>
+                <div style="margin-top:20px;display:flex;align-items:center;gap:8px;background:#F3EBDB;padding:10px 14px">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#4A3F33" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.2l6.8 2.7v5.1c0 4.3-2.9 7.2-6.8 8.8-3.9-1.6-6.8-4.5-6.8-8.8V5.9L12 3.2z"></path><path d="M9.2 11.8l2 2 3.6-3.9"></path></svg>
+                  <span style="font:600 12.5px 'Archivo',sans-serif;color:#4A3F33">Gardé aussi dans vos SMS — même sans réseau.</span>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+        </sc-if>
+
+      </div>
+    </div>
+
+    <!-- ======== C2 · SHEET PROTECTIONS ======== -->
+    <div style="{{ scrimStyle }}" onClick="{{ closeSheet }}"></div>
+    <div style="{{ sheetStyle }}">
+      <div style="width:44px;height:4px;background:rgba(27,20,13,0.25);margin:10px auto 0;border-radius:999px"></div>
+      <div data-screen-label="C2 Vos protections" style="padding:14px 18px 20px">
+        <div style="font:800 13px 'Archivo',sans-serif;letter-spacing:2.4px">VOS PROTECTIONS</div>
+        <div style="display:flex;gap:12px;align-items:flex-start;margin-top:16px">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1B140D" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z"></path><circle cx="12" cy="12" r="2.6"></circle></svg>
+          <div><div style="font:700 14.5px 'Archivo',sans-serif">Vous inspectez avant de payer</div><div style="font:400 13px/1.5 'Archivo',sans-serif;color:#4A3F33;margin-top:2px">Ouvrez le colis à la porte. Prenez 2 à 4 minutes. Payez seulement si c'est bon.</div></div>
+        </div>
+        <div style="display:flex;gap:12px;align-items:flex-start;margin-top:14px">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1B140D" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><path d="M12 3.2l6.8 2.7v5.1c0 4.3-2.9 7.2-6.8 8.8-3.9-1.6-6.8-4.5-6.8-8.8V5.9L12 3.2z"></path><path d="M9.2 11.8l2 2 3.6-3.9"></path></svg>
+          <div><div style="font:700 14.5px 'Archivo',sans-serif">Le remboursement n'est jamais bloqué</div><div style="font:400 13px/1.5 'Archivo',sans-serif;color:#4A3F33;margin-top:2px">Un problème avéré, c'est un remboursement. Sans condition cachée, sans attente d'un fonds.</div></div>
+        </div>
+        <div style="display:flex;gap:12px;align-items:flex-start;margin-top:14px">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1B140D" stroke-width="1.8" stroke-linecap="round" style="flex:none;margin-top:2px"><rect x="5.5" y="10.5" width="13" height="9.5" rx="2.5"></rect><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"></path></svg>
+          <div><div style="font:700 14.5px 'Archivo',sans-serif">Votre numéro reste privé</div><div style="font:400 13px/1.5 'Archivo',sans-serif;color:#4A3F33;margin-top:2px">Le livreur passe par un relais. Personne ne voit votre numéro.</div></div>
+        </div>
+        <div style="display:flex;gap:12px;align-items:flex-start;margin-top:14px">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1B140D" stroke-width="1.8" stroke-linecap="round" style="flex:none;margin-top:2px"><circle cx="8" cy="12" r="3.5"></circle><path d="M11.5 12H20"></path><path d="M17 12v3"></path></svg>
+          <div><div style="font:700 14.5px 'Archivo',sans-serif">Le code de remise fait foi</div><div style="font:400 13px/1.5 'Archivo',sans-serif;color:#4A3F33;margin-top:2px">La remise n'existe que quand vous donnez votre code. C'est votre preuve.</div></div>
+        </div>
+        <div style="height:52px;background:#1B140D;color:#FFF8F1;display:flex;align-items:center;justify-content:center;font:800 13px 'Archivo',sans-serif;letter-spacing:2px;border-radius:6px;cursor:pointer;margin-top:18px" onClick="{{ closeSheet }}">COMPRIS</div>
+      </div>
+    </div>
+
+  </div>
+
+  <div style="font:500 12px 'Archivo',sans-serif;color:#6E6154">Tout le parcours est cliquable — de « Commander » jusqu'au code de remise.</div>
+</div>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;startScreen&quot;: {&quot;editor&quot;: &quot;enum&quot;, &quot;options&quot;: [&quot;C1&quot;, &quot;C3&quot;, &quot;C4&quot;, &quot;C5&quot;, &quot;C6&quot;, &quot;C7&quot;, &quot;C8&quot;, &quot;C9&quot;], &quot;default&quot;: &quot;C1&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Prototype&quot;}, &quot;sandboxRibbon&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: false, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Prototype&quot;}, &quot;reducedMotion&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: false, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Prototype&quot;}}">
+class Component extends DCLogic {
+  state = {
+    screen: this.props.startScreen ?? 'C1',
+    entered: true,
+    offline: false,
+    sandbox: this.props.sandboxRibbon ?? false,
+    redMotion: this.props.reducedMotion ?? false,
+    stock: 'ok',
+    sheet: false,
+    zone: null, repere: '', indic: '',
+    voice: 'idle', vSec: 0,
+    delivery: null,
+    pay: null, bInel: false, paying: 'idle',
+    confirmState: 'confirmed',
+    step: 1, problem: false,
+    door: 'inspecting', leg2: 'idle', reason: null
+  };
+
+  _clearTimers() {
+    if (this._t1) clearTimeout(this._t1);
+    if (this._t2) clearTimeout(this._t2);
+    if (this._rec) clearInterval(this._rec);
+    this._t1 = this._t2 = this._rec = null;
+  }
+  componentWillUnmount() { this._clearTimers(); }
+
+  nav(screen, patch) {
+    patch = patch || {};
+    this._clearTimers();
+    if (this.state.redMotion) { this.setState({ screen, entered: true, ...patch }); return; }
+    this.setState({ screen, entered: false, ...patch });
+    this._enterT = setTimeout(() => this.setState({ entered: true }), 30);
+  }
+
+  jump(screen, extra) {
+    const s = this.state;
+    const ctx = {};
+    const idx = ['C1','C3','C4','C5','C6','C7','C8','C9'].indexOf(screen);
+    if (idx >= 1) { ctx.zone = s.zone || 'Gounghin'; ctx.repere = s.repere || 'Face à la pharmacie du marché'; ctx.indic = s.indic || 'Deuxième porte bleue après le kiosque'; }
+    if (idx >= 2 && screen !== 'C3') { ctx.delivery = s.delivery || 'today'; }
+    if (idx >= 4) { ctx.pay = s.pay || 'B'; }
+    ctx.sheet = false; ctx.paying = 'idle'; ctx.problem = false;
+    this.nav(screen, Object.assign(ctx, extra || {}));
+  }
+
+  startRecTicker() {
+    this._rec = setInterval(() => this.setState(st => ({ vSec: st.vSec + 1 })), 1000);
+  }
+
+  renderVals() {
+    const s = this.state;
+    const ink = '#1B140D', paper = '#FFF8F1', muted = '#6E6154', accent = '#C2571B';
+    const fmt = n => n.toLocaleString('fr-FR').replace(/[\u00a0\u202f,]/g, '\u202f') + '\u202fF';
+    const deliveryFee = s.delivery === 'tomorrow' ? 800 : 1000;
+    const total = 11500 + deliveryFee;
+    const payNowAmount = s.pay === 'A' ? total : deliveryFee;
+
+    // --- chips / boxes styles
+    const chipBase = 'display:inline-flex;align-items:center;cursor:pointer;font:700 12px Archivo,sans-serif;letter-spacing:0.4px;padding:8px 12px;border-radius:4px;';
+    const optBox = sel => ({
+      margin: '11px 16px 0', position: 'relative', padding: sel ? '14px 14px 14px 21px' : '14px',
+      border: sel ? '2px solid ' + ink : '1.5px solid rgba(27,20,13,0.35)', cursor: 'pointer',
+      transition: 'border-color 150ms', background: '#FFFDF7'
+    });
+
+    // --- rail
+    const railChip = on => 'display:inline-flex;align-items:center;cursor:pointer;font:600 11px Archivo,sans-serif;padding:5px 9px;border-radius:4px;' +
+      (on ? 'background:#1B140D;color:#FFF8F1;' : 'background:rgba(27,20,13,0.06);color:#1B140D;');
+    const J = (scr, extra) => () => this.jump(scr, extra);
+    const railSections = [
+      { id: 'C1', name: 'La page produit', states: [
+        { label: 'défaut', on: s.screen==='C1' && s.stock==='ok' && !s.offline && !s.sheet, go: J('C1', { stock:'ok', offline:false }) },
+        { label: 'épuisé', on: s.screen==='C1' && s.stock==='out', go: J('C1', { stock:'out' }) },
+        { label: 'hors ligne', on: s.screen==='C1' && s.offline, go: J('C1', { offline:true }) } ] },
+      { id: 'C2', name: 'Vos protections', states: [
+        { label: 'ouvrir la fiche', on: s.sheet, go: () => this.setState({ sheet: true }) } ] },
+      { id: 'C3', name: 'La localisation', states: [
+        { label: 'vide', on: s.screen==='C3' && !s.zone && s.voice==='idle', go: J('C3', { zone:null, repere:'', indic:'', voice:'idle', vSec:0 }) },
+        { label: 'zone choisie', on: s.screen==='C3' && !!s.zone && s.voice==='idle', go: J('C3', { voice:'idle', vSec:0 }) },
+        { label: 'enregistre', on: s.screen==='C3' && s.voice==='recording', go: () => { this.jump('C3', { voice:'recording', vSec:0 }); this.startRecTicker(); } },
+        { label: 'enregistré', on: s.screen==='C3' && s.voice==='recorded', go: J('C3', { voice:'recorded', vSec:9 }) },
+        { label: 'micro refusé', on: s.screen==='C3' && s.voice==='refused', go: J('C3', { voice:'refused' }) },
+        { label: 'note en attente', on: s.screen==='C3' && s.voice==='queued', go: J('C3', { voice:'queued', vSec:9, offline:true }) } ] },
+      { id: 'C4', name: 'La livraison', states: [
+        { label: 'options', on: s.screen==='C4' && !s.delivery, go: J('C4', { delivery:null }) },
+        { label: 'choisie', on: s.screen==='C4' && !!s.delivery, go: J('C4', { delivery:'today' }) } ] },
+      { id: 'C5', name: 'Le paiement', states: [
+        { label: 'A choisi', on: s.screen==='C5' && s.pay==='A' && !s.bInel && s.paying==='idle', go: J('C5', { pay:'A', bInel:false }) },
+        { label: 'B choisi', on: s.screen==='C5' && s.pay==='B' && s.paying==='idle', go: J('C5', { pay:'B', bInel:false }) },
+        { label: 'B indisponible', on: s.screen==='C5' && s.bInel, go: J('C5', { pay:'A', bInel:true }) },
+        { label: 'envoi', on: s.screen==='C5' && s.paying==='submitting', go: J('C5', { pay:'B', bInel:false, paying:'submitting' }) },
+        { label: 'attente opérateur', on: s.screen==='C5' && s.paying==='provider', go: J('C5', { pay:'B', bInel:false, paying:'provider' }) } ] },
+      { id: 'C6', name: 'La confirmation', states: [
+        { label: 'confirmée', on: s.screen==='C6' && s.confirmState==='confirmed', go: J('C6', { confirmState:'confirmed', offline:false }) },
+        { label: 'attente réseau', on: s.screen==='C6' && s.confirmState==='pending', go: J('C6', { confirmState:'pending' }) },
+        { label: 'hors ligne', on: s.screen==='C6' && s.confirmState==='offline', go: J('C6', { confirmState:'offline', offline:true }) } ] },
+      { id: 'C7', name: 'Le suivi', states: [1,2,3,4,5,6].map(n => (
+        { label: 'étape ' + n, on: s.screen==='C7' && s.step===n && !s.problem, go: J('C7', { step:n }) }
+      )).concat([{ label: 'problème', on: s.screen==='C7' && s.problem, go: J('C7', { step:4, problem:true }) }]) },
+      { id: 'C8', name: 'À la porte', states: [
+        { label: 'inspection', on: s.screen==='C8' && s.door==='inspecting', go: J('C8', { door:'inspecting', leg2:'idle', reason:null, step:5 }) },
+        { label: 'paiement du reste', on: s.screen==='C8' && s.door==='accepted', go: J('C8', { pay:'B', door:'accepted', leg2:'provider', step:5 }) },
+        { label: 'problème', on: s.screen==='C8' && s.door==='report', go: J('C8', { door:'report', reason:null, step:5 }) } ] },
+      { id: 'C9', name: 'Le code de remise', states: [
+        { label: 'caché', on: s.screen==='C9' && s.leg2!=='confirmed', go: J('C9', { leg2:'idle' }) },
+        { label: 'révélé', on: s.screen==='C9' && s.leg2==='confirmed', go: J('C9', { leg2:'confirmed', step:6 }) } ] }
+    ].map(sec => ({
+      ...sec,
+      idBg: (s.screen === sec.id || (sec.id==='C2' && s.sheet)) ? '#1B140D' : 'rgba(27,20,13,0.08)',
+      idColor: (s.screen === sec.id || (sec.id==='C2' && s.sheet)) ? '#FFF8F1' : '#1B140D',
+      states: sec.states.map(st => ({ ...st, style: railChip(st.on) }))
+    }));
+
+    // --- zones
+    const zoneNames = ['Gounghin','Dassasgho','Pissy','Tampouy','Wemtenga','Zogona','Cissin','Somgandé'];
+    const zones = zoneNames.map(name => ({
+      name,
+      pick: () => this.setState({ zone: name }),
+      style: 'cursor:pointer;font:700 12.5px Archivo,sans-serif;letter-spacing:0.4px;padding:9px 13px;border-radius:4px;min-height:20px;' +
+        (s.zone === name ? 'background:#1B140D;color:#FFF8F1;border:1.5px solid #1B140D;' : 'background:#FFFDF7;color:#1B140D;border:1.5px solid rgba(27,20,13,0.3);')
+    }));
+
+    // --- steps C7
+    const stepDefs = [
+      { t: 'Commande enregistrée', d: 'Nous avons bien reçu votre commande.' },
+      { t: 'Préparée par la vendeuse', d: 'Aïcha prépare votre colis.' },
+      { t: 'Vérifiée et scellée par Séra', d: 'Le livreur contrôle le colis avant de partir.' },
+      { t: 'En route', d: 'Le colis est en chemin vers votre repère.' },
+      { t: 'À votre porte', d: 'Inspectez avant de payer le reste.' },
+      { t: 'Remise', d: 'Votre code fait foi.' }
+    ];
+    const steps = stepDefs.map((d, i) => {
+      const n = i + 1, done = n < s.step, current = n === s.step;
+      return {
+        ...d, done, current, hasLine: n < 6,
+        dotStyle: {
+          width: '20px', height: '20px', borderRadius: '999px', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none', boxSizing: 'border-box',
+          background: done ? ink : '#FFFDF7',
+          border: done ? '2px solid ' + ink : current ? '2px solid ' + accent : '2px solid rgba(27,20,13,0.25)'
+        },
+        lineStyle: { width: '2px', flex: '1', minHeight: '22px', background: done ? ink : 'rgba(27,20,13,0.15)' },
+        titleStyle: { font: (current ? '800' : done ? '700' : '600') + ' 14.5px Archivo,sans-serif', color: done || current ? ink : 'rgba(27,20,13,0.45)' }
+      };
+    });
+
+    // --- reasons C8
+    const reasonDefs = ["Ce n'est pas le bon article", 'Il est abîmé', 'Il manque quelque chose'];
+    const reasons = reasonDefs.map(label => ({
+      label,
+      pick: () => this.setState({ reason: label }),
+      style: 'cursor:pointer;font:600 14px Archivo,sans-serif;padding:13px 14px;border-radius:4px;' +
+        (s.reason === label ? 'background:#1B140D;color:#FFF8F1;border:1.5px solid #1B140D;' : 'background:#FFFDF7;color:#1B140D;border:1.5px solid rgba(27,20,13,0.3);')
+    }));
+
+    // --- screen meta
+    const titles = { C1: 'La page produit', C3: 'La localisation', C4: 'La livraison', C5: 'Le paiement', C6: 'La confirmation', C7: 'Le suivi', C8: 'À la porte', C9: 'Le code de remise' };
+    const five = {
+      C1: '« Voici le produit, son prix — et une seule chose à faire : commander. »',
+      C3: '« Dites où vous êtes avec un repère — pas besoin d\u2019adresse. »',
+      C4: '« Séra fixe le prix de la course, affiché à part. »',
+      C5: '« Deux façons de payer, les deux montants en clair. Calme avant tout. »',
+      C6: '« C\u2019est noté — et voici ce qui se passe maintenant. »',
+      C7: '« Votre commande avance, étape par étape. On vous prévient. »',
+      C8: '« Ouvrez et vérifiez. Ensuite seulement, payez. »',
+      C9: '« Ce code est votre preuve de remise. »'
+    };
+    const fiveSecond = s.sheet ? '« Vos protections, en français clair, à un geste. »' : five[s.screen];
+
+    const canC3 = s.zone && (s.repere || s.voice === 'recorded' || s.voice === 'queued');
+    const canC4 = !!s.delivery;
+    const canC5 = !!s.pay;
+
+    const animStyle = {
+      height: '100%',
+      opacity: s.entered ? 1 : 0,
+      transform: s.entered ? 'none' : 'translateY(14px)',
+      transition: s.redMotion ? 'none' : (s.entered ? 'opacity 180ms ease, transform 240ms cubic-bezier(0.2,0.8,0.25,1)' : 'none')
+    };
+
+    const sw = on => on ? 'translateX(14px)' : 'translateX(0)';
+
+    return {
+      // chrome
+      offline: s.offline, sandbox: s.sandbox,
+      toggleOffline: () => this.setState({ offline: !s.offline }),
+      toggleSandbox: () => this.setState({ sandbox: !s.sandbox }),
+      toggleMotion: () => this.setState({ redMotion: !s.redMotion }),
+      offSwBg: s.offline ? ink : 'rgba(27,20,13,0.2)', offSwKnob: sw(s.offline),
+      sbSwBg: s.sandbox ? ink : 'rgba(27,20,13,0.2)', sbSwKnob: sw(s.sandbox),
+      rmSwBg: s.redMotion ? ink : 'rgba(27,20,13,0.2)', rmSwKnob: sw(s.redMotion),
+      railSections, fiveSecond,
+      screenId: s.sheet ? 'C2' : s.screen, screenTitle: s.sheet ? 'Vos protections' : titles[s.screen],
+      animStyle,
+
+      // flags
+      isC1: s.screen === 'C1', isC3: s.screen === 'C3', isC4: s.screen === 'C4', isC5: s.screen === 'C5',
+      isC6: s.screen === 'C6', isC7: s.screen === 'C7', isC8: s.screen === 'C8', isC9: s.screen === 'C9',
+
+      // C1
+      isOut: s.stock === 'out',
+      priceBandBg: s.stock === 'out' ? '#8D7C64' : accent,
+      orderBtnOpacity: s.stock === 'out' ? 0.35 : 1,
+      commander: () => { if (s.stock !== 'out') this.jump('C3', { zone: null, repere: '', indic: '', voice: 'idle', vSec: 0 }); },
+      openSheet: () => this.setState({ sheet: true }),
+      closeSheet: () => this.setState({ sheet: false }),
+
+      // C2 sheet
+      scrimStyle: {
+        position: 'absolute', inset: '0', background: 'rgba(27,20,13,0.45)',
+        opacity: s.sheet ? 1 : 0, pointerEvents: s.sheet ? 'auto' : 'none',
+        transition: s.redMotion ? 'none' : 'opacity 200ms ease', cursor: 'pointer'
+      },
+      sheetStyle: {
+        position: 'absolute', left: '0', right: '0', bottom: '0', background: '#FFFDF7',
+        borderTop: '2px solid ' + ink,
+        transform: s.sheet ? 'translateY(0)' : 'translateY(105%)',
+        transition: s.redMotion ? 'none' : 'transform 240ms cubic-bezier(0.2,0.8,0.25,1)'
+      },
+
+      // C3
+      zones,
+      voiceIdle: s.voice === 'idle', voiceRecording: s.voice === 'recording',
+      voiceRecorded: s.voice === 'recorded', voiceQueued: s.voice === 'queued', voiceRefused: s.voice === 'refused',
+      recTime: '0:' + String(s.vSec).padStart(2, '0'),
+      startRec: () => { this.setState({ voice: 'recording', vSec: 0 }); this.startRecTicker(); },
+      stopRec: () => { if (this._rec) clearInterval(this._rec); this._rec = null; this.setState({ voice: s.offline ? 'queued' : 'recorded' }); },
+      reRec: () => { this.setState({ voice: 'recording', vSec: 0 }); this.startRecTicker(); },
+      fillRepere: () => this.setState({ repere: 'Face à la pharmacie du marché' }),
+      fillIndic: () => this.setState({ indic: 'Deuxième porte bleue après le kiosque' }),
+      repereText: s.repere || 'Ex. : Face à la pharmacie du marché',
+      repereFont: (s.repere ? '600' : '400') + ' 15px Archivo,sans-serif',
+      repereColor: s.repere ? ink : '#8D7C64',
+      indicText: s.indic || 'Indication en plus (facultatif)',
+      indicFont: (s.indic ? '600' : '400') + ' 14px Archivo,sans-serif',
+      indicColor: s.indic ? ink : '#8D7C64',
+      c3CtaBg: canC3 ? ink : 'rgba(27,20,13,0.18)', c3CtaColor: canC3 ? paper : 'rgba(27,20,13,0.5)',
+      c3Continue: () => { if (canC3) this.jump('C4', { delivery: null }); },
+      goC1: () => this.nav('C1'),
+
+      // C4
+      zoneUpper: (s.zone || 'GOUNGHIN').toUpperCase(),
+      repereRecap: (s.repere || 'Face à la pharmacie du marché') + (s.indic ? ' · ' + s.indic : ''),
+      delTodaySel: s.delivery === 'today', delTmrwSel: s.delivery === 'tomorrow',
+      delTodayStyle: { ...optBox(s.delivery === 'today'), margin: '14px 16px 0' },
+      delTmrwStyle: optBox(s.delivery === 'tomorrow'),
+      pickToday: () => this.setState({ delivery: 'today' }),
+      pickTomorrow: () => this.setState({ delivery: 'tomorrow' }),
+      c4CtaBg: canC4 ? ink : 'rgba(27,20,13,0.18)', c4CtaColor: canC4 ? paper : 'rgba(27,20,13,0.5)',
+      c4Continue: () => { if (canC4) this.jump('C5', { pay: null, bInel: s.bInel }); },
+      goC3: () => this.nav('C3'),
+
+      // C5
+      deliveryFeeStr: fmt(deliveryFee), totalStr: fmt(total),
+      reconcileStr: fmt(total).replace('\u202fF', '') + ' = 11\u202f500 + ' + fmt(deliveryFee).replace('\u202fF', '') + ' — chaque franc a sa place.',
+      payChoosing: s.paying === 'idle', paySubmitting: s.paying === 'submitting', payProvider: s.paying === 'provider',
+      paySelA: s.pay === 'A', paySelB: s.pay === 'B',
+      bAvailable: !s.bInel, bIneligible: s.bInel,
+      optAStyle: optBox(s.pay === 'A'), optBStyle: optBox(s.pay === 'B'),
+      pickA: () => this.setState({ pay: 'A' }),
+      pickB: () => this.setState({ pay: 'B' }),
+      payNowAmountStr: fmt(payNowAmount),
+      c5CtaLabel: !s.pay ? 'CHOISISSEZ POUR CONTINUER' : (s.pay === 'A' ? 'PAYER ' + fmt(total) : 'PAYER ' + fmt(deliveryFee) + ' MAINTENANT'),
+      c5CtaBg: canC5 ? accent : 'rgba(27,20,13,0.18)', c5CtaColor: canC5 ? paper : 'rgba(27,20,13,0.5)',
+      payNow: () => {
+        if (!canC5) return;
+        if (s.offline) { this.jump('C6', { confirmState: 'offline' }); return; }
+        this.setState({ paying: 'submitting' });
+        this._t1 = setTimeout(() => {
+          this.setState({ paying: 'provider' });
+          this._t2 = setTimeout(() => this.jump('C6', { confirmState: 'confirmed', step: 1 }), 2400);
+        }, 1100);
+      },
+      goC4: () => this.nav('C4'),
+
+      // C6
+      confOk: s.confirmState === 'confirmed', confPending: s.confirmState === 'pending', confOffline: s.confirmState === 'offline',
+      goC7: () => this.jump('C7', { step: Math.max(s.step, 1) }),
+
+      // C7
+      steps, problem: s.problem,
+      atDoorStep: s.step >= 5 && !s.problem,
+      goC8: () => this.jump('C8', { door: 'inspecting', leg2: 'idle', reason: null }),
+      reportFromC7: () => this.setState({ problem: true }),
+
+      // C8
+      doorInspecting: s.door === 'inspecting', doorPaying: s.door === 'accepted', doorReporting: s.door === 'report',
+      doorOwing: s.pay !== 'A',
+      doorGood: () => {
+        if (s.pay === 'A') { this.jump('C9', { leg2: 'confirmed', step: 6 }); return; }
+        this.nav('C8', { door: 'accepted', leg2: 'provider' });
+        this._t1 = setTimeout(() => this.jump('C9', { leg2: 'confirmed', step: 6 }), 2600);
+      },
+      doorReport: () => this.setState({ door: 'report', reason: null }),
+      reasons, reasonPicked: !!s.reason,
+      confirmReport: () => this.jump('C7', { step: 5, problem: true, door: 'inspecting' }),
+      goC7FromC8: () => this.nav('C7'),
+
+      // C9
+      codeHidden: s.leg2 !== 'confirmed', codeRevealed: s.leg2 === 'confirmed'
+    };
+  }
+}
+</script>
+</body>
+</html>
