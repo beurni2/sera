@@ -352,3 +352,12 @@ Format per entry:
   - **Finding 1 (NIT) — `completeReturn` re-checks keys UI-side only:** ACCEPTED as the documented assembly-era boundary; NOT fixed (the store is the byte-identical E1 spine, spine changes FORBIDDEN; live both-keys-consumed handover is assembly work). Carried to the assembly WO.
   - **Finding 2 (NIT) — stale `fonts.ts` comment (async-load model vs the shipped config-plugin embedding):** FIXED on-branch (comment now describes native embedding + `FONT_FALLBACK` as metrics-matched defence-in-depth). Comment-only; rider 55/55 + typecheck 0 re-confirmed.
 - **Carried to the assembly work order:** the live both-keys-consumed return handover (Finding 1); the DO wire-shape slim + storage-growth ceiling (WO-4.3 finding 4); the « deadline: hard » one-word founder flip (WO-4.3 ruling ②).
+
+## 2026-07-12 · WO-6.1 · done (merged `6644310`)
+- **Merged to sera main — `merge(e6): WO-6.1 sera — R1–R14 on Grand Teint + SOS — founder review passed`**, merge sha `6644310ef541f0982360e4770b19f82f0dff6991`. Founder review PASS; the structural-impossibility proofs (no `TextInput` exists · the drop keypad lives only inside the confirmed branch · SOS outside every screen branch with a 650 ms hold) are what these laws required — unrepresentable, not merely forbidden.
+- **The four rulings, closed 2026-07-12 (founder):**
+  - **① Finding 1 (store-side both-keys re-check) CARRIED BY NAME to the assembly work order** — the UI gate is correct and tested; store-side enforcement is a SPINE change, which this WO rightly forbids. NOT fixed here.
+  - **② Finding 2 (stale `fonts.ts` comment) accepted as fixed on-branch** — the comment now describes the config-plugin native embedding + `FONT_FALLBACK` as metrics-matched defence-in-depth.
+  - **③ The font-at-first-frame caveat ACCEPTED AS HONEST** — the configuration is correct (config plugin + 5 real TTFs + NO render gate + no `useFonts`/`loadAsync`); pixel-level first-frame paint is not provable in a sandbox. **The founder's device is the proof:** Archivo on open with no flash = proven; a flash of fallback text is a finding that comes back as a fix.
+  - **④ The gallery captures the CONSOLE only** because the rider app is React Native and cannot be screenshotted in-sandbox — honest; the founder's phone IS the rider gallery. Named, not a gap.
+- **The rider's face is the founder's phone; SOS is live and its drill is owed before any pilot.**
