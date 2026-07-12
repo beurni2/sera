@@ -3,9 +3,10 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PlatformEventSchema } from '@platform/contracts';
 import { MockBoutikReadiness } from '../src/mocks/boutik-readiness-mock.js';
 import { MockShopPlusFunding } from '../src/mocks/shopplus-funding-mock.js';
-import { AssignmentBook } from '../src/manual-assignment.js';
+import { AssignmentBook, type AckOutcome } from '../src/manual-assignment.js';
 import {
   GrantedLeaseWitness,
+  InMemoryLeaseAuthority,
   LeasedDispatch,
   type LeaseAuthority,
 } from '../src/leased-assignment.js';
@@ -75,8 +76,10 @@ let worldCount = 0;
 
 /** A fresh funded/ready world per test; `salt` isolates ids inside the ONE
  * shared authority object (SE-I01: there is only one dispatch authority —
- * the tests share it the way production surfaces would). */
-function world(taskId: string) {
+ * the tests share it the way production surfaces would). An explicit
+ * `authority` override lets the interleave test drive the SAME pure core
+ * in-memory with a deterministic race hook. */
+function world(taskId: string, authority?: LeaseAuthority) {
   worldCount += 1;
   const salt = `w${worldCount}`;
   const funding = new MockShopPlusFunding({});
@@ -117,7 +120,7 @@ function world(taskId: string) {
   const witness = new GrantedLeaseWitness();
   const book = new AssignmentBook(registry, queue, witness);
   const reschedules = new RescheduleBook(queue);
-  const dispatch = new LeasedDispatch({ authority: miniflareAuthority(), witness, registry, queue, book, reschedules });
+  const dispatch = new LeasedDispatch({ authority: authority ?? miniflareAuthority(), witness, registry, queue, book, reschedules });
   return { salt, funding, readiness, queue, registry, witness, book, reschedules, dispatch, admit, addRider };
 }
 
@@ -272,8 +275,13 @@ describe('LeasedDispatch — the full grant path on the real authority', () => {
     if (!granted.ok) return;
     // both ends carry the SAME 5-minute policy datum
     expect(granted.lease.expiresAt).toBe(granted.assignment.ackDeadline);
-    // a pending OFFLINE ack does not save it (queued = pending, never done)
-    expect(book.acknowledge(`${salt}-as-1`, 'queued_offline')).toMatchObject({ ok: true, pending: true });
+    // a pending OFFLINE ack does not save it (queued = pending, never done —
+    // CTO ruling: an offline-queued ack ANCHORS NOTHING, the deadline runs)
+    expect(await dispatch.acknowledge(`${salt}-as-1`, 'queued_offline', T)).toMatchObject({
+      ok: true,
+      pending: true,
+      anchored: false,
+    });
     const swept = await dispatch.expireDue(PAST_TTL);
     expect(swept.expiredLeases.some((l) => l.taskId === t && l.status === 'expired')).toBe(true);
     expect(swept.requeued).toHaveLength(1);
@@ -342,13 +350,18 @@ describe('LeasedDispatch — the full grant path on the real authority', () => {
     expect(fresh.lease).toMatchObject({ taskId: t2, version: 1, status: 'active' });
   });
 
-  it('COMPLETION: releaseOnCompletion frees the lease with cause completed; a later sweep expires nothing for that task', async () => {
+  it('COMPLETION: releaseOnCompletion frees even an ANCHORED lease with cause completed; a later sweep expires nothing for that task', async () => {
     const t = 'task-complete';
     const { salt, dispatch, book } = world(t);
     const granted = await dispatch.assign(assignCmd(salt, t));
     expect(granted.ok).toBe(true);
-    // the rider acknowledges — ack does NOT release the lease
-    expect(book.acknowledge(`${salt}-as-1`, 'server_confirmed')).toMatchObject({ ok: true, status: 'acknowledged' });
+    // the rider acknowledges in time — the ack ANCHORS the lease (ruling)
+    expect(await dispatch.acknowledge(`${salt}-as-1`, 'server_confirmed', T)).toMatchObject({
+      ok: true,
+      status: 'acknowledged',
+      anchored: true,
+    });
+    // ruling test ⑤: release still ends an anchored lease
     const done = await dispatch.releaseOnCompletion(t);
     expect(done).toEqual({ released: true });
     // already released: a second completion release replays idempotently
@@ -357,5 +370,74 @@ describe('LeasedDispatch — the full grant path on the real authority', () => {
     // command_id) expires nothing for the completed task
     const sweep = await dispatch.expireDue('2026-07-12T12:07:00.000Z');
     expect(sweep.expiredLeases.some((l) => l.taskId === t)).toBe(false);
+    expect(book.get(`${salt}-as-1`)?.status).toBe('acknowledged');
+  });
+
+  it('ANCHOR ①: server-confirmed ack → sweep far past TTL → lease still active+anchored, assignment still acknowledged, task NOT requeued', async () => {
+    const t = 'task-anchored';
+    const { salt, dispatch, queue, book } = world(t);
+    const granted = await dispatch.assign(assignCmd(salt, t));
+    expect(granted.ok).toBe(true);
+    const acked = await dispatch.acknowledge(`${salt}-as-1`, 'server_confirmed', T);
+    expect(acked).toMatchObject({ ok: true, status: 'acknowledged', pending: false, anchored: true });
+    // a FRESH sweep instant (no replay at the shared authority), far past TTL
+    const swept = await dispatch.expireDue('2026-07-12T12:08:00.000Z');
+    expect(swept.expiredLeases.some((l) => l.taskId === t)).toBe(false); // the anchored lease survives
+    expect(swept.requeued).toHaveLength(0); // this world's book untouched
+    expect(swept.events).toHaveLength(0);
+    expect(book.get(`${salt}-as-1`)?.status).toBe('acknowledged');
+    expect(queue.get(t)?.status).toBe('assigned'); // never requeued
+  });
+
+  it('ANCHOR ③ — THE INVERSION HAZARD, closed AT THE AUTHORITY: an acked (anchored) rider is refused a second task rider_already_leased even far past TTL', async () => {
+    const t = 'task-inversion-a';
+    const t2 = 'task-inversion-b';
+    const LATE = '2026-07-12T12:09:00.000Z';
+    const { salt, dispatch, admit } = world(t);
+    admit(t2, `${salt}-cmd-ready-2`);
+    expect((await dispatch.assign(assignCmd(salt, t))).ok).toBe(true);
+    expect(await dispatch.acknowledge(`${salt}-as-1`, 'server_confirmed', T)).toMatchObject({ ok: true, anchored: true });
+    // even after a sweep far past the TTL…
+    await dispatch.expireDue(LATE);
+    // …THE authority still holds the rider's one live lease: a second task
+    // for the SAME rider refuses AT THE AUTHORITY, not merely at the book.
+    const second = await dispatch.assign({ ...assignCmd(salt, t2, 2), at: LATE });
+    expect(second).toEqual({ ok: false, stage: 'lease', reason: 'rider_already_leased' });
+  });
+
+  it('ANCHOR ④ — THE TOO-LATE-ACK OVERRIDE (manual interleave on the in-memory core): the lease dies first, the ack lands mid-sweep, the book FOLLOWS the lease back to returned_to_queue', async () => {
+    const t = 'task-late-ack';
+    // The same pure decideLease core, in memory, wrapped so the rider's
+    // server-confirmed ack lands EXACTLY in the gap between THE authority's
+    // expire_due and the book arm of the SAME sweep (the documented race).
+    const inner = new InMemoryLeaseAuthority();
+    let ackDuringSweep: (AckOutcome & { anchored: boolean }) | null = null;
+    const interleaved: LeaseAuthority = {
+      async send(cmd) {
+        const decision = await inner.send(cmd);
+        if (cmd.kind === 'expire_due' && ackDuringSweep === null) {
+          // INTERLEAVE: the lease just expired at the authority; the ack
+          // arrives before expireByTasks runs. (anchor commands pass through
+          // this hook untouched — no recursion.)
+          ackDuringSweep = await w.dispatch.acknowledge(`${w.salt}-as-1`, 'server_confirmed', cmd.nowIso);
+        }
+        return decision;
+      },
+    };
+    const w = world(t, interleaved);
+    const granted = await w.dispatch.assign(assignCmd(w.salt, t));
+    expect(granted.ok).toBe(true);
+    const swept = await w.dispatch.expireDue(PAST_TTL);
+    // the ack landed at the book but could NOT anchor — the lease was dead
+    expect(ackDuringSweep).toMatchObject({ ok: true, status: 'acknowledged', anchored: false });
+    // THE LEASE IS THE TRUTH; THE BOOK FOLLOWS IT: the too-late-acknowledged
+    // assignment is OVERRIDDEN back to the queue with the canonical event.
+    expect(swept.expiredLeases.some((l) => l.taskId === t && l.status === 'expired')).toBe(true);
+    expect(swept.requeued).toHaveLength(1);
+    expect(swept.requeued[0]).toMatchObject({ taskId: t, status: 'returned_to_queue' });
+    expect(swept.events[0]?.name).toBe('assignment.expired.v1');
+    expect(PlatformEventSchema.safeParse(swept.events[0]).success).toBe(true);
+    expect(w.book.get(`${w.salt}-as-1`)?.status).toBe('returned_to_queue');
+    expect(w.queue.get(t)).toMatchObject({ status: 'queued', correlationId: CORR }); // lineage intact
   });
 });

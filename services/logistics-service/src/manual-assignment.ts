@@ -232,7 +232,12 @@ export class AssignmentBook {
     return { ok: true, pending: false, status: 'returned_to_queue', event };
   }
 
-  /** Unacknowledged past deadline → back to the queue (assignment.expired.v1). */
+  /** Unacknowledged past deadline → back to the queue (assignment.expired.v1).
+   * NOTE (CTO ruling, WO-4.3 commit 3): the LEASED path no longer calls this —
+   * LeasedDispatch.expireDue expires by LEASE truth via expireByTasks (an
+   * anchored lease never expires, so an in-time-acked assignment is never
+   * touched). This deadline-clock form stands for store-level use and its
+   * existing tests. */
   expireUnacknowledged(nowIso: string): { requeued: AssignmentRecord[]; events: PlatformEvent[] } {
     const requeued: AssignmentRecord[] = [];
     const events: PlatformEvent[] = [];
@@ -240,6 +245,49 @@ export class AssignmentBook {
       const awaitingAck =
         assignment.status === 'active_unacknowledged' || assignment.status === 'ack_pending_offline';
       if (!awaitingAck || nowIso <= assignment.ackDeadline) continue;
+      const returned: AssignmentRecord = { ...assignment, status: 'returned_to_queue' };
+      this.assignments.set(assignment.assignmentId, returned);
+      this.queue.requeue(assignment.taskId);
+      this.aggregateVersion += 1;
+      requeued.push(returned);
+      events.push(
+        PlatformEventSchema.parse({
+          name: 'assignment.expired.v1',
+          envelope: {
+            command_id: `expire-${assignment.assignmentId}`,
+            correlation_id: assignment.correlationId,
+            aggregateVersion: this.aggregateVersion,
+            actor: 'logistics-service:ack-deadline',
+            serverTime: nowIso,
+            version: '1',
+          },
+          payload: {
+            delivery_task_id: assignment.taskId,
+            order_id: assignment.orderId,
+            assignment_id: assignment.assignmentId,
+            rider_id: assignment.riderId,
+            requeued: true,
+          },
+        }),
+      );
+    }
+    return { requeued, events };
+  }
+
+  /**
+   * CTO ruling (WO-4.3 commit 3) — THE LEASE IS THE TRUTH; THE BOOK FOLLOWS
+   * IT. The leased sweep expires by THE authority's expired set: any
+   * ACTIVE-status assignment carrying an expired task returns to the queue —
+   * INCLUDING a too-late-acknowledged one (the lease died first; an in-time
+   * server-confirmed ack anchored the lease and its task is never in this
+   * set). Same canonical event, same actor as the deadline-clock form.
+   */
+  expireByTasks(taskIds: readonly string[], nowIso: string): { requeued: AssignmentRecord[]; events: PlatformEvent[] } {
+    const requeued: AssignmentRecord[] = [];
+    const events: PlatformEvent[] = [];
+    const expiredTasks = new Set(taskIds);
+    for (const assignment of this.assignments.values()) {
+      if (!ACTIVE_STATUSES.includes(assignment.status) || !expiredTasks.has(assignment.taskId)) continue;
       const returned: AssignmentRecord = { ...assignment, status: 'returned_to_queue' };
       this.assignments.set(assignment.assignmentId, returned);
       this.queue.requeue(assignment.taskId);

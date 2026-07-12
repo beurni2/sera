@@ -168,6 +168,62 @@ describe('decideLease — release & expire_due', () => {
   });
 });
 
+describe('decideLease — anchor (CTO ruling: a server-confirmed ack means the proposal was ANSWERED; it never expires)', () => {
+  it('anchor marks the active lease and EXEMPTS it from expire_due — it ends only by release', () => {
+    const { state } = granted();
+    const anchored = decideLease(state, { kind: 'anchor', command_id: 'cmd-anchor', taskId: 'task-1', at: T });
+    expect(anchored.ok).toBe(true);
+    if (!anchored.ok) return;
+    expect(anchored.lease).toMatchObject({ taskId: 'task-1', status: 'active', anchoredAt: T, version: 1 });
+    // far past the TTL: the anchored lease does NOT expire…
+    const sweep = decideLease(anchored.state, { kind: 'expire_due', command_id: 'cmd-e1', nowIso: PAST_TTL });
+    expect(sweep.ok && sweep.expired).toEqual([]);
+    expect(sweep.state.leases[0]).toMatchObject({ status: 'active', anchoredAt: T });
+    // …the one-per-rider/per-task walls still hold around it…
+    expect(decideLease(sweep.state, acquireCmd({ command_id: 'cmd-a9', taskId: 'task-9', grantedAt: PAST_TTL })))
+      .toMatchObject({ ok: false, reason: 'rider_already_leased' });
+    // …and release still ends it (completion path)
+    const done = decideLease(sweep.state, { kind: 'release', command_id: 'cmd-done', taskId: 'task-1', cause: 'completed' });
+    expect(done.ok && done.lease).toMatchObject({ status: 'released', releaseCause: 'completed', anchoredAt: T });
+  });
+
+  it('anchor on a RELEASED, EXPIRED, or ABSENT lease refuses no_active_lease — a dead proposal cannot be answered', () => {
+    // absent
+    expect(decideLease(emptyLeaseState(), { kind: 'anchor', command_id: 'cmd-x0', taskId: 'task-1', at: T }))
+      .toMatchObject({ ok: false, reason: 'no_active_lease' });
+    // released
+    const rel = decideLease(granted().state, { kind: 'release', command_id: 'cmd-rel', taskId: 'task-1', cause: 'declined' });
+    if (!rel.ok) throw new Error('setup');
+    expect(decideLease(rel.state, { kind: 'anchor', command_id: 'cmd-x1', taskId: 'task-1', at: T }))
+      .toMatchObject({ ok: false, reason: 'no_active_lease' });
+    // expired (the too-late-ack race, at the pure core)
+    const due = decideLease(granted().state, { kind: 'expire_due', command_id: 'cmd-e1', nowIso: PAST_TTL });
+    if (!due.ok) throw new Error('setup');
+    expect(decideLease(due.state, { kind: 'anchor', command_id: 'cmd-x2', taskId: 'task-1', at: PAST_TTL }))
+      .toMatchObject({ ok: false, reason: 'no_active_lease' });
+  });
+
+  it('anchor replays idempotently on command_id — the SAME anchored lease, no re-evaluation', () => {
+    const { state } = granted();
+    const first = decideLease(state, { kind: 'anchor', command_id: 'cmd-anchor', taskId: 'task-1', at: T });
+    if (!first.ok) throw new Error('setup');
+    const replay = decideLease(first.state, { kind: 'anchor', command_id: 'cmd-anchor', taskId: 'task-1', at: PAST_TTL });
+    expect(replay).toMatchObject({ ok: true, idempotentReplay: true });
+    expect(replay.ok && replay.lease).toEqual(first.lease); // the ORIGINAL anchor instant, byte-same
+  });
+
+  it('MALFORMED anchor refuses closed: empty taskId, empty command_id, unparseable instant', () => {
+    const { state } = granted();
+    for (const cmd of [
+      { kind: 'anchor' as const, command_id: 'cmd-m1', taskId: '', at: T },
+      { kind: 'anchor' as const, command_id: '', taskId: 'task-1', at: T },
+      { kind: 'anchor' as const, command_id: 'cmd-m2', taskId: 'task-1', at: 'pas-une-date' },
+    ]) {
+      expect(decideLease(state, cmd)).toMatchObject({ ok: false, reason: 'malformed_command' });
+    }
+  });
+});
+
 describe('toCanonicalLease — the STRICT §5.6 projection', () => {
   it('projects active/released/expired records to canon AssignmentLease — parses STRICT, holder is THE singular authority, gate-clean', () => {
     const { state } = granted();

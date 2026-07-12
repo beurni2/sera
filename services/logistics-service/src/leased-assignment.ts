@@ -7,7 +7,7 @@ import {
   type LeaseRecord,
   type LeaseRefusalReason,
 } from './assignment-lease.js';
-import type { AssignmentBook, AssignmentRecord, DeclineOutcome, LeaseRef } from './manual-assignment.js';
+import type { AckOutcome, AssignmentBook, AssignmentRecord, DeclineOutcome, LeaseRef } from './manual-assignment.js';
 import type { ReadyQueue } from './ready-queue.js';
 import type { RescheduleBook, FollowUpOutcome } from './reschedule.js';
 import type { RiderRegistry } from './rider-registry.js';
@@ -187,10 +187,42 @@ export class LeasedDispatch {
   }
 
   /**
-   * Rider decline. The ack path stays untouched (an ack does NOT release the
-   * lease — the assignment proceeds under it); only a SERVER-CONFIRMED
-   * decline releases (cause 'declined') — an offline-queued decline is
-   * pending and releases nothing (kernel law).
+   * Rider ack (CTO ruling, WO-4.3 commit 3): a SERVER-CONFIRMED ack ANCHORS
+   * the lease at THE authority — the proposal was answered in time
+   * (WO-1.2's seed expires ONLY unacknowledged assignments; the TTL is the
+   * ANSWER deadline), so the anchored lease is exempt from expire_due and
+   * ends only by release. An offline-queued ack anchors NOTHING (queued =
+   * pending, never done) — the answer deadline still runs.
+   */
+  async acknowledge(
+    assignmentId: string,
+    confirmation: 'server_confirmed' | 'queued_offline',
+    at: string,
+  ): Promise<AckOutcome & { anchored: boolean }> {
+    const assignment = this.deps.book.get(assignmentId);
+    const outcome = this.deps.book.acknowledge(assignmentId, confirmation);
+    if (!outcome.ok || outcome.pending || assignment === undefined) {
+      return { ...outcome, anchored: false };
+    }
+    const anchor = await this.deps.authority.send({
+      kind: 'anchor',
+      command_id: `ack-${assignmentId}`,
+      taskId: assignment.taskId,
+      at,
+    });
+    // THE RACE, documented: 'no_active_lease' here means the ack arrived
+    // AFTER the lease died at THE authority (a sweep expired it in the
+    // interleave). The authority's truth wins — expireDue's expireByTasks
+    // overrides the too-late ack back to returned_to_queue; we report
+    // anchored:false and change nothing else here.
+    return { ...outcome, anchored: anchor.ok };
+  }
+
+  /**
+   * Rider decline. Only a SERVER-CONFIRMED decline releases the lease
+   * (cause 'declined') — an offline-queued decline is pending and releases
+   * nothing (kernel law). A post-ack decline is impossible: the book
+   * refuses 'not_active' for an acknowledged assignment.
    */
   async decline(
     assignmentId: string,
@@ -213,11 +245,14 @@ export class LeasedDispatch {
   }
 
   /**
-   * ONE sweep drives BOTH stores: THE authority expires every lease past its
-   * TTL, the book returns every unacknowledged assignment past its deadline
-   * to the queue (assignment.expired.v1) — same 5-minute policy datum, same
-   * nowIso, so the two ends stay coherent. Requeue preserves the queue
-   * record (correlation lineage intact), and the requeued task's NEXT
+   * ONE sweep, ONE truth (CTO ruling, WO-4.3 commit 3): THE authority
+   * expires every UNANCHORED lease past its TTL, and the book FOLLOWS the
+   * lease — expireByTasks returns exactly the expired tasks' assignments to
+   * the queue (assignment.expired.v1). An in-time server-confirmed ack
+   * anchored its lease, so its task is never in the expired set and the
+   * assignment is never touched; a too-late interleaved ack is OVERRIDDEN
+   * back to returned_to_queue — the lease died first. Requeue preserves the
+   * queue record (correlation lineage intact), and the requeued task's NEXT
    * acquire is a FRESH lease with a new version.
    */
   async expireDue(nowIso: string): Promise<{
@@ -232,7 +267,10 @@ export class LeasedDispatch {
     });
     const expiredLeases = decision.ok ? (decision.expired ?? []) : [];
     for (const lease of expiredLeases) this.deps.witness.revoke(refOf(lease));
-    const { requeued, events } = this.deps.book.expireUnacknowledged(nowIso);
+    const { requeued, events } = this.deps.book.expireByTasks(
+      expiredLeases.map((lease) => lease.taskId),
+      nowIso,
+    );
     return { expiredLeases, requeued, events };
   }
 

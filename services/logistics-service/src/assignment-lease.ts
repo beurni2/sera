@@ -9,7 +9,7 @@ import type { AssignmentLease } from '@platform/contracts';
  * SE1.1 re-verified at grant time), versioned per task, expiring on a
  * deterministic clock. Same pattern as boutik's stock-reservation core: all
  * law in this pure function (unit-testable without workerd), the Durable
- * Object a thin wrapper. Acquire/release/expire are idempotent on
+ * Object a thin wrapper. Acquire/release/anchor/expire are idempotent on
  * command_id — ONLY successes are cached; refusals re-evaluate on retry
  * (the WO-1.2 retry-after-heal law). DETERMINISTIC ONLY: never the wall
  * clock, never randomness — every instant arrives inside a command (the
@@ -52,6 +52,14 @@ export interface LeaseRecord {
   version: number;
   status: LeaseStatus;
   releaseCause?: ReleaseCause;
+  /** CTO ruling (WO-4.3 review): a SERVER-CONFIRMED rider ack ANCHORS the
+   * lease. Grounds: WO-1.2's founder-reviewed seed expires ONLY
+   * unacknowledged assignments ("unacknowledged assignments go back to the
+   * queue"); plan:45 "lease expiry + requeue" is the unanswered-proposal
+   * rule; the TTL is the ANSWER deadline (« répondez avant HH:MM »). An
+   * anchored lease is exempt from expire_due and ends only by release. An
+   * offline-queued ack anchors NOTHING — the deadline still runs. */
+  anchoredAt?: string;
 }
 
 /** §5.6 projection — STRICT canon shape for the one-assignment-authority
@@ -85,13 +93,22 @@ export interface ReleaseCommand {
   cause: ReleaseCause;
 }
 
+/** The server-confirmed ack's arm at THE authority (CTO ruling): anchor the
+ * active lease — the proposal was answered in time; it no longer expires. */
+export interface AnchorCommand {
+  kind: 'anchor';
+  command_id: string;
+  taskId: string;
+  at: string;
+}
+
 export interface ExpireDueCommand {
   kind: 'expire_due';
   command_id: string;
   nowIso: string;
 }
 
-export type LeaseCommand = AcquireCommand | ReleaseCommand | ExpireDueCommand;
+export type LeaseCommand = AcquireCommand | ReleaseCommand | AnchorCommand | ExpireDueCommand;
 
 export type LeaseRefusalReason =
   | 'eligibility_not_attested'
@@ -105,6 +122,7 @@ export type LeaseRefusalReason =
 export type AppliedOutcome =
   | { kind: 'acquire'; lease: LeaseRecord }
   | { kind: 'release'; lease: LeaseRecord }
+  | { kind: 'anchor'; lease: LeaseRecord }
   | { kind: 'expire_due'; expired: LeaseRecord[] };
 
 export interface LeaseAuthorityState {
@@ -200,12 +218,28 @@ export function decideLease(state: LeaseAuthorityState, cmd: LeaseCommand): Leas
       };
       return { ok: true, state: next, lease: released, idempotentReplay: false };
     }
+    case 'anchor': {
+      if (!isNonEmptyString(cmd.taskId) || !isIso(cmd.at)) return malformed(state);
+      const index = state.leases.findIndex((l) => l.status === 'active' && l.taskId === cmd.taskId);
+      if (index === -1) return { ok: false, state, reason: 'no_active_lease' };
+      const anchored: LeaseRecord = { ...state.leases[index]!, anchoredAt: cmd.at };
+      const next: LeaseAuthorityState = {
+        leases: state.leases.map((l, i) => (i === index ? anchored : l)),
+        versions: state.versions,
+        appliedCommands: { ...state.appliedCommands, [cmd.command_id]: { kind: 'anchor', lease: anchored } },
+      };
+      return { ok: true, state: next, lease: anchored, idempotentReplay: false };
+    }
     case 'expire_due': {
       if (!isIso(cmd.nowIso)) return malformed(state);
       const nowMs = Date.parse(cmd.nowIso);
       const expired: LeaseRecord[] = [];
       const leases = state.leases.map((lease) => {
-        if (lease.status !== 'active' || Date.parse(lease.expiresAt) >= nowMs) return lease;
+        // CTO ruling: an ANCHORED lease (answered in time) never expires —
+        // it ends only by release (completed / reschedule_closed / rollback).
+        if (lease.status !== 'active' || lease.anchoredAt !== undefined || Date.parse(lease.expiresAt) >= nowMs) {
+          return lease;
+        }
         const gone: LeaseRecord = { ...lease, status: 'expired' };
         expired.push(gone);
         return gone;

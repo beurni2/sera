@@ -5,10 +5,14 @@
 // finality). Deterministic clock and ids; exits nonzero on any divergence.
 import {
   AssignmentBook,
+  GrantedLeaseWitness,
+  InMemoryLeaseAuthority,
+  LeasedDispatch,
   MockBoutikReadiness,
   MockShopPlusFunding,
   PRIVACY_NOTICE_VERSION,
   ReadyQueue,
+  RescheduleBook,
   RiderRegistry,
 } from '../services/logistics-service/dist/index.js';
 
@@ -62,23 +66,32 @@ const offlineStart = registry.startShift('rider-issa', T, 'queued_offline');
 const assignableWhilePending = registry.isAssignable('rider-issa');
 registry.confirmQueuedShiftStart('rider-issa', LATER);
 
-// §2.3 step 10: manual assignment. WO-4.3: assign() now proceeds only under
-// a lease ref its witness recognizes — this script pre-grants exactly the
-// ref it uses (the real DO grant path is proven in the vitest e2e suites);
-// every pre-WO-4.3 assertion below is unchanged.
-const LEASE = { taskId: 'task-e1-0001', riderId: 'rider-issa', version: 1 };
-const leaseKey = (l) => `${l.taskId}|${l.riderId}|${l.version}`;
-const witness = { granted: new Set([leaseKey(LEASE)]), isGranted(l) { return this.granted.has(leaseKey(l)); } };
+// §2.3 step 10: manual assignment — through the FULL WO-4.3 leased path:
+// SE1.1 recheck → atomic grant at THE authority (the in-memory adapter over
+// the SAME pure decideLease core; the workerd DO itself is proven in the
+// vitest e2e suites) → witnessed book entry. Every pre-WO-4.3 assertion
+// below is unchanged.
+const witness = new GrantedLeaseWitness();
 const book = new AssignmentBook(registry, queue, witness);
-const assigned = book.assign({
+const dispatch = new LeasedDispatch({
+  authority: new InMemoryLeaseAuthority(),
+  witness,
+  registry,
+  queue,
+  book,
+  reschedules: new RescheduleBook(queue),
+});
+const assigned = await dispatch.assign({
   command_id: 'cmd-assign-1', taskId: 'task-e1-0001', riderId: 'rider-issa',
-  dispatcherId: 'dispatcher-awa', at: LATER, newAssignmentId: 'as-e1-0001', lease: LEASE,
+  dispatcherId: 'dispatcher-awa', at: LATER, newAssignmentId: 'as-e1-0001',
 });
 if (!assigned.ok) { console.error('assignment refused:', assigned.reason); process.exit(1); }
 
-// Rider ack: first OFFLINE (pending, no finality), then server-confirmed.
-const offlineAck = book.acknowledge('as-e1-0001', 'queued_offline');
-const serverAck = book.acknowledge('as-e1-0001', 'server_confirmed');
+// Rider ack: first OFFLINE (pending, no finality — it anchors NOTHING),
+// then server-confirmed (CTO ruling: the confirmed ack ANCHORS the lease at
+// THE authority — the answered proposal no longer expires).
+const offlineAck = await dispatch.acknowledge('as-e1-0001', 'queued_offline', LATER);
+const serverAck = await dispatch.acknowledge('as-e1-0001', 'server_confirmed', LATER);
 
 console.log('=== E1 MANUAL ASSIGNMENT — happy path ===');
 console.log(`delivery_task_id  = ${assigned.assignment.taskId}`);
@@ -91,8 +104,8 @@ console.log(`${assigned.event.name} @ aggregateVersion ${assigned.event.envelope
 console.log(`payload: ${JSON.stringify(assigned.event.payload)}`);
 console.log('\n=== offline law (queued = pending, never done) ===');
 console.log(`offline shift start   → status ${offlineStart.state.status} (pending=${offlineStart.pending}); assignable while pending: ${assignableWhilePending}`);
-console.log(`offline rider ack     → status ${offlineAck.status} (pending=${offlineAck.pending})`);
-console.log(`server-confirmed ack  → status ${serverAck.status} (pending=${serverAck.pending})`);
+console.log(`offline rider ack     → status ${offlineAck.status} (pending=${offlineAck.pending}); lease anchored: ${offlineAck.anchored}`);
+console.log(`server-confirmed ack  → status ${serverAck.status} (pending=${serverAck.pending}); lease anchored: ${serverAck.anchored}`);
 
 const sane =
   assigned.event.name === 'pickup.assigned.v1' &&
@@ -101,6 +114,8 @@ const sane =
   offlineStart.state.status === 'shift_start_pending' &&
   assignableWhilePending === false &&
   offlineAck.status === 'ack_pending_offline' &&
+  offlineAck.anchored === false && // an offline ack anchors NOTHING (ruling)
   serverAck.status === 'acknowledged' &&
+  serverAck.anchored === true && // the answered proposal is anchored (ruling)
   book.findOneActiveViolations().length === 0;
 process.exit(sane ? 0 : 1);

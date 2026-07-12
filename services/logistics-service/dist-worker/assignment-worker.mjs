@@ -62,12 +62,26 @@ function decideLease(state, cmd) {
       };
       return { ok: true, state: next, lease: released, idempotentReplay: false };
     }
+    case "anchor": {
+      if (!isNonEmptyString(cmd.taskId) || !isIso(cmd.at)) return malformed(state);
+      const index = state.leases.findIndex((l) => l.status === "active" && l.taskId === cmd.taskId);
+      if (index === -1) return { ok: false, state, reason: "no_active_lease" };
+      const anchored = { ...state.leases[index], anchoredAt: cmd.at };
+      const next = {
+        leases: state.leases.map((l, i) => i === index ? anchored : l),
+        versions: state.versions,
+        appliedCommands: { ...state.appliedCommands, [cmd.command_id]: { kind: "anchor", lease: anchored } }
+      };
+      return { ok: true, state: next, lease: anchored, idempotentReplay: false };
+    }
     case "expire_due": {
       if (!isIso(cmd.nowIso)) return malformed(state);
       const nowMs = Date.parse(cmd.nowIso);
       const expired = [];
       const leases = state.leases.map((lease) => {
-        if (lease.status !== "active" || Date.parse(lease.expiresAt) >= nowMs) return lease;
+        if (lease.status !== "active" || lease.anchoredAt !== void 0 || Date.parse(lease.expiresAt) >= nowMs) {
+          return lease;
+        }
         const gone = { ...lease, status: "expired" };
         expired.push(gone);
         return gone;
