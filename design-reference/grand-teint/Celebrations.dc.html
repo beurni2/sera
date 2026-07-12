@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..900&amp;display=swap">
+<style>
+body{margin:0;background:#EBE6DC;font-family:'Archivo',system-ui,sans-serif}
+a{color:#C2571B}a:hover{color:#9E4512}
+@keyframes celHalo{0%{transform:scale(0.35);opacity:0}30%{opacity:0.55}100%{transform:scale(1.18);opacity:0}}
+@keyframes celRing{0%{transform:scale(0.5);opacity:0.8}100%{transform:scale(1.32);opacity:0}}
+@keyframes celFlyFar{0%{transform:translateY(0) scale(0.4);opacity:0}18%{opacity:1}100%{transform:translateY(-118px) scale(1);opacity:0}}
+@keyframes celFlyNear{0%{transform:translateY(0) scale(0.5);opacity:0}18%{opacity:1}100%{transform:translateY(-76px) scale(0.9);opacity:0}}
+@keyframes celPop{0%{transform:scale(0.55);opacity:0}55%{transform:scale(1.07);opacity:1}100%{transform:scale(1);opacity:1}}
+</style>
+</helmet>
+
+<div style="padding:34px 40px 44px">
+
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+    <span style="background:#1B140D;color:#FFF8F1;font:800 10px 'Archivo',sans-serif;letter-spacing:1.5px;padding:4px 8px">1B · GRAND TEINT</span>
+    <span style="font:900 17px 'Archivo',sans-serif;font-stretch:110%;letter-spacing:0.5px">LES TROIS CÉLÉBRATIONS</span>
+    <span style="font:500 12.5px 'Archivo',sans-serif;color:#6E6154">≤ 800 ms · SVG seul · jamais bloquant · tap pour passer · motif tissé, jamais de confetti</span>
+    <span style="margin-left:auto;display:flex;gap:10px;align-items:center">
+      <span style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;border:1.5px solid #1B140D;padding:7px 12px;border-radius:4px;white-space:nowrap" onClick="{{ toggleRm }}">
+        <span style="font:700 11px 'Archivo',sans-serif;letter-spacing:1px;white-space:nowrap">RÉDUIRE LE MOUVEMENT</span>
+        <span style="width:30px;height:18px;border-radius:999px;background:{{ rmBg }};position:relative;display:inline-block;transition:background 150ms"><span style="position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:999px;background:#FFFDF7;transform:{{ rmKnob }};transition:transform 150ms"></span></span>
+      </span>
+      <span style="display:inline-flex;align-items:center;white-space:nowrap;background:#C2571B;color:#FFF8F1;font:800 11px 'Archivo',sans-serif;letter-spacing:1.5px;padding:9px 14px;border-radius:4px;cursor:pointer" style-active="transform:scale(0.97)" onClick="{{ playAll }}">TOUT REJOUER</span>
+    </span>
+  </div>
+
+  <div style="display:flex;gap:34px;align-items:flex-start;margin-top:26px;flex-wrap:wrap">
+
+    <!-- ================= BOUTIK+ · PRODUIT PRÊT ================= -->
+    <div style="display:flex;flex-direction:column;gap:12px;flex:none">
+      <div style="display:flex;align-items:baseline;gap:9px">
+        <span style="font:800 11px ui-monospace,Menlo,monospace;background:#1F4D36;color:#F2F7F1;padding:3px 7px">B7</span>
+        <span style="font:700 13px 'Archivo',sans-serif">Boutik+ · « Produit prêt »</span>
+        <span style="font:500 11.5px 'Archivo',sans-serif;color:#6E6154;white-space:nowrap">« mon travail est prêt, et le système l'a vu »</span>
+      </div>
+      <div style="width:360px;height:720px;background:#FFFDF7;border:1px solid rgba(27,20,13,0.22);box-shadow:0 14px 36px rgba(27,20,13,0.14);position:relative;overflow:hidden;color:#1B140D" data-screen-label="B7 Produit prêt">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px 6px">
+          <span style="font:600 13px 'Archivo',sans-serif">17:41</span>
+          <svg width="22" height="11" viewBox="0 0 24 11"><rect x="0.5" y="0.5" width="19" height="10" rx="3" fill="none" stroke="#1B140D" opacity="0.4"></rect><rect x="2.5" y="2.5" width="12" height="6" rx="1.5" fill="#1B140D"></rect><path d="M22 3.5v4" stroke="#1B140D" stroke-width="1.6" stroke-linecap="round"></path></svg>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid rgba(27,20,13,0.14)">
+          <span style="font:800 12px 'Archivo',sans-serif;letter-spacing:1.8px">BOUTIK+ · WENDKUNI</span>
+          <span style="font:500 11.5px 'Archivo',sans-serif;color:#6E6154">Rood Woko</span>
+        </div>
+        <div style="height:4px;background:#1F4D36"></div>
+        <div style="margin:14px 16px 0;border:1.5px solid #1B140D">
+          <div style="display:flex;align-items:center;gap:9px;padding:11px 12px;border-bottom:1px solid rgba(27,20,13,0.14)">
+            <span style="font:700 11px ui-monospace,Menlo,monospace;border:1.5px solid #1B140D;padding:2px 6px">CMD-2417</span>
+            <span style="font:700 14px 'Archivo',sans-serif">Robe brodée bogolan · M</span>
+          </div>
+          <div style="padding:10px 12px;font:500 13px/1.5 'Archivo',sans-serif;color:#4A3F33">Commande payée. Préparez le colis — Séra viendra le chercher.</div>
+        </div>
+        <div style="margin:12px 16px 0;border:1.5px solid rgba(27,20,13,0.35)">
+          <div style="display:flex;align-items:center;gap:11px;padding:12px;border-bottom:1px solid rgba(27,20,13,0.14)">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#1F4D36" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M8.5 12.5l2.4 2.4 4.8-5"></path></svg>
+            <span style="font:600 14px 'Archivo',sans-serif">Le colis correspond à la photo</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:11px;padding:12px">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#1F4D36" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M8.5 12.5l2.4 2.4 4.8-5"></path></svg>
+            <span style="font:600 14px 'Archivo',sans-serif">Fermé, prêt à partir</span>
+          </div>
+        </div>
+        <sc-if value="{{ b7Ready }}" hint-placeholder-val="{{ true }}">
+          <div style="margin:16px 16px 0">
+            <div style="height:56px;background:#1F4D36;color:#F2F7F1;display:flex;align-items:center;justify-content:center;font:800 13.5px 'Archivo',sans-serif;letter-spacing:2px;border-radius:6px;cursor:pointer" style-active="transform:scale(0.98)" onClick="{{ playB }}">CONFIRMER : PRODUIT PRÊT</div>
+          </div>
+          <div style="text-align:center;padding:10px 16px 0;font:500 12px 'Archivo',sans-serif;color:#6E6154">Avant ce soir 18&#8239;h.</div>
+        </sc-if>
+        <sc-if value="{{ b7Done }}" hint-placeholder-val="{{ false }}">
+          <div style="margin:16px 16px 0;border:2px solid #1F4D36;padding:16px;background:#F2F7F1">
+            <div style="display:flex;align-items:center;gap:10px">
+              <svg width="22" height="22" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#1F4D36"></circle><path d="M7.5 12.5l3 3 6-6.5" fill="none" stroke="#F2F7F1" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+              <span style="font:900 19px 'Archivo',sans-serif;font-stretch:110%">Produit prêt</span>
+            </div>
+            <div style="font:500 14px/1.5 'Archivo',sans-serif;color:#4A3F33;margin-top:8px">Dès que c'est confirmé, Séra vient chercher le colis.</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:10px">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#1B140D" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3.5 2"></path></svg>
+              <span style="font:700 13.5px 'Archivo',sans-serif">Avant ce soir 18&#8239;h.</span>
+            </div>
+          </div>
+          <div style="text-align:center;padding:12px 16px 0"><span style="font:800 10.5px 'Archivo',sans-serif;letter-spacing:1px;color:#A34312;border-bottom:1.5px solid #A34312;padding-bottom:2px;cursor:pointer" onClick="{{ resetB }}">REVENIR À L'ÉTAT INITIAL</span></div>
+        </sc-if>
+        {{ celB }}
+      </div>
+      <div style="width:360px;border:1px solid rgba(27,20,13,0.2);background:#FFFDF7;padding:12px 14px;box-sizing:border-box">
+        <div style="font:800 10px 'Archivo',sans-serif;letter-spacing:2px;color:#6E6154">SPÉCIFICATION</div>
+        <div style="font:500 12px/1.7 'Archivo',sans-serif;color:#4A3F33;margin-top:5px">Halo 700&#8239;ms, sortie douce · motif tissé ×10, 640&#8239;ms en éventail · badge 260&#8239;ms, ressort · <b>total &lt; 800&#8239;ms</b> · non bloquant · tap pour passer · vert d'approvisionnement + ocre.</div>
+      </div>
+    </div>
+
+    <!-- ================= SHOP+ · PREMIÈRE VENTE ================= -->
+    <div style="display:flex;flex-direction:column;gap:12px;flex:none">
+      <div style="display:flex;align-items:baseline;gap:9px">
+        <span style="font:800 11px ui-monospace,Menlo,monospace;background:#C2571B;color:#FFF8F1;padding:3px 7px">S6</span>
+        <span style="font:700 13px 'Archivo',sans-serif">Shop+ · « Première vente »</span>
+        <span style="font:500 11.5px 'Archivo',sans-serif;color:#6E6154;white-space:nowrap">« je l'ai gagné, et c'est à moi »</span>
+      </div>
+      <div style="width:360px;height:720px;background:#FFFDF7;border:1px solid rgba(27,20,13,0.22);box-shadow:0 14px 36px rgba(27,20,13,0.14);position:relative;overflow:hidden;color:#1B140D" data-screen-label="S6 Mes gains">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px 6px">
+          <span style="font:600 13px 'Archivo',sans-serif">17:41</span>
+          <svg width="22" height="11" viewBox="0 0 24 11"><rect x="0.5" y="0.5" width="19" height="10" rx="3" fill="none" stroke="#1B140D" opacity="0.4"></rect><rect x="2.5" y="2.5" width="12" height="6" rx="1.5" fill="#1B140D"></rect><path d="M22 3.5v4" stroke="#1B140D" stroke-width="1.6" stroke-linecap="round"></path></svg>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid rgba(27,20,13,0.14)">
+          <span style="font:800 12px 'Archivo',sans-serif;letter-spacing:1.8px">SHOP+ · MES GAINS</span>
+          <span style="font:500 11.5px 'Archivo',sans-serif;color:#6E6154">Aïcha</span>
+        </div>
+        <div style="height:4px;background:#C2571B"></div>
+        <div style="padding:26px 16px 0;text-align:center">
+          <div style="font:800 10.5px 'Archivo',sans-serif;letter-spacing:2.4px;color:#6E6154">VOTRE GAIN NET</div>
+          <div style="font:900 52px/1 'Archivo',sans-serif;font-feature-settings:'tnum';margin-top:10px">{{ gainStr }}</div>
+          <sc-if value="{{ firstSaleDone }}" hint-placeholder-val="{{ false }}">
+            <div style="margin-top:12px"><span style="background:#C2571B;color:#FFF8F1;font:900 12px 'Archivo',sans-serif;letter-spacing:2px;padding:7px 14px">PREMIÈRE VENTE&#8239;!</span></div>
+          </sc-if>
+        </div>
+        <div style="margin:24px 16px 0;border:1.5px solid #1B140D">
+          <div style="display:flex;justify-content:space-between;gap:10px;padding:12px;border-bottom:1px solid rgba(27,20,13,0.14)">
+            <span style="font:600 13.5px 'Archivo',sans-serif">Robe brodée bogolan — livrée et validée</span>
+            <span style="font:800 14px 'Archivo',sans-serif;font-feature-settings:'tnum';white-space:nowrap;color:#1F4D36">+&#8239;2&#8239;000&#8239;F</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;gap:10px;padding:12px">
+            <span style="font:500 13.5px 'Archivo',sans-serif;color:#4A3F33">Règlement</span>
+            <span style="font:700 13px 'Archivo',sans-serif">sous 24&#8239;h</span>
+          </div>
+        </div>
+        <div style="margin:14px 16px 0;border-left:3px solid #1B140D;padding:2px 0 2px 12px;font:600 13px/1.5 'Archivo',sans-serif">Votre gain net d'abord, toujours. Réglé après la livraison validée.</div>
+        <div style="margin:18px 16px 0">
+          <div style="height:50px;border:1.5px solid rgba(27,20,13,0.35);display:flex;align-items:center;justify-content:center;font:800 12px 'Archivo',sans-serif;letter-spacing:1.8px;border-radius:6px;cursor:pointer" onClick="{{ playS }}">REVOIR LA PREMIÈRE VENTE</div>
+        </div>
+        {{ celS }}
+      </div>
+      <div style="width:360px;border:1px solid rgba(27,20,13,0.2);background:#FFFDF7;padding:12px 14px;box-sizing:border-box">
+        <div style="font:800 10px 'Archivo',sans-serif;letter-spacing:2px;color:#6E6154">SPÉCIFICATION</div>
+        <div style="font:500 12px/1.7 'Archivo',sans-serif;color:#4A3F33;margin-top:5px">Décompte du gain <b>560&#8239;ms</b>, chiffres tabulaires (zéro tremblement) · halo + motif tissé 640&#8239;ms · badge 260&#8239;ms, ressort · <b>total &lt; 800&#8239;ms</b> · énergie commerçante chaude, jamais de fausse urgence.</div>
+      </div>
+    </div>
+
+    <!-- ================= SÉRA · COURSE VALIDÉE ================= -->
+    <div style="display:flex;flex-direction:column;gap:12px;flex:none">
+      <div style="display:flex;align-items:baseline;gap:9px">
+        <span style="font:800 11px ui-monospace,Menlo,monospace;background:#1B140D;color:#D9A441;padding:3px 7px">R11</span>
+        <span style="font:700 13px 'Archivo',sans-serif">Séra · « Course validée »</span>
+        <span style="font:500 11.5px 'Archivo',sans-serif;color:#6E6154;white-space:nowrap">« la preuve est complète »</span>
+      </div>
+      <div style="width:360px;height:720px;background:#FFFDF7;border:1px solid rgba(27,20,13,0.22);box-shadow:0 14px 36px rgba(27,20,13,0.14);position:relative;overflow:hidden;color:#1B140D" data-screen-label="R11 Course validée">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px 6px">
+          <span style="font:600 13px 'Archivo',sans-serif">17:41</span>
+          <svg width="22" height="11" viewBox="0 0 24 11"><rect x="0.5" y="0.5" width="19" height="10" rx="3" fill="none" stroke="#1B140D" opacity="0.4"></rect><rect x="2.5" y="2.5" width="12" height="6" rx="1.5" fill="#1B140D"></rect><path d="M22 3.5v4" stroke="#1B140D" stroke-width="1.6" stroke-linecap="round"></path></svg>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid rgba(27,20,13,0.14)">
+          <span style="font:800 12px 'Archivo',sans-serif;letter-spacing:1.8px">SÉRA</span>
+          <span style="font:700 11px ui-monospace,Menlo,monospace;border:1.5px solid #1B140D;padding:3px 7px">CRS-0891</span>
+        </div>
+        <div style="height:4px;background:#D9A441"></div>
+        <div style="margin:14px 16px 0;border:1.5px solid #1B140D">
+          <div style="display:flex;align-items:center;gap:10px;padding:12px;border-bottom:1px solid rgba(27,20,13,0.14)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1B140D" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.2l6.8 2.7v5.1c0 4.3-2.9 7.2-6.8 8.8-3.9-1.6-6.8-4.5-6.8-8.8V5.9L12 3.2z"></path><path d="M9.2 11.8l2 2 3.6-3.9"></path></svg>
+            <span style="flex:1;font:600 13.5px 'Archivo',sans-serif">Paiement confirmé par l'opérateur</span>
+            <span style="font:800 10px 'Archivo',sans-serif;letter-spacing:1px;background:#1F4D36;color:#F2F7F1;padding:3px 7px">OK</span>
+          </div>
+          <div style="padding:14px 12px">
+            <div style="font:800 10px 'Archivo',sans-serif;letter-spacing:2px;color:#6E6154">CODE DE REMISE DE L'ACHETEUSE</div>
+            <div style="display:flex;align-items:center;gap:12px;margin-top:8px">
+              <span style="font:900 30px/1 'Archivo',sans-serif;font-feature-settings:'tnum';letter-spacing:4px">734&#8239;921</span>
+              <sc-if value="{{ r11Done }}" hint-placeholder-val="{{ false }}">
+                <span style="font:800 10px 'Archivo',sans-serif;letter-spacing:1px;background:#D9A441;color:#1B140D;padding:3px 7px">VALIDÉ</span>
+              </sc-if>
+            </div>
+          </div>
+        </div>
+        <sc-if value="{{ r11Pre }}" hint-placeholder-val="{{ true }}">
+          <div style="padding:12px 16px 0;font:500 13px/1.5 'Archivo',sans-serif;color:#4A3F33">L'acheteuse vous donne son code. C'est sa preuve — et la vôtre.</div>
+          <div style="margin:14px 16px 0">
+            <div style="height:56px;background:#1B140D;color:#FFF8F1;display:flex;align-items:center;justify-content:center;font:800 13.5px 'Archivo',sans-serif;letter-spacing:2px;border-radius:6px;cursor:pointer" style-active="transform:scale(0.98)" onClick="{{ playR }}">VALIDER LE CODE</div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ r11Done }}" hint-placeholder-val="{{ false }}">
+          <div style="margin:16px 16px 0;border:2px solid #1B140D;padding:16px;background:#FBF4E4">
+            <div style="display:flex;align-items:center;gap:10px">
+              <svg width="22" height="22" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#1B140D"></circle><path d="M7.5 12.5l3 3 6-6.5" fill="none" stroke="#D9A441" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+              <span style="font:900 19px 'Archivo',sans-serif;font-stretch:110%">Course validée</span>
+            </div>
+            <div style="font:500 14px/1.5 'Archivo',sans-serif;color:#4A3F33;margin-top:8px">La preuve est complète. Le colis est remis, la course est réglée.</div>
+          </div>
+          <div style="margin:14px 16px 0">
+            <div style="height:50px;border:1.5px solid rgba(27,20,13,0.35);display:flex;align-items:center;justify-content:center;font:800 12px 'Archivo',sans-serif;letter-spacing:1.8px;border-radius:6px;cursor:pointer" onClick="{{ resetR }}">RETOUR À LA FILE</div>
+          </div>
+        </sc-if>
+        {{ celR }}
+      </div>
+      <div style="width:360px;border:1px solid rgba(27,20,13,0.2);background:#FFFDF7;padding:12px 14px;box-sizing:border-box">
+        <div style="font:800 10px 'Archivo',sans-serif;letter-spacing:2px;color:#6E6154">SPÉCIFICATION</div>
+        <div style="font:500 12px/1.7 'Archivo',sans-serif;color:#4A3F33;margin-top:5px">Chevrons de route ×10, 640&#8239;ms · halo ambre 700&#8239;ms · badge 260&#8239;ms, ressort · <b>total &lt; 800&#8239;ms</b> · contraste plein soleil, lisible avec des gants.</div>
+      </div>
+    </div>
+
+  </div>
+
+  <div style="margin-top:26px;max-width:760px;border-left:3px solid #1B140D;padding:2px 0 2px 14px;font:500 13px/1.6 'Archivo',sans-serif;color:#4A3F33">
+    La loi du mouvement : uniquement <b>transform</b> et <b>opacity</b> (droit au GPU du téléphone à 40&#8239;000&#8239;F) · le mouvement explique, jamais ne décore · « réduire le mouvement » = même information, zéro animation — le décompte saute au montant final, le badge apparaît sans ressort.
+  </div>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;reducedMotion&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: false, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Célébrations&quot;}, &quot;autoPlay&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: true, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Célébrations&quot;}}">
+class Component extends DCLogic {
+  state = {
+    rm: this.props.reducedMotion ?? false,
+    b7: 'ready', bKey: 0, bOn: false,
+    gain: 0, sKey: 0, sOn: false, firstSale: false,
+    r11: 'pre', rKey: 0, rOn: false
+  };
+
+  _timers = [];
+  _t(fn, ms) { const id = setTimeout(fn, ms); this._timers.push(id); return id; }
+  componentWillUnmount() { this._timers.forEach(clearTimeout); if (this._raf) cancelAnimationFrame(this._raf); }
+
+  componentDidMount() {
+    if (this.props.autoPlay === false) return;
+    this._t(() => this.playB(), 500);
+    this._t(() => this.playS(), 1500);
+    this._t(() => this.playR(), 2500);
+  }
+
+  playB() {
+    if (this.state.rm) { this.setState({ b7: 'done', bOn: false }); return; }
+    this.setState(s => ({ b7: 'done', bKey: s.bKey + 1, bOn: true }));
+    this._t(() => this.setState({ bOn: false }), 860);
+  }
+  playS() {
+    if (this.state.rm) { this.setState({ gain: 2000, firstSale: true, sOn: false }); return; }
+    this.setState(s => ({ sKey: s.sKey + 1, sOn: true, firstSale: true, gain: 0 }));
+    const start = performance.now(), dur = 560;
+    const tick = now => {
+      const t = Math.min(1, (now - start) / dur);
+      const v = Math.round(2000 * (1 - Math.pow(1 - t, 3)));
+      this.setState({ gain: v });
+      if (t < 1) this._raf = requestAnimationFrame(tick);
+    };
+    this._raf = requestAnimationFrame(tick);
+    this._t(() => this.setState({ gain: 2000 }), 640);
+    this._t(() => this.setState({ sOn: false }), 860);
+  }
+  playR() {
+    if (this.state.rm) { this.setState({ r11: 'done', rOn: false }); return; }
+    this.setState(s => ({ r11: 'done', rKey: s.rKey + 1, rOn: true }));
+    this._t(() => this.setState({ rOn: false }), 860);
+  }
+
+  buildCel(kind, keyN, on, skip) {
+    if (!on) return null;
+    const h = React.createElement;
+    const themes = {
+      b: { halo: 'rgba(31,77,54,0.20)', ring: '#1F4D36', c1: '#1F4D36', c2: '#D9A441', bg: '#1F4D36', fg: '#F2F7F1', label: 'PRODUIT PRÊT' },
+      s: { halo: 'rgba(194,87,27,0.18)', ring: '#C2571B', c1: '#C2571B', c2: '#D9A441', bg: '#C2571B', fg: '#FFF8F1', label: 'PREMIÈRE VENTE' },
+      r: { halo: 'rgba(217,164,65,0.26)', ring: '#B98A1F', c1: '#1B140D', c2: '#B98A1F', bg: '#1B140D', fg: '#D9A441', label: 'COURSE VALIDÉE' }
+    };
+    const th = themes[kind];
+    const parts = [];
+    for (let i = 0; i < 10; i++) {
+      const ang = i * 36 + (kind === 'r' ? 18 : 0);
+      const far = i % 2 === 0;
+      const sz = far ? 17 : 12;
+      const col = i % 3 === 2 ? th.c2 : th.c1;
+      const shape = kind === 'r'
+        ? h('svg', { width: sz, height: sz, viewBox: '0 0 20 20', key: 'p' }, h('path', { d: 'M3.5 13L10 6.5 16.5 13', fill: 'none', stroke: col, strokeWidth: 2.6, strokeLinecap: 'round', strokeLinejoin: 'round' }))
+        : h('svg', { width: sz, height: sz, viewBox: '0 0 20 20', key: 'p' },
+            h('path', { d: 'M10 1.5L18.5 10 10 18.5 1.5 10z', fill: 'none', stroke: col, strokeWidth: 1.9 }),
+            h('path', { d: 'M10 6.2L13.8 10 10 13.8 6.2 10z', fill: col }));
+      parts.push(h('div', { key: 'w' + i, style: { position: 'absolute', transform: 'rotate(' + ang + 'deg)' } },
+        h('div', { style: { animation: (far ? 'celFlyFar' : 'celFlyNear') + ' 640ms cubic-bezier(0.16,0.8,0.3,1) forwards', animationDelay: (i * 14) + 'ms', opacity: 0 } }, shape)));
+    }
+    return h('div', {
+      key: kind + keyN,
+      onClick: skip,
+      style: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5, cursor: 'pointer' }
+    },
+      h('div', { style: { position: 'absolute', width: 220, height: 220, borderRadius: 999, background: th.halo, animation: 'celHalo 700ms cubic-bezier(0.2,0.8,0.25,1) forwards' } }),
+      h('div', { style: { position: 'absolute', width: 132, height: 132, borderRadius: 999, border: '2px solid ' + th.ring, animation: 'celRing 620ms cubic-bezier(0.2,0.8,0.25,1) forwards', boxSizing: 'border-box' } }),
+      parts,
+      h('div', { style: { position: 'relative', background: th.bg, color: th.fg, padding: '11px 20px', font: '900 15px Archivo,sans-serif', letterSpacing: '2.5px', animation: 'celPop 260ms cubic-bezier(0.34,1.56,0.64,1) both', animationDelay: '50ms', boxShadow: '0 10px 26px rgba(27,20,13,0.25)' } }, th.label)
+    );
+  }
+
+  renderVals() {
+    const s = this.state;
+    const fmt = n => n.toLocaleString('fr-FR').replace(/[\u00a0\u202f,]/g, '\u202f') + '\u202fF';
+    return {
+      toggleRm: () => this.setState({ rm: !s.rm }),
+      rmBg: s.rm ? '#1B140D' : 'rgba(27,20,13,0.2)',
+      rmKnob: s.rm ? 'translateX(12px)' : 'translateX(0)',
+      playAll: () => { this.playB(); this._t(() => this.playS(), 350); this._t(() => this.playR(), 700); },
+
+      b7Ready: s.b7 === 'ready', b7Done: s.b7 === 'done',
+      playB: () => this.playB(),
+      resetB: () => this.setState({ b7: 'ready', bOn: false }),
+      celB: this.buildCel('b', s.bKey, s.bOn, () => this.setState({ bOn: false })),
+
+      gainStr: fmt(s.gain),
+      firstSaleDone: s.firstSale,
+      playS: () => this.playS(),
+      celS: this.buildCel('s', s.sKey, s.sOn, () => this.setState({ sOn: false })),
+
+      r11Pre: s.r11 === 'pre', r11Done: s.r11 === 'done',
+      playR: () => this.playR(),
+      resetR: () => this.setState({ r11: 'pre', rOn: false }),
+      celR: this.buildCel('r', s.rKey, s.rOn, () => this.setState({ rOn: false }))
+    };
+  }
+}
+</script>
+</body>
+</html>

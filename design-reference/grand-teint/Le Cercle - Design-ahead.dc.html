@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..900&amp;display=swap">
+<style>
+body{margin:0;background:#EBE6DC;font-family:'Archivo',system-ui,sans-serif}
+a{color:#C2571B}a:hover{color:#9E4512}
+</style>
+</helmet>
+
+<div style="display:flex;min-height:100vh;align-items:stretch">
+
+<!-- ============ RAIL ============ -->
+<div style="width:292px;flex:none;background:#FFFDF7;border-right:1px solid rgba(27,20,13,0.14);padding:20px 18px 28px;box-sizing:border-box;height:100vh;overflow-y:auto;position:sticky;top:0">
+  <div style="display:flex;align-items:center;gap:8px">
+    <span style="background:#C2571B;color:#FFF8F1;font:800 10px 'Archivo',sans-serif;letter-spacing:1.5px;padding:4px 8px">SP9</span>
+    <span style="font:800 12px 'Archivo',sans-serif;letter-spacing:1.8px">LE CERCLE — DESIGN-AHEAD</span>
+  </div>
+  <div style="margin-top:8px;background:repeating-linear-gradient(45deg,#F7EED7 0 10px,#F1DFAE 10px 20px);border:1px solid rgba(27,20,13,0.2);padding:7px 10px;font:800 10px 'Archivo',sans-serif;letter-spacing:1.5px;color:#6B4E0C">PORTE FERMÉE — AUCUN ORDRE DE TRAVAIL</div>
+  <div style="font:500 12px/1.5 'Archivo',sans-serif;color:#6E6154;margin-top:8px">Dessiné pour que le système ne soit pas surpris plus tard. La porte s'ouvre sur des preuves du pilote (≥ 20 revendeuses actives, ≥ 150 livraisons validées, 4 semaines stables), jamais sur l'envie.</div>
+
+  <sc-for list="{{ railSections }}" as="sec" hint-placeholder-count="2">
+    <div style="margin-top:16px">
+      <div style="display:flex;align-items:baseline;gap:7px">
+        <span style="font:800 10.5px ui-monospace,Menlo,monospace;background:#1B140D;color:#FFF8F1;padding:2px 6px">{{ sec.id }}</span>
+        <span style="font:700 12px 'Archivo',sans-serif">{{ sec.name }}</span>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
+        <sc-for list="{{ sec.states }}" as="st" hint-placeholder-count="3">
+          <span style="{{ st.style }}" onClick="{{ st.go }}">{{ st.label }}</span>
+        </sc-for>
+      </div>
+    </div>
+  </sc-for>
+
+  <div style="margin-top:20px;border-left:3px solid #C2571B;padding:2px 0 2px 12px">
+    <div style="font:800 10px 'Archivo',sans-serif;letter-spacing:2px;color:#6E6154">TEST 5 SECONDES</div>
+    <div style="font:600 13px/1.45 'Archivo',sans-serif;margin-top:4px">{{ fiveSecond }}</div>
+  </div>
+
+  <div style="margin-top:14px;font:500 11.5px/1.55 'Archivo',sans-serif;color:#6E6154">Lois absolues : K ≤ 0,80 × (C + M) — jamais de gain négatif · une seule offre par commande · Séra toujours entière (part cliente + part campagne = la course) · livraison 100 % offerte ⇒ tout prépayé · budget pris sur les gains RÉGLÉS seulement · « attribué », jamais « généré » · UN SEUL NIVEAU — un arbre est un rejet immédiat.</div>
+</div>
+
+<!-- ============ STAGE ============ -->
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:28px 20px;gap:14px">
+  <div style="display:flex;align-items:baseline;gap:9px">
+    <span style="font:800 11px ui-monospace,Menlo,monospace;background:#1B140D;color:#FFF8F1;padding:3px 7px">{{ screenId }}</span>
+    <span style="font:700 13px 'Archivo',sans-serif;letter-spacing:0.5px">{{ screenTitle }}</span>
+  </div>
+
+  <div style="width:360px;height:800px;background:#FFFDF7;border:1px solid rgba(27,20,13,0.22);box-shadow:0 18px 44px rgba(27,20,13,0.16);position:relative;overflow:hidden;display:flex;flex-direction:column;color:#1B140D;flex:none">
+
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px 6px;flex:none">
+      <span style="font:600 13px 'Archivo',sans-serif">16:40</span>
+      <svg width="22" height="11" viewBox="0 0 24 11"><rect x="0.5" y="0.5" width="19" height="10" rx="3" fill="none" stroke="#1B140D" opacity="0.4"></rect><rect x="2.5" y="2.5" width="12" height="6" rx="1.5" fill="#1B140D"></rect><path d="M22 3.5v4" stroke="#1B140D" stroke-width="1.6" stroke-linecap="round"></path></svg>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid rgba(27,20,13,0.14);flex:none">
+      <span style="font:800 12px 'Archivo',sans-serif;letter-spacing:1.8px">SHOP+ · LE CERCLE D'AÏCHA</span>
+      <span style="font:500 11.5px 'Archivo',sans-serif;color:#6E6154">34 membres</span>
+    </div>
+    <div style="height:4px;background:#C2571B;flex:none"></div>
+    <div style="flex:none;background:repeating-linear-gradient(45deg,#F7EED7 0 10px,#F1DFAE 10px 20px);border-bottom:1px solid rgba(27,20,13,0.14);text-align:center;padding:4px 0;font:800 9.5px 'Archivo',sans-serif;letter-spacing:1.8px;color:#6B4E0C">DESIGN-AHEAD — PORTE FERMÉE (§7.7.1)</div>
+
+    <div style="flex:1;position:relative;overflow:hidden">
+      <div style="{{ animStyle }}">
+
+        <!-- ==== ACCUEIL ==== -->
+        <sc-if value="{{ isHome }}" hint-placeholder-val="{{ true }}">
+          <div data-screen-label="Cercle — accueil" style="height:100%;overflow-y:auto">
+            <div style="padding:16px 16px 0">
+              <div style="font:900 24px/1.08 'Archivo',sans-serif;font-stretch:112%;text-transform:uppercase">Votre communauté, votre commerce.</div>
+              <div style="font:500 13.5px/1.5 'Archivo',sans-serif;color:#4A3F33;margin-top:7px">34 clientes ont dit oui — elles choisissent, elles peuvent partir quand elles veulent, jamais plus de 2 messages par semaine.</div>
+            </div>
+            <div style="display:flex;gap:8px;margin:14px 16px 0">
+              <div style="flex:1;border:1.5px solid #1B140D;padding:11px 12px"><div style="font:900 20px 'Archivo',sans-serif;font-feature-settings:'tnum'">34</div><div style="font:600 10.5px 'Archivo',sans-serif;letter-spacing:1px;color:#6E6154;margin-top:2px">MEMBRES — CONSENTIES</div></div>
+              <div style="flex:1;border:1.5px solid #1B140D;padding:11px 12px"><div style="font:900 20px 'Archivo',sans-serif;font-feature-settings:'tnum'">12</div><div style="font:600 10.5px 'Archivo',sans-serif;letter-spacing:1px;color:#6E6154;margin-top:2px">AVIS — LIVRAISONS VALIDÉES</div></div>
+            </div>
+            <div style="margin:14px 16px 0;border:2px solid #1B140D;padding:14px;cursor:pointer" onClick="{{ goG1 }}">
+              <div style="display:flex;align-items:center;gap:9px"><span style="background:#C2571B;color:#FFF8F1;font:800 9.5px 'Archivo',sans-serif;letter-spacing:1.2px;padding:3px 7px">3 GESTES</span><span style="font:900 16px 'Archivo',sans-serif;font-stretch:110%">CRÉER UNE CAMPAGNE</span></div>
+              <div style="font:500 13px/1.5 'Archivo',sans-serif;color:#4A3F33;margin-top:6px">La recette → le produit → le budget. Et avant de lancer : l'aperçu sacré — ce que vous dépensez, ce que vous gardez.</div>
+            </div>
+            <div style="display:flex;gap:8px;margin:10px 16px 0">
+              <div style="flex:1;border:1.5px solid rgba(27,20,13,0.35);padding:12px;cursor:pointer" onClick="{{ goParr }}"><div style="font:800 12px 'Archivo',sans-serif;letter-spacing:0.8px">PARRAINAGE</div><div style="font:500 11.5px 'Archivo',sans-serif;color:#6E6154;margin-top:3px">Un seul niveau, toujours.</div></div>
+              <div style="flex:1;border:1.5px solid rgba(27,20,13,0.35);padding:12px;cursor:pointer" onClick="{{ goReport }}"><div style="font:800 12px 'Archivo',sans-serif;letter-spacing:0.8px">REPORTING</div><div style="font:500 11.5px 'Archivo',sans-serif;color:#6E6154;margin-top:3px">« Attribué », jamais « généré ».</div></div>
+            </div>
+            <div style="margin:14px 16px 0;border-left:3px solid #1B140D;padding:2px 0 2px 12px;font:600 12.5px/1.5 'Archivo',sans-serif">Chaque membre voit comment partir en un geste. Le consentement n'est pas un piège.</div>
+          </div>
+        </sc-if>
+
+        <!-- ==== GESTE 1 · LA RECETTE ==== -->
+        <sc-if value="{{ isG1 }}" hint-placeholder-val="{{ false }}">
+          <div data-screen-label="Campagne — geste 1 la recette" style="height:100%;overflow-y:auto">
+            <div style="display:flex;align-items:center;gap:10px;padding:12px 16px 0">
+              <span style="font:800 10px 'Archivo',sans-serif;letter-spacing:2px;color:#6E6154">GESTE 1 / 3</span>
+              <span style="font:900 17px 'Archivo',sans-serif;font-stretch:110%">LA RECETTE</span>
+            </div>
+            <sc-for list="{{ recettes }}" as="r" hint-placeholder-count="3">
+              <div style="{{ r.style }}" onClick="{{ r.pick }}">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <span style="{{ r.nameStyle }}">{{ r.name }}</span>
+                  <sc-if value="{{ r.star }}" hint-placeholder-val="{{ false }}">
+                    <span style="background:#D9A441;color:#1B140D;font:800 8.5px 'Archivo',sans-serif;letter-spacing:0.8px;padding:2px 6px">LA PÉPITE</span>
+                  </sc-if>
+                </div>
+                <div style="font:500 13px/1.5 'Archivo',sans-serif;color:#4A3F33;margin-top:5px">{{ r.desc }}</div>
+              </div>
+            </sc-for>
+            <div style="margin:14px 16px 0">
+              <div style="height:54px;background:{{ g1CtaBg }};color:{{ g1CtaColor }};display:flex;align-items:center;justify-content:center;font:800 13px 'Archivo',sans-serif;letter-spacing:2px;border-radius:6px;cursor:pointer" onClick="{{ g1Next }}">CONTINUER</div>
+            </div>
+            <div style="height:20px"></div>
+          </div>
+        </sc-if>
+
+        <!-- ==== GESTE 2 · LE PRODUIT (+ zone si Quartier) ==== -->
+        <sc-if value="{{ isG2 }}" hint-placeholder-val="{{ false }}">
+          <div data-screen-label="Campagne — geste 2 produit / zone" style="height:100%;overflow-y:auto">
+            <div style="display:flex;align-items:center;gap:10px;padding:12px 16px 0">
+              <span style="font:800 10px 'Archivo',sans-serif;letter-spacing:2px;color:#6E6154">GESTE 2 / 3</span>
+              <span style="font:900 17px 'Archivo',sans-serif;font-stretch:110%">{{ g2Title }}</span>
+            </div>
+            <div style="margin:12px 16px 0;border:2px solid #1B140D;padding:12px;display:flex;gap:11px;align-items:center">
+              <div style="width:54px;height:54px;background:#F3EBDB;position:relative;flex:none">
+                <div style="position:absolute;top:4px;left:4px;width:8px;height:8px;border-top:1.5px solid rgba(27,20,13,0.5);border-left:1.5px solid rgba(27,20,13,0.5)"></div>
+                <div style="position:absolute;bottom:4px;right:4px;width:8px;height:8px;border-bottom:1.5px solid rgba(27,20,13,0.5);border-right:1.5px solid rgba(27,20,13,0.5)"></div>
+              </div>
+              <div style="flex:1"><div style="font:700 14px 'Archivo',sans-serif">Robe brodée bogolan · M</div><div style="font:500 12px 'Archivo',sans-serif;color:#6E6154;margin-top:2px;font-feature-settings:'tnum'">Votre gain par commande : <b style="color:#C2571B">2&#8239;000&#8239;F net</b></div></div>
+              <svg width="16" height="16" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#1B140D"></circle><path d="M7.5 12.5l3 3 6-6.5" fill="none" stroke="#FFF8F1" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            </div>
+            <sc-if value="{{ isQuartier }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:14px 16px 0;font:800 11px 'Archivo',sans-serif;letter-spacing:2px;color:#6E6154">UNE ZONE</div>
+              <div style="display:flex;flex-wrap:wrap;gap:7px;padding:8px 16px 0">
+                <sc-for list="{{ zones }}" as="z" hint-placeholder-count="4">
+                  <span style="{{ z.style }}" onClick="{{ z.pick }}">{{ z.name }}</span>
+                </sc-for>
+              </div>
+              <div style="padding:13px 16px 0;font:800 11px 'Archivo',sans-serif;letter-spacing:2px;color:#6E6154">UN CRÉNEAU</div>
+              <div style="display:flex;flex-wrap:wrap;gap:7px;padding:8px 16px 0">
+                <sc-for list="{{ windows }}" as="w" hint-placeholder-count="3">
+                  <span style="{{ w.style }}" onClick="{{ w.pick }}">{{ w.name }}</span>
+                </sc-for>
+              </div>
+              <div style="margin:13px 16px 0;border-left:3px solid #1B140D;padding:2px 0 2px 12px;font:600 12.5px/1.5 'Archivo',sans-serif">Une zone, un créneau : les commandes se groupent, la tournée se remplit — votre argent achète de la densité Séra.</div>
+            </sc-if>
+            <div style="margin:14px 16px 0">
+              <div style="height:54px;background:{{ g2CtaBg }};color:{{ g2CtaColor }};display:flex;align-items:center;justify-content:center;font:800 13px 'Archivo',sans-serif;letter-spacing:2px;border-radius:6px;cursor:pointer" onClick="{{ g2Next }}">CONTINUER</div>
+            </div>
+            <div style="height:20px"></div>
+          </div>
+        </sc-if>
+
+        <!-- ==== GESTE 3 · LE BUDGET ==== -->
+        <sc-if value="{{ isG3 }}" hint-placeholder-val="{{ false }}">
+          <div data-screen-label="Campagne — geste 3 le budget" style="height:100%;overflow-y:auto">
+            <div style="display:flex;align-items:center;gap:10px;padding:12px 16px 0">
+              <span style="font:800 10px 'Archivo',sans-serif;letter-spacing:2px;color:#6E6154">GESTE 3 / 3</span>
+              <span style="font:900 17px 'Archivo',sans-serif;font-stretch:110%">LE BUDGET</span>
+            </div>
+            <div style="padding:12px 16px 0;font:800 11px 'Archivo',sans-serif;letter-spacing:2px;color:#6E6154">{{ kLabel }}</div>
+            <div style="display:flex;align-items:stretch;gap:8px;margin:8px 16px 0">
+              <div style="width:48px;border:1.5px solid rgba(27,20,13,0.35);display:flex;align-items:center;justify-content:center;font:900 20px 'Archivo',sans-serif;border-radius:6px;cursor:pointer" onClick="{{ kMinus }}">−</div>
+              <div style="flex:1;border:1.5px solid #1B140D;display:flex;align-items:center;justify-content:center;font:900 20px 'Archivo',sans-serif;font-feature-settings:'tnum';border-radius:6px;min-height:50px">{{ kStr }}</div>
+              <div style="width:48px;border:1.5px solid rgba(27,20,13,0.35);display:flex;align-items:center;justify-content:center;font:900 20px 'Archivo',sans-serif;border-radius:6px;cursor:pointer" onClick="{{ kPlus }}">+</div>
+            </div>
+            <div style="padding:6px 16px 0;font:500 12px/1.5 'Archivo',sans-serif;color:#6E6154;font-feature-settings:'tnum'">Plafond : 2&#8239;000&#8239;F par commande — 80&#8239;% de (C&#8239;+&#8239;M). Au-delà, votre gain deviendrait négatif : la loi l'interdit.</div>
+            <sc-if value="{{ kAtCap }}" hint-placeholder-val="{{ false }}">
+              <div style="margin:10px 16px 0;background:#F7EED7;border-left:4px solid #6B4E0C;padding:10px 12px;font:600 12.5px/1.5 'Archivo',sans-serif;color:#6B4E0C">Au plafond, vous ne gagnez rien sur ces commandes. C'est permis — mais c'est votre choix, en pleine lumière.</div>
+            </sc-if>
+            <div style="padding:14px 16px 0;font:800 11px 'Archivo',sans-serif;letter-spacing:2px;color:#6E6154">BUDGET TOTAL — DEPUIS VOS GAINS RÉGLÉS</div>
+            <div style="display:flex;align-items:stretch;gap:8px;margin:8px 16px 0">
+              <div style="width:48px;border:1.5px solid rgba(27,20,13,0.35);display:flex;align-items:center;justify-content:center;font:900 20px 'Archivo',sans-serif;border-radius:6px;cursor:pointer" onClick="{{ bMinus }}">−</div>
+              <div style="flex:1;border:1.5px solid #1B140D;display:flex;align-items:center;justify-content:center;font:900 20px 'Archivo',sans-serif;font-feature-settings:'tnum';border-radius:6px;min-height:50px">{{ budgetStr }}</div>
+              <div style="width:48px;border:1.5px solid rgba(27,20,13,0.35);display:flex;align-items:center;justify-content:center;font:900 20px 'Archivo',sans-serif;border-radius:6px;cursor:pointer" onClick="{{ bPlus }}">+</div>
+            </div>
+            <div style="padding:6px 16px 0;font:500 12px/1.5 'Archivo',sans-serif;color:#6E6154;font-feature-settings:'tnum'">Disponible : 4&#8239;040&#8239;F réglés. L'argent en attente ne peut jamais servir — c'est la loi.</div>
+            <div style="margin:16px 16px 0">
+              <div style="height:54px;background:#C2571B;color:#FFF8F1;display:flex;align-items:center;justify-content:center;font:800 13px 'Archivo',sans-serif;letter-spacing:2px;border-radius:6px;cursor:pointer" style-active="transform:scale(0.98)" onClick="{{ goApercu }}">VOIR L'APERÇU SACRÉ</div>
+            </div>
+            <div style="height:20px"></div>
+          </div>
+        </sc-if>
+
+        <!-- ==== L'APERÇU ÉCONOMIQUE SACRÉ ==== -->
+        <sc-if value="{{ isApercu }}" hint-placeholder-val="{{ false }}">
+          <div data-screen-label="L'aperçu économique sacré" style="height:100%;overflow-y:auto">
+            <div style="padding:13px 16px 0;text-align:center">
+              <div style="font:800 10px 'Archivo',sans-serif;letter-spacing:2.4px;color:#6E6154">AVANT DE LANCER — LA VÉRITÉ ENTIÈRE</div>
+              <div style="font:900 20px/1.1 'Archivo',sans-serif;font-stretch:112%;margin-top:5px;text-transform:uppercase">L'aperçu sacré</div>
+            </div>
+            <div style="display:flex;gap:8px;margin:12px 16px 0">
+              <div style="flex:1;border:2px solid #1B140D;padding:11px 12px"><div style="font:800 9.5px 'Archivo',sans-serif;letter-spacing:1.5px;color:#6E6154">VOUS DÉPENSEZ</div><div style="font:900 21px 'Archivo',sans-serif;font-feature-settings:'tnum';margin-top:3px">{{ spendTotalStr }}</div><div style="font:500 10.5px 'Archivo',sans-serif;color:#6E6154;margin-top:2px">au maximum, réglés seulement</div></div>
+              <div style="flex:1;border:2px solid #1F4D36;background:#F2F7F1;padding:11px 12px"><div style="font:800 9.5px 'Archivo',sans-serif;letter-spacing:1.5px;color:#1F4D36">VOUS GARDEZ</div><div style="font:900 21px 'Archivo',sans-serif;font-feature-settings:'tnum';margin-top:3px;color:#1F4D36">{{ keepTotalStr }}</div><div style="font:500 10.5px 'Archivo',sans-serif;color:#2F5A41;margin-top:2px">au moins, jamais négatif</div></div>
+            </div>
+            <div style="margin:12px 16px 0;border:1.5px solid #1B140D">
+              <div style="display:flex;justify-content:space-between;gap:10px;padding:9px 12px;border-bottom:1px solid rgba(27,20,13,0.14)"><span style="font:500 12.5px 'Archivo',sans-serif">Par commande — vous offrez</span><span style="font:800 13px 'Archivo',sans-serif;font-feature-settings:'tnum'">{{ kStr }}</span></div>
+              <div style="display:flex;justify-content:space-between;gap:10px;padding:9px 12px;border-bottom:1px solid rgba(27,20,13,0.14)"><span style="font:500 12.5px 'Archivo',sans-serif">Par commande — vous gardez</span><span style="font:800 13px 'Archivo',sans-serif;font-feature-settings:'tnum';color:#1F4D36">{{ keepPerStr }}</span></div>
+              <div style="display:flex;justify-content:space-between;gap:10px;padding:9px 12px"><span style="font:500 12.5px 'Archivo',sans-serif">Commandes couvertes</span><span style="font:800 13px 'Archivo',sans-serif;font-feature-settings:'tnum'">{{ ordersStr }}</span></div>
+            </div>
+            <div style="padding:6px 16px 0;text-align:right;font:600 10.5px 'Archivo',sans-serif;color:#6E6154;font-feature-settings:'tnum'">{{ reconcileStr }}</div>
+            <sc-if value="{{ showSeraLine }}" hint-placeholder-val="{{ false }}">
+              <div style="margin:11px 16px 0;background:#FBF4E4;border:1.5px solid #B98A1F;padding:10px 12px;font:600 12px/1.55 'Archivo',sans-serif;color:#1B140D;font-feature-settings:'tnum'">{{ seraLine }}</div>
+            </sc-if>
+            <sc-if value="{{ fullPrepay }}" hint-placeholder-val="{{ false }}">
+              <div style="margin:9px 16px 0;display:flex;justify-content:center"><span style="background:#1B140D;color:#FFF8F1;font:800 10px 'Archivo',sans-serif;letter-spacing:1.5px;padding:6px 12px">LIVRAISON 100&#8239;% OFFERTE ⇒ TOUT PRÉPAYÉ</span></div>
+            </sc-if>
+            <div style="margin:11px 16px 0;border-left:3px solid #1B140D;padding:2px 0 2px 12px;font:600 12px/1.55 'Archivo',sans-serif">Une seule offre par commande. Si un chiffre vous surprend après, le design a échoué — c'est écrit dans le brief.</div>
+            <sc-if value="{{ notLaunched }}" hint-placeholder-val="{{ true }}">
+              <div style="margin:13px 16px 0">
+                <div style="height:54px;background:#C2571B;color:#FFF8F1;display:flex;align-items:center;justify-content:center;font:800 13px 'Archivo',sans-serif;letter-spacing:2px;border-radius:6px;cursor:pointer" style-active="transform:scale(0.98)" onClick="{{ launch }}">LANCER LA CAMPAGNE</div>
+              </div>
+            </sc-if>
+            <sc-if value="{{ launched }}" hint-placeholder-val="{{ false }}">
+              <div style="margin:13px 16px 0;border:2px solid #1F4D36;background:#F2F7F1;padding:12px 14px;display:flex;align-items:center;gap:10px">
+                <svg width="18" height="18" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#1F4D36"></circle><path d="M7.5 12.5l3 3 6-6.5" fill="none" stroke="#F2F7F1" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                <span style="flex:1;font:800 12.5px 'Archivo',sans-serif">Campagne lancée (maquette).</span>
+                <span style="font:800 10px 'Archivo',sans-serif;letter-spacing:1px;color:#A34312;border-bottom:1.5px solid #A34312;padding-bottom:2px;cursor:pointer" onClick="{{ goReport }}">VOIR LE REPORTING</span>
+              </div>
+            </sc-if>
+            <div style="height:20px"></div>
+          </div>
+        </sc-if>
+
+        <!-- ==== PARRAINAGE ==== -->
+        <sc-if value="{{ isParr }}" hint-placeholder-val="{{ false }}">
+          <div data-screen-label="Le parrainage simple" style="height:100%;overflow-y:auto">
+            <div style="padding:14px 16px 0">
+              <div style="font:900 21px/1.1 'Archivo',sans-serif;font-stretch:112%;text-transform:uppercase">Le parrainage simple</div>
+              <div style="font:500 13.5px/1.55 'Archivo',sans-serif;color:#4A3F33;margin-top:7px">Vous aidez une amie à démarrer. Quand elle fait sa première vente validée, vous recevez un merci — une fois.</div>
+            </div>
+            <div style="margin:14px 16px 0;background:#1B140D;color:#FFF8F1;padding:12px 14px;font:800 12px/1.6 'Archivo',sans-serif;letter-spacing:0.8px">UN SEUL NIVEAU, POUR TOUJOURS. Pas d'arbre. Pas d'équipe. Pas de revenu sur le réseau. Ce n'est pas une fonctionnalité manquante — c'est un refus définitif.</div>
+            <div style="margin:12px 16px 0;border:1.5px solid #1B140D">
+              <div style="display:flex;align-items:center;gap:10px;padding:12px;border-bottom:1px solid rgba(27,20,13,0.14)">
+                <div style="width:32px;height:32px;border-radius:999px;background:#F3E3D3;color:#A34312;display:flex;align-items:center;justify-content:center;font:800 13px 'Archivo',sans-serif">F</div>
+                <div style="flex:1"><div style="font:700 13.5px 'Archivo',sans-serif">Fatou S.</div><div style="font:500 11.5px 'Archivo',sans-serif;color:#6E6154">Première vente validée ✓</div></div>
+                <span style="background:#1F4D36;color:#F2F7F1;font:800 9.5px 'Archivo',sans-serif;letter-spacing:0.8px;padding:4px 8px;font-feature-settings:'tnum'">MERCI VERSÉ · 500&#8239;F</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;padding:12px">
+                <div style="width:32px;height:32px;border-radius:999px;background:#F3E3D3;color:#A34312;display:flex;align-items:center;justify-content:center;font:800 13px 'Archivo',sans-serif">R</div>
+                <div style="flex:1"><div style="font:700 13.5px 'Archivo',sans-serif">Rokia D.</div><div style="font:500 11.5px 'Archivo',sans-serif;color:#6E6154">A rejoint — pas encore de vente</div></div>
+                <span style="background:#F7EED7;color:#6B4E0C;font:800 9.5px 'Archivo',sans-serif;letter-spacing:0.8px;padding:4px 8px">EN ATTENTE</span>
+              </div>
+            </div>
+            <div style="margin:12px 16px 0;border-left:3px solid #1B140D;padding:2px 0 2px 12px;font:600 12.5px/1.55 'Archivo',sans-serif">Si Fatou parraine Rokia, c'est l'affaire de Fatou — pas la vôtre. Personne ne gagne sur deux étages. Impossible de dessiner un arbre ici : il n'y a pas d'arbre.</div>
+          </div>
+        </sc-if>
+
+        <!-- ==== REPORTING ==== -->
+        <sc-if value="{{ isReport }}" hint-placeholder-val="{{ false }}">
+          <div data-screen-label="Le reporting — attribué" style="height:100%;overflow-y:auto">
+            <div style="padding:14px 16px 0">
+              <div style="font:900 21px/1.1 'Archivo',sans-serif;font-stretch:112%;text-transform:uppercase">La recette Quartier — Gounghin, samedi</div>
+              <div style="font:500 13px/1.5 'Archivo',sans-serif;color:#4A3F33;margin-top:6px">Nous disons « attribué » — jamais « généré ». Nous ne réclamons que ce que nous pouvons prouver.</div>
+            </div>
+            <div style="display:flex;gap:8px;margin:13px 16px 0">
+              <div style="flex:1;border:1.5px solid #1B140D;padding:11px 12px"><div style="font:900 20px 'Archivo',sans-serif;font-feature-settings:'tnum'">9</div><div style="font:600 10px 'Archivo',sans-serif;letter-spacing:1px;color:#6E6154;margin-top:2px">COMMANDES ATTRIBUÉES</div></div>
+              <div style="flex:1;border:1.5px solid #1B140D;padding:11px 12px"><div style="font:900 20px 'Archivo',sans-serif;font-feature-settings:'tnum'">9/9</div><div style="font:600 10px 'Archivo',sans-serif;letter-spacing:1px;color:#6E6154;margin-top:2px">LIVRAISONS VALIDÉES</div></div>
+            </div>
+            <div style="margin:10px 16px 0;border:1.5px solid #1B140D">
+              <div style="display:flex;justify-content:space-between;gap:10px;padding:10px 12px;border-bottom:1px solid rgba(27,20,13,0.14)"><span style="font:500 13px 'Archivo',sans-serif">Dépensé (9 × 600)</span><span style="font:800 13.5px 'Archivo',sans-serif;font-feature-settings:'tnum'">5&#8239;400&#8239;F</span></div>
+              <div style="display:flex;justify-content:space-between;gap:10px;padding:10px 12px;border-bottom:1px solid rgba(27,20,13,0.14)"><span style="font:500 13px 'Archivo',sans-serif">Gardé (9 × 1&#8239;400)</span><span style="font:800 13.5px 'Archivo',sans-serif;font-feature-settings:'tnum';color:#1F4D36">12&#8239;600&#8239;F</span></div>
+              <div style="display:flex;justify-content:space-between;gap:10px;padding:10px 12px"><span style="font:500 13px 'Archivo',sans-serif">Budget rendu (non utilisé)</span><span style="font:800 13.5px 'Archivo',sans-serif;font-feature-settings:'tnum'">600&#8239;F</span></div>
+            </div>
+            <div style="padding:6px 16px 0;text-align:right;font:600 10.5px 'Archivo',sans-serif;color:#6E6154;font-feature-settings:'tnum'">6&#8239;000 engagés = 5&#8239;400 dépensés + 600 rendus — chaque franc a sa place.</div>
+            <div style="margin:12px 16px 0;background:#FBF4E4;border:1.5px solid #B98A1F;padding:10px 12px;font:600 12px/1.55 'Archivo',sans-serif">Séra a été payée entière sur chaque course : 400&#8239;F par la cliente + 600&#8239;F par votre campagne = 1&#8239;000&#8239;F.</div>
+            <div style="padding:13px 16px 0;font:800 11px 'Archivo',sans-serif;letter-spacing:2px;color:#6E6154">AVIS REÇUS — LIVRAISONS VALIDÉES SEULEMENT</div>
+            <div style="margin:8px 16px 0;border:1px solid rgba(27,20,13,0.22)">
+              <div style="padding:11px 12px;border-bottom:1px solid rgba(27,20,13,0.12)"><div style="font:600 12.5px/1.45 'Archivo',sans-serif">« Robe superbe, livrée samedi matin comme promis. »</div><div style="font:500 10.5px 'Archivo',sans-serif;color:#6E6154;margin-top:3px">Mariam — livraison validée CMD-2419</div></div>
+              <div style="padding:11px 12px"><div style="font:600 12.5px/1.45 'Archivo',sans-serif">« Le livreur a attendu que je vérifie. Respect. »</div><div style="font:500 10.5px 'Archivo',sans-serif;color:#6E6154;margin-top:3px">Awa — livraison validée CMD-2421</div></div>
+            </div>
+            <div style="height:20px"></div>
+          </div>
+        </sc-if>
+
+      </div>
+    </div>
+  </div>
+
+  <div style="font:500 12px 'Archivo',sans-serif;color:#6E6154">3 gestes → l'aperçu sacré. Poussez l'offre au plafond (2 000 F) pour voir le garde-fou.</div>
+</div>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;startView&quot;: {&quot;editor&quot;: &quot;enum&quot;, &quot;options&quot;: [&quot;home&quot;, &quot;g1&quot;, &quot;apercu&quot;, &quot;parr&quot;, &quot;report&quot;], &quot;default&quot;: &quot;home&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Prototype&quot;}}">
+class Component extends DCLogic {
+  state = {
+    view: 'home', entered: true,
+    recette: null, zone: 'Gounghin', win: 'Samedi 9 h – 12 h',
+    k: 600, budget: 3000, launched: false
+  };
+
+  _timers = [];
+  _t(fn, ms) { const id = setTimeout(fn, ms); this._timers.push(id); return id; }
+  componentWillUnmount() { this._timers.forEach(clearTimeout); }
+
+  nav(view, patch) {
+    this.setState({ view, entered: false, ...(patch || {}) });
+    this._t(() => this.setState({ entered: true }), 30);
+  }
+
+  kBounds() {
+    const r = this.state.recette;
+    if (r === 'livraison') return { min: 250, max: 1000, step: 250 };
+    if (r === 'quartier') return { min: 200, max: 1000, step: 200 };
+    return { min: 250, max: 2000, step: 250 };
+  }
+
+  renderVals() {
+    const s = this.state;
+    const ink = '#1B140D', paper = '#FFF8F1';
+    const fmt = n => n.toLocaleString('fr-FR').replace(/[\u00a0\u202f,]/g, '\u202f') + '\u202fF';
+    const D = 1000, perOrderGain = 2000, settled = 4040;
+    const bounds = this.kBounds();
+    const k = Math.min(Math.max(s.k, bounds.min), bounds.max);
+    const keepPer = perOrderGain - k;
+    const orders = Math.floor(s.budget / k);
+    const spendTotal = orders * k;
+    const keepTotal = orders * keepPer;
+    const isDelivery = s.recette === 'livraison' || s.recette === 'quartier';
+    const custShare = isDelivery ? D - k : null;
+
+    const railChip = on => 'display:inline-flex;align-items:center;cursor:pointer;white-space:nowrap;font:600 11px Archivo,sans-serif;padding:5px 9px;border-radius:4px;' +
+      (on ? 'background:#1B140D;color:#FFF8F1;' : 'background:rgba(27,20,13,0.06);color:#1B140D;');
+    const chip = on => 'cursor:pointer;white-space:nowrap;font:700 12px Archivo,sans-serif;letter-spacing:0.4px;padding:8px 12px;border-radius:4px;' +
+      (on ? 'background:#1B140D;color:#FFF8F1;border:1.5px solid #1B140D;' : 'background:#FFFDF7;color:#1B140D;border:1.5px solid rgba(27,20,13,0.3);');
+
+    const railSections = [
+      { id: 'CE', name: 'Le Cercle (gated)', states: [
+        { label: 'accueil', on: s.view==='home', go: () => this.nav('home') },
+        { label: 'geste 1 — recette', on: s.view==='g1', go: () => this.nav('g1') },
+        { label: 'geste 2 — produit/zone', on: s.view==='g2', go: () => this.nav('g2', { recette: s.recette || 'quartier' }) },
+        { label: 'geste 3 — budget', on: s.view==='g3', go: () => this.nav('g3', { recette: s.recette || 'quartier' }) },
+        { label: "l'aperçu sacré ⭐", on: s.view==='apercu' && !s.launched, go: () => this.nav('apercu', { recette: s.recette || 'quartier', launched: false }) },
+        { label: 'lancée', on: s.view==='apercu' && s.launched, go: () => this.nav('apercu', { recette: s.recette || 'quartier', launched: true }) } ] },
+      { id: '1N', name: 'Autour', states: [
+        { label: 'parrainage (1 seul niveau)', on: s.view==='parr', go: () => this.nav('parr') },
+        { label: 'reporting « attribué »', on: s.view==='report', go: () => this.nav('report') } ] }
+    ].map(sec => ({ ...sec, states: sec.states.map(st => ({ ...st, style: railChip(st.on) })) }));
+
+    const recetteDefs = [
+      { key: 'doux', name: 'PRIX DOUX', star: false, desc: 'Vous offrez une remise sur votre prix, prise sur votre part. La cliente voit un vrai prix — jamais un faux rabais barré.' },
+      { key: 'livraison', name: 'LIVRAISON OFFERTE', star: false, desc: 'Vous payez tout ou partie de la course. Séra est toujours payée entière : votre part + celle de la cliente = la course.' },
+      { key: 'quartier', name: 'LA RECETTE QUARTIER', star: true, desc: 'Une zone, un créneau, la livraison adoucie : les commandes se groupent, la tournée se remplit. Votre argent achète de la densité.' }
+    ];
+    const recettes = recetteDefs.map(r => ({
+      name: r.name, desc: r.desc, star: r.star,
+      pick: () => this.setState({ recette: r.key, k: r.key === 'quartier' ? 600 : r.key === 'livraison' ? 1000 : 500 }),
+      style: { margin: '12px 16px 0', padding: '13px 14px', cursor: 'pointer', position: 'relative',
+        border: s.recette === r.key ? '2px solid ' + ink : '1.5px solid rgba(27,20,13,0.35)',
+        borderLeft: s.recette === r.key ? '5px solid #C2571B' : '1.5px solid rgba(27,20,13,0.35)', background: '#FFFDF7' },
+      nameStyle: { font: '800 13px Archivo,sans-serif', letterSpacing: '0.8px' }
+    }));
+
+    const zones = ['Gounghin', 'Dassasgho', 'Pissy', 'Tampouy'].map(name => ({
+      name, pick: () => this.setState({ zone: name }), style: chip(s.zone === name)
+    }));
+    const windows = ['Samedi 9 h – 12 h', 'Samedi 16 h – 19 h', 'Dimanche 9 h – 12 h'].map(name => ({
+      name, pick: () => this.setState({ win: name }), style: chip(s.win === name)
+    }));
+
+    const five = {
+      home: '« Votre communauté : elle a dit oui, elle peut partir, jamais de spam. »',
+      g1: '« Trois recettes honnêtes — pas de fausse urgence, pas de faux rabais. »',
+      g2: '« Un produit, votre gain net affiché. La Quartier : une zone, un créneau. »',
+      g3: '« Le plafond est une loi : votre gain ne peut pas devenir négatif. »',
+      apercu: '« Avant de payer quoi que ce soit : ce que vous dépensez, ce que vous gardez. »',
+      parr: '« Un seul niveau. Il n\u2019y a pas d\u2019arbre à dessiner. »',
+      report: '« Attribué, jamais généré — on ne réclame que ce qu\u2019on prouve. »'
+    };
+    const titles = { home: 'Le Cercle — accueil', g1: 'Geste 1 — la recette', g2: s.recette === 'quartier' ? 'Geste 2 — produit + zone + créneau' : 'Geste 2 — le produit', g3: 'Geste 3 — le budget', apercu: "L'aperçu économique sacré ⭐", parr: 'Le parrainage simple', report: 'Le reporting' };
+
+    const animStyle = {
+      height: '100%', opacity: s.entered ? 1 : 0,
+      transform: s.entered ? 'none' : 'translateY(14px)',
+      transition: s.entered ? 'opacity 180ms ease, transform 240ms cubic-bezier(0.2,0.8,0.25,1)' : 'none'
+    };
+
+    const kLabels = { doux: 'LA REMISE PAR COMMANDE', livraison: 'VOTRE PART DE LA COURSE (1 000 F)', quartier: 'VOTRE PART DE LA COURSE (1 000 F)' };
+
+    return {
+      railSections, fiveSecond: five[s.view],
+      screenId: 'SP9', screenTitle: titles[s.view],
+      animStyle,
+
+      isHome: s.view === 'home', isG1: s.view === 'g1', isG2: s.view === 'g2',
+      isG3: s.view === 'g3', isApercu: s.view === 'apercu', isParr: s.view === 'parr', isReport: s.view === 'report',
+
+      goG1: () => this.nav('g1'),
+      goParr: () => this.nav('parr'),
+      goReport: () => this.nav('report'),
+
+      recettes,
+      g1CtaBg: s.recette ? ink : 'rgba(27,20,13,0.18)', g1CtaColor: s.recette ? paper : 'rgba(27,20,13,0.5)',
+      g1Next: () => { if (s.recette) this.nav('g2'); },
+
+      g2Title: s.recette === 'quartier' ? 'PRODUIT + ZONE' : 'LE PRODUIT',
+      isQuartier: s.recette === 'quartier',
+      zones, windows,
+      g2CtaBg: ink, g2CtaColor: paper,
+      g2Next: () => this.nav('g3'),
+
+      kLabel: kLabels[s.recette || 'doux'],
+      kStr: fmt(k),
+      kMinus: () => this.setState({ k: Math.max(bounds.min, k - bounds.step) }),
+      kPlus: () => this.setState({ k: Math.min(bounds.max, k + bounds.step) }),
+      kAtCap: k >= 2000,
+      budgetStr: fmt(s.budget),
+      bMinus: () => this.setState({ budget: Math.max(1000, s.budget - 500) }),
+      bPlus: () => this.setState({ budget: Math.min(4000, s.budget + 500) }),
+      goApercu: () => this.nav('apercu', { launched: false }),
+
+      spendTotalStr: fmt(spendTotal),
+      keepTotalStr: fmt(keepTotal),
+      keepPerStr: fmt(keepPer),
+      ordersStr: String(orders),
+      reconcileStr: fmt(spendTotal).replace('\u202fF','') + ' + ' + fmt(keepTotal).replace('\u202fF','') + ' = ' + orders + ' × 2\u202f000 — chaque franc a sa place.',
+      showSeraLine: isDelivery,
+      seraLine: !isDelivery ? '' : ('Séra reçoit toujours 1\u202f000\u202fF par course : ' + (custShare === 0 ? '0\u202fF par la cliente + 1\u202f000\u202fF par votre campagne.' : fmt(custShare).replace('\u202fF','') + '\u202fF par la cliente + ' + fmt(k).replace('\u202fF','') + '\u202fF par votre campagne.')),
+      fullPrepay: isDelivery && custShare === 0,
+      notLaunched: !s.launched, launched: s.launched,
+      launch: () => this.setState({ launched: true })
+    };
+  }
+}
+</script>
+</body>
+</html>

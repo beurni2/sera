@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1920" font-family="Archivo, sans-serif">
+<rect width="1080" height="1920" fill="#1B140D"></rect>
+<rect x="0" y="0" width="367" height="18" fill="#C2571B"></rect><rect x="367" y="0" width="356" height="18" fill="#D9A441"></rect><rect x="724" y="0" width="356" height="18" fill="#1F4D36"></rect>
+<text x="540" y="122" font-family="Archivo, sans-serif" font-size="46" font-weight="800" fill="#FFF8F1" text-anchor="middle" letter-spacing="10">CHEZ AÏCHA</text>
+<rect x="90" y="168" width="900" height="1040" fill="#F3EBDB" stroke="#FFF8F1" stroke-width="4"></rect><g stroke="#FFF8F1" stroke-width="8" opacity="0.5" fill="none">
+<path d="M114 252v-60h60"></path><path d="M906 192h60v60"></path>
+<path d="M114 1124v60h60"></path><path d="M966 1124v60h-60"></path></g><g transform="translate(492,598) scale(4)" fill="none" stroke="#8D7C64" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7.5 4.2v9.6L12 21l-7.5-4.2V7.2L12 3z"></path><path d="M4.5 7.2L12 11.5l7.5-4.3"></path><path d="M12 11.5V21"></path></g><text x="540" y="778" text-anchor="middle" font-family="Archivo, sans-serif" font-size="30" font-weight="700" letter-spacing="6" fill="#8D7C64">PHOTO DU PRODUIT</text>
+<text x="90" y="1300" font-family="Archivo, sans-serif" font-size="64" font-weight="900" fill="#FFF8F1">ROBE BRODÉE BOGOLAN</text>
+<rect x="0" y="1340" width="1080" height="200" fill="#C2571B"></rect>
+<text x="90" y="1412" font-family="Archivo, sans-serif" font-size="30" font-weight="800" fill="#F4CFB4" letter-spacing="8">PRIX</text>
+<text x="90" y="1518" font-family="Archivo, sans-serif" font-size="128" font-weight="900" fill="#FFF8F1">11 500 F</text>
+<text x="90" y="1612" font-family="Archivo, sans-serif" font-size="34" font-weight="700" fill="#CBC1B5" letter-spacing="3">LIVRÉ PAR SÉRA · PAIEMENT PROTÉGÉ</text>
+<rect x="90" y="1668" width="620" height="92" fill="#FFF8F1"></rect>
+<text x="120" y="1728" font-family="Archivo, sans-serif" font-size="40" font-weight="800" fill="#1B140D" letter-spacing="2">CODE : AÏCHA-4821</text>
+<text x="990" y="1728" font-family="Archivo, sans-serif" font-size="36" font-weight="700" fill="#CBC1B5" text-anchor="end">lien dans ma bio</text>
+<path d="M744 1744h246" stroke="#CBC1B5" stroke-width="3"></path>
+<rect x="0" y="1902" width="367" height="18" fill="#C2571B"></rect><rect x="367" y="1902" width="356" height="18" fill="#D9A441"></rect><rect x="724" y="1902" width="356" height="18" fill="#1F4D36"></rect>
+</svg>

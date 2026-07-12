@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..900&amp;display=swap">
+<style>
+body{margin:0;background:#EBE6DC;font-family:'Archivo',system-ui,sans-serif}
+a{color:#C2571B}a:hover{color:#9E4512}
+</style>
+</helmet>
+
+<div style="display:flex;min-height:100vh;align-items:stretch">
+
+<!-- ============ RAIL ============ -->
+<div style="width:272px;flex:none;background:#FFFDF7;border-right:1px solid rgba(27,20,13,0.14);padding:20px 18px 28px;box-sizing:border-box;height:100vh;overflow-y:auto;position:sticky;top:0">
+  <div style="display:flex;align-items:center;gap:8px">
+    <span style="background:#1B140D;color:#FFF8F1;font:800 10px 'Archivo',sans-serif;letter-spacing:1.5px;padding:4px 8px">OPS</span>
+    <span style="font:800 12px 'Archivo',sans-serif;letter-spacing:1.8px">LA CONSOLE PLATEFORME</span>
+  </div>
+  <div style="font:500 12px/1.5 'Archivo',sans-serif;color:#6E6154;margin-top:6px">§7.6, dessinée de zéro. La règle de fer : personne n'édite le registre. Toute action est une commande journalisée — et l'argent exige deux humains (maker-checker).</div>
+
+  <div style="margin-top:16px;border:1.5px solid #1B140D">
+    <div style="padding:9px 12px;border-bottom:1px solid rgba(27,20,13,0.14);font:800 10px 'Archivo',sans-serif;letter-spacing:2px;color:#6E6154">VOUS ÊTES (SIMULATION 2 HUMAINS)</div>
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid rgba(27,20,13,0.14);cursor:pointer" onClick="{{ beSana }}">
+      <span style="{{ sanaDot }}"></span>
+      <span style="flex:1;font:700 12px 'Archivo',sans-serif">F. Sana — opératrice paiements</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer" onClick="{{ beOued }}">
+      <span style="{{ ouedDot }}"></span>
+      <span style="flex:1;font:700 12px 'Archivo',sans-serif">R. Ouédraogo — dispatch</span>
+    </div>
+  </div>
+
+  <sc-for list="{{ railSections }}" as="sec" hint-placeholder-count="3">
+    <div style="margin-top:16px">
+      <div style="display:flex;align-items:baseline;gap:7px">
+        <span style="font:800 10.5px ui-monospace,Menlo,monospace;background:#1B140D;color:#FFF8F1;padding:2px 6px">{{ sec.id }}</span>
+        <span style="font:700 12px 'Archivo',sans-serif">{{ sec.name }}</span>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
+        <sc-for list="{{ sec.states }}" as="st" hint-placeholder-count="3">
+          <span style="{{ st.style }}" onClick="{{ st.go }}">{{ st.label }}</span>
+        </sc-for>
+      </div>
+    </div>
+  </sc-for>
+
+  <div style="margin-top:20px;border-left:3px solid #C2571B;padding:2px 0 2px 12px">
+    <div style="font:800 10px 'Archivo',sans-serif;letter-spacing:2px;color:#6E6154">TEST 5 SECONDES</div>
+    <div style="font:600 13px/1.45 'Archivo',sans-serif;margin-top:4px">« Personne ne bouge un franc seul. Deux humains, ou rien. »</div>
+  </div>
+
+  <div style="margin-top:14px;font:500 11.5px/1.55 'Archivo',sans-serif;color:#6E6154">Lois tenues : le remboursement n'attend jamais la santé du Fonds · le solde du vendeur n'est jamais débité (faute vendeur → Fonds) · les deux moitiés ne peuvent pas tenir dans la même main · coupure sans déploiement, mais jamais sans trace.</div>
+</div>
+
+<!-- ============ STAGE ============ -->
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:26px 18px;gap:12px">
+  <div style="display:flex;align-items:baseline;gap:9px">
+    <span style="font:800 11px ui-monospace,Menlo,monospace;background:#1B140D;color:#FFF8F1;padding:3px 7px">OPS</span>
+    <span style="font:700 13px 'Archivo',sans-serif;letter-spacing:0.5px">{{ screenTitle }}</span>
+  </div>
+
+  <div style="width:1080px;background:#FFFDF7;border:1px solid rgba(27,20,13,0.22);box-shadow:0 18px 44px rgba(27,20,13,0.16);display:flex;flex-direction:column;flex:none;color:#1B140D" data-screen-label="Console Ops">
+
+    <div style="display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid rgba(27,20,13,0.14);flex:none">
+      <span style="display:flex;gap:5px"><span style="width:9px;height:9px;border-radius:999px;background:rgba(27,20,13,0.22)"></span><span style="width:9px;height:9px;border-radius:999px;background:rgba(27,20,13,0.22)"></span><span style="width:9px;height:9px;border-radius:999px;background:rgba(27,20,13,0.22)"></span></span>
+      <span style="flex:1;max-width:340px;border:1.5px solid rgba(27,20,13,0.2);border-radius:999px;padding:4px 12px;font:600 11.5px ui-monospace,Menlo,monospace;color:#4A3F33;display:flex;align-items:center;gap:6px"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#6E6154" stroke-width="2" stroke-linecap="round"><rect x="5.5" y="10.5" width="13" height="9.5" rx="2.5"></rect><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"></path></svg>ops.plateforme.bf</span>
+      <span style="font:700 12px 'Archivo',sans-serif">{{ posteLabel }}</span>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid rgba(27,20,13,0.14);flex:none">
+      <span style="font:800 13px 'Archivo',sans-serif;letter-spacing:2px">PLATEFORME · OPS</span>
+      <span style="font:600 12px 'Archivo',sans-serif;color:#6E6154">Aucune édition du registre n'existe ici — seulement des commandes journalisées.</span>
+    </div>
+    <div style="height:4px;background:#1B140D;flex:none"></div>
+
+    <div style="display:flex;height:660px;flex:none">
+
+      <!-- desk nav -->
+      <div style="width:230px;flex:none;border-right:1px solid rgba(27,20,13,0.14);padding:10px 0">
+        <sc-for list="{{ desks }}" as="dk" hint-placeholder-count="8">
+          <div style="{{ dk.style }}" onClick="{{ dk.go }}">
+            <span style="{{ dk.numStyle }}">{{ dk.num }}</span>
+            <span style="flex:1;font:700 12px 'Archivo',sans-serif">{{ dk.name }}</span>
+            <sc-if value="{{ dk.hasBadge }}" hint-placeholder-val="{{ false }}">
+              <span style="background:#C2571B;color:#FFF8F1;font:800 9px 'Archivo',sans-serif;padding:2px 6px">{{ dk.badge }}</span>
+            </sc-if>
+          </div>
+        </sc-for>
+        <div style="margin:14px 14px 0;border:1.5px solid rgba(27,20,13,0.25);padding:10px 11px">
+          <div style="font:800 9.5px 'Archivo',sans-serif;letter-spacing:1.5px;color:#6E6154">FONDS DE PROTECTION</div>
+          <div style="font:900 17px 'Archivo',sans-serif;font-feature-settings:'tnum';margin-top:4px">412&#8239;000&#8239;F</div>
+          <div style="font:500 10.5px/1.45 'Archivo',sans-serif;color:#4A3F33;margin-top:4px">Solvable. Et même à zéro, le remboursement d'une acheteuse part quand même — c'est la loi.</div>
+        </div>
+      </div>
+
+      <!-- main -->
+      <div style="flex:1;overflow-y:auto">
+
+        <!-- ==== RÉCLAMATIONS ==== -->
+        <sc-if value="{{ isClaims }}" hint-placeholder-val="{{ true }}">
+          <div style="padding:18px 22px 22px">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <span style="font:900 19px 'Archivo',sans-serif;font-stretch:112%">RÉCLAMATION — REFUS À L'INSPECTION</span>
+              <span style="font:700 11px ui-monospace,Menlo,monospace;border:1.5px solid #1B140D;padding:3px 7px">CMD-2398</span>
+              <span style="font:700 11px ui-monospace,Menlo,monospace;border:1.5px solid rgba(27,20,13,0.35);padding:3px 7px">RCL-0142</span>
+            </div>
+            <div style="font:500 13px/1.5 'Archivo',sans-serif;color:#4A3F33;margin-top:8px">Couture déchirée constatée à l'inspection (preuves : photo, constat Séra). L'acheteuse a payé <span style="font-weight:800;color:#1B140D;font-feature-settings:'tnum'">12&#8239;500&#8239;F</span> (option A). Le colis revient en deux clés.</div>
+
+            <div style="margin-top:14px;font:800 10.5px 'Archivo',sans-serif;letter-spacing:2px">LA FAUTE — ELLE DÉCIDE QUI PAIE</div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">
+              <sc-for list="{{ faults }}" as="f" hint-placeholder-count="4">
+                <span style="{{ f.style }}" onClick="{{ f.pick }}">{{ f.label }}</span>
+              </sc-for>
+            </div>
+            <div style="margin-top:10px;border-left:3px solid #1B140D;padding:2px 0 2px 12px;font:600 13px/1.55 'Archivo',sans-serif">{{ faultLine }}</div>
+
+            <div style="margin-top:16px;border:2px solid #1B140D">
+              <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1.5px solid #1B140D;background:#F3EBDB">
+                <span style="font:800 11px 'Archivo',sans-serif;letter-spacing:2px">LA COMMANDE</span>
+                <span style="font:600 13px 'Archivo',sans-serif;font-feature-settings:'tnum'">Rembourser l'acheteuse : <b>12&#8239;500&#8239;F</b> — depuis le Fonds de protection.</span>
+                <span style="margin-left:auto;font:500 11px 'Archivo',sans-serif;color:#6E6154">le solde du vendeur n'est pas touché</span>
+              </div>
+              <div style="display:flex">
+                <div style="flex:1;border-right:1.5px solid #1B140D;padding:13px 16px">
+                  <div style="font:800 10px 'Archivo',sans-serif;letter-spacing:2px;color:#6E6154">MOITIÉ 1 — ÉMISE PAR</div>
+                  <sc-if value="{{ issuedOn }}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex;align-items:center;gap:9px;margin-top:8px">
+                      <svg width="17" height="17" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#1B140D"></circle><path d="M7.5 12.5l3 3 6-6.5" fill="none" stroke="#FFF8F1" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                      <div><div style="font:800 13px 'Archivo',sans-serif">F. Sana — paiements</div><div style="font:500 11px 'Archivo',sans-serif;color:#6E6154">émise à 15:04 · journalisée</div></div>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ issuedOff }}" hint-placeholder-val="{{ true }}">
+                    <div style="margin-top:8px"><span style="{{ issueBtnStyle }}" onClick="{{ doIssue }}">ÉMETTRE — F. SANA</span></div>
+                    <div style="font:500 11px/1.45 'Archivo',sans-serif;color:#6E6154;margin-top:7px">{{ issueHint }}</div>
+                  </sc-if>
+                </div>
+                <div style="flex:1;padding:13px 16px">
+                  <div style="font:800 10px 'Archivo',sans-serif;letter-spacing:2px;color:#6E6154">MOITIÉ 2 — VÉRIFIÉE PAR</div>
+                  <sc-if value="{{ verifiedOn }}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex;align-items:center;gap:9px;margin-top:8px">
+                      <svg width="17" height="17" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#1B140D"></circle><path d="M7.5 12.5l3 3 6-6.5" fill="none" stroke="#FFF8F1" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                      <div><div style="font:800 13px 'Archivo',sans-serif">R. Ouédraogo — dispatch</div><div style="font:500 11px 'Archivo',sans-serif;color:#6E6154">vérifiée sur le terrain à 15:07 · journalisée</div></div>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ verifiedOff }}" hint-placeholder-val="{{ true }}">
+                    <div style="margin-top:8px"><span style="{{ verifyBtnStyle }}" onClick="{{ doVerify }}">VÉRIFIER — R. OUÉDRAOGO</span></div>
+                    <div style="font:500 11px/1.45 'Archivo',sans-serif;color:#6E6154;margin-top:7px">{{ verifyHint }}</div>
+                  </sc-if>
+                </div>
+              </div>
+              <sc-if value="{{ blockMsgOn }}" hint-placeholder-val="{{ false }}">
+                <div style="border-top:1px solid rgba(27,20,13,0.14);background:#F9E9E6;padding:9px 14px;font:600 12px 'Archivo',sans-serif;color:#7A2418">Vous tenez déjà l'autre moitié. Une deuxième personne doit vérifier — c'est la règle de fer, pas une option.</div>
+              </sc-if>
+              <sc-if value="{{ applied }}" hint-placeholder-val="{{ false }}">
+                <div style="border-top:1.5px solid #1B140D;background:#F2F7F1;padding:11px 14px;display:flex;align-items:center;gap:10px">
+                  <svg width="18" height="18" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#1F4D36"></circle><path d="M7.5 12.5l3 3 6-6.5" fill="none" stroke="#F2F7F1" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                  <span style="font:800 12.5px 'Archivo',sans-serif;letter-spacing:1px">APPLIQUÉE — 12&#8239;500&#8239;F remboursés à l'acheteuse depuis le Fonds. Deux signatures, une trace.</span>
+                </div>
+              </sc-if>
+            </div>
+            <div style="font:500 11.5px/1.5 'Archivo',sans-serif;color:#6E6154;margin-top:10px">La commande s'applique toute seule quand les deux moitiés sont signées par deux personnes différentes. Il n'existe pas de bouton « appliquer » — c'est voulu.</div>
+          </div>
+        </sc-if>
+
+        <!-- ==== INTERRUPTEURS ==== -->
+        <sc-if value="{{ isSwitches }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:18px 22px 22px">
+            <div style="font:900 19px 'Archivo',sans-serif;font-stretch:112%">FLAGS &amp; INTERRUPTEURS</div>
+            <div style="font:500 13px/1.5 'Archivo',sans-serif;color:#4A3F33;margin-top:6px">Chaque capacité se coupe sans déploiement — jamais sans trace. Couper exige de taper le nom de la capacité.</div>
+            <div style="margin-top:14px;border:1.5px solid #1B140D">
+              <sc-for list="{{ switches }}" as="sw" hint-placeholder-count="4">
+                <div style="border-bottom:1px solid rgba(27,20,13,0.12)">
+                  <div style="display:flex;align-items:center;gap:12px;padding:12px 14px">
+                    <div style="flex:1;min-width:0">
+                      <div style="font:800 13px 'Archivo',sans-serif;letter-spacing:0.5px">{{ sw.name }}</div>
+                      <div style="font:500 11.5px 'Archivo',sans-serif;color:#6E6154;margin-top:2px">{{ sw.scope }}</div>
+                    </div>
+                    <span style="{{ sw.stateChip }}">{{ sw.stateLabel }}</span>
+                    <span style="{{ sw.btnStyle }}" onClick="{{ sw.act }}">{{ sw.btnLabel }}</span>
+                  </div>
+                  <sc-if value="{{ sw.confirming }}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex;align-items:center;gap:10px;padding:0 14px 12px">
+                      <div style="flex:1;border:1.5px solid rgba(27,20,13,0.35);min-height:40px;display:flex;align-items:center;padding:0 12px;cursor:text" onClick="{{ sw.type }}">
+                        <span style="{{ sw.typedStyle }}">{{ sw.typedText }}</span>
+                      </div>
+                      <span style="{{ sw.cutStyle }}" onClick="{{ sw.cut }}">COUPER</span>
+                      <span style="font:800 10px 'Archivo',sans-serif;letter-spacing:1px;color:#6E6154;cursor:pointer" onClick="{{ sw.cancel }}">ANNULER</span>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- ==== JOURNAL ==== -->
+        <sc-if value="{{ isAudit }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:18px 22px 22px">
+            <div style="font:900 19px 'Archivo',sans-serif;font-stretch:112%">LE JOURNAL — APPEND-ONLY</div>
+            <div style="font:500 13px/1.5 'Archivo',sans-serif;color:#4A3F33;margin-top:6px">Qui, quoi, pourquoi, quand, sur quelle commande, avec quelles preuves. Il n'existe aucun état « modifier » à dessiner — c'est le principe.</div>
+            <div style="display:flex;gap:7px;margin-top:12px;flex-wrap:wrap">
+              <sc-for list="{{ auditFilters }}" as="af" hint-placeholder-count="4">
+                <span style="{{ af.style }}" onClick="{{ af.pick }}">{{ af.name }}</span>
+              </sc-for>
+            </div>
+            <div style="margin-top:12px;border:1px solid rgba(27,20,13,0.22)">
+              <sc-for list="{{ auditRows }}" as="ar" hint-placeholder-count="6">
+                <div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid rgba(27,20,13,0.1)">
+                  <span style="font:600 10.5px ui-monospace,Menlo,monospace;color:#6E6154;flex:none">{{ ar.at }}</span>
+                  <span style="{{ ar.tagStyle }}">{{ ar.tag }}</span>
+                  <span style="flex:1;font:500 12px 'Archivo',sans-serif;color:#1B140D">{{ ar.what }}</span>
+                  <span style="font:600 10.5px ui-monospace,Menlo,monospace;color:#4A3F33;flex:none">{{ ar.ref }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+      </div>
+    </div>
+  </div>
+
+  <div style="font:500 12px 'Archivo',sans-serif;color:#6E6154">Changez d'humain dans le rail pour signer les deux moitiés — la console refuse la même main deux fois.</div>
+</div>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;: {&quot;width&quot;: 1420, &quot;height&quot;: 940}}">
+class Component extends DCLogic {
+  state = {
+    desk: 'claims',
+    poste: 'sana',
+    fault: 'vendeur',
+    issued: false, verified: false, blockMsg: false,
+    switches: { optionB: true, partage: true, campagnes: false, sorties: true },
+    confirming: null, typed: false,
+    auditFilter: 'Tout',
+    audit: [
+      { at: '15:07', tag: 'ARGENT', what: 'Commande appliquée : remboursement 12 500 F depuis le Fonds — émise F. Sana, vérifiée R. Ouédraogo', ref: 'RCL-0142' },
+      { at: '14:22', tag: 'GARDE', what: 'Issue appliquée : RETOUR AU VENDEUR — DEUX CLÉS (dispatch)', ref: 'CMD-2398' },
+      { at: '13:41', tag: 'MODÉRATION', what: 'Produit renvoyé avec motif précis : photo héro floue — jamais de rejet silencieux', ref: 'PRD-0871' },
+      { at: '11:19', tag: 'T&S', what: 'Revue manuelle ouverte : même repère, deux comptes — la suspicion n\u2019est pas une preuve', ref: 'TS-0033' },
+      { at: '09:02', tag: 'FLAG', what: 'Interrupteur coupé : campagnes Cercle (porte fermée — design-ahead)', ref: 'FLG-004' }
+    ]
+  };
+
+  renderVals() {
+    const s = this.state;
+    const ink = '#1B140D', paper = '#FFF8F1', danger = '#B3382C';
+
+    const railChip = on => 'display:inline-flex;align-items:center;cursor:pointer;white-space:nowrap;font:600 11px Archivo,sans-serif;padding:5px 9px;border-radius:4px;' +
+      (on ? 'background:#1B140D;color:#FFF8F1;' : 'background:rgba(27,20,13,0.06);color:#1B140D;');
+    const btn = (enabled, dangerous) => 'display:inline-flex;align-items:center;cursor:' + (enabled ? 'pointer' : 'default') + ';white-space:nowrap;font:800 10.5px Archivo,sans-serif;letter-spacing:1.2px;padding:10px 14px;border-radius:4px;' +
+      (enabled ? (dangerous ? 'background:#B3382C;color:#FFF8F1;' : 'background:#1B140D;color:#FFF8F1;') : 'background:rgba(27,20,13,0.12);color:rgba(27,20,13,0.4);');
+
+    const railSections = [
+      { id: 'D2', name: 'Réclamation (maker-checker)', states: [
+        { label: 'en attente', on: s.desk==='claims' && !s.issued, go: () => this.setState({ desk:'claims', issued:false, verified:false, blockMsg:false }) },
+        { label: 'émise (1/2)', on: s.desk==='claims' && s.issued && !s.verified, go: () => this.setState({ desk:'claims', issued:true, verified:false, blockMsg:false, poste:'oued' }) },
+        { label: 'appliquée (2/2)', on: s.desk==='claims' && s.verified, go: () => this.setState({ desk:'claims', issued:true, verified:true, blockMsg:false }) },
+        { label: 'même main → refus', on: s.desk==='claims' && s.blockMsg, go: () => this.setState({ desk:'claims', issued:true, verified:false, blockMsg:true, poste:'sana' }) } ] },
+      { id: 'D7', name: 'Interrupteurs', states: [
+        { label: 'liste', on: s.desk==='switches' && !s.confirming, go: () => this.setState({ desk:'switches', confirming:null, typed:false }) },
+        { label: 'confirmation tapée', on: s.desk==='switches' && !!s.confirming, go: () => this.setState({ desk:'switches', confirming:'optionB', typed:true }) } ] },
+      { id: 'D8', name: 'Le journal', states: [
+        { label: 'tout', on: s.desk==='audit', go: () => this.setState({ desk:'audit', auditFilter:'Tout' }) } ] }
+    ].map(sec => ({ ...sec, states: sec.states.map(st => ({ ...st, style: railChip(st.on) })) }));
+
+    const deskDefs = [
+      { key: 'fund', num: '1', name: 'Fonds de protection' },
+      { key: 'claims', num: '2', name: 'Réclamations', badge: '1' },
+      { key: 'moder', num: '3', name: 'Modération' },
+      { key: 'ts', num: '4', name: 'Trust & safety' },
+      { key: 'recon', num: '5', name: 'Rapprochement opérateur' },
+      { key: 'ladder', num: '6', name: 'Échelle de refus' },
+      { key: 'switches', num: '7', name: 'Interrupteurs' },
+      { key: 'audit', num: '8', name: 'Le journal' }
+    ];
+    const actives = { claims: 1, switches: 1, audit: 1 };
+    const desks = deskDefs.map(d => {
+      const on = s.desk === d.key;
+      const clickable = !!actives[d.key];
+      return {
+        num: d.num, name: d.name, hasBadge: !!d.badge, badge: d.badge || '',
+        go: () => { if (clickable) this.setState({ desk: d.key }); },
+        style: {
+          display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px',
+          cursor: clickable ? 'pointer' : 'default',
+          background: on ? '#F3EBDB' : 'transparent',
+          borderLeft: on ? '3px solid ' + ink : '3px solid transparent',
+          opacity: clickable ? 1 : 0.45
+        },
+        numStyle: { font: '800 10px ui-monospace,Menlo,monospace', background: on ? ink : 'rgba(27,20,13,0.08)', color: on ? paper : ink, padding: '2px 6px', flex: 'none' }
+      };
+    });
+
+    const faultDefs = [
+      { key: 'vendeur', label: 'FAUTE VENDEUR', line: 'Faute vendeur → le Fonds rembourse l\u2019acheteuse. Le solde du vendeur n\u2019est JAMAIS débité.' },
+      { key: 'sera', label: 'FAUTE SÉRA', line: 'Faute Séra → réclamation de responsabilité de garde (CustodyLiabilityClaim).' },
+      { key: 'acheteuse', label: 'FAUTE ACHETEUSE', line: 'Faute acheteuse → elle perd les frais de course. Un refus justifié ne compte jamais contre elle.' },
+      { key: 'operateur', label: 'FAUTE OPÉRATEUR', line: 'Faute opérateur → cas de rapprochement (bureau 5). Les promesses déjà faites aux clients sont protégées d\u2019abord.' }
+    ];
+    const faults = faultDefs.map(f => ({
+      label: f.label,
+      pick: () => this.setState({ fault: f.key }),
+      style: 'cursor:pointer;white-space:nowrap;font:800 10.5px Archivo,sans-serif;letter-spacing:1px;padding:9px 13px;border-radius:4px;' +
+        (s.fault === f.key ? 'background:#1B140D;color:#FFF8F1;border:1.5px solid #1B140D;' : 'background:#FFFDF7;color:#1B140D;border:1.5px solid rgba(27,20,13,0.35);')
+    }));
+
+    const isSana = s.poste === 'sana';
+    const canIssue = isSana && !s.issued;
+    const canVerify = !isSana && s.issued && !s.verified;
+
+    const swDefs = [
+      { key: 'optionB', name: 'Paiement à la porte (option B)', scope: 'PWA acheteuse · C5 — repli : option A seule, expliquée dignement' },
+      { key: 'partage', name: 'Cartes partageables (mode image)', scope: 'Shop+ · hub de partage — repli : lien seul' },
+      { key: 'campagnes', name: 'Campagnes Cercle', scope: 'Gated — la porte n\u2019est pas ouverte (§7.7.1)' },
+      { key: 'sorties', name: 'Paiements sortants (règlements)', scope: 'Tous les versements vendeurs et revendeuses' }
+    ];
+    const switches = swDefs.map(d => {
+      const on = s.switches[d.key];
+      const confirming = s.confirming === d.key;
+      return {
+        name: d.name, scope: d.scope,
+        stateLabel: on ? 'ACTIF' : 'COUPÉ',
+        stateChip: 'white-space:nowrap;font:800 9px Archivo,sans-serif;letter-spacing:1px;padding:4px 8px;' + (on ? 'background:#1F4D36;color:#F2F7F1;' : 'background:#F9E9E6;color:#7A2418;'),
+        btnLabel: on ? 'COUPER…' : 'RÉTABLIR',
+        btnStyle: btn(true, false),
+        act: () => {
+          if (on) this.setState({ confirming: d.key, typed: false });
+          else this.setState({
+            switches: { ...s.switches, [d.key]: true },
+            audit: [{ at: '15:12', tag: 'FLAG', what: 'Interrupteur rétabli : ' + d.name + ' — par ' + (isSana ? 'F. Sana' : 'R. Ouédraogo'), ref: 'FLG-00' + (Object.keys(s.switches).indexOf(d.key) + 1) }, ...s.audit]
+          });
+        },
+        confirming,
+        typedText: s.typed && confirming ? d.name : 'Tapez le nom exact de la capacité pour couper',
+        typedStyle: { font: (s.typed && confirming ? '700' : '500') + ' 12.5px Archivo,sans-serif', color: s.typed && confirming ? ink : '#8D7C64' },
+        type: () => this.setState({ typed: true }),
+        cutStyle: btn(s.typed && confirming, true),
+        cut: () => {
+          if (!(s.typed && confirming)) return;
+          this.setState({
+            switches: { ...s.switches, [d.key]: false }, confirming: null, typed: false,
+            audit: [{ at: '15:12', tag: 'FLAG', what: 'Interrupteur coupé : ' + d.name + ' — par ' + (isSana ? 'F. Sana' : 'R. Ouédraogo') + ', sans déploiement, journalisé', ref: 'FLG-00' + (Object.keys(s.switches).indexOf(d.key) + 1) }, ...s.audit]
+          });
+        },
+        cancel: () => this.setState({ confirming: null, typed: false })
+      };
+    });
+
+    const auditFilters = ['Tout', 'ARGENT', 'GARDE', 'FLAG'].map(name => ({
+      name,
+      pick: () => this.setState({ auditFilter: name }),
+      style: 'cursor:pointer;white-space:nowrap;font:700 11px Archivo,sans-serif;letter-spacing:0.6px;padding:6px 11px;border-radius:4px;' +
+        (s.auditFilter === name ? 'background:#1B140D;color:#FFF8F1;border:1.5px solid #1B140D;' : 'background:#FFFDF7;color:#1B140D;border:1.5px solid rgba(27,20,13,0.3);')
+    }));
+    const tagColor = { ARGENT: '#C2571B', GARDE: '#B98A1F', FLAG: '#1F4D36', 'MODÉRATION': '#6E6154', 'T&S': '#6E6154' };
+    const auditRows = s.audit
+      .filter(a => s.auditFilter === 'Tout' || a.tag === s.auditFilter)
+      .map(a => ({ ...a, tagStyle: 'white-space:nowrap;font:800 8.5px Archivo,sans-serif;letter-spacing:0.8px;padding:3px 7px;flex:none;background:' + (tagColor[a.tag] || '#6E6154') + ';color:#FFF8F1;' }));
+
+    const titles = { claims: 'Réclamations — l\u2019adjudication (bureau 2)', switches: 'Flags & interrupteurs (bureau 7)', audit: 'Le journal append-only (bureau 8)' };
+
+    return {
+      posteLabel: isSana ? 'Poste : F. Sana — paiements' : 'Poste : R. Ouédraogo — dispatch',
+      beSana: () => this.setState({ poste: 'sana', blockMsg: false }),
+      beOued: () => this.setState({ poste: 'oued', blockMsg: false }),
+      sanaDot: 'width:10px;height:10px;border-radius:999px;flex:none;background:' + (isSana ? '#C2571B' : 'rgba(27,20,13,0.2)'),
+      ouedDot: 'width:10px;height:10px;border-radius:999px;flex:none;background:' + (!isSana ? '#C2571B' : 'rgba(27,20,13,0.2)'),
+      railSections, desks,
+      screenTitle: titles[s.desk] || titles.claims,
+
+      isClaims: s.desk === 'claims', isSwitches: s.desk === 'switches', isAudit: s.desk === 'audit',
+
+      faults,
+      faultLine: faultDefs.find(f => f.key === s.fault).line,
+      issuedOn: s.issued, issuedOff: !s.issued,
+      verifiedOn: s.verified, verifiedOff: !s.verified,
+      applied: s.verified,
+      blockMsgOn: s.blockMsg,
+      issueBtnStyle: btn(canIssue, false),
+      issueHint: canIssue ? 'Vous êtes F. Sana — vous pouvez émettre cette moitié.' : 'Seule l\u2019opératrice paiements émet. Changez d\u2019humain dans le rail pour simuler.',
+      doIssue: () => { if (canIssue) this.setState({ issued: true, blockMsg: false }); },
+      verifyBtnStyle: btn(s.issued && !s.verified, false),
+      verifyHint: !s.issued ? 'Rien à vérifier tant que la moitié 1 n\u2019est pas émise.' : (canVerify ? 'Vous êtes R. Ouédraogo — vous vérifiez sur le terrain.' : 'Vous avez émis la moitié 1. La console refusera votre signature ici.'),
+      doVerify: () => {
+        if (!s.issued || s.verified) return;
+        if (isSana) { this.setState({ blockMsg: true }); return; }
+        this.setState({
+          verified: true, blockMsg: false,
+          audit: [{ at: '15:07', tag: 'ARGENT', what: 'Commande appliquée : remboursement 12 500 F depuis le Fonds — émise F. Sana, vérifiée R. Ouédraogo', ref: 'RCL-0142' }, ...s.audit.filter(a => a.ref !== 'RCL-0142')]
+        });
+      },
+
+      switches,
+      auditFilters, auditRows
+    };
+  }
+}
+</script>
+</body>
+</html>

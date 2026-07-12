@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..900&amp;display=swap">
+<style>
+body{margin:0;background:#EBE6DC;font-family:'Archivo',system-ui,sans-serif}
+a{color:#C2571B}a:hover{color:#9E4512}
+@keyframes gtSkel{0%,100%{opacity:1}50%{opacity:0.4}}
+@keyframes celHalo{0%{transform:scale(0.35);opacity:0}30%{opacity:0.55}100%{transform:scale(1.18);opacity:0}}
+@keyframes celRing{0%{transform:scale(0.5);opacity:0.8}100%{transform:scale(1.32);opacity:0}}
+@keyframes celFlyFar{0%{transform:translateY(0) scale(0.4);opacity:0}18%{opacity:1}100%{transform:translateY(-118px) scale(1);opacity:0}}
+@keyframes celFlyNear{0%{transform:translateY(0) scale(0.5);opacity:0}18%{opacity:1}100%{transform:translateY(-76px) scale(0.9);opacity:0}}
+@keyframes celPop{0%{transform:scale(0.55);opacity:0}55%{transform:scale(1.07);opacity:1}100%{transform:scale(1);opacity:1}}
+</style>
+</helmet>
+
+<div style="display:flex;min-height:100vh;align-items:stretch">
+
+<!-- ============ RAIL ============ -->
+<div style="width:292px;flex:none;background:#FFFDF7;border-right:1px solid rgba(27,20,13,0.14);padding:20px 18px 28px;box-sizing:border-box;height:100vh;overflow-y:auto;position:sticky;top:0">
+  <div style="display:flex;align-items:center;gap:8px">
+    <span style="background:#C2571B;color:#FFF8F1;font:800 10px 'Archivo',sans-serif;letter-spacing:1.5px;padding:4px 8px">SHOP+</span>
+    <span style="font:800 12px 'Archivo',sans-serif;letter-spacing:1.8px">OPPORTUNITÉS · GAINS</span>
+  </div>
+  <div style="font:500 12px/1.5 'Archivo',sans-serif;color:#6E6154;margin-top:6px">S2 + S6 : chaque carte mène par le net (« Vous gagnez X F net »), jamais un brut, jamais la répartition. Les gains se règlent après livraison validée.</div>
+
+  <div style="margin-top:16px;border:1.5px solid #1B140D">
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid rgba(27,20,13,0.14);cursor:pointer" onClick="{{ toggleOffline }}">
+      <span style="flex:1;font:700 12px 'Archivo',sans-serif;letter-spacing:0.5px">Hors ligne</span>
+      <span style="width:34px;height:20px;border-radius:999px;background:{{ offSwBg }};position:relative;display:inline-block;transition:background 150ms"><span style="position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:999px;background:#FFFDF7;transform:{{ offSwKnob }};transition:transform 150ms"></span></span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer" onClick="{{ toggleRm }}">
+      <span style="flex:1;font:700 12px 'Archivo',sans-serif;letter-spacing:0.5px">Réduire le mouvement</span>
+      <span style="width:34px;height:20px;border-radius:999px;background:{{ rmSwBg }};position:relative;display:inline-block;transition:background 150ms"><span style="position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:999px;background:#FFFDF7;transform:{{ rmSwKnob }};transition:transform 150ms"></span></span>
+    </div>
+  </div>
+
+  <sc-for list="{{ railSections }}" as="sec" hint-placeholder-count="2">
+    <div style="margin-top:16px">
+      <div style="display:flex;align-items:baseline;gap:7px">
+        <span style="font:800 10.5px ui-monospace,Menlo,monospace;background:{{ sec.idBg }};color:{{ sec.idColor }};padding:2px 6px">{{ sec.id }}</span>
+        <span style="font:700 12px 'Archivo',sans-serif">{{ sec.name }}</span>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
+        <sc-for list="{{ sec.states }}" as="st" hint-placeholder-count="3">
+          <span style="{{ st.style }}" onClick="{{ st.go }}">{{ st.label }}</span>
+        </sc-for>
+      </div>
+    </div>
+  </sc-for>
+
+  <div style="margin-top:20px;border-left:3px solid #C2571B;padding:2px 0 2px 12px">
+    <div style="font:800 10px 'Archivo',sans-serif;letter-spacing:2px;color:#6E6154">TEST 5 SECONDES</div>
+    <div style="font:600 13px/1.45 'Archivo',sans-serif;margin-top:4px">{{ fiveSecond }}</div>
+  </div>
+
+  <div style="margin-top:14px;font:500 11.5px/1.55 'Archivo',sans-serif;color:#6E6154">Lois tenues : le net d'abord, toujours · zéro « échec » — l'état vide encourage · règlement seulement après livraison validée · squelettes aux dimensions exactes.</div>
+</div>
+
+<!-- ============ STAGE ============ -->
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:28px 20px;gap:14px">
+  <div style="display:flex;align-items:baseline;gap:9px">
+    <span style="font:800 11px ui-monospace,Menlo,monospace;background:#1B140D;color:#FFF8F1;padding:3px 7px">{{ screenId }}</span>
+    <span style="font:700 13px 'Archivo',sans-serif;letter-spacing:0.5px">{{ screenTitle }}</span>
+  </div>
+
+  <div style="width:360px;height:800px;background:#FFFDF7;border:1px solid rgba(27,20,13,0.22);box-shadow:0 18px 44px rgba(27,20,13,0.16);position:relative;overflow:hidden;display:flex;flex-direction:column;color:#1B140D;flex:none">
+
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px 6px;flex:none">
+      <span style="font:600 13px 'Archivo',sans-serif">11:03</span>
+      <span style="display:flex;gap:5px;align-items:center">
+        <svg width="15" height="11" viewBox="0 0 15 11" fill="#1B140D"><rect x="0" y="7" width="2.6" height="4" rx="0.8"></rect><rect x="4" y="4.5" width="2.6" height="6.5" rx="0.8"></rect><rect x="8" y="2" width="2.6" height="9" rx="0.8"></rect><rect x="12" y="0" width="2.6" height="11" rx="0.8" opacity="0.35"></rect></svg>
+        <svg width="22" height="11" viewBox="0 0 24 11"><rect x="0.5" y="0.5" width="19" height="10" rx="3" fill="none" stroke="#1B140D" opacity="0.4"></rect><rect x="2.5" y="2.5" width="12" height="6" rx="1.5" fill="#1B140D"></rect><path d="M22 3.5v4" stroke="#1B140D" stroke-width="1.6" stroke-linecap="round"></path></svg>
+      </span>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid rgba(27,20,13,0.14);flex:none">
+      <span style="font:800 12px 'Archivo',sans-serif;letter-spacing:1.8px">{{ headerLabel }}</span>
+      <span style="font:500 11.5px 'Archivo',sans-serif;color:#6E6154">Aïcha</span>
+    </div>
+    <div style="height:4px;background:#C2571B;flex:none"></div>
+
+    <sc-if value="{{ offline }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:none;background:#1B140D;color:#FFF8F1;display:flex;align-items:center;gap:8px;padding:7px 14px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFF8F1" stroke-width="1.8" stroke-linecap="round"><path d="M3 6.5a13 13 0 0 1 18 0"></path><path d="M6.5 10a8.5 8.5 0 0 1 11 0"></path><circle cx="12" cy="16.5" r="1.6" fill="#FFF8F1" stroke="none"></circle><path d="M4 20L20 4"></path></svg>
+        <span style="font:600 11.5px 'Archivo',sans-serif">Hors ligne : le catalogue affiché est celui d'hier soir.</span>
+      </div>
+    </sc-if>
+
+    <div style="flex:1;position:relative;overflow:hidden">
+      <div style="{{ animStyle }}">
+
+        <!-- ======== S2 · OPPORTUNITÉS ======== -->
+        <sc-if value="{{ isOpps }}" hint-placeholder-val="{{ true }}">
+          <div data-screen-label="S2 Opportunités" style="height:100%;overflow-y:auto">
+            <div style="margin:12px 16px 0;border:1.5px solid rgba(27,20,13,0.35);height:46px;display:flex;align-items:center;gap:9px;padding:0 13px">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6E6154" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"></circle><path d="M16 16l4.5 4.5"></path></svg>
+              <span style="font:500 14px 'Archivo',sans-serif;color:#8D7C64">Chercher un produit à vendre</span>
+            </div>
+            <div style="display:flex;gap:7px;padding:10px 16px 0;flex-wrap:wrap">
+              <sc-for list="{{ filters }}" as="f" hint-placeholder-count="4">
+                <span style="{{ f.style }}" onClick="{{ f.pick }}">{{ f.name }}</span>
+              </sc-for>
+            </div>
+
+            <sc-if value="{{ s2Loading }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:12px 16px 0">
+                <div style="height:112px;border:1px solid rgba(27,20,13,0.14);margin-bottom:10px;display:flex;gap:12px;padding:13px;box-sizing:border-box;animation:gtSkel 1.1s ease-in-out infinite"><div style="width:84px;height:84px;background:#F3EBDB;flex:none"></div><div style="flex:1"><div style="height:14px;background:#F3EBDB;width:70%"></div><div style="height:12px;background:#F3EBDB;width:50%;margin-top:9px"></div><div style="height:18px;background:#F3EBDB;width:60%;margin-top:12px"></div></div></div>
+                <div style="height:112px;border:1px solid rgba(27,20,13,0.14);margin-bottom:10px;display:flex;gap:12px;padding:13px;box-sizing:border-box;animation:gtSkel 1.1s ease-in-out infinite;animation-delay:120ms"><div style="width:84px;height:84px;background:#F3EBDB;flex:none"></div><div style="flex:1"><div style="height:14px;background:#F3EBDB;width:65%"></div><div style="height:12px;background:#F3EBDB;width:45%;margin-top:9px"></div><div style="height:18px;background:#F3EBDB;width:55%;margin-top:12px"></div></div></div>
+                <div style="height:112px;border:1px solid rgba(27,20,13,0.14);margin-bottom:10px;display:flex;gap:12px;padding:13px;box-sizing:border-box;animation:gtSkel 1.1s ease-in-out infinite;animation-delay:240ms"><div style="width:84px;height:84px;background:#F3EBDB;flex:none"></div><div style="flex:1"><div style="height:14px;background:#F3EBDB;width:72%"></div><div style="height:12px;background:#F3EBDB;width:48%;margin-top:9px"></div><div style="height:18px;background:#F3EBDB;width:62%;margin-top:12px"></div></div></div>
+                <div style="text-align:center;padding-top:4px;font:500 11.5px 'Archivo',sans-serif;color:#8D7C64">Le catalogue arrive — même taille, même place, rien ne saute.</div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ s2List }}" hint-placeholder-val="{{ true }}">
+              <div style="padding:12px 16px 4px">
+                <sc-for list="{{ products }}" as="p" hint-placeholder-count="4">
+                  <div style="{{ p.rowStyle }}">
+                    <div style="width:84px;height:84px;background:#F3EBDB;position:relative;flex:none">
+                      <div style="position:absolute;top:5px;left:5px;width:9px;height:9px;border-top:1.5px solid rgba(27,20,13,0.45);border-left:1.5px solid rgba(27,20,13,0.45)"></div>
+                      <div style="position:absolute;bottom:5px;right:5px;width:9px;height:9px;border-bottom:1.5px solid rgba(27,20,13,0.45);border-right:1.5px solid rgba(27,20,13,0.45)"></div>
+                      <sc-if value="{{ p.out }}" hint-placeholder-val="{{ false }}">
+                        <div style="position:absolute;inset:0;background:rgba(255,253,247,0.72);display:flex;align-items:center;justify-content:center"><span style="border:1.5px solid #1B140D;background:#FFFDF7;padding:2px 6px;font:900 8px 'Archivo',sans-serif;letter-spacing:1.2px">ÉPUISÉ</span></div>
+                      </sc-if>
+                    </div>
+                    <div style="flex:1;min-width:0">
+                      <div style="{{ p.netStyle }}">{{ p.net }}</div>
+                      <div style="font:700 14px/1.25 'Archivo',sans-serif;margin-top:3px">{{ p.name }}</div>
+                      <div style="font:500 12px 'Archivo',sans-serif;color:#6E6154;margin-top:2px;font-feature-settings:'tnum'">{{ p.priceLine }}</div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:6px">
+                      <span style="{{ p.ctaStyle }}" onClick="{{ p.add }}">{{ p.ctaLabel }}</span>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="text-align:center;padding:6px 16px 22px;font:500 11.5px 'Archivo',sans-serif;color:#6E6154">Le net que vous voyez est déjà votre part — rien à calculer.</div>
+            </sc-if>
+
+            <sc-if value="{{ s2Empty }}" hint-placeholder-val="{{ false }}">
+              <div style="padding:70px 30px 0;display:flex;flex-direction:column;align-items:center;text-align:center">
+                <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#8D7C64" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7.5 4.2v9.6L12 21l-7.5-4.2V7.2L12 3z"></path><path d="M4.5 7.2L12 11.5l7.5-4.3"></path><path d="M12 11.5V21"></path></svg>
+                <div style="font:900 21px/1.15 'Archivo',sans-serif;font-stretch:110%;margin-top:14px">Rien dans cette catégorie — pour l'instant.</div>
+                <div style="font:500 14px/1.55 'Archivo',sans-serif;color:#4A3F33;margin-top:9px">Le catalogue grandit chaque semaine. Regardez une autre catégorie, ou revenez demain.</div>
+                <div style="height:48px;border:1.5px solid #1B140D;display:flex;align-items:center;justify-content:center;white-space:nowrap;font:800 11.5px 'Archivo',sans-serif;letter-spacing:1.5px;border-radius:6px;cursor:pointer;margin-top:16px;padding:0 22px" onClick="{{ backToAll }}">VOIR TOUT LE CATALOGUE</div>
+              </div>
+            </sc-if>
+          </div>
+        </sc-if>
+
+        <!-- ======== S6 · MES GAINS ======== -->
+        <sc-if value="{{ isGains }}" hint-placeholder-val="{{ false }}">
+          <div data-screen-label="S6 Mes gains" style="height:100%;overflow-y:auto">
+            <div style="padding:24px 16px 0;text-align:center">
+              <div style="font:800 10.5px 'Archivo',sans-serif;letter-spacing:2.4px;color:#6E6154">VOTRE GAIN NET</div>
+              <div style="font:900 50px/1 'Archivo',sans-serif;font-feature-settings:'tnum';margin-top:9px">{{ gainStr }}</div>
+              <sc-if value="{{ firstChip }}" hint-placeholder-val="{{ false }}">
+                <div style="margin-top:11px"><span style="background:#C2571B;color:#FFF8F1;font:900 12px 'Archivo',sans-serif;letter-spacing:2px;padding:7px 14px">PREMIÈRE VENTE&#8239;!</span></div>
+              </sc-if>
+            </div>
+
+            <sc-if value="{{ s6Zero }}" hint-placeholder-val="{{ false }}">
+              <div style="margin:22px 16px 0;border:1.5px solid #1B140D;padding:16px">
+                <div style="font:900 18px/1.2 'Archivo',sans-serif;font-stretch:110%">Votre première vente arrive.</div>
+                <div style="font:500 14px/1.55 'Archivo',sans-serif;color:#4A3F33;margin-top:7px">Choisissez un produit, ajoutez votre marge, partagez votre lien. C'est tout — Séra et le paiement protégé font le reste.</div>
+                <div style="height:52px;background:#C2571B;color:#FFF8F1;display:flex;align-items:center;justify-content:center;font:800 12.5px 'Archivo',sans-serif;letter-spacing:1.8px;border-radius:6px;cursor:pointer;margin-top:14px" onClick="{{ goOpps }}">CHOISIR UN PRODUIT</div>
+              </div>
+              <div style="text-align:center;padding:14px 16px 0;font:500 12px 'Archivo',sans-serif;color:#6E6154">0&#8239;F aujourd'hui, c'est juste le point de départ.</div>
+            </sc-if>
+
+            <sc-if value="{{ s6HasRows }}" hint-placeholder-val="{{ true }}">
+              <div style="margin:20px 16px 0;border:1.5px solid #1B140D">
+                <div style="display:flex;justify-content:space-between;gap:10px;padding:11px 12px;border-bottom:1px solid rgba(27,20,13,0.14)">
+                  <span style="font:600 13px 'Archivo',sans-serif">Réglé, sur votre compte</span>
+                  <span style="font:800 14px 'Archivo',sans-serif;font-feature-settings:'tnum';white-space:nowrap">{{ settledStr }}</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;gap:10px;padding:11px 12px;align-items:center">
+                  <span style="font:600 13px 'Archivo',sans-serif;color:#4A3F33">En attente — livraison validée</span>
+                  <span style="font:800 14px 'Archivo',sans-serif;font-feature-settings:'tnum';color:#6B4E0C;white-space:nowrap">{{ pendingStr }}</span>
+                </div>
+              </div>
+              <div style="padding:6px 16px 0;text-align:right;font:600 11px 'Archivo',sans-serif;color:#6E6154;font-feature-settings:'tnum'">{{ reconcileStr }}</div>
+              <sc-if value="{{ payoutBanner }}" hint-placeholder-val="{{ false }}">
+                <div style="margin:12px 16px 0;background:#F7EED7;border-left:4px solid #6B4E0C;padding:11px 13px;font:600 12.5px/1.5 'Archivo',sans-serif;color:#6B4E0C">Versement Orange Money en cours — sous 24&#8239;h. Nous vous prévenons quand c'est déposé.</div>
+              </sc-if>
+              <div style="padding:16px 16px 0;font:800 11px 'Archivo',sans-serif;letter-spacing:2px;color:#6E6154">VOS VENTES</div>
+              <div style="margin:8px 16px 0;border:1px solid rgba(27,20,13,0.22)">
+                <sc-for list="{{ sales }}" as="v" hint-placeholder-count="3">
+                  <div style="display:flex;align-items:center;gap:10px;padding:12px;border-bottom:1px solid rgba(27,20,13,0.12)">
+                    <div style="flex:1;min-width:0">
+                      <div style="font:600 13.5px/1.3 'Archivo',sans-serif">{{ v.name }}</div>
+                      <div style="font:500 11.5px 'Archivo',sans-serif;color:#6E6154;margin-top:2px">{{ v.sub }}</div>
+                    </div>
+                    <span style="{{ v.chipStyle }}">{{ v.chip }}</span>
+                    <span style="font:800 14px 'Archivo',sans-serif;font-feature-settings:'tnum';color:#1F4D36;white-space:nowrap">{{ v.amount }}</span>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="margin:14px 16px 0;border-left:3px solid #1B140D;padding:2px 0 2px 12px;font:600 13px/1.5 'Archivo',sans-serif">Votre gain net d'abord, toujours. Réglé après la livraison validée — jamais avant.</div>
+              <div style="height:22px"></div>
+            </sc-if>
+            {{ celS }}
+          </div>
+        </sc-if>
+
+        <!-- ======== HANDOFF (vitrine / partager) ======== -->
+        <sc-if value="{{ isHandoff }}" hint-placeholder-val="{{ false }}">
+          <div data-screen-label="Renvoi vers un autre prototype" style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 34px;text-align:center">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#8D7C64" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M13 5h6v6"></path><path d="M19 5l-8.5 8.5"></path><path d="M19 14v5H5V5h5"></path></svg>
+            <div style="font:900 20px/1.2 'Archivo',sans-serif;font-stretch:110%;margin-top:14px">{{ handoffTitle }}</div>
+            <div style="font:500 13.5px/1.55 'Archivo',sans-serif;color:#4A3F33;margin-top:8px">Ce parcours vit dans son propre prototype, déjà cliquable de bout en bout.</div>
+            <a href="Hub de Partage - Prototype.dc.html" style="display:inline-flex;align-items:center;gap:8px;margin-top:16px;font:800 11.5px 'Archivo',sans-serif;letter-spacing:1.5px;color:#A34312;border-bottom:1.5px solid #A34312;padding-bottom:2px;text-decoration:none">OUVRIR LE HUB DE PARTAGE</a>
+          </div>
+        </sc-if>
+
+      </div>
+    </div>
+
+    <!-- ======== TAB BAR ======== -->
+    <div style="flex:none;display:flex;border-top:1px solid rgba(27,20,13,0.14);background:#FFFDF7">
+      <div style="{{ tabOppsStyle }}" onClick="{{ goOpps }}">
+        <div style="{{ tabOppsBar }}"></div>
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><rect x="4" y="4" width="7" height="7"></rect><rect x="13" y="4" width="7" height="7"></rect><rect x="4" y="13" width="7" height="7"></rect><rect x="13" y="13" width="7" height="7"></rect></svg>
+        <span style="font:800 9px 'Archivo',sans-serif;letter-spacing:0.8px">OPPORTUNITÉS</span>
+      </div>
+      <div style="{{ tabVitrineStyle }}" onClick="{{ goVitrineTab }}">
+        <div style="{{ tabVitrineBar }}"></div>
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9l1.5-4.5h13L20 9"></path><path d="M4 9h16v11H4V9z"></path><path d="M9.5 20v-6h5v6"></path></svg>
+        <span style="font:800 9px 'Archivo',sans-serif;letter-spacing:0.8px">MA VITRINE</span>
+      </div>
+      <div style="{{ tabPartagerStyle }}" onClick="{{ goPartagerTab }}">
+        <div style="{{ tabPartagerBar }}"></div>
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="12" r="2.6"></circle><circle cx="17.5" cy="5.5" r="2.6"></circle><circle cx="17.5" cy="18.5" r="2.6"></circle><path d="M8.4 10.8l6.8-4"></path><path d="M8.4 13.2l6.8 4"></path></svg>
+        <span style="font:800 9px 'Archivo',sans-serif;letter-spacing:0.8px">PARTAGER</span>
+      </div>
+      <div style="{{ tabGainsStyle }}" onClick="{{ goGains }}">
+        <div style="{{ tabGainsBar }}"></div>
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="8.5"></circle><path d="M9.2 15V9.4h4.2"></path><path d="M9.2 12.4h3.4"></path></svg>
+        <span style="font:800 9px 'Archivo',sans-serif;letter-spacing:0.8px">MES GAINS</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="font:500 12px 'Archivo',sans-serif;color:#6E6154">S2 ↔ S6 par la barre d'onglets. « AJOUTER » sur une carte, puis la première vente dans le rail.</div>
+</div>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;startScreen&quot;: {&quot;editor&quot;: &quot;enum&quot;, &quot;options&quot;: [&quot;opps&quot;, &quot;gains&quot;], &quot;default&quot;: &quot;opps&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Prototype&quot;}, &quot;reducedMotion&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: false, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Prototype&quot;}}">
+class Component extends DCLogic {
+  state = {
+    view: this.props.startScreen ?? 'opps',
+    entered: true, offline: false, rm: this.props.reducedMotion ?? false,
+    s2: 'list', filter: 'Tous', added: {},
+    s6: this.props.startScreen === 'gains' ? 'earning' : 'zero',
+    gain: 0, celKey: 0, celOn: false,
+    handoff: 'vitrine'
+  };
+
+  _timers = [];
+  _t(fn, ms) { const id = setTimeout(fn, ms); this._timers.push(id); return id; }
+  componentWillUnmount() { this._timers.forEach(clearTimeout); if (this._raf) cancelAnimationFrame(this._raf); }
+
+  nav(view, patch) {
+    patch = patch || {};
+    if (this.state.rm) { this.setState({ view, entered: true, ...patch }); return; }
+    this.setState({ view, entered: false, ...patch });
+    this._t(() => this.setState({ entered: true }), 30);
+  }
+
+  countTo(to, dur) {
+    if (this._raf) cancelAnimationFrame(this._raf);
+    if (this.state.rm) { this.setState({ gain: to }); return; }
+    const from = this.state.gain, start = performance.now();
+    const tick = now => {
+      const t = Math.min(1, (now - start) / dur);
+      this.setState({ gain: Math.round(from + (to - from) * (1 - Math.pow(1 - t, 3))) });
+      if (t < 1) this._raf = requestAnimationFrame(tick);
+    };
+    this._raf = requestAnimationFrame(tick);
+    this._t(() => this.setState({ gain: to }), dur + 80);
+  }
+
+  playCel() {
+    if (this.state.rm) return;
+    this.setState(s => ({ celKey: s.celKey + 1, celOn: true }));
+    this._t(() => this.setState({ celOn: false }), 860);
+  }
+
+  firstSale() {
+    this.nav('gains', { s6: 'first', gain: 0 });
+    this._t(() => { this.countTo(2000, 560); this.playCel(); }, 240);
+  }
+
+  buildCel(keyN, on) {
+    if (!on) return null;
+    const h = React.createElement;
+    const parts = [];
+    for (let i = 0; i < 10; i++) {
+      const ang = i * 36, far = i % 2 === 0, sz = far ? 17 : 12;
+      const col = i % 3 === 2 ? '#D9A441' : '#C2571B';
+      parts.push(h('div', { key: 'w' + i, style: { position: 'absolute', transform: 'rotate(' + ang + 'deg)' } },
+        h('div', { style: { animation: (far ? 'celFlyFar' : 'celFlyNear') + ' 640ms cubic-bezier(0.16,0.8,0.3,1) forwards', animationDelay: (i * 14) + 'ms', opacity: 0 } },
+          h('svg', { width: sz, height: sz, viewBox: '0 0 20 20' },
+            h('path', { d: 'M10 1.5L18.5 10 10 18.5 1.5 10z', fill: 'none', stroke: col, strokeWidth: 1.9 }),
+            h('path', { d: 'M10 6.2L13.8 10 10 13.8 6.2 10z', fill: col })))));
+    }
+    return h('div', { key: 'cel' + keyN, onClick: () => this.setState({ celOn: false }), style: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5, cursor: 'pointer' } },
+      h('div', { style: { position: 'absolute', width: 220, height: 220, borderRadius: 999, background: 'rgba(194,87,27,0.18)', animation: 'celHalo 700ms cubic-bezier(0.2,0.8,0.25,1) forwards' } }),
+      h('div', { style: { position: 'absolute', width: 132, height: 132, borderRadius: 999, border: '2px solid #C2571B', animation: 'celRing 620ms cubic-bezier(0.2,0.8,0.25,1) forwards', boxSizing: 'border-box' } }),
+      parts,
+      h('div', { style: { position: 'relative', background: '#C2571B', color: '#FFF8F1', padding: '11px 20px', font: '900 15px Archivo,sans-serif', letterSpacing: '2.5px', animation: 'celPop 260ms cubic-bezier(0.34,1.56,0.64,1) both', animationDelay: '50ms', boxShadow: '0 10px 26px rgba(27,20,13,0.25)' } }, 'PREMIÈRE VENTE'));
+  }
+
+  renderVals() {
+    const s = this.state;
+    const ink = '#1B140D', paper = '#FFF8F1', accent = '#C2571B';
+    const fmt = n => n.toLocaleString('fr-FR').replace(/[\u00a0\u202f,]/g, '\u202f') + '\u202fF';
+
+    const railChip = on => 'display:inline-flex;align-items:center;cursor:pointer;white-space:nowrap;font:600 11px Archivo,sans-serif;padding:5px 9px;border-radius:4px;' +
+      (on ? 'background:#1B140D;color:#FFF8F1;' : 'background:rgba(27,20,13,0.06);color:#1B140D;');
+    const filterChip = on => 'cursor:pointer;white-space:nowrap;font:700 11.5px Archivo,sans-serif;letter-spacing:0.4px;padding:7px 12px;border-radius:4px;' +
+      (on ? 'background:#1B140D;color:#FFF8F1;border:1.5px solid #1B140D;' : 'background:#FFFDF7;color:#1B140D;border:1.5px solid rgba(27,20,13,0.3);');
+
+    const railSections = [
+      { id: 'S2', name: 'Opportunités', states: [
+        { label: 'chargement', on: s.view==='opps' && s.s2==='loading', go: () => { this.nav('opps', { s2:'loading' }); this._t(() => this.setState({ s2:'list' }), 1600); } },
+        { label: 'liste', on: s.view==='opps' && s.s2==='list' && s.filter==='Tous', go: () => this.nav('opps', { s2:'list', filter:'Tous' }) },
+        { label: 'vide', on: s.view==='opps' && s.s2==='empty', go: () => this.nav('opps', { s2:'empty', filter:'Maison' }) },
+        { label: 'hors ligne', on: s.view==='opps' && s.offline, go: () => this.nav('opps', { s2:'list', offline:true }) } ] },
+      { id: 'S6', name: 'Mes gains', states: [
+        { label: 'zéro (encourageant)', on: s.view==='gains' && s.s6==='zero', go: () => this.nav('gains', { s6:'zero', gain:0 }) },
+        { label: 'première vente ⭐', on: s.view==='gains' && s.s6==='first', go: () => this.firstSale() },
+        { label: 'gains', on: s.view==='gains' && s.s6==='earning', go: () => { this.nav('gains', { s6:'earning' }); this.countTo(6040, 560); } },
+        { label: 'versement en cours', on: s.view==='gains' && s.s6==='payout', go: () => { this.nav('gains', { s6:'payout' }); this.countTo(6040, 560); } } ] }
+    ].map(sec => {
+      const active = (sec.id==='S2' && s.view==='opps') || (sec.id==='S6' && s.view==='gains');
+      return { ...sec, idBg: active ? ink : 'rgba(27,20,13,0.08)', idColor: active ? paper : ink,
+        states: sec.states.map(st => ({ ...st, style: railChip(st.on) })) };
+    });
+
+    const productDefs = [
+      { key: 'robe', name: 'Robe brodée bogolan · M', net: 2000, price: 11500, cat: 'Vêtements', out: false },
+      { key: 'sac', name: 'Sac cuir artisanal', net: 1400, price: 8000, cat: 'Sacs', out: false },
+      { key: 'chemise', name: 'Chemise Faso Dan Fani · L', net: 1680, price: 9500, cat: 'Vêtements', out: false },
+      { key: 'boubou', name: 'Boubou brodé', net: 2400, price: 15000, cat: 'Vêtements', out: true },
+      { key: 'foulard', name: 'Foulard tissé main', net: 960, price: 4500, cat: 'Vêtements', out: false }
+    ];
+    const products = productDefs
+      .filter(p => s.filter === 'Tous' || p.cat === s.filter)
+      .map(p => {
+        const added = !!s.added[p.key];
+        return {
+          ...p,
+          net: 'VOUS GAGNEZ +\u202f' + fmt(p.net) + ' NET',
+          netStyle: { font: '800 12px Archivo,sans-serif', letterSpacing: '0.6px', color: p.out ? '#8D7C64' : accent, fontFeatureSettings: "'tnum'" },
+          priceLine: 'Prix conseillé\u00a0: ' + fmt(p.price) + ' — livré par Séra',
+          rowStyle: { display: 'flex', gap: '12px', padding: '13px', border: '1px solid rgba(27,20,13,0.22)', marginBottom: '10px', opacity: p.out ? 0.75 : 1, background: '#FFFDF7' },
+          ctaLabel: p.out ? 'ÉPUISÉ' : (added ? 'AJOUTÉ ✓' : 'AJOUTER'),
+          ctaStyle: 'cursor:pointer;white-space:nowrap;font:800 10px Archivo,sans-serif;letter-spacing:1.2px;padding:8px 11px;border-radius:4px;' +
+            (p.out ? 'border:1.5px solid rgba(27,20,13,0.2);color:rgba(27,20,13,0.4);cursor:default;'
+              : added ? 'background:#1F4D36;color:#F2F7F1;border:1.5px solid #1F4D36;'
+              : 'border:1.5px solid #1B140D;color:#1B140D;'),
+          add: () => { if (!p.out) this.setState(st => ({ added: { ...st.added, [p.key]: !st.added[p.key] } })); }
+        };
+      });
+
+    const filters = ['Tous', 'Vêtements', 'Sacs', 'Maison'].map(name => ({
+      name,
+      style: filterChip(s.filter === name && s.s2 !== 'empty' || (s.s2 === 'empty' && name === 'Maison')),
+      pick: () => {
+        if (name === 'Maison') this.setState({ filter: name, s2: 'empty' });
+        else this.setState({ filter: name, s2: 'list' });
+      }
+    }));
+
+    const salesAll = [
+      { name: 'Robe brodée bogolan · M', sub: 'Vendue à votre prix — 13\u202f000\u202fF', chip: 'EN ATTENTE', pending: true, amount: '+\u202f2\u202f000\u202fF' },
+      { name: 'Chemise Faso Dan Fani · L', sub: 'Livrée et validée mardi', chip: 'RÉGLÉ', pending: false, amount: '+\u202f1\u202f680\u202fF' },
+      { name: 'Sac cuir artisanal', sub: 'Livrée et validée lundi', chip: 'RÉGLÉ', pending: false, amount: '+\u202f1\u202f400\u202fF' },
+      { name: 'Foulard tissé main', sub: 'Livrée et validée lundi', chip: 'RÉGLÉ', pending: false, amount: '+\u202f960\u202fF' }
+    ];
+    const sales = (s.s6 === 'first'
+      ? [salesAll[0]]
+      : salesAll
+    ).map(v => ({
+      ...v,
+      chipStyle: 'white-space:nowrap;font:800 8.5px Archivo,sans-serif;letter-spacing:0.8px;padding:3px 7px;' +
+        (v.pending ? 'background:#F7EED7;color:#6B4E0C;' : 'background:#1B140D;color:#FFF8F1;')
+    }));
+
+    const five = {
+      opps: '« Ce que vous gagnez, net, sur chaque produit — avant tout le reste. »',
+      gains: '« Votre argent\u00a0: réglé, en attente — à la franc près. »',
+      handoff: '« Ce parcours vit dans son propre prototype. »'
+    };
+    const titles = { opps: 'Opportunités (S2)', gains: 'Mes gains (S6)', handoff: s.handoff === 'vitrine' ? 'Ma vitrine → autre prototype' : 'Partager → autre prototype' };
+    const ids = { opps: 'S2', gains: 'S6', handoff: '→' };
+
+    const animStyle = {
+      height: '100%', opacity: s.entered ? 1 : 0,
+      transform: s.entered ? 'none' : 'translateY(14px)',
+      transition: s.rm ? 'none' : (s.entered ? 'opacity 180ms ease, transform 240ms cubic-bezier(0.2,0.8,0.25,1)' : 'none')
+    };
+    const sw = on => on ? 'translateX(14px)' : 'translateX(0)';
+
+    const tabStyle = on => ({
+      flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px',
+      padding: '9px 0 12px', cursor: 'pointer', position: 'relative',
+      color: on ? ink : '#8D7C64'
+    });
+    const tabBar = on => ({ position: 'absolute', top: 0, left: '18%', right: '18%', height: '2px', background: on ? accent : 'transparent' });
+
+    return {
+      offline: s.offline,
+      toggleOffline: () => this.setState({ offline: !s.offline }),
+      toggleRm: () => this.setState({ rm: !s.rm }),
+      offSwBg: s.offline ? ink : 'rgba(27,20,13,0.2)', offSwKnob: sw(s.offline),
+      rmSwBg: s.rm ? ink : 'rgba(27,20,13,0.2)', rmSwKnob: sw(s.rm),
+      railSections, fiveSecond: five[s.view],
+      screenId: ids[s.view], screenTitle: titles[s.view],
+      headerLabel: s.view === 'gains' ? 'SHOP+ · MES GAINS' : 'SHOP+ · OPPORTUNITÉS',
+      animStyle,
+
+      isOpps: s.view === 'opps', isGains: s.view === 'gains', isHandoff: s.view === 'handoff',
+      handoffTitle: s.handoff === 'vitrine' ? 'Ma vitrine' : 'Le partage',
+
+      // S2
+      s2Loading: s.s2 === 'loading', s2List: s.s2 === 'list', s2Empty: s.s2 === 'empty',
+      filters, products,
+      backToAll: () => this.setState({ filter: 'Tous', s2: 'list' }),
+
+      // S6
+      s6Zero: s.s6 === 'zero', s6HasRows: s.s6 !== 'zero',
+      firstChip: s.s6 === 'first',
+      payoutBanner: s.s6 === 'payout',
+      gainStr: fmt(s.gain),
+      settledStr: s.s6 === 'first' ? fmt(0) : fmt(4040),
+      pendingStr: fmt(2000),
+      reconcileStr: s.s6 === 'first' ? '2\u202f000 = 0 + 2\u202f000 — chaque franc a sa place.' : '6\u202f040 = 4\u202f040 + 2\u202f000 — chaque franc a sa place.',
+      sales,
+      celS: this.buildCel(s.celKey, s.celOn),
+
+      // tabs
+      goOpps: () => this.nav('opps', {}),
+      goGains: () => { const target = s.s6 === 'zero' ? 0 : (s.s6 === 'first' ? 2000 : 6040); this.nav('gains', {}); this.countTo(target, 560); },
+      goVitrineTab: () => this.nav('handoff', { handoff: 'vitrine' }),
+      goPartagerTab: () => this.nav('handoff', { handoff: 'partager' }),
+      tabOppsStyle: tabStyle(s.view === 'opps'), tabOppsBar: tabBar(s.view === 'opps'),
+      tabVitrineStyle: tabStyle(s.view === 'handoff' && s.handoff === 'vitrine'), tabVitrineBar: tabBar(s.view === 'handoff' && s.handoff === 'vitrine'),
+      tabPartagerStyle: tabStyle(s.view === 'handoff' && s.handoff === 'partager'), tabPartagerBar: tabBar(s.view === 'handoff' && s.handoff === 'partager'),
+      tabGainsStyle: tabStyle(s.view === 'gains'), tabGainsBar: tabBar(s.view === 'gains')
+    };
+  }
+}
+</script>
+</body>
+</html>

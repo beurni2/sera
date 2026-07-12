@@ -1,0 +1,31 @@
+# icons/ — le jeu de glyphes Grand Teint
+26 SVG autonomes, trait 1,9, bouts ronds, **currentColor** (une couleur, teintée par le contexte).
+Total : 6922 octets bruts (~6.8 Ko avant gzip). Lisibles à 20 dp. Loi : toujours icône + mot, jamais d'emoji dans la chrome.
+Web : coller en ligne (zéro requête). RN : via react-native-svg (proposals.md §10) — chemins identiques.
+
+- cadenas.svg (337 o)
+- moto.svg (350 o)
+- repere.svg (221 o)
+- zone.svg (344 o)
+- voix.svg (284 o)
+- enregistrer.svg (266 o)
+- ecouter.svg (269 o)
+- camera.svg (240 o)
+- reprendre.svg (224 o)
+- coche.svg (200 o)
+- refus.svg (220 o)
+- scelle.svg (252 o)
+- colis.svg (279 o)
+- horloge.svg (222 o)
+- argent.svg (249 o)
+- gains.svg (224 o)
+- partager.svg (325 o)
+- recherche.svg (225 o)
+- filtre.svg (209 o)
+- alerte.svg (288 o)
+- sos.svg (345 o)
+- horsligne.svg (330 o)
+- oeil.svg (267 o)
+- cle.svg (263 o)
+- chevron.svg (192 o)
+- telephone.svg (297 o)

@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..900&amp;display=swap">
+<style>
+body{margin:0;background:#EBE6DC;font-family:'Archivo',system-ui,sans-serif}
+a{color:#B98A1F}a:hover{color:#8F6812}
+@keyframes gtPulse{0%,100%{opacity:1}50%{opacity:0.35}}
+</style>
+</helmet>
+
+<div style="display:flex;min-height:100vh;align-items:stretch">
+
+<!-- ============ RAIL ============ -->
+<div style="width:272px;flex:none;background:#FFFDF7;border-right:1px solid rgba(27,20,13,0.14);padding:20px 18px 28px;box-sizing:border-box;height:100vh;overflow-y:auto;position:sticky;top:0">
+  <div style="display:flex;align-items:center;gap:8px">
+    <span style="background:#1B140D;color:#D9A441;font:800 10px 'Archivo',sans-serif;letter-spacing:1.5px;padding:4px 8px">DISPATCH</span>
+    <span style="font:800 12px 'Archivo',sans-serif;letter-spacing:1.8px">LES EXCEPTIONS (D4)</span>
+  </div>
+  <div style="font:500 12px/1.5 'Archivo',sans-serif;color:#6E6154;margin-top:6px">L'écran le plus important du bâtiment. Chaque échec arrive avec une raison structurée et ses preuves ; l'humain applique exactement une issue explicite. Pas de « échec » générique, jamais.</div>
+
+  <sc-for list="{{ railSections }}" as="sec" hint-placeholder-count="2">
+    <div style="margin-top:16px">
+      <div style="display:flex;align-items:baseline;gap:7px">
+        <span style="font:800 10.5px ui-monospace,Menlo,monospace;background:{{ sec.idBg }};color:{{ sec.idColor }};padding:2px 6px">{{ sec.id }}</span>
+        <span style="font:700 12px 'Archivo',sans-serif">{{ sec.name }}</span>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
+        <sc-for list="{{ sec.states }}" as="st" hint-placeholder-count="3">
+          <span style="{{ st.style }}" onClick="{{ st.go }}">{{ st.label }}</span>
+        </sc-for>
+      </div>
+    </div>
+  </sc-for>
+
+  <div style="margin-top:20px;border-left:3px solid #B98A1F;padding:2px 0 2px 12px">
+    <div style="font:800 10px 'Archivo',sans-serif;letter-spacing:2px;color:#6E6154">TEST 5 SECONDES</div>
+    <div style="font:600 13px/1.45 'Archivo',sans-serif;margin-top:4px">« Chaque échec a sa raison et ses preuves. Vous appliquez une issue — une seule, explicite, tracée. »</div>
+  </div>
+
+  <div style="margin-top:14px;font:500 11.5px/1.55 'Archivo',sans-serif;color:#6E6154">Lois tenues : la vérité de la garde prime sur le statut de tâche · issue unique et journalisée (append-only) · l'attente longue devient un signal d'elle-même · une file vide est un état calme, pas une absence.</div>
+</div>
+
+<!-- ============ STAGE ============ -->
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:26px 18px;gap:12px">
+  <div style="display:flex;align-items:baseline;gap:9px">
+    <span style="font:800 11px ui-monospace,Menlo,monospace;background:#1B140D;color:#FFF8F1;padding:3px 7px">D4</span>
+    <span style="font:700 13px 'Archivo',sans-serif;letter-spacing:0.5px">Le bureau des exceptions — console web (poste dispatch)</span>
+  </div>
+
+  <div style="width:1080px;background:#FFFDF7;border:1px solid rgba(27,20,13,0.22);box-shadow:0 18px 44px rgba(27,20,13,0.16);display:flex;flex-direction:column;flex:none;color:#1B140D" data-screen-label="D4 Le bureau des exceptions">
+
+    <div style="display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid rgba(27,20,13,0.14);flex:none">
+      <span style="display:flex;gap:5px"><span style="width:9px;height:9px;border-radius:999px;background:rgba(27,20,13,0.22)"></span><span style="width:9px;height:9px;border-radius:999px;background:rgba(27,20,13,0.22)"></span><span style="width:9px;height:9px;border-radius:999px;background:rgba(27,20,13,0.22)"></span></span>
+      <span style="flex:1;max-width:340px;border:1.5px solid rgba(27,20,13,0.2);border-radius:999px;padding:4px 12px;font:600 11.5px ui-monospace,Menlo,monospace;color:#4A3F33;display:flex;align-items:center;gap:6px"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#6E6154" stroke-width="2" stroke-linecap="round"><rect x="5.5" y="10.5" width="13" height="9.5" rx="2.5"></rect><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"></path></svg>ops.sera.bf/exceptions</span>
+    </div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid rgba(27,20,13,0.14);flex:none">
+      <div style="display:flex;align-items:center;gap:12px">
+        <span style="font:800 13px 'Archivo',sans-serif;letter-spacing:2px">SÉRA · DISPATCH</span>
+        <span style="font:900 13px 'Archivo',sans-serif;letter-spacing:2px;color:#B98A1F">LE BUREAU DES EXCEPTIONS</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:14px">
+        <span style="font:600 12px 'Archivo',sans-serif;color:#6E6154">{{ queueCount }}</span>
+        <span style="font:700 12px 'Archivo',sans-serif">Poste : R. Ouédraogo</span>
+        <span style="font:600 12.5px 'Archivo',sans-serif;font-feature-settings:'tnum'">14:22</span>
+      </div>
+    </div>
+    <div style="height:4px;background:#D9A441;flex:none"></div>
+
+    <sc-if value="{{ sosOn }}" hint-placeholder-val="{{ false }}">
+      <div style="flex:none;background:#B3382C;color:#FFF8F1;display:flex;align-items:center;gap:12px;padding:9px 18px">
+        <span style="width:9px;height:9px;border-radius:999px;background:#FFF8F1;animation:gtPulse 1s infinite"></span>
+        <span style="font:900 12.5px 'Archivo',sans-serif;letter-spacing:2px">SOS — IDRISSA T. · CRS-0884 · ZONE PISSY</span>
+        <span style="font:600 12px 'Archivo',sans-serif;opacity:0.85">Réponse en route (appel passé 14:21). Tout le reste attend.</span>
+        <span style="margin-left:auto;background:#FFFDF7;color:#B3382C;font:800 10.5px 'Archivo',sans-serif;letter-spacing:1px;padding:6px 11px;cursor:pointer" onClick="{{ sosOff }}">PRIS EN CHARGE</span>
+      </div>
+    </sc-if>
+
+    <div style="display:flex;height:640px;flex:none">
+
+      <!-- queue -->
+      <div style="width:318px;flex:none;border-right:1px solid rgba(27,20,13,0.14);display:flex;flex-direction:column">
+        <div style="padding:11px 14px;border-bottom:1px solid rgba(27,20,13,0.14);display:flex;align-items:center;justify-content:space-between">
+          <span style="font:800 10.5px 'Archivo',sans-serif;letter-spacing:2px;color:#6E6154">LA FILE — PLUS ANCIEN D'ABORD</span>
+        </div>
+        <div style="flex:1;overflow-y:auto">
+          <sc-if value="{{ queueEmpty }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:60px 24px 0;text-align:center">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#8D7C64" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.2l6.8 2.7v5.1c0 4.3-2.9 7.2-6.8 8.8-3.9-1.6-6.8-4.5-6.8-8.8V5.9L12 3.2z"></path><path d="M9.2 11.8l2 2 3.6-3.9"></path></svg>
+              <div style="font:800 14px 'Archivo',sans-serif;margin-top:10px">File vide.</div>
+              <div style="font:500 12.5px/1.5 'Archivo',sans-serif;color:#6E6154;margin-top:4px">Tout est à sa place.</div>
+            </div>
+          </sc-if>
+          <sc-for list="{{ queue }}" as="q" hint-placeholder-count="3">
+            <div style="{{ q.rowStyle }}" onClick="{{ q.open }}">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="{{ q.sevStyle }}"></span>
+                <span style="{{ q.typeStyle }}">{{ q.type }}</span>
+                <span style="{{ q.ageStyle }}">{{ q.age }}</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+                <span style="font:600 10.5px ui-monospace,Menlo,monospace;color:#4A3F33">{{ q.refs }}</span>
+                <span style="margin-left:auto;font:500 11px 'Archivo',sans-serif;color:#6E6154">{{ q.rider }}</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;margin-top:5px">
+                <span style="font:500 11.5px 'Archivo',sans-serif;color:#4A3F33">{{ q.motif }}</span>
+                <sc-if value="{{ q.isResolved }}" hint-placeholder-val="{{ false }}">
+                  <span style="margin-left:auto;background:#1F4D36;color:#F2F7F1;font:800 8.5px 'Archivo',sans-serif;letter-spacing:0.8px;padding:2px 6px">RÉSOLU</span>
+                </sc-if>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="padding:9px 14px;border-top:1px solid rgba(27,20,13,0.14);font:500 11px/1.5 'Archivo',sans-serif;color:#6E6154">Une commande non financée n'apparaît jamais ici — elle n'est pas dans la pièce.</div>
+      </div>
+
+      <!-- detail -->
+      <div style="flex:1;overflow-y:auto">
+        <sc-if value="{{ hasSel }}" hint-placeholder-val="{{ true }}">
+          <div style="padding:18px 22px 22px">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <span style="font:900 19px 'Archivo',sans-serif;font-stretch:112%;letter-spacing:0.5px">{{ selType }}</span>
+              <span style="font:700 11px ui-monospace,Menlo,monospace;border:1.5px solid #1B140D;padding:3px 7px">{{ selCmd }}</span>
+              <span style="font:700 11px ui-monospace,Menlo,monospace;border:1.5px solid rgba(27,20,13,0.35);padding:3px 7px">{{ selCrs }}</span>
+              <span style="margin-left:auto;font:600 12px 'Archivo',sans-serif;color:#6E6154">{{ selAgeLine }}</span>
+            </div>
+
+            <div style="margin-top:13px;background:#FBF4E4;border:1.5px solid #B98A1F;padding:10px 14px;display:flex;align-items:center;gap:10px">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8F6812" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9.5" r="4.5"></circle><path d="M9.8 13.5L8.5 20.5l3.5-1.8 3.5 1.8-1.3-7"></path></svg>
+              <span style="font:800 11px 'Archivo',sans-serif;letter-spacing:1.5px;color:#8F6812">GARDE</span>
+              <span style="font:600 13px 'Archivo',sans-serif;color:#1B140D">{{ selCustody }}</span>
+              <span style="margin-left:auto;font:500 11px 'Archivo',sans-serif;color:#8F6812">la garde prime sur le statut</span>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:6px;margin-top:13px;flex-wrap:wrap">
+              <sc-for list="{{ selLineage }}" as="ln" hint-placeholder-count="4">
+                <span style="{{ ln.style }}">{{ ln.label }}</span>
+                <sc-if value="{{ ln.arrow }}" hint-placeholder-val="{{ true }}">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#8D7C64" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 6l6 6-6 6"></path></svg>
+                </sc-if>
+              </sc-for>
+            </div>
+
+            <div style="display:flex;gap:14px;margin-top:15px">
+              <div style="width:150px;flex:none">
+                <div style="font:800 10px 'Archivo',sans-serif;letter-spacing:2px;color:#6E6154">PREUVE PHOTO</div>
+                <div style="margin-top:6px;height:104px;background:#F3EBDB;position:relative;border:1px solid rgba(27,20,13,0.2)">
+                  <div style="position:absolute;top:6px;left:6px;width:9px;height:9px;border-top:1.5px solid rgba(27,20,13,0.45);border-left:1.5px solid rgba(27,20,13,0.45)"></div>
+                  <div style="position:absolute;bottom:6px;right:6px;width:9px;height:9px;border-bottom:1.5px solid rgba(27,20,13,0.45);border-right:1.5px solid rgba(27,20,13,0.45)"></div>
+                  <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#8D7C64" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-2.5h6L17 8h3v11H4V8z"></path><circle cx="12" cy="13" r="3.2"></circle></svg></div>
+                  <div style="position:absolute;left:6px;bottom:6px;background:rgba(255,253,247,0.94);padding:2px 6px;font:700 9px 'Archivo',sans-serif;letter-spacing:0.5px">{{ selPhotoTag }}</div>
+                </div>
+                <div style="margin-top:8px;border:1.5px solid rgba(27,20,13,0.35);display:flex;align-items:center;gap:8px;padding:7px 9px;cursor:pointer">
+                  <svg width="11" height="12" viewBox="0 0 10 12"><path d="M0.5 0.8l9 5.2-9 5.2z" fill="#1B140D"></path></svg>
+                  <span style="font:800 9.5px 'Archivo',sans-serif;letter-spacing:1px">NOTE VOCALE · 0:{{ selVoiceSec }}</span>
+                </div>
+              </div>
+              <div style="flex:1">
+                <div style="font:800 10px 'Archivo',sans-serif;letter-spacing:2px;color:#6E6154">LE CONSTAT — STRUCTURÉ, JAMAIS LIBRE</div>
+                <div style="margin-top:6px;border:1.5px solid #1B140D">
+                  <div style="display:flex;border-bottom:1px solid rgba(27,20,13,0.14)">
+                    <div style="flex:1;padding:8px 11px;font:600 11px 'Archivo',sans-serif;letter-spacing:1px;color:#6E6154;border-right:1px solid rgba(27,20,13,0.14)">ATTENDU</div>
+                    <div style="flex:1;padding:8px 11px;font:600 11px 'Archivo',sans-serif;letter-spacing:1px;color:#6E6154">TROUVÉ</div>
+                  </div>
+                  <div style="display:flex">
+                    <div style="flex:1;padding:9px 11px;font:700 13.5px 'Archivo',sans-serif;border-right:1px solid rgba(27,20,13,0.14)">{{ selExpected }}</div>
+                    <div style="flex:1;padding:9px 11px;font:700 13.5px 'Archivo',sans-serif;color:#7A2418;background:#F9E9E6">{{ selFound }}</div>
+                  </div>
+                </div>
+                <div style="margin-top:10px;border-left:3px solid #1B140D;padding:2px 0 2px 12px;font:600 13px/1.5 'Archivo',sans-serif">{{ selStatement }}</div>
+                <div style="font:500 11px 'Archivo',sans-serif;color:#6E6154;margin-top:5px">{{ selStatementBy }}</div>
+              </div>
+            </div>
+
+            <sc-if value="{{ selOpen }}" hint-placeholder-val="{{ true }}">
+              <div style="margin-top:17px;font:800 10.5px 'Archivo',sans-serif;letter-spacing:2px">L'ISSUE — UNE SEULE, EXPLICITE</div>
+              <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">
+                <sc-for list="{{ selOutcomes }}" as="o" hint-placeholder-count="4">
+                  <span style="{{ o.style }}" onClick="{{ o.pick }}">{{ o.label }}</span>
+                </sc-for>
+              </div>
+              <div style="display:flex;align-items:center;gap:14px;margin-top:14px">
+                <span style="{{ confirmStyle }}" onClick="{{ confirmOutcome }}">APPLIQUER L'ISSUE</span>
+                <span style="font:500 11.5px/1.4 'Archivo',sans-serif;color:#6E6154">Appliquée une fois, journalisée pour toujours. Personne ne « corrige » en silence.</span>
+              </div>
+            </sc-if>
+            <sc-if value="{{ selResolved }}" hint-placeholder-val="{{ false }}">
+              <div style="margin-top:17px;border:2px solid #1F4D36;background:#F2F7F1;padding:13px 16px;display:flex;align-items:center;gap:12px">
+                <svg width="20" height="20" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#1F4D36"></circle><path d="M7.5 12.5l3 3 6-6.5" fill="none" stroke="#F2F7F1" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                <div style="flex:1">
+                  <div style="font:900 14px 'Archivo',sans-serif;letter-spacing:1px">RÉSOLU — {{ selOutcomeLabel }}</div>
+                  <div style="font:500 12px 'Archivo',sans-serif;color:#4A3F33;margin-top:2px">14:22 · R. Ouédraogo · journalisé</div>
+                </div>
+                <span style="background:#1B140D;color:#FFF8F1;font:800 10.5px 'Archivo',sans-serif;letter-spacing:1.2px;padding:9px 14px;cursor:pointer" onClick="{{ nextException }}">SUIVANTE →</span>
+              </div>
+            </sc-if>
+
+            <div style="margin-top:18px;border-top:1px solid rgba(27,20,13,0.14);padding-top:10px">
+              <div style="font:800 9.5px 'Archivo',sans-serif;letter-spacing:2px;color:#6E6154">JOURNAL — APPEND-ONLY · QUI, QUOI, POURQUOI, QUAND</div>
+              <sc-for list="{{ audit }}" as="a" hint-placeholder-count="3">
+                <div style="font:500 11px ui-monospace,Menlo,monospace;color:#4A3F33;margin-top:6px">{{ a.line }}</div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ noSel }}" hint-placeholder-val="{{ false }}">
+          <div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 60px">
+            <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#8D7C64" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.2l6.8 2.7v5.1c0 4.3-2.9 7.2-6.8 8.8-3.9-1.6-6.8-4.5-6.8-8.8V5.9L12 3.2z"></path><path d="M9.2 11.8l2 2 3.6-3.9"></path></svg>
+            <div style="font:900 22px/1.15 'Archivo',sans-serif;font-stretch:110%;margin-top:14px">File vide. Tout est à sa place.</div>
+            <div style="font:500 13.5px/1.55 'Archivo',sans-serif;color:#4A3F33;margin-top:8px">Le calme est un résultat, pas une absence. Les signaux (attente &gt; 2–4 min, SOS) rouvriront cette file d'eux-mêmes.</div>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </div>
+
+  <div style="font:500 12px 'Archivo',sans-serif;color:#6E6154">Cliquez une exception dans la file, choisissez l'issue, appliquez — le journal s'écrit tout seul.</div>
+</div>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;: {&quot;width&quot;: 1420, &quot;height&quot;: 920}}">
+class Component extends DCLogic {
+  state = {
+    excs: {
+      'E-311': null,
+      'E-309': null,
+      'E-305': null
+    },
+    sel: 'E-311',
+    choice: null,
+    sos: false,
+    audit: [
+      "14:18 · système · exception ouverte : REFUS AU RAMASSAGE · CMD-2417 · preuves jointes (photo, voix, constat)",
+      "14:15 · R. Ouédraogo · issue appliquée : NOUVELLE TENTATIVE · CMD-2391 · motif : porte sans réponse",
+      "14:02 · système · course requalifiée en file : CRS-0879 · délai de réponse expiré"
+    ]
+  };
+
+  defs() {
+    return {
+      'E-311': {
+        type: 'REFUS AU RAMASSAGE', cmd: 'CMD-2417', crs: 'CRS-0891', rider: 'Moussa K.',
+        age: 'il y a 4 min', level: 'normal', motif: 'Taille différente',
+        custody: 'Jamais transférée — le colis est resté chez le vendeur.',
+        lineage: ['Proposée', 'Acceptée', 'Au ramassage', 'Refus'],
+        expected: 'Taille M', found: 'Taille L',
+        statement: '« La robe est belle mais c\u2019est une L. La cliente a commandé M. Le colis ne part pas. »',
+        statementBy: 'Constat de Moussa K. · 14:18 · vérification bornée (objectif seulement)',
+        photoTag: 'IMG-8841 · étiquette', voice: '09',
+        outcomes: [
+          { key: 'reprep', label: 'LE VENDEUR CORRIGE — RE-PRÉPARATION' },
+          { key: 'reprog', label: 'REPROGRAMMER LA COURSE' },
+          { key: 'retour', label: 'ANNULATION — REMBOURSEMENT' },
+          { key: 'incident', label: 'INCIDENT' }
+        ]
+      },
+      'E-309': {
+        type: 'PORTE SANS RÉPONSE', cmd: 'CMD-2403', crs: 'CRS-0884', rider: 'Idrissa T.',
+        age: 'attente 12 min ⚠', level: 'signal', motif: 'Acheteuse injoignable',
+        custody: 'Séra — scellé SC-77 401, avec Idrissa T.',
+        lineage: ['Scellée', 'En route', 'À la porte', 'Attente'],
+        expected: 'Remise 14:05–14:10', found: 'Sans réponse 14:10 →',
+        statement: '« Trois appels relais, personne. Le portail bleu est fermé. J\u2019attends au kiosque. »',
+        statementBy: 'Constat d\u2019Idrissa T. · 14:20 · dwell &gt; 4 min = signal automatique',
+        photoTag: 'IMG-8836 · portail', voice: '07',
+        outcomes: [
+          { key: 'retry', label: 'NOUVELLE TENTATIVE — RAPPELER' },
+          { key: 'reprog', label: 'REPROGRAMMER LA COURSE' },
+          { key: 'retour', label: 'RETOUR AU VENDEUR — DEUX CLÉS' },
+          { key: 'incident', label: 'INCIDENT' }
+        ]
+      },
+      'E-305': {
+        type: "REFUS À L'INSPECTION", cmd: 'CMD-2398', crs: 'CRS-0876', rider: 'Moussa K.',
+        age: 'il y a 26 min', level: 'normal', motif: 'Dégât visible (acheteuse)',
+        custody: 'Séra — retour engagé, scellé SC-77 388 intact.',
+        lineage: ['Scellée', 'En route', 'Inspection', 'Refus'],
+        expected: 'En bon état', found: 'Couture déchirée',
+        statement: '« L\u2019acheteuse a ouvert, la couture de la manche est déchirée. Refus propre, colis rescellé. »',
+        statementBy: 'Constat de Moussa K. · 13:56 · inspection de l\u2019acheteuse (2–4 min, son droit)',
+        photoTag: 'IMG-8802 · manche', voice: '11',
+        outcomes: [
+          { key: 'retour', label: 'RETOUR AU VENDEUR — DEUX CLÉS' },
+          { key: 'reclam', label: 'OUVRIR LA RÉCLAMATION (OPS)' },
+          { key: 'incident', label: 'INCIDENT' }
+        ]
+      }
+    };
+  }
+
+  renderVals() {
+    const s = this.state;
+    const ink = '#1B140D', paper = '#FFF8F1', amber = '#B98A1F', danger = '#B3382C';
+    const defs = this.defs();
+    const ids = Object.keys(defs);
+    const unresolved = ids.filter(id => !s.excs[id]);
+
+    const railChip = on => 'display:inline-flex;align-items:center;cursor:pointer;white-space:nowrap;font:600 11px Archivo,sans-serif;padding:5px 9px;border-radius:4px;' +
+      (on ? 'background:#1B140D;color:#FFF8F1;' : 'background:rgba(27,20,13,0.06);color:#1B140D;');
+
+    const allResolved = unresolved.length === 0;
+    const selResolved = s.sel && !!s.excs[s.sel];
+
+    const railSections = [
+      { id: 'D4', name: 'Le bureau', states: [
+        { label: 'file + exception ouverte', on: !!s.sel && !selResolved && !allResolved, go: () => this.setState({ excs: { 'E-311': null, 'E-309': null, 'E-305': null }, sel: 'E-311', choice: null, sos: false }) },
+        { label: 'résolue', on: selResolved && !allResolved, go: () => this.setState({ excs: { ...s.excs, 'E-311': 'LE VENDEUR CORRIGE — RE-PRÉPARATION' }, sel: 'E-311', choice: null }) },
+        { label: 'file vide', on: allResolved, go: () => this.setState({ excs: { 'E-311': 'LE VENDEUR CORRIGE — RE-PRÉPARATION', 'E-309': 'NOUVELLE TENTATIVE — RAPPELER', 'E-305': 'RETOUR AU VENDEUR — DEUX CLÉS' }, sel: null, choice: null }) } ] },
+      { id: 'D6', name: 'Signaux', states: [
+        { label: 'calme', on: !s.sos, go: () => this.setState({ sos: false }) },
+        { label: 'SOS en cours', on: s.sos, go: () => this.setState({ sos: true }) } ] }
+    ].map(sec => ({ ...sec, idBg: ink, idColor: paper,
+      states: sec.states.map(st => ({ ...st, style: railChip(st.on) })) }));
+
+    const queue = ids.map(id => {
+      const d = defs[id], res = s.excs[id], selOn = s.sel === id;
+      return {
+        type: d.type, refs: d.cmd + ' · ' + d.crs, rider: d.rider, motif: d.motif, age: d.age,
+        isResolved: !!res,
+        open: () => this.setState({ sel: id, choice: null }),
+        rowStyle: {
+          padding: '11px 14px', borderBottom: '1px solid rgba(27,20,13,0.12)', cursor: 'pointer',
+          background: selOn ? '#F3EBDB' : '#FFFDF7',
+          borderLeft: selOn ? '3px solid ' + ink : '3px solid transparent',
+          opacity: res ? 0.62 : 1
+        },
+        sevStyle: {
+          width: '9px', height: '9px', flex: 'none',
+          background: res ? '#1F4D36' : d.level === 'signal' ? '#D9A441' : 'rgba(27,20,13,0.3)'
+        },
+        typeStyle: { font: '800 11px Archivo,sans-serif', letterSpacing: '0.8px', flex: 1, minWidth: 0 },
+        ageStyle: { font: (d.level === 'signal' ? '800' : '600') + ' 10.5px Archivo,sans-serif', color: d.level === 'signal' ? '#8F6812' : '#6E6154', whiteSpace: 'nowrap' }
+      };
+    });
+
+    const d = s.sel ? defs[s.sel] : null;
+    const outcomes = d ? d.outcomes.map(o => ({
+      label: o.label,
+      pick: () => this.setState({ choice: o.key }),
+      style: 'cursor:pointer;white-space:nowrap;font:800 10.5px Archivo,sans-serif;letter-spacing:1px;padding:11px 14px;border-radius:4px;' +
+        (s.choice === o.key ? 'background:#1B140D;color:#FFF8F1;border:1.5px solid #1B140D;' : 'background:#FFFDF7;color:#1B140D;border:1.5px solid rgba(27,20,13,0.35);')
+    })) : [];
+
+    const lineage = d ? d.lineage.map((label, i) => ({
+      label, arrow: i < d.lineage.length - 1,
+      style: 'white-space:nowrap;font:700 10px Archivo,sans-serif;letter-spacing:0.8px;padding:4px 9px;' +
+        (i === d.lineage.length - 1 ? 'background:#1B140D;color:#FFF8F1;' : 'border:1px solid rgba(27,20,13,0.3);color:#4A3F33;')
+    })) : [];
+
+    return {
+      railSections,
+      queueCount: unresolved.length === 0 ? 'File vide' : unresolved.length + ' exception' + (unresolved.length > 1 ? 's' : '') + ' en attente',
+      sosOn: s.sos, sosOff: () => this.setState({ sos: false }),
+      queue, queueEmpty: false,
+
+      hasSel: !!d, noSel: !d,
+      selType: d ? d.type : '', selCmd: d ? d.cmd : '', selCrs: d ? d.crs : '',
+      selAgeLine: d ? (d.age + ' · ' + d.rider) : '',
+      selCustody: d ? d.custody : '',
+      selLineage: lineage,
+      selPhotoTag: d ? d.photoTag : '', selVoiceSec: d ? d.voice : '',
+      selExpected: d ? d.expected : '', selFound: d ? d.found : '',
+      selStatement: d ? d.statement : '', selStatementBy: d ? d.statementBy : '',
+      selOutcomes: outcomes,
+      selOpen: !!d && !selResolved,
+      selResolved: !!d && selResolved,
+      selOutcomeLabel: selResolved ? s.excs[s.sel] : '',
+
+      confirmStyle: 'cursor:pointer;white-space:nowrap;font:800 12px Archivo,sans-serif;letter-spacing:1.8px;padding:14px 22px;border-radius:6px;' +
+        (s.choice ? 'background:#1B140D;color:#FFF8F1;' : 'background:rgba(27,20,13,0.15);color:rgba(27,20,13,0.45);cursor:default;'),
+      confirmOutcome: () => {
+        if (!s.choice || !d) return;
+        const label = d.outcomes.find(o => o.key === s.choice).label;
+        this.setState({
+          excs: { ...s.excs, [s.sel]: label },
+          choice: null,
+          audit: ["14:22 · R. Ouédraogo · issue appliquée : " + label + ' · ' + d.cmd + ' · motif : ' + d.motif, ...s.audit]
+        });
+      },
+      nextException: () => {
+        const next = ids.find(id => !this.state.excs[id]);
+        this.setState({ sel: next || null, choice: null });
+      },
+
+      audit: s.audit.slice(0, 4).map(line => ({ line }))
+    };
+  }
+}
+</script>
+</body>
+</html>
