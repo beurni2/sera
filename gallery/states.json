@@ -1,5 +1,5 @@
 {
-  "surface": "Séra — console de dispatch",
+  "surface": "Séra — console de dispatch (Grand Teint)",
   "viewport": {
     "width": 800,
     "height": 950
@@ -11,14 +11,22 @@
         {
           "id": "console-file-prete",
           "actions": [],
-          "caption": "La file prête (repère d'abord : lieu, directions, zone) + le suivi — temps de contrôle (D20), paiement au seuil EN ATTENTE du réseau, chronologie des issues"
+          "caption": "La file prête sur Grand Teint (repère d'abord : lieu, indications, zone) + le suivi — temps de contrôle (D20), paiement au seuil EN ATTENTE du réseau, chronologie des issues"
         },
         {
           "id": "console-course-donnee",
           "actions": [
             "assign"
           ],
-          "caption": "Course donnée — l'état d'attente honnête : l'accord du livreur n'est jamais supposé"
+          "caption": "Course donnée — l'état d'attente honnête (l'accord du livreur n'est jamais supposé) + le levier « Marquer la course remise »"
+        },
+        {
+          "id": "console-course-livree",
+          "actions": [
+            "assign",
+            "done"
+          ],
+          "caption": "Course remise — le levier « done » (ruling ⑤) libère le bail via releaseOnCompletion : « Course remise. Le bail est libéré. »"
         },
         {
           "id": "console-porte-confirmee",
@@ -44,8 +52,8 @@
       "reason": "Copie construite (« Aucune course à assigner pour le moment. ») mais inatteignable dans le monde bac à sable : la file initiale porte toujours une course et l'après-assignation affiche la ligne d'attente. Nommé plutôt que passé sous silence."
     },
     {
-      "name": "Parcours livreur (app RN, WO-4.1 · restylé WO-4.2R « le visage ») — les 17 écrans sur le kit ui-tokens v2 (chrome, LandmarkCard signature, chips d'état, transitions)",
-      "reason": "Ces écrans existent dans l'app livreur (React Native, aperçu Expo Go) et portent depuis WO-4.2R la couche visuelle du kit — cette galerie Playwright ne capture que la console de dispatch ; le canal visuel avant/après du parcours livreur est WALKTHROUGH.md + l'aperçu Expo Go sur le téléphone du fondateur. Nommés ici plutôt que passés sous silence."
+      "name": "Parcours livreur (app RN, WO-6.1 « le visage ») — les 17 écrans du spine sur le kit Grand Teint (v0.9.0), la LandmarkCard illustrée (R4), la célébration « course validée » (R11), le SOS de partout (R14)",
+      "reason": "Ces écrans vivent dans l'app livreur (React Native, aperçu Expo Go) et portent depuis WO-6.1 la couche Grand Teint. Cette galerie Playwright ne capture QUE la console (web) ; le canal visuel avant/après du parcours livreur est WALKTHROUGH.md + l'aperçu Expo Go sur le téléphone du fondateur. Nommés ici plutôt que passés sous silence."
     }
   ]
 }

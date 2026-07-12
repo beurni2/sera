@@ -9,3 +9,9 @@ test-results/
 # WO-4.0d rider: dotenv files never committed
 .env
 .env.*
+
+# WO-6.1: the gallery PNGs are a BUILD ARTIFACT, not a tracked binary — paying
+# the named debt (WO-4.3). Playwright regenerates them deterministically
+# (fixed viewport + reduced motion) on `test:e2e`; build-gallery.mjs assembles
+# gallery.html from them. Non-deterministic binaries never live in the gate tree.
+gallery/img/

@@ -520,5 +520,305 @@
     "fr": "Une autre course arrive : 2e passage.",
     "register": "neutral",
     "screenClass": "status"
+  },
+  {
+    "key": "offline.banner",
+    "fr": "Hors ligne : vos actions attendent le réseau. Rien n'est perdu.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "offline.toggle",
+    "fr": "Basculer hors ligne (essai)",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "service.off_title",
+    "fr": "Hors service.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "service.off_body",
+    "fr": "Prenez votre service quand vous êtes prêt. Sans service confirmé, aucune course ne vous est proposée.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "service.location_note",
+    "fr": "Votre position est suivie en service seulement. Jamais en dehors.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "service.certified",
+    "fr": "Certifié",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "service.certified_name",
+    "fr": "Moussa K. · Séra 2026",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "shift.pending_title",
+    "fr": "Démarrage en attente",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "service.pending_note",
+    "fr": "Seul le serveur confirme votre service. Un départ hors ligne ne confère rien.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "service.on_note",
+    "fr": "Position suivie, en service seulement. Les courses peuvent arriver.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "courses.overline",
+    "fr": "Mes courses",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "courses.empty_hint",
+    "fr": "Restez proche. Ça tombe vite, et on vous prévient.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "courses.one_guardian",
+    "fr": "Une carte, un colis, un gardien. Jamais deux.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "repere.indications",
+    "fr": "Les indications",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "repere.no_gps",
+    "fr": "Pas de point GPS sur vous. Le repère est la route, et c'est une fierté.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "repere.voice",
+    "fr": "Écouter les indications",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "repere.voice_playing",
+    "fr": "Indications — en lecture",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "verify.body",
+    "fr": "Vérifiez ce qui se voit. Pas la qualité, pas le vrai ou le faux.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "seal.body",
+    "fr": "La garde commence au scellé. Pas une seconde avant.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "seal.single_use",
+    "fr": "usage unique",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "seal.offline",
+    "fr": "Hors ligne : le scellé attend le réseau. La garde ne commence pas hors ligne.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "inspect.body",
+    "fr": "Le client regarde le colis. C'est son droit, prenez le temps qu'il faut.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "inspect.cantpay",
+    "fr": "Le client ne peut pas payer",
+    "register": "money",
+    "screenClass": "label"
+  },
+  {
+    "key": "pay_wait.operator",
+    "fr": "Le réseau seul confirme. Vous ne dites jamais « payé ».",
+    "register": "money",
+    "screenClass": "status"
+  },
+  {
+    "key": "pay_ok.body",
+    "fr": "Maintenant, et seulement maintenant, le code existe.",
+    "register": "money",
+    "screenClass": "status"
+  },
+  {
+    "key": "delivered.proof_package",
+    "fr": "Colis remis",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "delivered.proof_seal",
+    "fr": "Scellé intact",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "delivered.proof_code",
+    "fr": "Code validé",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "delivered.no_money",
+    "fr": "Séra ne porte jamais d'argent. La course émet un signal, c'est tout.",
+    "register": "money",
+    "screenClass": "status"
+  },
+  {
+    "key": "retour.custodian",
+    "fr": "Vous restez le gardien jusqu'au bout du retour. Le scellé reste intact.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "retour.key_seller",
+    "fr": "Le vendeur accepte le colis",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "retour.key_seller_action",
+    "fr": "Il accepte",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "retour.key_rider",
+    "fr": "Vous confirmez la remise",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "retour.key_rider_action",
+    "fr": "Je confirme",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "retour.one_key_refused",
+    "fr": "Une seule clé ? Refusé. Les deux mains, ou la garde ne bouge pas.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "sos.label",
+    "fr": "SOS",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "sos.title",
+    "fr": "SOS",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "sos.confirm_hint",
+    "fr": "Pour vous, pas pour le colis. Le dispatch voit votre position et arrive.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "sos.hold",
+    "fr": "Maintenir pour déclencher",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "sos.cancel",
+    "fr": "Annuler",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "sos.hold_note",
+    "fr": "Maintenir, pas un simple appui. On ne le lance pas par erreur, on ne le rate pas.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "sos.raised",
+    "fr": "SOS déclenché",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "sos.raised_hint",
+    "fr": "Le dispatch est prévenu. Restez où vous êtes si c'est sûr.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "sos.ack_hint",
+    "fr": "Le dispatch a vu. Tout le reste attend.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "sos.enroute",
+    "fr": "Secours en route",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "sos.enroute_hint",
+    "fr": "Quelqu'un vient. Restez en sécurité, restez joignable.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "sos.safe",
+    "fr": "Je suis en sécurité — clore",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "sos.over",
+    "fr": "Clos.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "sos.over_hint",
+    "fr": "Prenez soin de vous. L'incident est journalisé.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "sos.close",
+    "fr": "Fermer",
+    "register": "neutral",
+    "screenClass": "general"
   }
 ]

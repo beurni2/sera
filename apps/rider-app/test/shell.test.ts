@@ -53,10 +53,10 @@ describe('rider-app catalog discipline', () => {
     expect(codeOnly).not.toMatch(/['"«][^'"»]*[àâçéèêëîïôùûüÀÂÇÉÈÊËÎÏÔÙÛÜ]/);
   });
 
-  it('app.json static backgroundColor stays equal to the ui-tokens surface (drift guard)', async () => {
+  it('app.json static backgroundColor stays equal to the Grand Teint paper (drift guard)', async () => {
     const { seraTheme } = await import('@platform/ui-tokens');
     const appConfig = JSON.parse(readFileSync(join(appDir, 'app.json'), 'utf8'));
-    expect(appConfig.expo.backgroundColor).toBe(seraTheme.colors.surface);
+    expect(appConfig.expo.backgroundColor).toBe(seraTheme.colours.paper);
   });
 
   it('the shell bundle imports no node-only barrel (runtime imports of contracts/i18n/commerce-core banned)', () => {

@@ -1,7 +1,7 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { FlatList, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
-import { seraTheme as theme } from '@platform/ui-tokens';
+import { seraTheme, spacing, radius, touch, type as typo, interaction, money } from '@platform/ui-tokens';
 import {
   FAILURE_REASON_IDS,
   POLICY_CHECK_IDS,
@@ -11,6 +11,7 @@ import {
 import { IS_PREVIEW } from './src/preview';
 import { t } from './src/i18n';
 import { COURSE_BACK_STEPS, JOURNEY, START, type Screen } from './src/journey';
+import { attemptReturnHandover } from './src/two-key-return';
 import {
   acceptInspection,
   acknowledgeCourse,
@@ -37,36 +38,61 @@ import {
 } from './src/demo/store';
 import {
   AppHeader,
+  Body,
   Card,
   CheckRow,
+  CodeCells,
+  CourseValideeCelebration,
   DangerButton,
   EmptyState,
   GhostButton,
+  Keypad,
   LandmarkCard,
   ListRow,
+  OfflineBanner,
   Overline,
   PendingNotice,
+  PosterTitle,
   PrimaryButton,
+  QuoteRule,
   ScreenTransition,
+  SealMark,
   SecondaryButton,
+  SosButton,
+  SosSheet,
   StatusChip,
   TabBar,
-  WaxBand,
+  ThemeStrip,
   type ChipTone,
+  type SosState,
 } from './src/ui/kit';
+import {
+  IconColis,
+  IconReprendre,
+  IconRefus,
+  IconMoto,
+  IconScelle,
+  IconCamera,
+  IconCle,
+  IconCoche,
+  type IconProps,
+} from './src/ui/icons';
 
 /**
- * WO-4.2R — LE VISAGE over WO-4.1's walkable custody world. Same 17
- * screens, same edges, same TOTAL back law (course → liste → accueil, no
- * pop arm — ratified), same custody moves through the same demo store
- * (which calls custody-flow.ts, the rule source, and throws on any
- * out-of-order move) — the visual layer is the kit (src/ui/kit.tsx,
- * ui-tokens v2 seraTheme), the navigation and custody SEMANTICS are
- * untouched. Tabs are waypoint RESETS under the ratified two-level-ladder
- * law: Service = the root reset, Courses = the toCourses waypoint —
- * never a new edge, never a push. Offline law unchanged: queued =
- * pending, never done. « Recommencer la démo » resets world + stack.
+ * WO-6.1 — LE VISAGE, Grand Teint (sera theme), over WO-4.1/4.3's walkable
+ * custody world. The RESKIN law: every screen adopts the Grand Teint kit but
+ * the journey spine and custody SEMANTICS stay byte-identical — same 17
+ * screens, same edges, same TOTAL back law (course → liste → accueil, no pop
+ * arm), same custody moves through the same demo store (which calls
+ * custody-flow.ts, the rule source, and throws on any out-of-order move).
+ * R1–R14 is the design bundle's vocabulary over these screens; R4 « le repère »
+ * is the illustrated LandmarkCard treatment on affectation + the door, R14
+ * « SOS » is an overlay mounted UNCONDITIONALLY (one gesture, every screen),
+ * never a spine node. Offline law unchanged: queued = pending, never done.
  */
+
+const C = seraTheme.colours;
+const T = typo.scale;
 
 type ShiftView = 'off' | 'pending' | 'on';
 
@@ -129,10 +155,10 @@ const toneFor = (course: DemoCourse): ChipTone =>
         : STATUS_TONE[course.step];
 
 /** Course glyphs by kind — icons always paired with text (the chip + title). */
-const KIND_GLYPH: Record<CourseKind, string> = {
-  livraison: '📦',
-  deuxieme_passage: '🔁',
-  retour: '↩️',
+const KIND_ICON: Record<CourseKind, (p: IconProps) => React.JSX.Element> = {
+  livraison: IconColis,
+  deuxieme_passage: IconReprendre,
+  retour: IconRefus,
 };
 
 /** The bottom hubs (WO-4.2R): Service · Courses — waypoint resets only. */
@@ -140,42 +166,69 @@ const HUBS: readonly Screen[] = ['service', 'courses'];
 
 /** WO-4.3 — the demo's answer window for a proposed course (« Réponds
  * avant : HH:MM »). ⚠ CTO safest default: reuses WO-1.2's founder-reviewed
- * ACK_DEADLINE_MS (5 min — assignment-lease-ttl.v1); the live
- * per-assignment expiresAt arrives with the service at assembly (the
- * retry_window windowUntil pattern — the display is honest either way). */
+ * ACK_DEADLINE_MS (5 min — assignment-lease-ttl.v1). */
 const proposalDeadlineHhmm = (): string => {
   const until = new Date(Date.now() + 5 * 60_000);
   return `${String(until.getHours()).padStart(2, '0')}:${String(until.getMinutes()).padStart(2, '0')}`;
 };
+const hhmmNow = (): string => {
+  const now = new Date();
+  return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+};
+
+/** The buyer's code is six digits (demo). The store's validateDropCode owns
+ * finality; this is only the entry surface, and it exists ONLY on the drop
+ * screen — which the spine makes reachable only after provider confirmation. */
+const DROP_CODE_LEN = 6;
 
 export default function App() {
   const [world, setWorld] = useState<DemoWorld>(() => createDemoWorld());
   const [stack, setStack] = useState<Screen[]>([START]);
   const [shift, setShift] = useState<ShiftView>('off');
+  const [offline, setOffline] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [checks, setChecks] = useState<Partial<Record<PolicyCheckId, boolean>>>({});
   const [windowUntil, setWindowUntil] = useState('');
   const [proposalUntil, setProposalUntil] = useState(proposalDeadlineHhmm);
+  const [playing, setPlaying] = useState(false);
+  const [codeStr, setCodeStr] = useState('');
+  const [celebrate, setCelebrate] = useState(false);
+  const [sos, setSos] = useState<SosState>('closed');
+  const [sosAt, setSosAt] = useState('');
+  const [key1, setKey1] = useState(false);
+  const [key2, setKey2] = useState(false);
+  const [oneKeyMsg, setOneKeyMsg] = useState(false);
   const screen = stack[stack.length - 1] ?? START;
   const active = world.courses.find((c) => c.id === activeId) ?? null;
   const allChecked = POLICY_CHECK_IDS.every((id) => checks[id] === true);
+
+  // SOS hold + escalation timers — deliberate HOLD to fire, cleared on release.
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sosTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const clearSosTimers = useCallback(() => {
+    sosTimers.current.forEach(clearTimeout);
+    sosTimers.current = [];
+    if (holdTimer.current) {
+      clearTimeout(holdTimer.current);
+      holdTimer.current = null;
+    }
+  }, []);
+  useEffect(() => clearSosTimers, [clearSosTimers]);
 
   const go = useCallback((next: Screen) => {
     if (!JOURNEY[stack[stack.length - 1] ?? START].includes(next)) return;
     setStack((s) => [...s, next]);
   }, [stack]);
-  // The course list is a fixed waypoint, never a pushed layer: every
-  // in-course « Retour aux courses » lands here, so the list can never sit
-  // above a stale course screen (the verifier's push-then-pop route).
+  // The course list is a fixed waypoint, never a pushed layer: every in-course
+  // « Retour aux courses » lands here, so the list can never sit above a stale
+  // course screen (the verifier's push-then-pop route).
   const toCourses = useCallback(() => setStack([START, 'courses']), []);
   const back = useCallback(() => {
-    // WO-4.1 rule (journaled; a TOTAL rule after two verifier findings —
-    // stale in-course screens must be unreachable BY CONSTRUCTION): a
-    // course's truth lives in course.step, so no course screen is ever
-    // revealed by popping. « Retour » on a course screen goes to the
-    // course list (the course keeps its exact step and reopens there);
-    // on the list it goes home; on the root it does nothing. No pop arm
-    // exists — nothing is ever revealed from underneath.
+    // WO-4.1 rule (journaled; a TOTAL rule after two verifier findings — stale
+    // in-course screens must be unreachable BY CONSTRUCTION): a course's truth
+    // lives in course.step, so no course screen is ever revealed by popping.
+    // « Retour » on a course screen goes to the course list; on the list it
+    // goes home; on the root it does nothing. No pop arm exists.
     const current = stack[stack.length - 1] ?? START;
     if (current === 'courses') {
       setStack([START]);
@@ -186,14 +239,23 @@ export default function App() {
     }
   }, [stack]);
   const reset = useCallback(() => {
+    clearSosTimers();
     setWorld(createDemoWorld());
     setStack([START]);
     setShift('off');
+    setOffline(false);
     setActiveId(null);
     setChecks({});
     setWindowUntil('');
     setProposalUntil(proposalDeadlineHhmm());
-  }, []);
+    setPlaying(false);
+    setCodeStr('');
+    setCelebrate(false);
+    setSos('closed');
+    setKey1(false);
+    setKey2(false);
+    setOneKeyMsg(false);
+  }, [clearSosTimers]);
 
   /** Every custody move: the store calls custody-flow (throws out-of-order),
    * the world re-renders, the stack follows the rule's outcome. */
@@ -206,11 +268,49 @@ export default function App() {
   const openCourse = useCallback((course: DemoCourse) => {
     setActiveId(course.id);
     setChecks({});
+    setCodeStr('');
+    setPlaying(false);
+    setKey1(false);
+    setKey2(false);
+    setOneKeyMsg(false);
     go(course.step);
   }, [go]);
 
+  // The arrival celebration fires when the drop code lands the course at
+  // 'delivered' — ≤ 800 ms, non-blocking, tap-to-skip, static under reduced
+  // motion (the component owns that).
+  useEffect(() => {
+    if (screen === 'delivered') setCelebrate(true);
+  }, [screen]);
+
+  // SOS — one gesture from any screen; opening only reveals the sheet, firing
+  // requires a deliberate HOLD (neither accidental nor missable).
+  const openSos = useCallback(() => setSos('confirm'), []);
+  const cancelSos = useCallback(() => {
+    clearSosTimers();
+    setSos('closed');
+  }, [clearSosTimers]);
+  const sosHoldStart = useCallback(() => {
+    if (holdTimer.current) clearTimeout(holdTimer.current);
+    holdTimer.current = setTimeout(() => {
+      setSosAt(hhmmNow());
+      setSos('raised');
+      sosTimers.current.push(setTimeout(() => setSos('ack'), 1600));
+      sosTimers.current.push(setTimeout(() => setSos('enroute'), 3200));
+    }, 650);
+  }, []);
+  const sosHoldEnd = useCallback(() => {
+    if (holdTimer.current) {
+      clearTimeout(holdTimer.current);
+      holdTimer.current = null;
+    }
+  }, []);
+  const sosClose = useCallback(() => {
+    clearSosTimers();
+    setSos('over');
+  }, [clearSosTimers]);
+
   const arriving = world.courses.find((c) => !c.closed && c.step === 'affectation') ?? null;
-  const shiftStatus = shift === 'on' ? t('shift.on') : shift === 'pending' ? t('shift.pending') : t('shift.off');
   const shiftAction = shift === 'off' ? t('shift.start_action') : t('shift.end_action');
 
   const headerTitle =
@@ -221,372 +321,477 @@ export default function App() {
         : active !== null
           ? active.name
           : t('app.title');
+  const headerChip = screen === 'service' ? (shift === 'on' ? t('shift.on') : t('shift.off')) : t('assignment.title');
+
+  const voiceFor = () => ({
+    label: playing ? t('repere.voice_playing') : t('repere.voice'),
+    time: '0:11',
+    playing,
+    onPress: () => setPlaying((p) => !p),
+  });
+  // The seal ID's digit grouping uses the canon narrow-no-break-space (U+202F,
+  // money.groupSeparator) — the one place any grouping surfaces in Séra, which
+  // carries NO franc amount anywhere. Its glyph is whitespace; the fallback
+  // system face carries it, so no tofu.
+  const SEAL_ID = `SC-77${money.groupSeparator}412`;
 
   return (
     <SafeAreaView style={styles.screen}>
-      {/* SDK 54: backgroundColor restored per the WO-4.0d-prep founder
-          ruling ③ — pre-edge-to-edge Android draws a default bar; the
-          surface token is the correct fill. */}
-      <StatusBar style="dark" backgroundColor={theme.colors.surface} />
-      <WaxBand />
+      {/* Grand Teint status bar ink over warm paper (statusbar token). */}
+      <StatusBar style="dark" backgroundColor={C.paper} />
+      <ThemeStrip />
+      <AppHeader
+        title={headerTitle}
+        subtitle={screen === 'service' ? t('service.tagline') : undefined}
+        backLabel={`← ${t('nav.retour')}`}
+        onBack={stack.length > 1 ? back : undefined}
+        right={<StatusChip tone={shift === 'on' ? 'ok' : 'muted'} label={headerChip} />}
+      />
+      {offline && <OfflineBanner label={t('offline.banner')} />}
       {IS_PREVIEW && (
         <View style={styles.previewBanner}>
           <Text style={styles.previewBannerText}>{t('preview.banner')}</Text>
         </View>
       )}
 
-      <AppHeader
-        title={headerTitle}
-        subtitle={screen === 'service' ? t('service.tagline') : undefined}
-        backLabel={`← ${t('nav.retour')}`}
-        onBack={stack.length > 1 ? back : undefined}
-      />
-
       <ScreenTransition screenKey={screen}>
-      <View style={styles.content}>
-        {screen === 'service' && (
-          <View style={styles.stackGap}>
-            <Card>
-              <Overline>{t('shell.work_tab')}</Overline>
-              {shift === 'pending' ? (
-                // Queued = pending, never done — the honest waiting row,
-                // never a fake « En service ».
-                <PendingNotice lines={[shiftStatus]} />
-              ) : (
-                <StatusChip tone={shift === 'on' ? 'ok' : 'muted'} label={shiftStatus} />
+        <View style={styles.content}>
+          {screen === 'service' && (
+            <View style={styles.stackGap}>
+              {shift === 'off' && (
+                <>
+                  <PosterTitle>{t('service.off_title')}</PosterTitle>
+                  <Body>{t('service.off_body')}</Body>
+                  <Card ink>
+                    <View style={styles.certRow}>
+                      <IconScelle size={T.body.size} color={C.ink} />
+                      <Body style={styles.certText}>{t('service.location_note')}</Body>
+                    </View>
+                    <View style={styles.certRow}>
+                      <StatusChip tone="info" label={t('service.certified')} />
+                      <Body style={styles.certText}>{t('service.certified_name')}</Body>
+                    </View>
+                  </Card>
+                  <PrimaryButton
+                    label={shiftAction}
+                    onPress={() => {
+                      // No server in the sandbox: a start stays queued = PENDING —
+                      // an offline shift-start confers NOTHING (R1 law).
+                      setShift('pending');
+                    }}
+                  />
+                </>
               )}
+              {shift === 'pending' && (
+                <Card ink>
+                  <Overline>{t('shift.pending_title')}</Overline>
+                  {/* Queued = pending, never done — never a fake « En service ». */}
+                  <PendingNotice lines={[t('service.pending_note')]} />
+                </Card>
+              )}
+              {shift === 'on' && (
+                <>
+                  <Card accent>
+                    <View style={styles.onRow}>
+                      <View style={styles.onDot} />
+                      <PosterTitle>{t('shift.on')}</PosterTitle>
+                    </View>
+                    <Body>{t('service.on_note')}</Body>
+                  </Card>
+                  {arriving !== null && (
+                    <ListRow
+                      Icon={KIND_ICON[arriving.kind]}
+                      code={t('assignment.title')}
+                      title={arriving.locationLines[0]}
+                      meta={`${arriving.locationLines[2]} · ${t('assignment.landmark_label')}`}
+                      chip={<StatusChip tone="info" label={t(statusKeyFor(arriving))} />}
+                      onPress={() => openCourse(arriving)}
+                    />
+                  )}
+                  <PrimaryButton label={t('courses.title')} onPress={() => go('courses')} />
+                  <GhostButton label={t('shift.end_action')} onPress={() => setShift('off')} />
+                </>
+              )}
+              <SecondaryButton label={t('offline.toggle')} onPress={() => setOffline((o) => !o)} />
+            </View>
+          )}
+
+          {screen === 'courses' && (
+            <View style={styles.listWrap}>
+              <Overline>{t('courses.overline')}</Overline>
+              <FlatList
+                data={world.courses}
+                keyExtractor={(c) => c.id}
+                initialNumToRender={6}
+                windowSize={5}
+                contentContainerStyle={styles.listContent}
+                ListEmptyComponent={<EmptyState Icon={IconMoto} title={t('shell.no_task')} hint={t('courses.empty_hint')} />}
+                ListFooterComponent={<Text style={styles.listFoot}>{t('courses.one_guardian')}</Text>}
+                renderItem={({ item }) => (
+                  <ListRow
+                    Icon={KIND_ICON[item.kind]}
+                    code={item.id.toUpperCase()}
+                    title={item.locationLines[0]}
+                    meta={`${item.locationLines[2]} · ${item.name}`}
+                    muted={item.closed}
+                    chip={
+                      <>
+                        <StatusChip tone={toneFor(item)} label={t(statusKeyFor(item))} />
+                        {item.attempt === 2 && <StatusChip tone="info" label={t('courses.lineage_2e')} />}
+                      </>
+                    }
+                    onPress={item.closed ? undefined : () => openCourse(item)}
+                  />
+                )}
+              />
+            </View>
+          )}
+
+          {screen === 'affectation' && (
+            <Card style={styles.flexCard}>
+              {active === null ? (
+                <EmptyState Icon={IconMoto} title={t('shell.no_task')} />
+              ) : (
+                <>
+                  <Overline>{`${t('assignment.deadline')} ${proposalUntil}`}</Overline>
+                  {/* R4 « le repère » — the illustrated signature card (SE0.3,
+                      the D18 label class), voice directions playable. */}
+                  <LandmarkCard
+                    zone={active.locationLines[2]}
+                    lines={active.locationLines}
+                    repereLabel={t('assignment.landmark_label')}
+                    indicationsLabel={t('repere.indications')}
+                    illustrated
+                    voice={voiceFor()}
+                  />
+                  <QuoteRule>{t('repere.no_gps')}</QuoteRule>
+                  {active.ack === 'decline_pending' ? (
+                    /* The refusal went out WITHOUT the network: queued =
+                       PENDING, it confers nothing — only a server-confirmed
+                       decline releases; the window still runs. */
+                    <PendingNotice lines={[t('assignment.decline_pending')]} />
+                  ) : active.ack === 'ack_pending' ? (
+                    <>
+                      {/* Queued = PENDING; walking to the pickup is navigation. */}
+                      <PendingNotice lines={[t('assignment.ack_pending')]} />
+                      <PrimaryButton label={t('assignment.pickup_action')} onPress={() => walk((w) => beginPickup(w, active.id))} />
+                      <DangerButton
+                        label={t('assignment.decline_action')}
+                        onPress={() => {
+                          declineCourse(world, active.id);
+                          setWorld({ ...world });
+                          toCourses();
+                        }}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <PrimaryButton
+                        label={t('assignment.ack_action')}
+                        onPress={() => {
+                          acknowledgeCourse(world, active.id);
+                          setWorld({ ...world });
+                        }}
+                      />
+                      <DangerButton
+                        label={t('assignment.decline_action')}
+                        onPress={() => {
+                          declineCourse(world, active.id);
+                          setWorld({ ...world });
+                          toCourses();
+                        }}
+                      />
+                    </>
+                  )}
+                  <GhostButton
+                    label={t('assignment.expired_action')}
+                    onPress={() => {
+                      expireProposal(world, active.id);
+                      setWorld({ ...world });
+                      toCourses();
+                    }}
+                  />
+                </>
+              )}
+            </Card>
+          )}
+
+          {/* The custody walk — every transition below goes through the demo
+              store, which calls custody-flow.ts (the rule source) and throws
+              on any out-of-order move. */}
+          {screen === 'verify' && active !== null && (
+            <Card style={styles.flexCard}>
+              <PosterTitle>{t('verify.title')}</PosterTitle>
+              <Body>{t('verify.body')}</Body>
+              <View style={styles.checkList}>
+                {POLICY_CHECK_IDS.map((id) => (
+                  <CheckRow key={id} label={t(`check.${id}`)} checked={checks[id] === true} onPress={() => setChecks({ ...checks, [id]: !checks[id] })} />
+                ))}
+              </View>
               <PrimaryButton
-                label={shiftAction}
+                label={t('verify.accept_action')}
+                disabled={!allChecked}
+                onPress={() => walk((w) => passVerification(w, active.id, checks))}
+              />
+              {/* The refusal arm is as dignified as acceptance — its own
+                  polished danger style, never a shame path. */}
+              <DangerButton label={t('verify.refuse_action')} onPress={() => walk((w) => refusePickup(w, active.id))} />
+            </Card>
+          )}
+
+          {screen === 'refused' && (
+            <Card>
+              {/* The refusal path, money-register calm — what happened, what
+                  happens next; the course closes with dignity. */}
+              <PosterTitle>{t('refuse.status')}</PosterTitle>
+              <Body>{t('refuse.next')}</Body>
+              <SecondaryButton label={t('nav.retour_courses')} onPress={toCourses} />
+            </Card>
+          )}
+
+          {screen === 'seal' && active !== null && (
+            <Card ink>
+              {/* R7 « le scellé » — custody begins HERE, not a second before. */}
+              <PosterTitle>{t('seal.title')}</PosterTitle>
+              <Body>{t('seal.body')}</Body>
+              <SealMark code={SEAL_ID} label={t('seal.single_use')} />
+              {offline ? (
+                <PendingNotice lines={[t('seal.offline')]} />
+              ) : (
+                <PrimaryButton label={t('seal.action')} onPress={() => walk((w) => registerSeal(w, active.id))} />
+              )}
+            </Card>
+          )}
+
+          {screen === 'evidence' && active !== null && (
+            <Card>
+              <PosterTitle>{t('evidence.title')}</PosterTitle>
+              <View style={styles.photoFrame}>
+                <IconCamera size={T.display.size} color={C.soft} />
+                <View style={[styles.cornerTick, styles.tickTL]} />
+                <View style={[styles.cornerTick, styles.tickTR]} />
+                <View style={[styles.cornerTick, styles.tickBL]} />
+                <View style={[styles.cornerTick, styles.tickBR]} />
+              </View>
+              <PrimaryButton
+                label={t('evidence.action')}
                 onPress={() => {
-                  // No server in the sandbox: a start stays queued = PENDING —
-                  // never a fake « En service ». confirmQueuedShiftStart
-                  // arrives with the live service at assembly.
-                  setShift(shift === 'off' ? 'pending' : 'off');
+                  // WO-2.4: the door inspection precedes the drop in BOTH modes;
+                  // offline evidence still locks everything downstream (queued =
+                  // pending — the store walks the honest branch).
+                  walk((w) => captureEvidence(w, active.id, offline ? 'offline' : 'online'));
                 }}
               />
             </Card>
-            {shift !== 'off' && arriving !== null && (
-              <ListRow
-                glyph={KIND_GLYPH[arriving.kind]}
-                title={t('assignment.title')}
-                meta={`${t('assignment.landmark_label')} : ${arriving.locationLines[0]}`}
-                chip={<StatusChip tone="info" label={t(statusKeyFor(arriving))} />}
-                onPress={() => openCourse(arriving)}
+          )}
+
+          {screen === 'evidence_pending' && (
+            <Card>
+              {/* Offline law: the photo is queued = pending; the drop step is
+                  LOCKED — finality never happens offline. */}
+              <PendingNotice lines={[t('evidence.pending')]} />
+              <SecondaryButton label={t('nav.retour_courses')} onPress={toCourses} />
+            </Card>
+          )}
+
+          {screen === 'door_inspection' && active !== null && (
+            <Card style={styles.flexCard}>
+              <PosterTitle>{t('inspect.title')}</PosterTitle>
+              <Body>{t('inspect.body')}</Body>
+              {active.attempt === 2 && <StatusChip tone="info" label={t('courses.lineage_2e')} />}
+              {/* The signature card again at the door — the rider stands at the
+                  repère, never at a street address. */}
+              <LandmarkCard
+                zone={active.locationLines[2]}
+                lines={active.locationLines}
+                repereLabel={t('assignment.landmark_label')}
+                indicationsLabel={t('repere.indications')}
               />
-            )}
-            <GhostButton label={t('courses.title')} onPress={() => go('courses')} />
-          </View>
-        )}
+              <PrimaryButton label={t('inspect.accept_action')} onPress={() => walk((w) => acceptInspection(w, active.id))} />
+              <GhostButton label={t('problem.action')} onPress={() => walk((w) => reportProblem(w, active.id))} />
+              <Pressable style={styles.linkRow} onPress={() => walk((w) => reportProblem(w, active.id))} accessibilityRole="button">
+                <Text style={styles.linkText}>{t('inspect.cantpay')}</Text>
+              </Pressable>
+            </Card>
+          )}
 
-        {screen === 'courses' && (
-          <View style={styles.listWrap}>
-            <FlatList
-              data={world.courses}
-              keyExtractor={(c) => c.id}
-              initialNumToRender={6}
-              windowSize={5}
-              contentContainerStyle={styles.listContent}
-              ListEmptyComponent={<EmptyState glyph="🛵" title={t('shell.no_task')} />}
-              renderItem={({ item }) => (
-                <ListRow
-                  glyph={KIND_GLYPH[item.kind]}
-                  title={item.name}
-                  meta={`${t('assignment.landmark_label')} : ${item.locationLines[0]}, ${item.locationLines[2]}`}
-                  muted={item.closed}
-                  chip={
-                    <>
-                      <StatusChip tone={toneFor(item)} label={t(statusKeyFor(item))} />
-                      {item.attempt === 2 && <StatusChip tone="info" label={t('courses.lineage_2e')} />}
-                    </>
-                  }
-                  onPress={item.closed ? undefined : () => openCourse(item)}
-                />
+          {screen === 'payment_wait' && active !== null && (
+            <Card>
+              {/* R9 « à la porte » — SE-I11: the rider CANNOT assert payment.
+                  No button, no field, no gesture advances this screen; ONLY the
+                  provider signal does. The waiting screen is UNSKIPPABLE. The
+                  sandbox constant stands in for the live signal at assembly. */}
+              {SANDBOX_DOOR_SIGNAL === 'confirmed' ? (
+                <>
+                  <PosterTitle>{t('pay_ok.status')}</PosterTitle>
+                  <Body>{t('pay_ok.body')}</Body>
+                  <PrimaryButton
+                    label={t('pay_ok.continue_action')}
+                    onPress={() => walk((w) => applyProviderDoorSignal(w, active.id, SANDBOX_DOOR_SIGNAL))}
+                  />
+                </>
+              ) : (
+                <>
+                  <PosterTitle>{t('pay_wait.status')}</PosterTitle>
+                  <PendingNotice lines={[t('pay_wait.hint'), t('pay_wait.operator')]} />
+                </>
               )}
-            />
-          </View>
-        )}
+            </Card>
+          )}
 
-        {screen === 'affectation' && (
-          <Card>
-            {active === null ? (
-              <EmptyState glyph="🛵" title={t('shell.no_task')} />
-            ) : (
-              <>
-                <Text style={styles.stepTitle}>{t('assignment.title')}</Text>
-                {/* « Repère » heads the landmark-first location block (SE0.3,
-                    D18 label class) — the LandmarkCard is Séra's signature. */}
-                <LandmarkCard label={t('assignment.landmark_label')} lines={active.locationLines} />
-                {/* WO-4.3 — the honest answer window: the proposal is not
-                    forever; the deadline is said, calmly, up front. */}
-                <StatusChip tone="warn" label={`${t('assignment.deadline')} ${proposalUntil}`} />
-                {active.ack === 'decline_pending' ? (
-                  /* The refusal went out WITHOUT the network: queued =
-                     PENDING, it confers nothing — only a server-confirmed
-                     decline releases; the window still runs. */
-                  <PendingNotice lines={[t('assignment.decline_pending')]} />
-                ) : active.ack === 'ack_pending' ? (
-                  <>
-                    {/* The ack is queued = PENDING and confers nothing —
-                        AssignmentBook.acknowledge('server_confirmed') closes
-                        it at assembly; the ack deadline still bites a pending
-                        ack (assignment.expired.v1 → back to queue). Walking
-                        to the pickup is navigation, not finality. */}
-                    <PendingNotice lines={[t('assignment.ack_pending')]} />
-                    <PrimaryButton label={t('assignment.pickup_action')} onPress={() => walk((w) => beginPickup(w, active.id))} />
-                    <DangerButton
-                      label={t('assignment.decline_action')}
-                      onPress={() => {
-                        declineCourse(world, active.id);
-                        setWorld({ ...world });
-                        toCourses();
-                      }}
-                    />
-                  </>
-                ) : (
-                  <>
-                    <PrimaryButton
-                      label={t('assignment.ack_action')}
-                      onPress={() => {
-                        acknowledgeCourse(world, active.id);
-                        setWorld({ ...world });
-                      }}
-                    />
-                    {/* WO-4.3 — giving the course back is as dignified as
-                        taking it (server-confirmed in the sandbox walk; the
-                        offline arm is the seeded pending course). */}
-                    <DangerButton
-                      label={t('assignment.decline_action')}
-                      onPress={() => {
-                        declineCourse(world, active.id);
-                        setWorld({ ...world });
-                        toCourses();
-                      }}
-                    />
-                  </>
-                )}
-                {/* WO-4.3 — the expiry demo lever (the retry_window
-                    « Le temps est passé » pattern): the live sweep drives
-                    this at assembly; the honest expired state is designed,
-                    not hidden. */}
+          {screen === 'drop' && active !== null && (
+            <Card style={styles.flexCard}>
+              {/* R10 « le code de remise » — the buyer's code is the LAST key.
+                  This entry exists ONLY here; the spine makes 'drop' reachable
+                  only after the provider-confirmed payment. */}
+              <Overline>{t('drop.title')}</Overline>
+              <Body>{t('drop.hint')}</Body>
+              <CodeCells value={codeStr} length={DROP_CODE_LEN} />
+              <Keypad
+                onKey={(d) => setCodeStr((c) => (c.length < DROP_CODE_LEN ? c + d : c))}
+                onBack={() => setCodeStr((c) => c.slice(0, -1))}
+              />
+              <PrimaryButton
+                label={t('drop.action')}
+                disabled={codeStr.length !== DROP_CODE_LEN}
+                onPress={() => walk((w) => validateDropCode(w, active.id))}
+              />
+              {/* WO-2.2 refusal ladder entry — as dignified as the purchase
+                  path; it whispers, never shouts. */}
+              <GhostButton label={t('problem.action')} onPress={() => walk((w) => reportProblem(w, active.id))} />
+            </Card>
+          )}
+
+          {screen === 'refusal_reason' && active !== null && (
+            <Card style={styles.flexCard}>
+              <PosterTitle>{t('reason.title')}</PosterTitle>
+              {FAILURE_REASON_IDS.map((id) => (
                 <GhostButton
-                  label={t('assignment.expired_action')}
+                  key={id}
+                  label={t(`reason.${id}`)}
                   onPress={() => {
-                    expireProposal(world, active.id);
-                    setWorld({ ...world });
-                    toCourses();
+                    // The ONE retry window (~15 min policy default; the live
+                    // windowExpiresAt arrives with the service outcome at
+                    // assembly — the display is honest either way).
+                    const until = new Date(Date.now() + 15 * 60_000);
+                    setWindowUntil(`${String(until.getHours()).padStart(2, '0')}:${String(until.getMinutes()).padStart(2, '0')}`);
+                    walk((w) => chooseFailureReason(w, active.id, id));
                   }}
                 />
-              </>
-            )}
-          </Card>
-        )}
-
-        {/* The custody walk — every transition below goes through the demo
-            store, which calls custody-flow.ts (the rule source) and throws
-            on any out-of-order move. */}
-        {screen === 'verify' && active !== null && (
-          <Card>
-            <Text style={styles.stepTitle}>{t('verify.title')}</Text>
-            <View style={styles.checkList}>
-              {POLICY_CHECK_IDS.map((id) => (
-                <CheckRow key={id} label={t(`check.${id}`)} checked={checks[id] === true} onPress={() => setChecks({ ...checks, [id]: !checks[id] })} />
               ))}
-            </View>
-            <PrimaryButton
-              label={t('verify.accept_action')}
-              disabled={!allChecked}
-              onPress={() => walk((w) => passVerification(w, active.id, checks))}
-            />
-            {/* The refusal arm is as dignified as acceptance — its own
-                polished danger style, never a shame path. */}
-            <DangerButton label={t('verify.refuse_action')} onPress={() => walk((w) => refusePickup(w, active.id))} />
-          </Card>
-        )}
+            </Card>
+          )}
 
-        {screen === 'refused' && (
-          <Card>
-            {/* The refusal path, money-register calm — what happened, what
-                happens next; the course closes with dignity. */}
-            <Text style={styles.stepTitle}>{t('refuse.status')}</Text>
-            <Text style={styles.stepHint}>{t('refuse.next')}</Text>
-            <SecondaryButton label={t('nav.retour_courses')} onPress={toCourses} />
-          </Card>
-        )}
+          {screen === 'retry_window' && active !== null && (
+            <Card>
+              {/* R12 « l'échelle des échecs » — retry arm. No generic « échec »
+                  exists; the drop code stays LAST, behind the payment leg. */}
+              <PosterTitle>{t('retry.status')}</PosterTitle>
+              <StatusChip tone="warn" label={`${t('retry.until')} ${windowUntil}`} />
+              <PrimaryButton label={t('retry.retry_action')} onPress={() => walk((w) => retryDelivery(w, active.id))} />
+              <GhostButton label={t('retry.expired_action')} onPress={() => walk((w) => expireRetryWindow(w, active.id))} />
+            </Card>
+          )}
 
-        {screen === 'seal' && active !== null && (
-          <Card style={styles.momentCard}>
-            <Text style={styles.momentGlyph} accessibilityElementsHidden>
-              🔏
-            </Text>
-            <Text style={styles.momentTitle}>{t('seal.title')}</Text>
-            <PrimaryButton label={t('seal.action')} onPress={() => walk((w) => registerSeal(w, active.id))} />
-          </Card>
-        )}
+          {screen === 'refused_final' && active !== null && (
+            <Card>
+              {/* Buyer-fault refusal, register:money — calm, cause and
+                  what-happens-next stated; no shame, no jargon. */}
+              <PosterTitle>{t('refused_final.status')}</PosterTitle>
+              <Body>{t('refused_final.fee')}</Body>
+              <Body>{t('refused_final.next')}</Body>
+              <PrimaryButton label={t('refused_final.retour_action')} onPress={() => walk((w) => prepareReturn(w, active.id))} />
+            </Card>
+          )}
 
-        {screen === 'evidence' && active !== null && (
-          <Card>
-            <Text style={styles.stepTitle}>{t('evidence.title')}</Text>
-            <View style={styles.photoFrame}>
-              <Text style={styles.photoGlyph} accessibilityElementsHidden>
-                📷
-              </Text>
-            </View>
-            <PrimaryButton
-              label={t('evidence.action')}
-              onPress={() => {
-                // WO-2.4: the door inspection precedes the drop in BOTH
-                // modes; offline evidence still locks everything downstream
-                // (queued = pending — the store walks the honest branch).
-                walk((w) => captureEvidence(w, active.id));
-              }}
-            />
-          </Card>
-        )}
+          {screen === 'reschedule_planned' && (
+            <Card>
+              {/* The non-escalating arm: honest absence / provider failure —
+                  nothing is lost, the order stays whole; the 2e passage appears
+                  on the course list with its lineage. */}
+              <PosterTitle>{t('reschedule.status')}</PosterTitle>
+              <Body>{t('reschedule.next')}</Body>
+              <StatusChip tone="info" label={t('reschedule.lineage')} />
+              <SecondaryButton label={t('nav.retour_courses')} onPress={toCourses} />
+            </Card>
+          )}
 
-        {screen === 'evidence_pending' && (
-          <Card>
-            {/* Offline law: the photo is queued = pending; the drop step is
-                LOCKED — finality never happens offline. */}
-            <PendingNotice lines={[t('evidence.pending')]} />
-            <SecondaryButton label={t('nav.retour_courses')} onPress={toCourses} />
-          </Card>
-        )}
-
-        {screen === 'door_inspection' && active !== null && (
-          <Card>
-            <Text style={styles.stepTitle}>{t('inspect.title')}</Text>
-            {active.attempt === 2 && <StatusChip tone="info" label={t('courses.lineage_2e')} />}
-            {/* The signature card again at the door — the rider stands at
-                the repère, never at a street address. */}
-            <LandmarkCard label={t('assignment.landmark_label')} lines={active.locationLines} />
-            <PrimaryButton label={t('inspect.accept_action')} onPress={() => walk((w) => acceptInspection(w, active.id))} />
-            <GhostButton label={t('problem.action')} onPress={() => walk((w) => reportProblem(w, active.id))} />
-          </Card>
-        )}
-
-        {screen === 'payment_wait' && active !== null && (
-          <Card>
-            {/* SE-I11: ONLY the provider signal advances this screen — the
-                rider has no action while the payment is unconfirmed. The
-                sandbox constant stands in for the live signal at assembly. */}
-            {SANDBOX_DOOR_SIGNAL === 'confirmed' ? (
-              <>
-                <Text style={styles.stepTitle}>{t('pay_ok.status')}</Text>
-                <PrimaryButton
-                  label={t('pay_ok.continue_action')}
-                  onPress={() => walk((w) => applyProviderDoorSignal(w, active.id, SANDBOX_DOOR_SIGNAL))}
-                />
-              </>
-            ) : (
-              <>
-                <Text style={styles.stepTitle}>{t('pay_wait.status')}</Text>
-                <PendingNotice lines={[t('pay_wait.hint')]} />
-              </>
-            )}
-          </Card>
-        )}
-
-        {screen === 'drop' && active !== null && (
-          <Card style={styles.momentCard}>
-            {/* The code moment — centered, strong, calm: the buyer's code is
-                the LAST key and the screen holds it like one. */}
-            <Text style={styles.momentGlyph} accessibilityElementsHidden>
-              🔑
-            </Text>
-            <Text style={styles.momentTitle}>{t('drop.title')}</Text>
-            <Text style={styles.momentHint}>{t('drop.hint')}</Text>
-            <PrimaryButton label={t('drop.action')} onPress={() => walk((w) => validateDropCode(w, active.id))} />
-            {/* WO-2.2 refusal ladder entry — the problem path is as
-                dignified as the purchase path; it whispers, never shouts. */}
-            <GhostButton label={t('problem.action')} onPress={() => walk((w) => reportProblem(w, active.id))} />
-          </Card>
-        )}
-
-        {screen === 'refusal_reason' && active !== null && (
-          <Card>
-            <Text style={styles.stepTitle}>{t('reason.title')}</Text>
-            {FAILURE_REASON_IDS.map((id) => (
-              <GhostButton
-                key={id}
-                label={t(`reason.${id}`)}
+          {screen === 'retour_colis' && active !== null && (
+            <Card style={styles.flexCard}>
+              {/* R13 « le retour à deux clés » (SE6.2): the seller's key and the
+                  rider's key, both or neither. A single key REFUSES. */}
+              <PosterTitle>{t('retour.title')}</PosterTitle>
+              <QuoteRule tone="accent">{t('retour.custodian')}</QuoteRule>
+              <Overline>{t('retour.two_keys')}</Overline>
+              <View style={styles.keyRow}>
+                <View style={styles.keyLabel}>
+                  <IconCle size={T.body.size} color={C.ink} />
+                  <Body style={styles.keyText}>{t('retour.key_seller')}</Body>
+                </View>
+                {key1 ? (
+                  <IconCoche size={T.title.size} color={C.success} />
+                ) : (
+                  <GhostButton label={t('retour.key_seller_action')} onPress={() => setKey1(true)} />
+                )}
+              </View>
+              <View style={styles.keyRow}>
+                <View style={styles.keyLabel}>
+                  <IconCle size={T.body.size} color={C.ink} />
+                  <Body style={styles.keyText}>{t('retour.key_rider')}</Body>
+                </View>
+                {key2 ? (
+                  <IconCoche size={T.title.size} color={C.success} />
+                ) : (
+                  <GhostButton
+                    label={t('retour.key_rider_action')}
+                    onPress={() => {
+                      // A single-key attempt REFUSES: both hands, or the custody
+                      // does not move (attemptReturnHandover is the pure gate).
+                      if (attemptReturnHandover({ seller: key1, rider: true }) === 'refused') {
+                        setOneKeyMsg(true);
+                        return;
+                      }
+                      setKey2(true);
+                    }}
+                  />
+                )}
+              </View>
+              {oneKeyMsg && !key2 && (
+                <View style={styles.refuseNote}>
+                  <Body style={styles.refuseNoteText}>{t('retour.one_key_refused')}</Body>
+                </View>
+              )}
+              <PrimaryButton
+                label={t('retour.action')}
+                disabled={attemptReturnHandover({ seller: key1, rider: key2 }) === 'refused'}
                 onPress={() => {
-                  // The ONE retry window (~15 min policy default; the live
-                  // windowExpiresAt arrives with the service outcome at
-                  // assembly — the display is honest either way).
-                  const until = new Date(Date.now() + 15 * 60_000);
-                  setWindowUntil(`${String(until.getHours()).padStart(2, '0')}:${String(until.getMinutes()).padStart(2, '0')}`);
-                  walk((w) => chooseFailureReason(w, active.id, id));
+                  completeReturn(world, active.id);
+                  setWorld({ ...world });
+                  toCourses();
                 }}
               />
-            ))}
-          </Card>
-        )}
+            </Card>
+          )}
 
-        {screen === 'retry_window' && active !== null && (
-          <Card>
-            <Text style={styles.stepTitle}>{t('retry.status')}</Text>
-            <StatusChip tone="warn" label={`${t('retry.until')} ${windowUntil}`} />
-            {/* The retry re-runs inspection → provider-confirmed payment →
-                drop: the drop code stays LAST (safest default, journaled). */}
-            <PrimaryButton label={t('retry.retry_action')} onPress={() => walk((w) => retryDelivery(w, active.id))} />
-            <GhostButton label={t('retry.expired_action')} onPress={() => walk((w) => expireRetryWindow(w, active.id))} />
-          </Card>
-        )}
-
-        {screen === 'refused_final' && active !== null && (
-          <Card>
-            {/* Buyer-fault refusal, register:money — calm, cause and
-                what-happens-next stated; no shame, no jargon. */}
-            <Text style={styles.stepTitle}>{t('refused_final.status')}</Text>
-            <Text style={styles.stepHint}>{t('refused_final.fee')}</Text>
-            <Text style={styles.stepHint}>{t('refused_final.next')}</Text>
-            <PrimaryButton label={t('refused_final.retour_action')} onPress={() => walk((w) => prepareReturn(w, active.id))} />
-          </Card>
-        )}
-
-        {screen === 'reschedule_planned' && (
-          <Card>
-            {/* The non-escalating arm: honest absence / provider failure —
-                nothing is lost, the order stays whole; the 2e passage
-                appears on the course list with its lineage. */}
-            <Text style={styles.stepTitle}>{t('reschedule.status')}</Text>
-            <Text style={styles.stepHint}>{t('reschedule.next')}</Text>
-            <StatusChip tone="info" label={t('reschedule.lineage')} />
-            <SecondaryButton label={t('nav.retour_courses')} onPress={toCourses} />
-          </Card>
-        )}
-
-        {screen === 'retour_colis' && active !== null && (
-          <Card>
-            {/* SE6.2 two-key return, stated calmly: the seller's code and
-                the rider's code, both or neither. */}
-            <Text style={styles.stepTitle}>{t('retour.title')}</Text>
-            <Text style={styles.stepHint}>{t('retour.two_keys')}</Text>
-            <Text style={styles.stepHint}>{t('retour.next')}</Text>
-            <PrimaryButton
-              label={t('retour.action')}
-              onPress={() => {
-                completeReturn(world, active.id);
-                setWorld({ ...world });
-                toCourses();
-              }}
-            />
-          </Card>
-        )}
-
-        {screen === 'delivered' && (
-          <Card style={styles.momentCard}>
-            {/* The arrival is honored statically — the rider's named joy
-                moment is a future order; nothing animates here. */}
-            <Text style={styles.momentGlyph} accessibilityElementsHidden>
-              ✅
-            </Text>
-            <Text style={styles.momentTitle}>{t('delivered.status')}</Text>
-            <Text style={styles.momentHint}>{t('delivered.next')}</Text>
-            <SecondaryButton label={t('nav.retour_courses')} onPress={toCourses} />
-          </Card>
-        )}
-      </View>
+          {screen === 'delivered' && (
+            <Card ink style={styles.flexCard}>
+              {/* R11 « course validée » — the proof is complete; Séra emits a
+                  SIGNAL, never money. The celebration overlays this card. */}
+              <View style={styles.validRow}>
+                <IconCoche size={T.title.size} color={C.success} />
+                <PosterTitle>{t('delivered.status')}</PosterTitle>
+              </View>
+              <View style={styles.proofList}>
+                <ProofLine label={t('delivered.proof_package')} />
+                <ProofLine label={t('delivered.proof_seal')} />
+                <ProofLine label={t('delivered.proof_code')} />
+              </View>
+              <QuoteRule>{t('delivered.no_money')}</QuoteRule>
+              <SecondaryButton label={t('nav.retour_courses')} onPress={toCourses} />
+              {celebrate && <CourseValideeCelebration onDone={() => setCelebrate(false)} />}
+            </Card>
+          )}
+        </View>
       </ScreenTransition>
 
       <View style={styles.footer}>
@@ -599,92 +804,118 @@ export default function App() {
       {HUBS.includes(screen) && (
         <TabBar
           items={[
-            { key: 'service', icon: '🛵', label: t('nav.tab_service'), active: screen === 'service', onPress: () => setStack([START]) },
-            { key: 'courses', icon: '📦', label: t('nav.tab_courses'), active: screen === 'courses', onPress: () => toCourses() },
+            { key: 'service', Icon: IconMoto, label: t('nav.tab_service'), active: screen === 'service', onPress: () => setStack([START]) },
+            { key: 'courses', Icon: IconColis, label: t('nav.tab_courses'), active: screen === 'courses', onPress: () => toCourses() },
           ]}
         />
       )}
+
+      {/* R14 « SOS » — mounted UNCONDITIONALLY, outside every screen branch: one
+          gesture from ANY screen, unmissable, never accidentally triggerable. */}
+      <SosButton label={t('sos.label')} onOpen={openSos} />
+      <SosSheet
+        state={sos}
+        ackTime={sosAt}
+        strings={{
+          title: t('sos.title'),
+          confirmHint: t('sos.confirm_hint'),
+          hold: t('sos.hold'),
+          cancel: t('sos.cancel'),
+          holdNote: t('sos.hold_note'),
+          raised: t('sos.raised'),
+          raisedHint: t('sos.raised_hint'),
+          ackHint: t('sos.ack_hint'),
+          enroute: t('sos.enroute'),
+          enrouteHint: t('sos.enroute_hint'),
+          safe: t('sos.safe'),
+          over: t('sos.over'),
+          overHint: t('sos.over_hint'),
+          close: t('sos.close'),
+        }}
+        onHoldStart={sosHoldStart}
+        onHoldEnd={sosHoldEnd}
+        onCancel={cancelSos}
+        onClose={sosClose}
+      />
     </SafeAreaView>
   );
 }
 
+function ProofLine({ label }: { label: string }) {
+  return (
+    <View style={styles.proofRow}>
+      <IconCoche size={T.body.size} color={C.success} />
+      <Text style={styles.proofText}>{label}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: theme.colors.surface },
+  screen: { flex: 1, backgroundColor: C.paper },
   content: {
     flex: 1,
-    paddingHorizontal: theme.spacing.lg,
-    paddingTop: theme.spacing.sm,
-    gap: theme.spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    gap: spacing.md,
   },
-  stackGap: { gap: theme.spacing.md, paddingTop: theme.spacing.sm },
-  listWrap: { flex: 1, gap: theme.spacing.md },
-  listContent: { gap: theme.spacing.sm, paddingBottom: theme.spacing.sm },
-  checkList: { gap: theme.spacing.sm },
-  stepTitle: {
-    color: theme.colors.ink,
-    fontSize: theme.typeScale.heading.size,
-    lineHeight: theme.typeScale.heading.lineHeight,
-    fontWeight: theme.typeScale.heading.weight,
-  },
-  stepHint: {
-    color: theme.colors.inkMuted,
-    fontSize: theme.typeScale.bodyLarge.size,
-    lineHeight: theme.typeScale.bodyLarge.lineHeight,
-  },
-  momentCard: {
-    borderColor: theme.colors.primary,
-    borderWidth: theme.spacing.xs / 2,
-    gap: theme.spacing.lg,
-  },
-  momentGlyph: {
-    fontSize: theme.typeScale.displayFcfa.size,
-    lineHeight: theme.typeScale.displayFcfa.lineHeight,
-    textAlign: 'center',
-  },
-  momentTitle: {
-    color: theme.colors.ink,
-    fontSize: theme.typeScale.heading.size,
-    lineHeight: theme.typeScale.heading.lineHeight,
-    fontWeight: theme.typeScale.heading.weight,
-    textAlign: 'center',
-  },
-  momentHint: {
-    color: theme.colors.inkMuted,
-    fontSize: theme.typeScale.bodyLarge.size,
-    lineHeight: theme.typeScale.bodyLarge.lineHeight,
-    textAlign: 'center',
-  },
+  flexCard: { flex: 0 },
+  stackGap: { gap: spacing.md, paddingTop: spacing.sm },
+  listWrap: { flex: 1, gap: spacing.sm },
+  listContent: { gap: spacing.sm, paddingBottom: spacing.sm },
+  listFoot: { color: C.muted, fontSize: T.caption.size, lineHeight: T.caption.size * T.caption.lh, textAlign: 'center', paddingVertical: spacing.md },
+  checkList: { gap: spacing.sm },
+  certRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  certText: { flex: 1 },
+  onRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  onDot: { width: spacing.sm, height: spacing.sm, borderRadius: radius.pill, backgroundColor: C.success },
   photoFrame: {
-    minHeight: theme.spacing.xxxl * 2,
-    borderRadius: theme.radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: theme.colors.line,
-    backgroundColor: theme.colors.surfaceSunken,
+    minHeight: spacing.xxl * 3,
+    borderWidth: interaction.hairline.thin,
+    borderColor: C.hairlineMid,
+    backgroundColor: C.sand,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: theme.spacing.lg,
+    padding: spacing.lg,
   },
-  photoGlyph: { fontSize: theme.typeScale.displayFcfa.size, lineHeight: theme.typeScale.displayFcfa.lineHeight },
+  cornerTick: { position: 'absolute', width: interaction.cornerTick.sizePx, height: interaction.cornerTick.sizePx, borderColor: C.scrim },
+  tickTL: { top: spacing.sm, left: spacing.sm, borderTopWidth: interaction.cornerTick.strokePx, borderLeftWidth: interaction.cornerTick.strokePx },
+  tickTR: { top: spacing.sm, right: spacing.sm, borderTopWidth: interaction.cornerTick.strokePx, borderRightWidth: interaction.cornerTick.strokePx },
+  tickBL: { bottom: spacing.sm, left: spacing.sm, borderBottomWidth: interaction.cornerTick.strokePx, borderLeftWidth: interaction.cornerTick.strokePx },
+  tickBR: { bottom: spacing.sm, right: spacing.sm, borderBottomWidth: interaction.cornerTick.strokePx, borderRightWidth: interaction.cornerTick.strokePx },
+  linkRow: { alignItems: 'center', paddingVertical: spacing.sm, minHeight: touch.minTargetPx, justifyContent: 'center' },
+  linkText: { color: C.accentStrong, fontSize: T.label.size, lineHeight: T.label.size * T.label.lh, fontWeight: '800', letterSpacing: T.label.ls, textTransform: 'uppercase', textDecorationLine: 'underline' },
+  keyRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, borderWidth: interaction.hairline.strong, borderColor: C.ink, padding: spacing.md, minHeight: touch.minTargetPx },
+  keyLabel: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  keyText: { flex: 1 },
+  refuseNote: { borderLeftWidth: interaction.accentEdgePx - 1, borderLeftColor: C.danger, backgroundColor: C.dangerTint, padding: spacing.md },
+  refuseNoteText: { color: C.dangerDeep },
+  validRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  proofList: { gap: spacing.sm },
+  proofRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  proofText: { color: C.onInk, fontSize: T.body.size, lineHeight: T.body.size * T.body.lh, flex: 1 },
   footer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: theme.spacing.lg,
-    minHeight: theme.touch.minTargetPx,
+    paddingHorizontal: spacing.lg,
+    minHeight: touch.minTargetPx,
   },
-  footerHint: { color: theme.colors.inkFaint, fontSize: theme.typeScale.caption.size },
-  resetAction: { minHeight: theme.touch.minTargetPx, justifyContent: 'center', paddingHorizontal: theme.spacing.md },
-  resetActionText: { color: theme.colors.inkMuted, fontSize: theme.typeScale.caption.size, fontWeight: theme.typeScale.label.weight },
+  footerHint: { color: C.soft, fontSize: T.caption.size, lineHeight: T.caption.size * T.caption.lh },
+  resetAction: { minHeight: touch.minTargetPx, justifyContent: 'center', paddingHorizontal: spacing.md },
+  resetActionText: { color: C.muted, fontSize: T.caption.size, lineHeight: T.caption.size * T.caption.lh, fontWeight: '800', letterSpacing: T.label.ls, textTransform: 'uppercase' },
   previewBanner: {
-    backgroundColor: theme.colors.surfaceSunken,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: theme.colors.line,
-    paddingVertical: theme.spacing.xs,
+    backgroundColor: C.warningTint,
+    borderBottomWidth: interaction.hairline.thin,
+    borderBottomColor: C.warningStripe,
+    paddingVertical: spacing.xs,
     alignItems: 'center',
   },
   previewBannerText: {
-    color: theme.colors.inkMuted,
-    fontSize: theme.typeScale.caption.size,
-    lineHeight: theme.typeScale.caption.lineHeight,
+    color: C.warning,
+    fontSize: T.labelXS.size,
+    lineHeight: T.labelXS.size * T.labelXS.lh,
+    fontWeight: '800',
+    letterSpacing: T.labelXS.ls,
+    textTransform: 'uppercase',
   },
 });
