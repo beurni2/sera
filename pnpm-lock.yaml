@@ -160,8 +160,8 @@ importers:
         version: link:../../packages/observability
     devDependencies:
       '@platform/certification':
-        specifier: git+https://github.com/beurni2/platform-contracts.git#539dbc8ac8372d0d98606428258f79ad0f1ceaaa&path:packages/certification
-        version: git+https://git@github.com:beurni2/platform-contracts.git#539dbc8ac8372d0d98606428258f79ad0f1ceaaa&path:packages/certification
+        specifier: git+https://github.com/beurni2/platform-contracts.git#fa2ff246dc747a6d28f319278ecf85d54ca067dd&path:packages/certification
+        version: git+https://github.com/beurni2/platform-contracts.git#fa2ff246dc747a6d28f319278ecf85d54ca067dd&path:packages/certification
       typescript:
         specifier: ^5.9.2
         version: 5.9.3
@@ -1409,10 +1409,6 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.9':
     resolution: {integrity: sha512-3Belt6tdc8bPgAtbcmdtNJlirVoTmEb5e2gC94PnkwEW9jI6CAHUeoG85tjWP5WquqfavoMtMwiG4P926ZKKuQ==}
-
-  '@platform/certification@git+https://git@github.com:beurni2/platform-contracts.git#539dbc8ac8372d0d98606428258f79ad0f1ceaaa&path:packages/certification':
-    resolution: {commit: 539dbc8ac8372d0d98606428258f79ad0f1ceaaa, path: packages/certification, repo: git@github.com:beurni2/platform-contracts.git, type: git}
-    version: 0.6.0
 
   '@platform/certification@git+https://github.com/beurni2/platform-contracts.git#fa2ff246dc747a6d28f319278ecf85d54ca067dd&path:packages/certification':
     resolution: {commit: fa2ff246dc747a6d28f319278ecf85d54ca067dd, path: packages/certification, repo: https://github.com/beurni2/platform-contracts.git, type: git}
@@ -5175,12 +5171,6 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
-
-  '@platform/certification@git+https://git@github.com:beurni2/platform-contracts.git#539dbc8ac8372d0d98606428258f79ad0f1ceaaa&path:packages/certification':
-    dependencies:
-      '@platform/contracts': git+https://github.com/beurni2/platform-contracts.git#fa2ff246dc747a6d28f319278ecf85d54ca067dd&path:packages/contracts
-      '@platform/ui-tokens': git+https://github.com/beurni2/platform-contracts.git#fa2ff246dc747a6d28f319278ecf85d54ca067dd&path:packages/ui-tokens
-      zod: 4.4.3
 
   '@platform/certification@git+https://github.com/beurni2/platform-contracts.git#fa2ff246dc747a6d28f319278ecf85d54ca067dd&path:packages/certification':
     dependencies:
