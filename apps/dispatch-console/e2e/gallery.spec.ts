@@ -23,6 +23,11 @@ mkdirSync(imgDir, { recursive: true });
 for (const group of manifest.groups) {
   for (const state of group.states) {
     test(`gallery: ${state.id}`, async ({ page }) => {
+      // Determinism (WO-6.1, paying the named byte-stability debt): fixed
+      // viewport (test.use above) + reduced motion, so a capture is a function
+      // of the state alone. The PNGs are a build artifact (gitignored), never a
+      // tracked binary in the gate tree.
+      await page.emulateMedia({ reducedMotion: 'reduce' });
       // Clock-driven states (the ack-deadline requeue) need the mocked clock
       // installed BEFORE the page scripts start their interval timers.
       if (state.actions.some((a) => a.startsWith('clock-'))) {
@@ -33,6 +38,8 @@ for (const group of manifest.groups) {
         if (action === 'assign') {
           await page.locator('select').selectOption('rider-issa');
           await page.locator('button.assign').click();
+        } else if (action === 'done') {
+          await page.locator('button.done').click();
         } else if (action === 'door-demo') {
           await page.locator('button.door-demo').click();
         } else if (action === 'clock-6min') {

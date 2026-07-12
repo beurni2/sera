@@ -15,9 +15,10 @@ test('the console shell boots on the sera theme with catalog strings', async ({ 
 
   const brand = page.locator('h1');
   await expect(brand).toHaveText('Séra');
-  await expect(brand).toHaveCSS('color', hexToRgb(theme.colors.primary));
+  // Grand Teint: the brand is ink; the amber accent is spent on the theme strip.
+  await expect(brand).toHaveCSS('color', hexToRgb(theme.colours.ink));
 
-  await expect(page.locator('body')).toHaveCSS('background-color', hexToRgb(theme.colors.surface));
+  await expect(page.locator('body')).toHaveCSS('background-color', hexToRgb(theme.colours.sand));
   // WO-2.2: two sections — the ready queue and the follow-up (dwell D20 +
   // outcome timeline on the canonical families).
   await expect(page.locator('h2')).toHaveCount(2);
@@ -77,6 +78,22 @@ test('WO-4.3 lease: the PROPOSED assignment states its deadline — « Course pr
     /^Course proposée — répondez avant \d{2}:\d{2}$/,
   );
   await expect(page.locator('.task-card')).toHaveCount(0);
+});
+
+test('WO-6.1 (ruling ⑤) the « done » lever marks the proposed course delivered — releaseOnCompletion, honest state', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('select').selectOption('rider-issa');
+  await page.locator('button.assign').click();
+
+  // the waiting state carries the « done » lever
+  await expect(page.locator('#queue-body .status-line')).toHaveText("En attente de l'accord du livreur.");
+  const done = page.locator('button.done');
+  await expect(done).toHaveText('Marquer la course remise');
+
+  // the lever exercises the service's releaseOnCompletion → honest completed state
+  await done.click();
+  await expect(page.locator('#queue-body .status-line')).toHaveText('Course remise. Le bail est libéré.');
+  await expect(page.locator('button.done')).toHaveCount(0);
 });
 
 test('WO-4.3 lease expiry: past the 5-min window the honest expired state shows and the task is BACK in the queue', async ({ page }) => {

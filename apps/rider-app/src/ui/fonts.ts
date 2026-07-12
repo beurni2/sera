@@ -1,15 +1,16 @@
 /**
  * WO-5.1 — the Grand Teint TYPEFACE substrate for RN (Archivo, Latin subset).
  * This is DATA ONLY: the family name, the five static weights, their asset
- * files, and the metrics-matched system fallback. It does NOT load the font
- * (that is expo-font work in a later screen slice) and it consumes no token.
+ * files, and the metrics-matched system fallback. It loads no font itself and
+ * consumes no token — the weights below name the bundled assets.
  *
- * THE COLD-START LAW (design budget · the CTO's flagged risk): the family
- * name below is the ENHANCEMENT; `fallback` is what paints FIRST. Nothing in
- * the app may gate a first render on the font resolving — Expo loads custom
- * fonts asynchronously, and the design renders in the metrics-matched
- * fallback immediately, swapping to Archivo when (and only when) it is ready,
- * with no reflow. See design-reference/grand-teint/docs/budget.md and
+ * THE COLD-START LAW (design budget · the CTO's flagged risk): WO-6.1 embeds
+ * these five faces NATIVELY via the expo-font config plugin (app.json), so
+ * Archivo is in the binary and paints from the FIRST frame — no async load,
+ * no swap. `FONT_FALLBACK` stays as metrics-matched defence-in-depth: the app
+ * still never gates a first render on a font resolving, so if the embedded
+ * face were ever unavailable the design paints in the system face with no
+ * reflow. See design-reference/grand-teint/docs/budget.md and
  * assets/fonts/COLD-START.md.
  */
 

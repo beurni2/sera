@@ -46,6 +46,7 @@ Default **Acheter**; switch to **Espace revendeur** and back.
 - **SP-I07:** Customer contact tools MUST be relationship- and consent-scoped; other resellers' orders invisible.
 - **SP-I08:** **Canonical product assets cannot be replaced** by reseller product images.
 - **SP-I09:** A signed share link MUST encode an **attribution-token identity**.
+- **SP-I09b:** **Préséance de l'attribution.** 1. Un **code saisi explicitement au paiement** l'emporte — c'est l'acte délibéré de l'acheteuse. 2. Sinon, **l'arrivée non expirée la plus récente** l'emporte (*last-touch*). 3. Une fois la commande **verrouillée**, l'attribution est **immuable** (`first-lock-wins`, inchangé) ; un second jeton valide sur une commande verrouillée est refusé, honnêtement, sans ré-attribution silencieuse. 4. Une référence altérée, expirée ou non résolvable n'attribue **personne** et **ne bascule jamais vers la plateforme**.
 - **SP-I10:** The buyer **problem/report** path MUST remain as prominent as the confirmation path at delivery.
 - **SP-I11 (deterministic):** Discovery/search/ranking + marketing studio are deterministic; no learned ranking, no generative content; voice = audio.
 - **SP-I12 (economics):** Checkout MUST use the canonical waterfall (§5.4); **commission is never added to the buyer price**; the reseller MUST see **`resellerNet`** before promoting.
@@ -56,6 +57,18 @@ Default **Acheter**; switch to **Espace revendeur** and back.
 - **SP-I17 (earned proof, single level):** Only validated delivered orders produce verified reviews, proof cards, referral or loyalty rewards; confirmed fraud strips verified status; referrals are strictly **single-level** with related-party tiers (identity/phone/wallet auto-void; device/household → manual review); campaign reporting says **“attributed,” never causal**, unless incremental lift is measured.
 - **SP-I18 (landing-page truth & consent):** The **signed campaign landing page** is authoritative for price/stock/benefit/status; a static asset can NEVER bind Shop+ to an unfunded benefit; membership is explicit-consent with one-tap opt-out and enforced frequency preferences; segments/suggestions are deterministic and explainable; all outbound campaign content is reseller-approved (MVP — Shop+ does not broadcast).
 - **SP-I19 (Media Kit — reseller is the face, assets never mislead):** Every personalized card carries the **reseller's identity and price snapshot — never the supplier's identity** (consignment/diaspora supplier identity never appears on any customer-facing surface). Identity hierarchy is **Product → Reseller → Séra → Shop+**, never inverted. A **"vérifié au hub"/"Stock vérifié" badge appears only where true** (hub-verified stock). The printed price is a **reseller-specific snapshot valid only for the signed link's window**; markup changes **expire old cards (never silent edits) and require regeneration**; the signed page remains the live price/stock truth. Every asset carries a **validity window**; the image may circulate but binds nothing. Shared assets generate **reseller/caption/neighborhood/campaign variants** (anti-spam by construction); captions include **French + Mooré + Dioula + a voice-note script**; deterministic templates only (no synthetic testimonials). Every Media Kit asset has **platform-owned or licensed reuse rights**. **Media Kit funding:** platform-funded for PackLab (owned); **supplier-funded via the Diaspora studio-fee card** for graduated supplier/diaspora products.
+
+### 4.1 Attribution
+
+**Attribution a deux portées.** **`product`** — le lien signé vers une offre précise : `{resellerId, offerId, issuedAt, nonce, signature}`. Inchangé ; il échoue fermé s'il est altéré. **`identity`** — l'identité permanente de la revendeuse : son code court et sa vitrine. Portée **résolue côté serveur, sans signature** — elle doit survivre au copier-coller, à la ressaisie, aux raccourcisseurs de liens et aux plateformes qui suppriment les paramètres (Instagram, TikTok). Une portée `identity` non résolvable n'attribue **personne** et ne bascule **jamais** vers la plateforme.
+
+**Le code court de la revendeuse (`ResellerShortCode`).** Chaque revendeuse reçoit **un** code court, **permanent** et **unique** : `PRENOM-NNNN` (ex. `AICHA-4821`). Il est **public** — imprimé sur chaque carte partageable —, **jamais secret**, **jamais réassigné**. Il est **le même identifiant** que le slug de sa vitrine : `AICHA-4821` ↔ `/v/aicha-4821`.
+**Format, structurel :** la partie nom = 2 à 12 lettres ASCII `A–Z` (son prénom, accents dépouillés : Aïcha → AICHA) · un seul trait d'union · exactement 4 chiffres `0–9`, attribués à l'inscription et sans collision par construction. **C'est la structure qui lève l'ambiguïté — lettres avant le trait, chiffres après — et non une restriction de jeu de caractères** : interdire `I` ou `1` empêcherait une revendeuse d'avoir son propre prénom dans son propre code.
+**Saisie tolérante :** insensible à la casse · espaces ignorés · séparateur absent ou remplacé par une espace accepté (`aicha4821`, `aicha 4821` → `AICHA-4821`, la frontière lettres/chiffres étant unique). **Stockage canonique en majuscules ; slug d'URL en minuscules.** La résolution est côté serveur et limitée en débit.
+
+**L'arrivée (`AttributionArrival`).** Toute arrivée porteuse d'attribution — lien produit signé, vitrine, ou code saisi — enregistre une arrivée : `{resellerId, scope, offerId?, arrivedAt, correlationId}`. L'arrivée a une durée de validité versionnée (défaut : **30 jours** — donnée de politique, ajustable, jamais silencieusement).
+
+**La vitrine est une surface acheteuse.** Toutes les lois acheteuse s'y appliquent : la commission n'y apparaît jamais (SP-I03) · l'identité du fournisseur n'y apparaît jamais · le prix affiché est celui de la revendeuse · « Livré par Séra » et « Paiement protégé » y figurent.
 
 ---
 
@@ -105,7 +118,7 @@ HandoffAuthorization{ orderId, riderId, buyerRef, exactAmount, providerTransacti
        authorizationConsumedAt, breakGlassCaseId, signature, state }
 ValidationDecision(validated|review_hold|rejected)
 SettlementObligation{ state Locked→Pending→Eligible→Payable→Processing→Paid|Held|Failed }
-EscrowTxn{ orderId, provider, paymentLegs[{legType(checkout|door), collectRef, amount, fee, status}], status, splitBreakdown, payoutRefs[] }
+EscrowTxn{ orderId, provider, paymentLegs[{legType(checkout|door), collectRef, amount, fee, status: 'held' | 'captured' | 'refunded'}], status, splitBreakdown, payoutRefs[] }
 ProtectionFund{ openingFundCapital, availableProtectionBalance, committedClaimsAmount, fundSolvencyState(HEALTHY|WATCH|RESTRICTED|CRITICAL), ... } // Ledger&Settlement
 ProtectionClaim{ faultClass(seller|sera|payment_provider|buyer|platform_system|unresolved) } · CustodyLiabilityClaim
 SellerTrustState{ tier(provisional|verified|trusted), ... }
@@ -149,7 +162,7 @@ Both options shown; **Option A labeled « recommandé »**. Before choosing, buy
 **At-door acceptance = finality** for all MVP categories; the buyer enters the **drop code last, after** any door payment is provider-confirmed; **same/next-day payout**. Change-of-mind after acceptance is **not guaranteed** (goodwill only). Narrow latent defects → **platform-funded goodwill, never supplier clawback**. Post-split returns are structurally prevented in the MVP.
 
 ### 6.4 Progressive buyer-refusal ladder (OWNER: Risk; `PayAtDoorEligibility`)
-Classify reason: `honest_absence | unusable_location | insufficient_balance | change_of_mind | repeated_abuse | fraud`. **1st ordinary buyer-fault** → next order requires higher delivery commitment **or** small product deposit; **2nd** → `FULL_PREPAY` for next 3 orders (`prepayOnlyUntil`); **repeated abuse** → suspend pay-at-door; **fraud** → immediate restriction/review. **Honest absence / provider failure do NOT escalate** like change-of-mind/abuse.
+Classify reason: `honest_absence | unusable_location | insufficient_balance | change_of_mind | repeated_abuse | fraud | conformity_mismatch`. **1st ordinary buyer-fault** → next order requires higher delivery commitment **or** small product deposit; **2nd** → `FULL_PREPAY` for next 3 orders (`prepayOnlyUntil`); **repeated abuse** → suspend pay-at-door; **fraud** → immediate restriction/review. **Honest absence / provider failure do NOT escalate** like change-of-mind/abuse.
 
 ### 6.5 Related-party detection (tiered; OWNER: Risk)
 **Auto-void commission:** same verified identity/phone/wallet, or reseller buying through their own account. **Manual-review flag (not auto-void):** same device/household/landmark/shared phone/network — **often legitimate in Burkina Faso.** During investigation commission is **held**, not returned; appeal path; on violation → returned to seller; on clear → paid.

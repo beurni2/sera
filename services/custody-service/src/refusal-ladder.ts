@@ -39,6 +39,13 @@ export const REFUSAL_LADDER_POLICY_V1 = {
     repeated_abuse: 'buyer',
     fraud: 'buyer',
     provider_failure: 'payment_provider',
+    // conformity_mismatch entered the canon reason enum at v0.9.0 (WO-5.2). It
+    // is NOT a retry-ladder reason (it is the inspection/pickup refusal code —
+    // door-flow.ts / pickup-verification-policy.ts own it), so it stays OUT of
+    // escalating/nonEscalating and openRetryWindow still refuses it closed.
+    // This entry only keeps faultByReason EXHAUSTIVE over DeliveryFailureReason;
+    // the fault is the documented one — SE4.2: on mismatch, `faultClass = seller`.
+    conformity_mismatch: 'seller',
   },
 } as const satisfies {
   version: string;

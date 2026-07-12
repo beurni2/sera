@@ -1,17 +1,17 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { landmark, money, motion, seraTheme } from '@platform/ui-tokens';
+import { landmark, motion, celebration } from '@platform/ui-tokens';
 
 /**
- * WO-4.2R — the visual layer obeys the tokens (adapted from boutik's
- * committed ui-kit suite). The scan test IS the DoD's "zero hardcoded
- * colors/sizes — a scan proves it": every color is a theme token, every
- * size/spacing/radius/type value is a token expression; the LandmarkCard
- * signature consumes the landmark hierarchy + icon-name tokens; the hubs
- * are waypoint RESETS (never edges); reduced motion is honored; NO
- * celebration moment exists in this kit — course_validee is NOT in this
- * order (only boutik's produit_pret was ordered). Navigation pins stay in
+ * WO-6.1 — the visual layer obeys Grand Teint (ui-tokens v0.9.0, sera theme).
+ * The scan test IS the DoD's "zero hardcode": every colour is a token, every
+ * size/spacing/radius/type value a token expression. The LandmarkCard
+ * signature consumes the landmark hierarchy (repère → indications → zone) and
+ * the illustrated scene; the refusal arm is a first-class DangerButton; the
+ * hubs are waypoint RESETS (never edges); reduced motion is honoured; and the
+ * rider's ONE named moment — the course_validee celebration — is present (it
+ * was NOT in the WO-4.2R kit; WO-6.1 adds it). Navigation pins stay in
  * journey-spine.test.ts (byte-untouched).
  */
 
@@ -19,13 +19,13 @@ const appDir = join(import.meta.dirname, '..');
 const FILES = ['App.tsx', 'src/ui/kit.tsx'];
 const read = (f: string) => readFileSync(join(appDir, f), 'utf8');
 
-describe('WO-4.2R visual layer (rider-app)', () => {
-  it('SCAN: zero hardcoded colors anywhere in the visual layer', () => {
+describe('WO-6.1 Grand Teint visual layer (rider-app)', () => {
+  it('SCAN: zero hardcoded colours anywhere in the visual layer', () => {
     for (const f of FILES) {
       const src = read(f);
-      expect(src, `${f} carries a hex color`).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
-      expect(src, `${f} carries an rgb() color`).not.toMatch(/\brgba?\(/);
-      expect(src, `${f} carries a named CSS color literal`).not.toMatch(/color:\s*'(?!#)[a-z]+'/);
+      expect(src, `${f} carries a hex colour`).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+      expect(src, `${f} carries an rgb() colour`).not.toMatch(/\brgba?\(/);
+      expect(src, `${f} carries a named CSS colour literal`).not.toMatch(/colou?r:\s*'(?!#)[a-z]+'/);
     }
   });
 
@@ -42,43 +42,46 @@ describe('WO-4.2R visual layer (rider-app)', () => {
     }
   });
 
-  it('LandmarkCard — the signature — consumes landmark.hierarchy AND landmark.iconNames, on affectation AND at the door', () => {
+  it('LandmarkCard — the signature — consumes the landmark ladder + the illustrated scene, on affectation AND at the door', () => {
     const kit = read('src/ui/kit.tsx');
     expect(kit).toMatch(/export function LandmarkCard/);
+    expect(kit).toMatch(/export function LandmarkIllustration|function LandmarkIllustration/);
     // the hierarchy ladder: repère → indications → zone, token-typed
-    expect(kit).toMatch(/landmark\.hierarchy\.repere\.size/);
-    expect(kit).toMatch(/landmark\.hierarchy\.repere\.weight/);
-    expect(kit).toMatch(/landmark\.hierarchy\.indications\.size/);
-    expect(kit).toMatch(/landmark\.hierarchy\.zone\.size/);
-    // the icon SLOTS come from the token names (CTO-default text glyphs;
-    // the ⏳ illustrated assets are future app-side work)
-    expect(kit).toMatch(/landmark\.iconNames\.repere/);
-    expect(kit).toMatch(/landmark\.iconNames\.zone/);
+    expect(kit).toMatch(/landmark\.repere\.size/);
+    expect(kit).toMatch(/landmark\.repere\.wght/);
+    expect(kit).toMatch(/landmark\.indications\.size/);
+    expect(kit).toMatch(/landmark\.zone\.size/);
+    // the illustrated scene paints on the illustration-only palette + card border
+    expect(kit).toMatch(/landmark\.illustration/);
+    expect(kit).toMatch(/landmark\.cardBorderPx/);
+    // the repère/zone icons come from the SVG icon set (never emoji in chrome)
+    expect(kit).toMatch(/IconRepere/);
+    expect(kit).toMatch(/IconZone/);
     // the ladder really descends (repère heads the block, doctrine §4)
-    expect(landmark.hierarchy.repere.size).toBeGreaterThan(landmark.hierarchy.indications.size);
-    expect(landmark.hierarchy.indications.size).toBeGreaterThan(landmark.hierarchy.zone.size);
+    expect(landmark.repere.size).toBeGreaterThan(landmark.indications.size);
+    expect(landmark.indications.size).toBeGreaterThan(landmark.zone.size);
     // the App renders the signature card on the assignment AND at the door
     const app = read('App.tsx');
     const affectation = app.slice(app.indexOf("screen === 'affectation'"), app.indexOf("screen === 'verify'"));
-    expect(affectation).toMatch(/<LandmarkCard label=\{t\('assignment\.landmark_label'\)\} lines=\{active\.locationLines\}/);
+    expect(affectation).toMatch(/<LandmarkCard[\s\S]*lines=\{active\.locationLines\}[\s\S]*illustrated/);
     const door = app.slice(app.indexOf("screen === 'door_inspection'"), app.indexOf("screen === 'payment_wait'"));
-    expect(door).toMatch(/<LandmarkCard label=\{t\('assignment\.landmark_label'\)\} lines=\{active\.locationLines\}/);
+    expect(door).toMatch(/<LandmarkCard[\s\S]*lines=\{active\.locationLines\}/);
   });
 
-  it('the refusal arm is a first-class DangerButton — danger bg, onPrimary text, as polished as acceptance', () => {
+  it('the refusal arm is a first-class DangerButton — bordered danger, as polished as acceptance', () => {
     const kit = read('src/ui/kit.tsx');
     expect(kit).toMatch(/export function DangerButton/);
-    expect(kit).toMatch(/buttonDanger: \{ backgroundColor: theme\.colors\.danger \}/);
-    expect(kit).toMatch(/buttonDangerText: \{ color: theme\.colors\.onPrimary/);
+    expect(kit).toMatch(/buttonDanger: \{[^}]*borderColor: C\.danger/);
+    expect(kit).toMatch(/buttonDangerText: \{[^}]*color: C\.danger/);
     const app = read('App.tsx');
     const verify = app.slice(app.indexOf("screen === 'verify'"), app.indexOf("screen === 'refused'"));
     expect(verify).toMatch(/<DangerButton label=\{t\('verify\.refuse_action'\)\}/);
   });
 
-  it('the checklist renders as CheckRow — box + label, ≥44px targets via the touch token', () => {
+  it('the checklist renders as CheckRow — ink box + label, ≥48px targets via the touch token', () => {
     const kit = read('src/ui/kit.tsx');
     expect(kit).toMatch(/export function CheckRow/);
-    expect(kit).toMatch(/checkRow: \{[^}]*minHeight: theme\.touch\.minTargetPx/s);
+    expect(kit).toMatch(/checkRow: \{[^}]*minHeight: touch\.minTargetPx/s);
     const app = read('App.tsx');
     expect(app).toMatch(/<CheckRow key=\{id\} label=\{t\(`check\.\$\{id\}`\)\}/);
   });
@@ -87,39 +90,55 @@ describe('WO-4.2R visual layer (rider-app)', () => {
     const app = read('App.tsx');
     expect(app).toMatch(/<PendingNotice lines=\{\[t\('assignment\.ack_pending'\)\]\}/);
     expect(app).toMatch(/<PendingNotice lines=\{\[t\('evidence\.pending'\)\]\}/);
-    expect(app).toMatch(/<PendingNotice lines=\{\[t\('pay_wait\.hint'\)\]\}/);
+    // the door-payment wait is a PendingNotice, never a rider-actionable field
+    expect(app).toMatch(/<PendingNotice lines=\{\[t\('pay_wait\.hint'\)/);
   });
 
-  it('the money hero consumes money.amountScale.hero with tabular numerals (no door amount exists in the demo world — the kit stands ready)', () => {
+  it('the rider’s ONE named moment is the course_validee celebration — token-driven, ≤ 800 ms', () => {
     const kit = read('src/ui/kit.tsx');
-    expect(kit).toMatch(/export function AmountHero/);
-    expect(kit).toMatch(/money\.amountScale\.hero\.size/);
-    expect(kit).toMatch(/money\.amountScale\.hero\.weight/);
-    expect(kit).toMatch(/fontVariant: \['tabular-nums'\]/);
-    expect(money.amountScale.hero.size).toBeGreaterThan(seraTheme.typeScale.displayFcfa.size);
+    expect(kit).toMatch(/export function CourseValideeCelebration/);
+    expect(kit).toMatch(/celebration\.courseValidee/);
+    expect(celebration.courseValidee.app).toBe('sera');
+    expect(celebration.haloMs).toBeLessThanOrEqual(motion.celebrateMaxMs);
+    const app = read('App.tsx');
+    expect(app).toMatch(/<CourseValideeCelebration onDone=/);
   });
 
-  it('the screen change eases in on the ONE soft spring — token params, static under reduced motion', () => {
+  it('the screen change eases in on the ONE soft spring — token duration + curve, static under reduced motion', () => {
     const kit = read('src/ui/kit.tsx');
     expect(kit).toMatch(/export function ScreenTransition/);
-    const transition = kit.slice(kit.indexOf('export function ScreenTransition'), kit.indexOf('const styles'));
-    expect(transition).toMatch(/motion\.springSoft\.damping/);
+    const transition = kit.slice(
+      kit.indexOf('export function ScreenTransition'),
+      kit.indexOf('export function CourseValideeCelebration'),
+    );
+    expect(transition).toMatch(/motion\.standardMs/);
+    expect(transition).toMatch(/SPRING_SOFT/);
     expect(transition).toMatch(/useNativeDriver: true/);
     expect(transition).toMatch(/if \(reduced\) \{/);
     const app = read('App.tsx');
     expect(app).toMatch(/<ScreenTransition screenKey=\{screen\}>/);
-    // the movement law's duration band holds at the token level
-    expect(motion.quick.durationMs).toBeGreaterThanOrEqual(150);
-    expect(motion.standard.durationMs).toBeLessThanOrEqual(250);
+    // the movement law's duration band holds at the token level (150–250 ms)
+    expect(motion.quickMs).toBeGreaterThanOrEqual(150);
+    expect(motion.standardMs).toBeLessThanOrEqual(250);
   });
 
-  it('the skeleton pulses on motion tokens and is static under reduced motion — no bare spinner anywhere', () => {
+  it('no bare spinner anywhere — the skeleton pulses on motion tokens, static under reduced motion', () => {
     const kit = read('src/ui/kit.tsx');
-    expect(kit).toMatch(/motion\.standard\.durationMs/);
+    expect(kit).toMatch(/export function Skeleton/);
+    expect(kit).toMatch(/motion\.standardMs/);
     expect(kit).toMatch(/if \(reduced\) return;/);
     expect(kit).toMatch(/AccessibilityInfo\.isReduceMotionEnabled/);
     expect(kit).toMatch(/reduceMotionChanged/);
     for (const f of FILES) expect(read(f)).not.toMatch(/ActivityIndicator/);
+  });
+
+  it('the theme strip is the ONE permanent brand mark (band.themeStripPx · sera amber)', () => {
+    const kit = read('src/ui/kit.tsx');
+    expect(kit).toMatch(/export function ThemeStrip/);
+    expect(kit).toMatch(/band\.themeStripPx/);
+    expect(kit).toMatch(/C\.themeStrip/);
+    const app = read('App.tsx');
+    expect(app).toMatch(/<ThemeStrip \/>/);
   });
 
   it('navigation chrome: header everywhere, hubs = Service·Courses, tabs are waypoint RESETS (never edges, never go())', () => {
@@ -129,11 +148,8 @@ describe('WO-4.2R visual layer (rider-app)', () => {
     for (const key of ['nav.tab_service', 'nav.tab_courses']) {
       expect(app).toContain(`t('${key}')`);
     }
-    // the tab bar never renders off-hub (single source: HUBS gate)
     expect(app).toMatch(/\{HUBS\.includes\(screen\) && \(\s*<TabBar/);
-    // Service = the root reset, Courses = the toCourses waypoint — and the
-    // TabBar block carries NO go( (a tab is never a journey edge)
-    const tabBlock = app.slice(app.indexOf('<TabBar'), app.indexOf('</SafeAreaView>'));
+    const tabBlock = app.slice(app.indexOf('<TabBar'), app.indexOf('{/* R14'));
     expect(tabBlock).toMatch(/key: 'service'[^\n]*setStack\(\[START\]\)/);
     expect(tabBlock).toMatch(/key: 'courses'[^\n]*toCourses\(\)/);
     expect(tabBlock).not.toMatch(/go\(/);
@@ -154,10 +170,5 @@ describe('WO-4.2R visual layer (rider-app)', () => {
     const specs = [...kit.matchAll(/^import [^;]*from '([^']+)';/gm)].map((m) => m[1]);
     expect(specs.length).toBeGreaterThan(0);
     for (const spec of specs) expect(spec, `kit imports ${spec}`).not.toMatch(BANNED);
-  });
-
-  it('the kit references NO celebration moment — the named rider moment is not in this order', () => {
-    const kit = read('src/ui/kit.tsx');
-    expect(kit).not.toMatch(/[Cc]elebrat|produit_pret|premiere_vente|course_validee/);
   });
 });

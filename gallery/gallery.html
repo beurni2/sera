@@ -2,7 +2,7 @@
 <html lang="fr">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Séra — console de dispatch — galerie d'aperçu</title>
+<title>Séra — console de dispatch (Grand Teint) — galerie d'aperçu</title>
 <style>
   body { margin: 0; font-family: system-ui, sans-serif; background: #FAF7F2; color: #221F1A; padding: 16px; }
   h1 { font-size: 22px; } h2 { font-size: 17px; margin: 28px 0 10px; }
@@ -13,12 +13,13 @@
   .card.gap { padding: 24px 12px; background: #FFF6E8; }
   .note, .gaps { background: #fff; border: 1px solid #E4DDD3; border-radius: 12px; padding: 12px 16px; font-size: 14px; }
 </style>
-<h1>Séra — console de dispatch — galerie d'aperçu</h1>
+<h1>Séra — console de dispatch (Grand Teint) — galerie d'aperçu</h1>
 <p class="note">Chaque image est un état RÉELLEMENT construit, capturé automatiquement (bac à sable — aucune donnée réelle).</p>
-<section><h2>File « Prêt à assigner » et suivi</h2><div class="grid"><figure class="card"><img src="img/console-file-prete.png" alt="La file prête (repère d'abord : lieu, directions, zone) + le suivi — temps de contrôle (D20), paiement au seuil EN ATTENTE du réseau, chronologie des issues" loading="lazy"><figcaption>La file prête (repère d'abord : lieu, directions, zone) + le suivi — temps de contrôle (D20), paiement au seuil EN ATTENTE du réseau, chronologie des issues</figcaption></figure>
-<figure class="card"><img src="img/console-course-donnee.png" alt="Course donnée — l'état d'attente honnête : l'accord du livreur n'est jamais supposé" loading="lazy"><figcaption>Course donnée — l'état d'attente honnête : l'accord du livreur n'est jamais supposé</figcaption></figure>
+<section><h2>File « Prêt à assigner » et suivi</h2><div class="grid"><figure class="card"><img src="img/console-file-prete.png" alt="La file prête sur Grand Teint (repère d'abord : lieu, indications, zone) + le suivi — temps de contrôle (D20), paiement au seuil EN ATTENTE du réseau, chronologie des issues" loading="lazy"><figcaption>La file prête sur Grand Teint (repère d'abord : lieu, indications, zone) + le suivi — temps de contrôle (D20), paiement au seuil EN ATTENTE du réseau, chronologie des issues</figcaption></figure>
+<figure class="card"><img src="img/console-course-donnee.png" alt="Course donnée — l'état d'attente honnête (l'accord du livreur n'est jamais supposé) + le levier « Marquer la course remise »" loading="lazy"><figcaption>Course donnée — l'état d'attente honnête (l'accord du livreur n'est jamais supposé) + le levier « Marquer la course remise »</figcaption></figure>
+<figure class="card"><img src="img/console-course-livree.png" alt="Course remise — le levier « done » (ruling ⑤) libère le bail via releaseOnCompletion : « Course remise. Le bail est libéré. »" loading="lazy"><figcaption>Course remise — le levier « done » (ruling ⑤) libère le bail via releaseOnCompletion : « Course remise. Le bail est libéré. »</figcaption></figure>
 <figure class="card"><img src="img/console-porte-confirmee.png" alt="Paiement au seuil CONFIRMÉ par le réseau — la ligne ne s'affiche qu'après le vrai signal (chemin « Essai » du bac à sable)" loading="lazy"><figcaption>Paiement au seuil CONFIRMÉ par le réseau — la ligne ne s'affiche qu'après le vrai signal (chemin « Essai » du bac à sable)</figcaption></figure>
 <figure class="card"><img src="img/console-course-remise.png" alt="Course remise dans la file — le livreur n'a pas accepté à temps (5 min) : l'état est dit, la carte revient" loading="lazy"><figcaption>Course remise dans la file — le livreur n'a pas accepté à temps (5 min) : l'état est dit, la carte revient</figcaption></figure></div></section>
 <section><h2>États nommés sans écran (les manques, jamais silencieux)</h2><ul class="gaps"><li><strong>File vide (console.empty_state)</strong> — Copie construite (« Aucune course à assigner pour le moment. ») mais inatteignable dans le monde bac à sable : la file initiale porte toujours une course et l'après-assignation affiche la ligne d'attente. Nommé plutôt que passé sous silence.</li>
-<li><strong>Parcours livreur (app RN, WO-4.1 · restylé WO-4.2R « le visage ») — les 17 écrans sur le kit ui-tokens v2 (chrome, LandmarkCard signature, chips d'état, transitions)</strong> — Ces écrans existent dans l'app livreur (React Native, aperçu Expo Go) et portent depuis WO-4.2R la couche visuelle du kit — cette galerie Playwright ne capture que la console de dispatch ; le canal visuel avant/après du parcours livreur est WALKTHROUGH.md + l'aperçu Expo Go sur le téléphone du fondateur. Nommés ici plutôt que passés sous silence.</li></ul></section>
+<li><strong>Parcours livreur (app RN, WO-6.1 « le visage ») — les 17 écrans du spine sur le kit Grand Teint (v0.9.0), la LandmarkCard illustrée (R4), la célébration « course validée » (R11), le SOS de partout (R14)</strong> — Ces écrans vivent dans l'app livreur (React Native, aperçu Expo Go) et portent depuis WO-6.1 la couche Grand Teint. Cette galerie Playwright ne capture QUE la console (web) ; le canal visuel avant/après du parcours livreur est WALKTHROUGH.md + l'aperçu Expo Go sur le téléphone du fondateur. Nommés ici plutôt que passés sous silence.</li></ul></section>
 </html>

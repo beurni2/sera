@@ -172,5 +172,23 @@
     "fr": "Essai : signal du réseau",
     "register": "neutral",
     "screenClass": "label"
+  },
+  {
+    "key": "console.desk",
+    "fr": "Répartition",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.done_action",
+    "fr": "Marquer la course remise",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "console.completed",
+    "fr": "Course remise. Le bail est libéré.",
+    "register": "neutral",
+    "screenClass": "status"
   }
 ]
