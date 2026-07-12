@@ -1,0 +1,129 @@
+diff --git a/apps/rider-app/package.json b/apps/rider-app/package.json
+index 4536447..6c39ac6 100644
+--- a/apps/rider-app/package.json
++++ b/apps/rider-app/package.json
+@@ -13,6 +13,7 @@
+   "dependencies": {
+     "@platform/ui-tokens": "git+https://github.com/beurni2/platform-contracts.git#fa2ff246dc747a6d28f319278ecf85d54ca067dd&path:packages/ui-tokens",
+     "expo": "~54.0.35",
++    "expo-font": "~14.0.12",
+     "expo-haptics": "~15.0.8",
+     "expo-status-bar": "~3.0.9",
+     "expo-updates": "~29.0.18",
+diff --git a/apps/rider-app/test/grand-teint.test.ts b/apps/rider-app/test/grand-teint.test.ts
+index bd93971..cfde5ff 100644
+--- a/apps/rider-app/test/grand-teint.test.ts
++++ b/apps/rider-app/test/grand-teint.test.ts
+@@ -92,16 +92,20 @@ describe('the typeface substrate (Archivo, Latin) — data only, loads nothing',
+   });
+ });
+ 
+-describe('the two approved dependencies (founder rulings 2026-07-12) — nothing else', () => {
+-  it('react-native-svg + expo-haptics at the SDK-54 bundled versions, and no other new dep', () => {
++describe('the approved dependencies — nothing else', () => {
++  it('react-native-svg + expo-haptics (WO-6.1 rulings) + expo-font (WO-6.2 fix), at SDK-54 versions', () => {
+     const pkg = JSON.parse(read('package.json')) as { dependencies: Record<string, string> };
+     expect(pkg.dependencies['react-native-svg']).toBe('15.12.1');
+     expect(pkg.dependencies['expo-haptics']).toBe('~15.0.8');
+-    // the only deps beyond the pre-WO set are exactly these two
++    // WO-6.2: expo-font is a DIRECT dep so the config plugin (RULING ②, native
++    // embedding) resolves when eas spawns expo raw. Not a new capability — the
++    // package that backs the app.json plugin WO-6.1 already declared.
++    expect(pkg.dependencies['expo-font']).toBe('~14.0.12');
++    // the only deps beyond the pre-WO set are exactly these three
+     const before = new Set([
+       '@platform/ui-tokens', 'expo', 'expo-status-bar', 'expo-updates', 'react', 'react-native',
+     ]);
+     const added = Object.keys(pkg.dependencies).filter((d) => !before.has(d));
+-    expect(added.sort()).toEqual(['expo-haptics', 'react-native-svg']);
++    expect(added.sort()).toEqual(['expo-font', 'expo-haptics', 'react-native-svg']);
+   });
+ });
+diff --git a/apps/rider-app/test/preview-font-embedding.test.ts b/apps/rider-app/test/preview-font-embedding.test.ts
+new file mode 100644
+index 0000000..023fadc
+--- /dev/null
++++ b/apps/rider-app/test/preview-font-embedding.test.ts
+@@ -0,0 +1,68 @@
++import { existsSync, readFileSync } from 'node:fs';
++import { dirname, join, resolve } from 'node:path';
++import { describe, expect, it } from 'vitest';
++
++/**
++ * WO-6.2 PERMANENT regression guard for the expo-preview publish (the RED that
++ * kept the rider's face off the founder's phone). The preview publish fails
++ * SILENTLY in three ways — each is a way the typeface silently vanishes from
++ * the published bundle:
++ *
++ *  1. expo-font drops back to a TRANSITIVE dep. This is the exact WO-6.1 → WO-6.2
++ *     bug: eas-cli spawns expo's cli RAW (no pnpm env), so @expo/config-plugins
++ *     resolves the `expo-font` plugin with plain node resolution from this dir —
++ *     a transitive dep is unreachable under pnpm's isolated node_modules →
++ *     `PluginError: Failed to resolve plugin for module "expo-font"` → exit 1.
++ *  2. The expo-font config plugin is removed from app.json → native embedding is
++ *     gone; the app ships with the system fallback forever (RULING ② broken).
++ *  3. A referenced .ttf is deleted → the plugin points at a missing asset.
++ *
++ * This test fails on ALL THREE. Native embedding (RULING ②) is only real when
++ * all three hold together.
++ */
++
++const appDir = resolve(dirname(new URL(import.meta.url).pathname), '..');
++const pkg = JSON.parse(readFileSync(join(appDir, 'package.json'), 'utf8')) as {
++  dependencies?: Record<string, string>;
++  devDependencies?: Record<string, string>;
++};
++const appJson = JSON.parse(readFileSync(join(appDir, 'app.json'), 'utf8')) as {
++  expo: { plugins?: unknown[] };
++};
++
++function fontPlugin(): [string, { fonts?: string[] }] | undefined {
++  for (const p of appJson.expo.plugins ?? []) {
++    if (Array.isArray(p) && p[0] === 'expo-font') return p as [string, { fonts?: string[] }];
++  }
++  return undefined;
++}
++
++describe('WO-6.2 — the preview publish embeds Archivo natively (no silent typeface loss)', () => {
++  it('DROP MODE 1: expo-font is a DIRECT dependency (transitive-only is what broke the publish)', () => {
++    const deps = { ...pkg.dependencies, ...pkg.devDependencies };
++    expect(
++      deps['expo-font'],
++      'expo-font must be a DIRECT dep — a config plugin is resolved by plain node resolution from this dir when eas spawns expo raw',
++    ).toBeDefined();
++    // and it must actually resolve from THIS directory (the exact resolution
++    // @expo/config-plugins does), not merely appear in package.json
++    expect(() => require.resolve('expo-font', { paths: [appDir] })).not.toThrow();
++  });
++
++  it('DROP MODE 2: the expo-font config plugin is present in app.json (native embedding, not async load)', () => {
++    const plugin = fontPlugin();
++    expect(plugin, 'app.json must list the expo-font config plugin (RULING ②: font in the binary at first frame)').toBeDefined();
++  });
++
++  it('DROP MODE 3: every font the plugin references exists on disk (5 Archivo weights)', () => {
++    const plugin = fontPlugin();
++    const fonts = plugin?.[1]?.fonts ?? [];
++    expect(fonts.length, 'the plugin must embed the five Archivo weights').toBe(5);
++    for (const rel of fonts) {
++      const abs = join(appDir, rel);
++      expect(existsSync(abs), `font asset missing: ${rel}`).toBe(true);
++      // a non-empty real .ttf, not a placeholder
++      expect(readFileSync(abs).length, `font asset empty: ${rel}`).toBeGreaterThan(1000);
++    }
++  });
++});
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index 1a81c9d..b9f4fff 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -78,6 +78,9 @@ importers:
+       expo:
+         specifier: ~54.0.35
+         version: 54.0.35(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)(typescript@5.9.3)
++      expo-font:
++        specifier: ~14.0.12
++        version: 14.0.12(expo@54.0.35)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
+       expo-haptics:
+         specifier: ~15.0.8
+         version: 15.0.8(expo@54.0.35)
