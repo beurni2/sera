@@ -92,16 +92,20 @@ describe('the typeface substrate (Archivo, Latin) — data only, loads nothing',
   });
 });
 
-describe('the two approved dependencies (founder rulings 2026-07-12) — nothing else', () => {
-  it('react-native-svg + expo-haptics at the SDK-54 bundled versions, and no other new dep', () => {
+describe('the approved dependencies — nothing else', () => {
+  it('react-native-svg + expo-haptics (WO-6.1 rulings) + expo-font (WO-6.2 fix), at SDK-54 versions', () => {
     const pkg = JSON.parse(read('package.json')) as { dependencies: Record<string, string> };
     expect(pkg.dependencies['react-native-svg']).toBe('15.12.1');
     expect(pkg.dependencies['expo-haptics']).toBe('~15.0.8');
-    // the only deps beyond the pre-WO set are exactly these two
+    // WO-6.2: expo-font is a DIRECT dep so the config plugin (RULING ②, native
+    // embedding) resolves when eas spawns expo raw. Not a new capability — the
+    // package that backs the app.json plugin WO-6.1 already declared.
+    expect(pkg.dependencies['expo-font']).toBe('~14.0.12');
+    // the only deps beyond the pre-WO set are exactly these three
     const before = new Set([
       '@platform/ui-tokens', 'expo', 'expo-status-bar', 'expo-updates', 'react', 'react-native',
     ]);
     const added = Object.keys(pkg.dependencies).filter((d) => !before.has(d));
-    expect(added.sort()).toEqual(['expo-haptics', 'react-native-svg']);
+    expect(added.sort()).toEqual(['expo-font', 'expo-haptics', 'react-native-svg']);
   });
 });
