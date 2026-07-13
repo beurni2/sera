@@ -286,5 +286,77 @@
     "fr": "(aperçu) SOS hors réseau",
     "register": "neutral",
     "screenClass": "label"
+  },
+  {
+    "key": "console.board_heading",
+    "fr": "Tableau en direct",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "console.board_current_stop",
+    "fr": "Arrêt en cours",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.board_upcoming",
+    "fr": "Arrêts à suivre",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.board_no_stop",
+    "fr": "Aucun arrêt en cours.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "console.board_custody",
+    "fr": "Garde du colis",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.board_held_rider",
+    "fr": "Chez le livreur",
+    "register": "money",
+    "screenClass": "status"
+  },
+  {
+    "key": "console.board_held_hub",
+    "fr": "Au dépôt",
+    "register": "money",
+    "screenClass": "status"
+  },
+  {
+    "key": "console.board_held_customer",
+    "fr": "Remis au client",
+    "register": "money",
+    "screenClass": "status"
+  },
+  {
+    "key": "console.board_incident_title",
+    "fr": "Incident — la garde fait foi",
+    "register": "money",
+    "screenClass": "status"
+  },
+  {
+    "key": "console.board_incident_body",
+    "fr": "Le statut annonce « livré », mais le colis est encore en garde. On suit la garde, jamais le statut seul.",
+    "register": "money",
+    "screenClass": "status"
+  },
+  {
+    "key": "console.board_demo_normal",
+    "fr": "(aperçu) tournée en cohérence",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.board_demo_incident",
+    "fr": "(aperçu) statut ≠ garde",
+    "register": "neutral",
+    "screenClass": "label"
   }
 ]

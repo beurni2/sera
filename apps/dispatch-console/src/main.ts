@@ -10,6 +10,15 @@ import {
   type IncidentView,
 } from './sandbox-incident';
 import { DoorSignalFollower } from './door-signal';
+import { deriveRiderBoard, type PackageCustody } from './board';
+import {
+  SANDBOX_CUSTODY_AGREEMENT,
+  SANDBOX_CUSTODY_INCIDENT,
+  SANDBOX_MANIFEST,
+  SANDBOX_PKG_LABELS,
+  SANDBOX_RIDER_NAME,
+  SANDBOX_STOP_LABELS,
+} from './sandbox-board';
 import { t } from './i18n';
 
 /**
@@ -275,7 +284,7 @@ style.textContent = `
   }
   button.sos-ack:disabled { background: var(--muted); cursor: not-allowed; opacity: 0.6; }
   .sos-demo-controls { display: flex; gap: var(--space-lg); flex-wrap: wrap; }
-  button.sos-raise, button.sos-raise-queued {
+  button.sos-raise, button.sos-raise-queued, button.board-demo-normal, button.board-demo-incident {
     min-height: var(--touch);
     border: 0;
     background: none;
@@ -288,6 +297,17 @@ style.textContent = `
     cursor: pointer;
     padding: 0;
   }
+  /* WO-6.9-c live board — read-only; custody truth first, an incident is loud. */
+  .board { border: var(--hair-strong) solid var(--ink); padding: var(--space-lg); display: grid; gap: var(--space-sm); }
+  .board-rider { margin: 0; font-size: var(--type-title-lg); font-weight: ${typo.scale.titleLG.wght}; line-height: 1.1; }
+  .board-stop { margin: 0; font-size: var(--type-body); font-weight: ${typo.scale.bodyStrong.wght}; }
+  .board-upcoming { margin: 0; color: var(--muted); font-size: var(--type-label); font-weight: ${typo.scale.label.wght}; letter-spacing: var(--ls-label); text-transform: uppercase; }
+  .board-pkg { border: var(--hair) solid var(--hairline-strong); padding: var(--space-md); margin-top: var(--space-sm); display: grid; gap: var(--space-xs); }
+  .board-pkg.incident { border: calc(var(--hair-strong) * 2) solid var(--danger); }
+  .board-pkg-name { margin: 0; font-size: var(--type-body); font-weight: ${typo.scale.bodyStrong.wght}; }
+  .board-custody { margin: 0; color: var(--ink); background: var(--sand); border-left: var(--hair-strong) solid var(--accent-strong); padding: var(--space-xs) var(--space-sm); font-weight: ${typo.scale.bodyStrong.wght}; }
+  .board-incident-title { margin: var(--space-xs) 0 0 0; color: var(--danger); font-size: var(--type-body); font-weight: ${typo.scale.title.wght}; letter-spacing: var(--ls-label); text-transform: uppercase; }
+  .board-incident-body { margin: 0; color: var(--ink); font-size: var(--type-body); }
 `;
 document.head.appendChild(style);
 
@@ -511,6 +531,85 @@ if (app) {
     }
   };
   render();
+
+  // WO-6.9-c — the LIVE BOARD (D3): one RouteManifest per rider · one current
+  // stop (SE-I03) · one custodian per package (SE-I04). Task status is NEVER
+  // custody truth: a task claiming « delivered » while custody still holds the
+  // package renders AS AN INCIDENT (custody wins — PART 8 §3), never as
+  // agreement. READ-ONLY: the console has no lever that mutates a CustodyRecord;
+  // the (aperçu) levers only swap which demo custody SNAPSHOT is shown.
+  const boardHeading = document.createElement('h2');
+  boardHeading.textContent = t('console.board_heading');
+  const boardSection = document.createElement('section');
+  boardSection.className = 'board';
+  let boardCustody: readonly PackageCustody[] = SANDBOX_CUSTODY_AGREEMENT;
+  const custodianLabel = (c: string): string =>
+    c.startsWith('rider:') ? t('console.board_held_rider')
+      : c.startsWith('hub:') ? t('console.board_held_hub')
+        : c === 'customer' ? t('console.board_held_customer')
+          : c;
+  const renderBoard = () => {
+    boardSection.replaceChildren();
+    const b = deriveRiderBoard(SANDBOX_MANIFEST, boardCustody);
+    const rider = document.createElement('p');
+    rider.className = 'board-rider';
+    rider.textContent = SANDBOX_RIDER_NAME;
+    boardSection.appendChild(rider);
+    const stop = document.createElement('p');
+    stop.className = 'board-stop';
+    stop.textContent = b.currentStop
+      ? `${t('console.board_current_stop')} : ${SANDBOX_STOP_LABELS[b.currentStop] ?? b.currentStop}`
+      : t('console.board_no_stop');
+    boardSection.appendChild(stop);
+    const upcoming = document.createElement('p');
+    upcoming.className = 'board-upcoming';
+    upcoming.textContent = `${t('console.board_upcoming')} : ${b.upcomingStops.length}`;
+    boardSection.appendChild(upcoming);
+    for (const pkg of b.packages) {
+      const card = document.createElement('div');
+      card.className = `board-pkg ${pkg.render === 'incident' ? 'incident' : ''}`.trim();
+      const name = document.createElement('p');
+      name.className = 'board-pkg-name';
+      name.textContent = SANDBOX_PKG_LABELS[pkg.packageId] ?? pkg.packageId;
+      card.appendChild(name);
+      // Custody truth — shown independently of the task's claim (SE-I04).
+      const custody = document.createElement('p');
+      custody.className = 'board-custody';
+      custody.textContent = `${t('console.board_custody')} : ${custodianLabel(pkg.currentCustodian)}`;
+      card.appendChild(custody);
+      if (pkg.render === 'incident') {
+        const it = document.createElement('p');
+        it.className = 'board-incident-title';
+        it.textContent = t('console.board_incident_title');
+        card.appendChild(it);
+        const ib = document.createElement('p');
+        ib.className = 'board-incident-body';
+        ib.textContent = t('console.board_incident_body');
+        card.appendChild(ib);
+      }
+      boardSection.appendChild(card);
+    }
+  };
+  renderBoard();
+  // (aperçu) levers — swap the demo custody SNAPSHOT; NEVER a custody write.
+  const boardDemo = document.createElement('section');
+  boardDemo.className = 'sos-demo-controls';
+  const boardNormalBtn = document.createElement('button');
+  boardNormalBtn.className = 'board-demo-normal';
+  boardNormalBtn.textContent = t('console.board_demo_normal');
+  boardNormalBtn.addEventListener('click', () => {
+    boardCustody = SANDBOX_CUSTODY_AGREEMENT;
+    renderBoard();
+  });
+  const boardIncidentBtn = document.createElement('button');
+  boardIncidentBtn.className = 'board-demo-incident';
+  boardIncidentBtn.textContent = t('console.board_demo_incident');
+  boardIncidentBtn.addEventListener('click', () => {
+    boardCustody = SANDBOX_CUSTODY_INCIDENT;
+    renderBoard();
+  });
+  boardDemo.append(boardNormalBtn, boardIncidentBtn);
+  main.append(boardHeading, boardSection, boardDemo);
 
   // WO-2.2 — follow-up: dwell surfaced (D20: recorded and shown, never
   // enforced) + the delivery-outcome timeline on the canonical families.
