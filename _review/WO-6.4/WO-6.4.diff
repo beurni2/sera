@@ -1,0 +1,347 @@
+diff --git a/.gitignore b/.gitignore
+index 1f854bc..56998ee 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -10,8 +10,10 @@ test-results/
+ .env
+ .env.*
+ 
+-# WO-6.1: the gallery PNGs are a BUILD ARTIFACT, not a tracked binary — paying
+-# the named debt (WO-4.3). Playwright regenerates them deterministically
+-# (fixed viewport + reduced motion) on `test:e2e`; build-gallery.mjs assembles
+-# gallery.html from them. Non-deterministic binaries never live in the gate tree.
++# WO-6.1/6.4: the gallery PNGs are a BUILD ARTIFACT, not a tracked binary —
++# paying the named debt (WO-4.3/4.1). Playwright regenerates them on `test:e2e`
++# (fixed viewport + reduced motion + fixed clock: 7/8 states byte-stable across
++# runs, the clock-requeue state carries a harmless sub-pixel AA flip — WO-6.4);
++# build-gallery.mjs assembles gallery.html from them. No gate byte-compares them,
++# so a non-deterministic binary can never live in — or fire — the gate tree.
+ gallery/img/
+diff --git a/apps/dispatch-console/e2e/gallery.spec.ts b/apps/dispatch-console/e2e/gallery.spec.ts
+index 9de9003..3a24738 100644
+--- a/apps/dispatch-console/e2e/gallery.spec.ts
++++ b/apps/dispatch-console/e2e/gallery.spec.ts
+@@ -23,16 +23,25 @@ mkdirSync(imgDir, { recursive: true });
+ for (const group of manifest.groups) {
+   for (const state of group.states) {
+     test(`gallery: ${state.id}`, async ({ page }) => {
+-      // Determinism (WO-6.1, paying the named byte-stability debt): fixed
+-      // viewport (test.use above) + reduced motion, so a capture is a function
+-      // of the state alone. The PNGs are a build artifact (gitignored), never a
+-      // tracked binary in the gate tree.
++      // Determinism (WO-6.4, paying the named byte-stability debt HONESTLY):
++      // fixed viewport (test.use above) + reduced motion + a FIXED clock for
++      // EVERY state. Pinning the clock removes the wall clock as a variance
++      // source, so any HH:MM the console derives (a lease deadline) is a function
++      // of the state alone — WO-6.4 proved 7/8 states byte-identical across two
++      // runs BY CONSTRUCTION this way (previously they matched only by luck of
++      // capturing within the same minute; on a minute boundary they would drift).
++      //
++      // The one exception — `console-course-remise`, the clock-fastForward
++      // requeue — still carries a ~7-pixel sub-pixel ANTIALIASING flip on a card
++      // edge across runs (proven: a fixed clock did NOT change it, so it is a
++      // browser rasterisation flip, not data). That residual is HARMLESS and NOT
++      // a landmine: the PNGs are a gitignored build artifact, never a tracked
++      // binary, and NO gate byte-compares them (this spec asserts a capture
++      // SUCCEEDS; build-gallery.mjs asserts the image EXISTS). The WO-4.1 hazard
++      // — a *tracked* PNG re-encoding and dirtying the tree — is structurally
++      // gone. We do NOT drop the requeue state to make the number look clean.
++      await page.clock.install({ time: new Date('2026-07-12T09:00:00Z') });
+       await page.emulateMedia({ reducedMotion: 'reduce' });
+-      // Clock-driven states (the ack-deadline requeue) need the mocked clock
+-      // installed BEFORE the page scripts start their interval timers.
+-      if (state.actions.some((a) => a.startsWith('clock-'))) {
+-        await page.clock.install();
+-      }
+       await page.goto('/');
+       for (const action of state.actions) {
+         if (action === 'assign') {
+diff --git a/apps/dispatch-console/src/sandbox-incident.ts b/apps/dispatch-console/src/sandbox-incident.ts
+index b9d70b7..2ba898d 100644
+--- a/apps/dispatch-console/src/sandbox-incident.ts
++++ b/apps/dispatch-console/src/sandbox-incident.ts
+@@ -16,7 +16,7 @@ export const SOS_EVENTS = {
+   incidentOpened: 'incident.opened.v1',
+ } as const;
+ 
+-export interface IncidentView {
++interface IncidentViewBase {
+   id: string;
+   correlationId: string;
+   riderId: string;
+@@ -27,22 +27,41 @@ export interface IncidentView {
+   coarseLocation: string | null;
+   onShift: boolean;
+   hours: 'in_hours' | 'out_of_hours';
+-  responder: SosResponder;
+   status: SosStatus;
+-  acknowledgedBy: SosResponder | null;
+ }
+ 
++/**
++ * WO-6.4 (ruling ④) — RESPONDER-MATCH, structural, mirroring the rider store.
++ * The responder identity is the DISCRIMINANT: `acknowledgedBy` can ONLY ever be
++ * this incident's OWN responder (or null while unacknowledged). A console record
++ * that credits a different human than its responder is not a representable value.
++ */
++export type IncidentView =
++  | (IncidentViewBase & { responder: 'dispatcher'; acknowledgedBy: 'dispatcher' | null })
++  | (IncidentViewBase & { responder: 'founder'; acknowledgedBy: 'founder' | null });
++
+ /**
+  * The honesty law, mirrored on the console: a dispatcher can acknowledge ONLY a
+  * LIVE incident (raised or escalated). A queued incident has NOT arrived — you
+  * cannot ack what has not arrived; the guard THROWS, exactly like the rider
+  * store's acknowledgeSos. The acknowledged event is the canon name.
++ *
++ * WO-6.4 (ruling ④): only the incident's OWN responder may acknowledge it — a
++ * mismatched `by` THROWS, and the credited responder is the incident's own
++ * (single source of truth), so the console record can never name the wrong human.
+  */
+ export function acknowledgeSos(incident: IncidentView, by: SosResponder): IncidentView {
+   if (incident.status !== 'raised' && incident.status !== 'escalated') {
+     throw new Error(`cannot acknowledge an SOS at '${incident.status}' — only 'raised' or 'escalated'`);
+   }
+-  return { ...incident, status: 'acknowledged', acknowledgedBy: by };
++  if (by !== incident.responder) {
++    throw new Error(
++      `only the '${incident.responder}' may acknowledge this SOS — got '${by}' (WO-6.4 ④: the record names the responder who answered)`,
++    );
++  }
++  return incident.responder === 'dispatcher'
++    ? { ...incident, responder: 'dispatcher', status: 'acknowledged', acknowledgedBy: 'dispatcher' }
++    : { ...incident, responder: 'founder', status: 'acknowledged', acknowledgedBy: 'founder' };
+ }
+ 
+ /** Whether the ack lever may be enabled — false for a not-yet-arrived incident. */
+diff --git a/apps/dispatch-console/test/sandbox-incident.test.ts b/apps/dispatch-console/test/sandbox-incident.test.ts
+new file mode 100644
+index 0000000..66e339c
+--- /dev/null
++++ b/apps/dispatch-console/test/sandbox-incident.test.ts
+@@ -0,0 +1,50 @@
++import { describe, expect, it } from 'vitest';
++import {
++  acknowledgeSos,
++  canAcknowledge,
++  SANDBOX_INCIDENT_QUEUED,
++  SANDBOX_INCIDENT_RAISED,
++  type IncidentView,
++} from '../src/sandbox-incident';
++
++/**
++ * WO-6.4 (ruling ④) — RESPONDER-MATCH on the console's acknowledgeSos, proven
++ * both ways: a mismatched responder REFUSES at runtime (throws, no mutation) and
++ * at the type level (a record naming a different human than its responder is not
++ * a representable IncidentView). Mirrors the rider store's sos-drill (b2)/(b3).
++ */
++describe('console SOS acknowledgeSos — responder-match (WO-6.4 ④)', () => {
++  it('the incident’s OWN responder acknowledges, and is the one credited', () => {
++    expect(canAcknowledge(SANDBOX_INCIDENT_RAISED)).toBe(true);
++    const acked = acknowledgeSos(SANDBOX_INCIDENT_RAISED, SANDBOX_INCIDENT_RAISED.responder);
++    expect(acked.status).toBe('acknowledged');
++    expect(acked.acknowledgedBy).toBe('dispatcher'); // == responder
++  });
++
++  it('a MISMATCHED responder THROWS and mutates nothing (runtime)', () => {
++    // SANDBOX_INCIDENT_RAISED.responder is 'dispatcher' → a 'founder' ack is refused
++    expect(() => acknowledgeSos(SANDBOX_INCIDENT_RAISED, 'founder')).toThrow(/dispatcher/);
++    // the constant is untouched (acknowledgeSos returns a new object, never mutates)
++    expect(SANDBOX_INCIDENT_RAISED.status).toBe('raised');
++    expect(SANDBOX_INCIDENT_RAISED.acknowledgedBy).toBeNull();
++  });
++
++  it('the status guard still fires FIRST — a queued incident is unacknowledgeable regardless of responder', () => {
++    expect(canAcknowledge(SANDBOX_INCIDENT_QUEUED)).toBe(false);
++    expect(() => acknowledgeSos(SANDBOX_INCIDENT_QUEUED, SANDBOX_INCIDENT_QUEUED.responder)).toThrow(/queued/);
++  });
++
++  it('a record naming a DIFFERENT human than its responder is UNREPRESENTABLE (type-level)', () => {
++    const base = {
++      id: 'i', correlationId: 'c', riderId: 'rider-issa', riderName: 'Issa O. (démo)',
++      activeTaskId: null, coarseLocation: null, onShift: true,
++      hours: 'out_of_hours' as const, status: 'acknowledged' as const,
++    };
++    // CONTROL — a founder-incident credited to the FOUNDER typechecks:
++    const honest: IncidentView = { ...base, responder: 'founder', acknowledgedBy: 'founder' };
++    expect(honest.acknowledgedBy).toBe('founder');
++    // @ts-expect-error — WO-6.4 ④: crediting the DISPATCHER on a founder incident is not a representable IncidentView
++    const lying: IncidentView = { ...base, responder: 'founder', acknowledgedBy: 'dispatcher' };
++    expect(lying.responder).toBe('founder');
++  });
++});
+diff --git a/apps/rider-app/src/demo/store.ts b/apps/rider-app/src/demo/store.ts
+index 79d93fe..61e36e9 100644
+--- a/apps/rider-app/src/demo/store.ts
++++ b/apps/rider-app/src/demo/store.ts
+@@ -63,7 +63,7 @@ export interface DemoCourse {
+  * step and its ONE current custodian. `hours` is stored so a queued incident's
+  * reconnect (deliverQueuedSos) takes the branch it was raised under.
+  */
+-export interface SosIncident {
++interface SosIncidentBase {
+   readonly id: string;
+   readonly correlationId: string;
+   readonly riderId: string;
+@@ -72,15 +72,25 @@ export interface SosIncident {
+   readonly coarseLocation: string | null;
+   readonly onShift: boolean;
+   readonly hours: DispatchHours;
+-  readonly responder: SosResponder;
+   readonly status: SosStatus;
+   readonly raisedAt: string;
+   readonly acknowledgedAt: string | null;
+-  readonly acknowledgedBy: SosResponder | null;
+   /** The canonical event names emitted so far — [] while offline/queued. */
+   readonly events: string[];
+ }
+ 
++/**
++ * WO-6.4 (ruling ④) — RESPONDER-MATCH, structural. The responder identity is
++ * the DISCRIMINANT: an incident is a dispatcher-incident OR a founder-incident,
++ * and `acknowledgedBy` can ONLY ever be that SAME responder (or null while
++ * unacknowledged). A record that names a DIFFERENT human than its own responder
++ * is not a representable value of this type — the safety record cannot lie about
++ * who answered. Enforcement is BOTH here (type) and in acknowledgeSos (runtime).
++ */
++export type SosIncident =
++  | (SosIncidentBase & { readonly responder: 'dispatcher'; readonly acknowledgedBy: 'dispatcher' | null })
++  | (SosIncidentBase & { readonly responder: 'founder'; readonly acknowledgedBy: 'founder' | null });
++
+ export interface DemoWorld {
+   courses: DemoCourse[];
+   /** At most one open incident in the demo world; null when none is raised. */
+@@ -382,7 +392,7 @@ export function raiseSos(
+   const { riderId, onShift, activeCourseId, connectivity, hours } = params;
+   const raisedAt = new Date().toISOString();
+   const queued = connectivity === 'offline';
+-  const incident: SosIncident = {
++  const base: SosIncidentBase = {
+     id: `sos-${riderId}-${raisedAt}`,
+     correlationId: `corr-sos-${riderId}-${raisedAt}`,
+     riderId,
+@@ -391,14 +401,18 @@ export function raiseSos(
+     coarseLocation: onShift ? SANDBOX_SOS_COARSE_LOCATION : null,
+     onShift,
+     hours,
+-    responder: responderForHours(hours),
+     // Offline = queued = pending: no delivery, nothing emitted.
+     status: queued ? 'queued' : raisedStatusForHours(hours),
+     raisedAt,
+     acknowledgedAt: null,
+-    acknowledgedBy: null,
+     events: queued ? [] : [SOS_EVENTS.created, SOS_EVENTS.incidentOpened],
+   };
++  // The responder literal selects the discriminated arm — acknowledgedBy starts
++  // null (unacknowledged) and can only ever become this responder (WO-6.4 ④).
++  const incident: SosIncident =
++    responderForHours(hours) === 'dispatcher'
++      ? { ...base, responder: 'dispatcher', acknowledgedBy: null }
++      : { ...base, responder: 'founder', acknowledgedBy: null };
+   world.incident = incident;
+   return incident;
+ }
+@@ -426,21 +440,32 @@ export function deliverQueuedSos(world: DemoWorld): SosIncident {
+  * The honesty law, STRUCTURAL: an acknowledgment can land ONLY on a LIVE
+  * incident (raised or escalated). A queued (offline) or already-acknowledged
+  * incident is UNACKNOWLEDGEABLE and THROWS — on a safety path a fake ack is the
+- * worst possible bug. The responder that answered is recorded and the
+- * acknowledged event is emitted.
++ * worst possible bug.
++ *
++ * WO-6.4 (ruling ④) RESPONDER-MATCH: only the incident's OWN responder may
++ * acknowledge it. A mismatched `by` (a dispatcher answering a founder-escalated
++ * incident, or vice-versa) THROWS — the incident is left byte-unchanged, no
++ * partial mutation. The credited responder is the incident's responder itself
++ * (single source of truth), so the safety record can never name the wrong human.
+  */
+ export function acknowledgeSos(world: DemoWorld, by: SosResponder): SosIncident {
+   const incident = world.incident;
+   if (incident === null || (incident.status !== 'raised' && incident.status !== 'escalated')) {
+     throw new Error(`cannot acknowledge an SOS at '${incident?.status ?? 'none'}' — only 'raised' or 'escalated'`);
+   }
+-  const acknowledged: SosIncident = {
+-    ...incident,
+-    status: 'acknowledged',
+-    acknowledgedBy: by,
+-    acknowledgedAt: new Date().toISOString(),
+-    events: [...incident.events, SOS_EVENTS.acknowledged],
+-  };
++  if (by !== incident.responder) {
++    throw new Error(
++      `only the '${incident.responder}' may acknowledge this SOS — got '${by}' (WO-6.4 ④: the record names the responder who answered)`,
++    );
++  }
++  // The discriminant narrows the arm; acknowledgedBy is credited to the
++  // incident's own responder (== by, guarded above) — never a supplied mismatch.
++  const acknowledgedAt = new Date().toISOString();
++  const events = [...incident.events, SOS_EVENTS.acknowledged];
++  const acknowledged: SosIncident =
++    incident.responder === 'dispatcher'
++      ? { ...incident, responder: 'dispatcher', status: 'acknowledged', acknowledgedBy: 'dispatcher', acknowledgedAt, events }
++      : { ...incident, responder: 'founder', status: 'acknowledged', acknowledgedBy: 'founder', acknowledgedAt, events };
+   world.incident = acknowledged;
+   return acknowledged;
+ }
+diff --git a/apps/rider-app/test/sos-drill.test.ts b/apps/rider-app/test/sos-drill.test.ts
+index 083970f..b941bc4 100644
+--- a/apps/rider-app/test/sos-drill.test.ts
++++ b/apps/rider-app/test/sos-drill.test.ts
+@@ -15,6 +15,7 @@ import {
+   passVerification,
+   raiseSos,
+   registerSeal,
++  type SosIncident,
+ } from '../src/demo/store.js';
+ 
+ /**
+@@ -81,6 +82,49 @@ describe('SOS drill — the honest safety path (SE8)', () => {
+     expect(acked.events).toContain('safety.sos_acknowledged.v1');
+   });
+ 
++  it('(b2) RESPONDER-MATCH (WO-6.4 ④): only the incident’s OWN responder may ack — a mismatch THROWS and leaves the record byte-unchanged (runtime)', () => {
++    // out-of-hours → responder 'founder'; a DISPATCHER ack is refused
++    const outWorld = createDemoWorld();
++    const escalated = raiseSos(outWorld, { riderId: RIDER, onShift: true, activeCourseId: null, connectivity: 'online', hours: 'out_of_hours' });
++    expect(escalated.responder).toBe('founder');
++    const before = structuredClone(outWorld.incident);
++    expect(() => acknowledgeSos(outWorld, 'dispatcher')).toThrow(/founder/);
++    // no partial mutation: still escalated, unacknowledged, no acknowledged event
++    expect(outWorld.incident).toEqual(before);
++    expect(outWorld.incident?.status).toBe('escalated');
++    expect(outWorld.incident?.acknowledgedBy).toBeNull();
++    expect(outWorld.incident?.events).not.toContain('safety.sos_acknowledged.v1');
++    // the TRUE responder still acks, and is the one credited
++    const acked = acknowledgeSos(outWorld, 'founder');
++    expect(acked.status).toBe('acknowledged');
++    expect(acked.acknowledgedBy).toBe('founder');
++
++    // symmetric: in-hours → responder 'dispatcher'; a FOUNDER ack is refused
++    const inWorld = createDemoWorld();
++    const raised = raiseSos(inWorld, { riderId: RIDER, onShift: true, activeCourseId: null, connectivity: 'online', hours: 'in_hours' });
++    expect(raised.responder).toBe('dispatcher');
++    expect(() => acknowledgeSos(inWorld, 'founder')).toThrow(/dispatcher/);
++    expect(inWorld.incident?.status).toBe('raised');
++    expect(inWorld.incident?.acknowledgedBy).toBeNull();
++  });
++
++  it('(b3) RESPONDER-MATCH (WO-6.4 ④): a record naming a DIFFERENT human than its responder is UNREPRESENTABLE (type-level)', () => {
++    // A complete, valid base shared by both literals so the ONLY delta is
++    // acknowledgedBy — the type error can be nothing but the responder-match.
++    const base = {
++      id: 's', correlationId: 'c', riderId: RIDER, activeCourseId: null,
++      coarseLocation: null, onShift: true, hours: 'out_of_hours' as const,
++      status: 'acknowledged' as const, raisedAt: '', acknowledgedAt: '', events: [] as string[],
++    };
++    // CONTROL — a founder-incident credited to the FOUNDER typechecks:
++    const honest: SosIncident = { ...base, responder: 'founder', acknowledgedBy: 'founder' };
++    expect(honest.acknowledgedBy).toBe('founder');
++    // @ts-expect-error — WO-6.4 ④: crediting the DISPATCHER on a founder incident is not a representable SosIncident
++    const lying: SosIncident = { ...base, responder: 'founder', acknowledgedBy: 'dispatcher' };
++    // referencing `lying` keeps the directive live without asserting on the (impossible) value
++    expect(lying.responder).toBe('founder');
++  });
++
+   it('(c) OFFLINE NEVER LIES: a queued incident emits NOTHING and is UNACKNOWLEDGEABLE until delivered', () => {
+     const world = createDemoWorld();
+     const queued = raiseSos(world, {
