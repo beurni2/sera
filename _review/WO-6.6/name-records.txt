@@ -1,0 +1,41 @@
+WO-6.6 — name-table parse of sera's five committed Archivo TTFs (THE BYTES)
+====================================================================================================
+
+Archivo-Regular.ttf   (sha256:f939d3c0dbd38d91  usWeightClass=400)
+  name ID 1  family (Win 3,1)     = 'Archivo-Regular'
+  name ID 1  family (Mac 1,1)     = 'Archivo-Regular'
+  name ID 2  subfamily (Win 3,2)  = 'Regular'
+  name ID 6  postScript (Win 3,6) = 'Archivo-Regular'
+  name ID 16 typo family (3,16)   = 'Archivo-Regular'
+
+Archivo-Medium.ttf   (sha256:aa784d382006e66b  usWeightClass=500)
+  name ID 1  family (Win 3,1)     = 'Archivo-Medium'
+  name ID 1  family (Mac 1,1)     = 'Archivo-Medium'
+  name ID 2  subfamily (Win 3,2)  = 'Regular'
+  name ID 6  postScript (Win 3,6) = 'Archivo-Medium'
+  name ID 16 typo family (3,16)   = 'Archivo-Medium'
+
+Archivo-Bold.ttf   (sha256:1cbb4cc36ae3fe8e  usWeightClass=700)
+  name ID 1  family (Win 3,1)     = 'Archivo-Bold'
+  name ID 1  family (Mac 1,1)     = 'Archivo-Bold'
+  name ID 2  subfamily (Win 3,2)  = 'Regular'
+  name ID 6  postScript (Win 3,6) = 'Archivo-Bold'
+  name ID 16 typo family (3,16)   = 'Archivo-Bold'
+
+Archivo-ExtraBold.ttf   (sha256:c83a3ac3bc192ef6  usWeightClass=800)
+  name ID 1  family (Win 3,1)     = 'Archivo-ExtraBold'
+  name ID 1  family (Mac 1,1)     = 'Archivo-ExtraBold'
+  name ID 2  subfamily (Win 3,2)  = 'Regular'
+  name ID 6  postScript (Win 3,6) = 'Archivo-ExtraBold'
+  name ID 16 typo family (3,16)   = 'Archivo-ExtraBold'
+
+Archivo-Black.ttf   (sha256:f999a68da6a86b53  usWeightClass=900)
+  name ID 1  family (Win 3,1)     = 'Archivo-Black'
+  name ID 1  family (Mac 1,1)     = 'Archivo-Black'
+  name ID 2  subfamily (Win 3,2)  = 'Regular'
+  name ID 6  postScript (Win 3,6) = 'Archivo-Black'
+  name ID 16 typo family (3,16)   = 'Archivo-Black'
+
+====================================================================================================
+COLLISION on (family, subfamily): NONE — all five identities DISTINCT
+VERDICT: ✅ NOT LIVE — the WO-5.1 collision is absent from sera's committed fonts

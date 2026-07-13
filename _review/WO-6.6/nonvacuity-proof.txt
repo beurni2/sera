@@ -1,0 +1,31 @@
+WO-6.6 — NON-VACUITY PROOF of apps/rider-app/test/font-embedding.test.ts
+Method: plant a real name-table collision by duplicating Bold's identity onto Medium (file copy), run the guard, revert with git.
+============================================================================
+
+$ cp Archivo-Bold.ttf Archivo-Medium.ttf   # plant: two faces now share Bold's name table
+
+$ vitest run test/font-embedding.test.ts   # EXPECT: FAIL
+   × WO-6.3 — the five Archivo faces embed under DISTINCT names (no name-table collision) > every file carries the correct OS/2 weight class and its distinct weight-specific family 10ms
+     → Archivo-Medium.ttf usWeightClass: expected 700 to be 500 // Object.is equality
+   × WO-6.3 — the five Archivo faces embed under DISTINCT names (no name-table collision) > the five families are DISTINCT — native embedding registers one face per name 1ms
+     → families: Archivo-Regular, Archivo-Bold, Archivo-Bold, Archivo-ExtraBold, Archivo-Black: expected 4 to be 5 // Object.is equality
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  test/font-embedding.test.ts > WO-6.3 — the five Archivo faces embed under DISTINCT names (no name-table collision) > every file carries the correct OS/2 weight class and its distinct weight-specific family
+AssertionError: Archivo-Medium.ttf usWeightClass: expected 700 to be 500 // Object.is equality
+ FAIL  test/font-embedding.test.ts > WO-6.3 — the five Archivo faces embed under DISTINCT names (no name-table collision) > the five families are DISTINCT — native embedding registers one face per name
+AssertionError: families: Archivo-Regular, Archivo-Bold, Archivo-Bold, Archivo-ExtraBold, Archivo-Black: expected 4 to be 5 // Object.is equality
+ Test Files  1 failed (1)
+      Tests  2 failed (2)
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run test/font-embedding.test.ts
+guard exit (planted) = 1   (non-zero = fired, as required)
+
+$ git checkout Archivo-Medium.ttf          # revert
+Updated 1 path from the index
+
+$ vitest run test/font-embedding.test.ts   # EXPECT: PASS
+ ✓ test/font-embedding.test.ts (2 tests) 5ms
+ Test Files  1 passed (1)
+      Tests  2 passed (2)
+guard exit (reverted) = 0   (zero = green)
+
+RESULT: the guard is NON-VACUOUS — it fires on a real planted collision and passes on the true fonts.
