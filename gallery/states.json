@@ -71,6 +71,23 @@
           "caption": "SOS hors réseau — « En attente du réseau » : le levier d'accusé est DÉSACTIVÉ (on n'accuse pas un SOS qui n'est pas encore arrivé)."
         }
       ]
+    },
+    {
+      "title": "Tableau en direct — la garde fait foi (D3, SE-I03/SE-I04)",
+      "states": [
+        {
+          "id": "console-board",
+          "actions": [],
+          "caption": "Tableau en direct — une tournée par livreur, UN arrêt en cours (SE-I03), UNE garde par colis (SE-I04). En cohérence : le statut de chaque colis s'accorde avec la garde."
+        },
+        {
+          "id": "console-board-incident",
+          "actions": [
+            "board-incident"
+          ],
+          "caption": "Le statut dit « livré », mais la garde dit que le colis est encore chez le livreur. La garde FAIT FOI : la divergence s'affiche comme un INCIDENT, jamais comme un accord (PART 8 §3)."
+        }
+      ]
     }
   ],
   "gaps": [

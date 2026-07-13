@@ -57,6 +57,8 @@ for (const group of manifest.groups) {
           await page.locator('button.sos-raise-queued').click();
         } else if (action === 'sos-ack') {
           await page.locator('button.sos-ack').click();
+        } else if (action === 'board-incident') {
+          await page.locator('button.board-demo-incident').click();
         } else {
           throw new Error(`unknown gallery action: ${action}`);
         }
