@@ -10,7 +10,7 @@
 
 | Item | Status | What this drill uses |
 | --- | --- | --- |
-| **Ack SLA value** | **Founder-confirmed 2026-07-12** (WO-6.3 item 2); the broader Sera-Build-Spec:185 "Dispatch hours/after-hours/SLA" staffing model stays ⏳ | **60 s in-hours ack target** (CTO safest-default, founder-confirmed), stored as versioned policy data `SOS_ACK_SLA_POLICY` (`sos-ack-sla.v1`, `inHoursTargetSeconds: 60`). Tunable at pilot — never silently. This is a **target the drill measures**, not a timer that fabricates an ack. |
+| **Ack SLA value** | ⏳ open (Sera-Build-Spec:185 / Sera-Building-Plan:76 "ack within SLA (named)") | **CTO safest-default (flagged): 60 s in-hours ack target**, versioned policy data `SOS_ACK_SLA_POLICY` (`sos-ack-sla.v1`, `inHoursTargetSeconds: 60`), founder-tunable at pilot. Founder ruling 2026-07-12 (WO-6.3 ②): this is a **flagged default the drill MEASURES against** — record the actual ack time each pass — NOT a settled value and not a timer that fabricates an ack. |
 | **Out-of-hours escalation transport** | ⏳ open founder item (WO-6.3 §2) | The **path and state are built**; the transport channel (SMS / push / call) is **unbound** — `ESCALATION_TRANSPORT = { status: 'pending', channel: null }`. The rider app names it as pending; it never claims a send that did not happen. **Founder: choose the channel before pilot.** |
 
 ---

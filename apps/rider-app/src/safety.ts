@@ -24,13 +24,13 @@ export type SosResponder = 'dispatcher' | 'founder';
 export type DispatchHours = 'in_hours' | 'out_of_hours';
 
 /**
- * ACK SLA — a 60 s in-hours ack TARGET. Proposed as a CTO safest-default on the
- * open SLA decision (⏳ Sera-Build-Spec:185 / Sera-Building-Plan:76 "ack within
- * SLA (named)") and CONFIRMED by the founder 2026-07-12 (WO-6.3 item 2). Stored
- * as VERSIONED POLICY DATA so it stays tunable at pilot — never silently. The
- * broader Dispatch-hours/after-hours/staffing model remains ⏳. This is a target
- * the live drill measures against, NOT a timer that fakes an acknowledgment: an
- * ack lands only through acknowledgeSos (which throws on a queued incident).
+ * ACK SLA — a 60 s in-hours ack TARGET: a CTO SAFEST-DEFAULT (flagged) on the
+ * OPEN SLA decision (⏳ Sera-Build-Spec:185 / Sera-Building-Plan:76 "ack within
+ * SLA (named)"), versioned and founder-tunable. It is NOT a settled value — the
+ * live drill MEASURES the actual ack time against it (founder ruling 2026-07-12,
+ * WO-6.3 ②). Stored as VERSIONED POLICY DATA so it stays tunable at pilot, never
+ * silently. NOT a timer that fakes an acknowledgment: an ack lands only through
+ * acknowledgeSos (which throws on a queued incident).
  */
 export const SOS_ACK_SLA_POLICY = {
   version: 'sos-ack-sla.v1',
