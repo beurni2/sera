@@ -123,8 +123,11 @@ describe('Money — Séra emits signals, never money: NO franc amount anywhere',
     join(appDir, 'App.tsx'),
     join(appDir, 'src/ui/kit.tsx'),
     join(appDir, 'i18n/catalog.json'),
+    // WO-6.3 — the safety surfaces join the no-franc scan (Séra emits signals).
+    join(appDir, 'src/safety.ts'),
     join(repoRoot, 'apps/dispatch-console/src/main.ts'),
     join(repoRoot, 'apps/dispatch-console/i18n/catalog.json'),
+    join(repoRoot, 'apps/dispatch-console/src/sandbox-incident.ts'),
   ];
   // A rendered franc amount: a number, then a REAL separator (space/nbsp/nnbsp),
   // then the currency unit \u2014 \u00ab 12 500 F \u00bb, \u00ab 5 000 FCFA \u00bb \u2014 or the word franc.

@@ -768,34 +768,64 @@
     "screenClass": "status"
   },
   {
+    "key": "sos.queued",
+    "fr": "SOS en attente du réseau.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "sos.queued_hint",
+    "fr": "Rien ne part tant que le réseau ne revient pas. On ne fait pas semblant.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
     "key": "sos.raised",
-    "fr": "SOS déclenché",
+    "fr": "Alerte envoyée.",
     "register": "neutral",
     "screenClass": "status"
   },
   {
     "key": "sos.raised_hint",
-    "fr": "Le dispatch est prévenu. Restez où vous êtes si c'est sûr.",
+    "fr": "On cherche quelqu'un pour vous. Restez où vous êtes si c'est sûr.",
     "register": "neutral",
     "screenClass": "status"
   },
   {
-    "key": "sos.ack_hint",
-    "fr": "Le dispatch a vu. Tout le reste attend.",
+    "key": "sos.escalated",
+    "fr": "Hors des heures — on alerte le responsable.",
     "register": "neutral",
     "screenClass": "status"
   },
   {
-    "key": "sos.enroute",
-    "fr": "Secours en route",
+    "key": "sos.escalated_hint",
+    "fr": "On prévient le responsable pour vous. Restez joignable.",
     "register": "neutral",
     "screenClass": "status"
   },
   {
-    "key": "sos.enroute_hint",
-    "fr": "Quelqu'un vient. Restez en sécurité, restez joignable.",
+    "key": "sos.transport_pending",
+    "fr": "Canal d'alerte au responsable : en cours de branchement (SMS ou appel).",
     "register": "neutral",
     "screenClass": "status"
+  },
+  {
+    "key": "sos.acknowledged",
+    "fr": "On vous a vu.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "sos.acknowledged_hint",
+    "fr": "Quelqu'un arrive pour vous. Restez joignable.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "sos.preview_ack",
+    "fr": "(aperçu) réponse du dispatch",
+    "register": "neutral",
+    "screenClass": "label"
   },
   {
     "key": "sos.safe",

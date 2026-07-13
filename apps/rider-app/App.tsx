@@ -3,11 +3,13 @@ import { StatusBar } from 'expo-status-bar';
 import { FlatList, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { seraTheme, spacing, radius, touch, type as typo, interaction, money } from '@platform/ui-tokens';
 import {
+  CONNECTIVITY,
   FAILURE_REASON_IDS,
   POLICY_CHECK_IDS,
   SANDBOX_DOOR_SIGNAL,
   type PolicyCheckId,
 } from './src/custody-flow';
+import { SANDBOX_DISPATCH_HOURS } from './src/safety';
 import { IS_PREVIEW } from './src/preview';
 import { t } from './src/i18n';
 import { COURSE_BACK_STEPS, JOURNEY, START, type Screen } from './src/journey';
@@ -15,10 +17,12 @@ import { attemptReturnHandover } from './src/two-key-return';
 import {
   acceptInspection,
   acknowledgeCourse,
+  acknowledgeSos,
   applyProviderDoorSignal,
   beginPickup,
   captureEvidence,
   chooseFailureReason,
+  clearSos,
   completeReturn,
   createDemoWorld,
   declineCourse,
@@ -26,6 +30,7 @@ import {
   expireRetryWindow,
   passVerification,
   prepareReturn,
+  raiseSos,
   refusePickup,
   registerSeal,
   reportProblem,
@@ -171,10 +176,9 @@ const proposalDeadlineHhmm = (): string => {
   const until = new Date(Date.now() + 5 * 60_000);
   return `${String(until.getHours()).padStart(2, '0')}:${String(until.getMinutes()).padStart(2, '0')}`;
 };
-const hhmmNow = (): string => {
-  const now = new Date();
-  return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-};
+
+/** A fixed demo rider identity for the SOS incident (obviously not real). */
+const DEMO_RIDER_ID = 'rider-moussa-demo';
 
 /** The buyer's code is six digits (demo). The store's validateDropCode owns
  * finality; this is only the entry surface, and it exists ONLY on the drop
@@ -194,7 +198,6 @@ export default function App() {
   const [codeStr, setCodeStr] = useState('');
   const [celebrate, setCelebrate] = useState(false);
   const [sos, setSos] = useState<SosState>('closed');
-  const [sosAt, setSosAt] = useState('');
   const [key1, setKey1] = useState(false);
   const [key2, setKey2] = useState(false);
   const [oneKeyMsg, setOneKeyMsg] = useState(false);
@@ -202,18 +205,17 @@ export default function App() {
   const active = world.courses.find((c) => c.id === activeId) ?? null;
   const allChecked = POLICY_CHECK_IDS.every((id) => checks[id] === true);
 
-  // SOS hold + escalation timers — deliberate HOLD to fire, cleared on release.
+  // SOS hold timer — a deliberate HOLD fires the SOS; released or unmounted, it
+  // is cleared. There are NO post-fire timers: the acknowledgment comes from the
+  // store (a real dispatch/network response), never a fake countdown.
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const sosTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
-  const clearSosTimers = useCallback(() => {
-    sosTimers.current.forEach(clearTimeout);
-    sosTimers.current = [];
+  const clearHold = useCallback(() => {
     if (holdTimer.current) {
       clearTimeout(holdTimer.current);
       holdTimer.current = null;
     }
   }, []);
-  useEffect(() => clearSosTimers, [clearSosTimers]);
+  useEffect(() => clearHold, [clearHold]);
 
   const go = useCallback((next: Screen) => {
     if (!JOURNEY[stack[stack.length - 1] ?? START].includes(next)) return;
@@ -239,7 +241,8 @@ export default function App() {
     }
   }, [stack]);
   const reset = useCallback(() => {
-    clearSosTimers();
+    clearHold();
+    // createDemoWorld() also clears any incident (incident: null).
     setWorld(createDemoWorld());
     setStack([START]);
     setShift('off');
@@ -255,7 +258,7 @@ export default function App() {
     setKey1(false);
     setKey2(false);
     setOneKeyMsg(false);
-  }, [clearSosTimers]);
+  }, [clearHold]);
 
   /** Every custody move: the store calls custody-flow (throws out-of-order),
    * the world re-renders, the stack follows the rule's outcome. */
@@ -287,28 +290,50 @@ export default function App() {
   // requires a deliberate HOLD (neither accidental nor missable).
   const openSos = useCallback(() => setSos('confirm'), []);
   const cancelSos = useCallback(() => {
-    clearSosTimers();
+    clearHold();
     setSos('closed');
-  }, [clearSosTimers]);
+  }, [clearHold]);
+  // Firing builds the REAL incident in the store (custody-safe: no course is
+  // read or moved) and drives the sheet from its honest status — queued
+  // (offline, no ack) / raised (in-hours) / escalated (out-of-hours). The
+  // connectivity + dispatch-hours are typed sandbox constants (both branches
+  // real code); the live feeds drive them at assembly.
+  const fireSos = useCallback(() => {
+    raiseSos(world, {
+      riderId: DEMO_RIDER_ID,
+      onShift: shift === 'on',
+      activeCourseId: activeId,
+      connectivity: CONNECTIVITY,
+      hours: SANDBOX_DISPATCH_HOURS,
+    });
+    setWorld({ ...world });
+    const status = world.incident?.status ?? 'raised';
+    if (status === 'queued') setSos('queued');
+    else if (status === 'escalated') setSos('escalated');
+    else if (status === 'acknowledged') setSos('acknowledged');
+    else setSos('raised');
+  }, [world, shift, activeId]);
   const sosHoldStart = useCallback(() => {
     if (holdTimer.current) clearTimeout(holdTimer.current);
-    holdTimer.current = setTimeout(() => {
-      setSosAt(hhmmNow());
-      setSos('raised');
-      sosTimers.current.push(setTimeout(() => setSos('ack'), 1600));
-      sosTimers.current.push(setTimeout(() => setSos('enroute'), 3200));
-    }, 650);
-  }, []);
-  const sosHoldEnd = useCallback(() => {
-    if (holdTimer.current) {
-      clearTimeout(holdTimer.current);
-      holdTimer.current = null;
-    }
-  }, []);
+    holdTimer.current = setTimeout(fireSos, 650);
+  }, [fireSos]);
+  const sosHoldEnd = useCallback(() => clearHold(), [clearHold]);
+  // The rider CANNOT self-acknowledge. This is the dispatch/network response
+  // arriving — a SANDBOX stand-in that drives the store's acknowledgeSos (which
+  // THROWS on a queued incident), never the rider's own hand.
+  const sosSandboxAck = useCallback(() => {
+    if (world.incident === null) return;
+    acknowledgeSos(world, world.incident.responder);
+    setWorld({ ...world });
+    setSos('acknowledged');
+  }, [world]);
+  const sosSafe = useCallback(() => setSos('over'), []);
   const sosClose = useCallback(() => {
-    clearSosTimers();
-    setSos('over');
-  }, [clearSosTimers]);
+    clearSos(world);
+    setWorld({ ...world });
+    clearHold();
+    setSos('closed');
+  }, [world, clearHold]);
 
   const arriving = world.courses.find((c) => !c.closed && c.step === 'affectation') ?? null;
   const shiftAction = shift === 'off' ? t('shift.start_action') : t('shift.end_action');
@@ -815,18 +840,22 @@ export default function App() {
       <SosButton label={t('sos.label')} onOpen={openSos} />
       <SosSheet
         state={sos}
-        ackTime={sosAt}
         strings={{
           title: t('sos.title'),
           confirmHint: t('sos.confirm_hint'),
           hold: t('sos.hold'),
           cancel: t('sos.cancel'),
           holdNote: t('sos.hold_note'),
+          queued: t('sos.queued'),
+          queuedHint: t('sos.queued_hint'),
           raised: t('sos.raised'),
           raisedHint: t('sos.raised_hint'),
-          ackHint: t('sos.ack_hint'),
-          enroute: t('sos.enroute'),
-          enrouteHint: t('sos.enroute_hint'),
+          escalated: t('sos.escalated'),
+          escalatedHint: t('sos.escalated_hint'),
+          transportPending: t('sos.transport_pending'),
+          acknowledged: t('sos.acknowledged'),
+          acknowledgedHint: t('sos.acknowledged_hint'),
+          previewAck: t('sos.preview_ack'),
           safe: t('sos.safe'),
           over: t('sos.over'),
           overHint: t('sos.over_hint'),
@@ -835,6 +864,8 @@ export default function App() {
         onHoldStart={sosHoldStart}
         onHoldEnd={sosHoldEnd}
         onCancel={cancelSos}
+        onSandboxAck={sosSandboxAck}
+        onSafe={sosSafe}
         onClose={sosClose}
       />
     </SafeAreaView>

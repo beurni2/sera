@@ -12,6 +12,14 @@ import {
   type FailureReasonId,
   type PolicyCheckId,
 } from '../custody-flow';
+import {
+  SOS_EVENTS,
+  raisedStatusForHours,
+  responderForHours,
+  type DispatchHours,
+  type SosResponder,
+  type SosStatus,
+} from '../safety';
 
 /**
  * WO-4.1 demo world — in-memory, seeded, honest. Every custody move on every
@@ -49,8 +57,34 @@ export interface DemoCourse {
   readonly closed: boolean;
 }
 
+/**
+ * WO-6.3 — a SAFETY incident (SE8), ADDITIVE to the custody world: raising an
+ * SOS never reads or mutates a course, so the package keeps its exact custody
+ * step and its ONE current custodian. `hours` is stored so a queued incident's
+ * reconnect (deliverQueuedSos) takes the branch it was raised under.
+ */
+export interface SosIncident {
+  readonly id: string;
+  readonly correlationId: string;
+  readonly riderId: string;
+  readonly activeCourseId: string | null;
+  /** SE-I08 location law: a coarse landmark IFF the rider is on shift, else null. */
+  readonly coarseLocation: string | null;
+  readonly onShift: boolean;
+  readonly hours: DispatchHours;
+  readonly responder: SosResponder;
+  readonly status: SosStatus;
+  readonly raisedAt: string;
+  readonly acknowledgedAt: string | null;
+  readonly acknowledgedBy: SosResponder | null;
+  /** The canonical event names emitted so far — [] while offline/queued. */
+  readonly events: string[];
+}
+
 export interface DemoWorld {
   courses: DemoCourse[];
+  /** At most one open incident in the demo world; null when none is raised. */
+  incident: SosIncident | null;
 }
 
 const seed = (
@@ -119,7 +153,7 @@ export function seedCourses(): DemoCourse[] {
 }
 
 export function createDemoWorld(): DemoWorld {
-  return { courses: seedCourses() };
+  return { courses: seedCourses(), incident: null };
 }
 
 function courseById(world: DemoWorld, id: string): DemoCourse {
@@ -314,4 +348,104 @@ export function prepareReturn(world: DemoWorld, id: string): CourseStep {
 export function completeReturn(world: DemoWorld, id: string): CourseStep {
   expectStep(courseById(world, id), ['retour_colis']);
   return update(world, id, { closed: true }).step;
+}
+
+/* ============================ WO-6.3 SAFETY / SOS ============================ */
+
+/**
+ * SE-I08 location law: a fixed, obviously-fictional coarse landmark, attached
+ * to an SOS ONLY when the rider is on shift (never a live GPS fix; Séra
+ * collects location only on shift/task). Landmark-first, « (démo) »-marked so
+ * it can never pass for real user data.
+ */
+const SANDBOX_SOS_COARSE_LOCATION = 'Vers le grand marché — secteur 1 (démo)';
+
+/**
+ * Raise an SOS (SE8). ADDITIVE and custody-safe: this reads and mutates NO
+ * course, so the package keeps its exact custody step and one current
+ * custodian. Offline law (Ten Laws #7): an offline SOS is QUEUED = pending —
+ * NOTHING is emitted and NOTHING can be acknowledged until the network returns.
+ * Online, the incident takes the branch its dispatch-hours dictate (in-hours →
+ * raised/dispatcher, out-of-hours → escalated/founder) and emits the created +
+ * incidentOpened events.
+ */
+export function raiseSos(
+  world: DemoWorld,
+  params: {
+    riderId: string;
+    onShift: boolean;
+    activeCourseId: string | null;
+    connectivity: typeof CONNECTIVITY;
+    hours: DispatchHours;
+  },
+): SosIncident {
+  const { riderId, onShift, activeCourseId, connectivity, hours } = params;
+  const raisedAt = new Date().toISOString();
+  const queued = connectivity === 'offline';
+  const incident: SosIncident = {
+    id: `sos-${riderId}-${raisedAt}`,
+    correlationId: `corr-sos-${riderId}-${raisedAt}`,
+    riderId,
+    activeCourseId,
+    // SE-I08: coarse location attaches IFF the rider is on shift — never off it.
+    coarseLocation: onShift ? SANDBOX_SOS_COARSE_LOCATION : null,
+    onShift,
+    hours,
+    responder: responderForHours(hours),
+    // Offline = queued = pending: no delivery, nothing emitted.
+    status: queued ? 'queued' : raisedStatusForHours(hours),
+    raisedAt,
+    acknowledgedAt: null,
+    acknowledgedBy: null,
+    events: queued ? [] : [SOS_EVENTS.created, SOS_EVENTS.incidentOpened],
+  };
+  world.incident = incident;
+  return incident;
+}
+
+/**
+ * Reconnect path: a QUEUED (offline) SOS is delivered when the network
+ * returns — it takes the branch its stored hours dictate and NOW emits the
+ * created + incidentOpened events. Anything but a queued incident throws.
+ */
+export function deliverQueuedSos(world: DemoWorld): SosIncident {
+  const incident = world.incident;
+  if (incident === null || incident.status !== 'queued') {
+    throw new Error(`deliverQueuedSos requires a queued incident, got '${incident?.status ?? 'none'}'`);
+  }
+  const delivered: SosIncident = {
+    ...incident,
+    status: raisedStatusForHours(incident.hours),
+    events: [SOS_EVENTS.created, SOS_EVENTS.incidentOpened],
+  };
+  world.incident = delivered;
+  return delivered;
+}
+
+/**
+ * The honesty law, STRUCTURAL: an acknowledgment can land ONLY on a LIVE
+ * incident (raised or escalated). A queued (offline) or already-acknowledged
+ * incident is UNACKNOWLEDGEABLE and THROWS — on a safety path a fake ack is the
+ * worst possible bug. The responder that answered is recorded and the
+ * acknowledged event is emitted.
+ */
+export function acknowledgeSos(world: DemoWorld, by: SosResponder): SosIncident {
+  const incident = world.incident;
+  if (incident === null || (incident.status !== 'raised' && incident.status !== 'escalated')) {
+    throw new Error(`cannot acknowledge an SOS at '${incident?.status ?? 'none'}' — only 'raised' or 'escalated'`);
+  }
+  const acknowledged: SosIncident = {
+    ...incident,
+    status: 'acknowledged',
+    acknowledgedBy: by,
+    acknowledgedAt: new Date().toISOString(),
+    events: [...incident.events, SOS_EVENTS.acknowledged],
+  };
+  world.incident = acknowledged;
+  return acknowledged;
+}
+
+/** The rider is safe / the sheet resets — the incident clears. */
+export function clearSos(world: DemoWorld): void {
+  world.incident = null;
 }

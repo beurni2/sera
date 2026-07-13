@@ -190,5 +190,101 @@
     "fr": "Course remise. Le bail est libéré.",
     "register": "neutral",
     "screenClass": "status"
+  },
+  {
+    "key": "console.sos_title",
+    "fr": "SOS — un livreur a besoin d'aide",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "console.sos_rider",
+    "fr": "Livreur",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.sos_correlation",
+    "fr": "Référence",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.sos_task",
+    "fr": "Course en cours",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.sos_no_task",
+    "fr": "Aucune course en cours.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "console.sos_location",
+    "fr": "Localisation",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.sos_no_location",
+    "fr": "Localisation non disponible (hors service).",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.sos_custody",
+    "fr": "Le colis reste avec le livreur. La garde ne bouge pas.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "console.sos_responder_dispatcher",
+    "fr": "Répartition — en journée",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.sos_responder_founder",
+    "fr": "Responsable — hors des heures",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.sos_ack_action",
+    "fr": "J'ai vu — je réponds",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "console.sos_acknowledged",
+    "fr": "Vu. Réponse en cours.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "console.sos_queued",
+    "fr": "En attente du réseau.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "console.sos_queued_hint",
+    "fr": "On ne répond pas à un SOS qui n'est pas encore arrivé.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "console.sos_demo_raise",
+    "fr": "(aperçu) SOS d'un livreur",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.sos_demo_raise_queued",
+    "fr": "(aperçu) SOS hors réseau",
+    "register": "neutral",
+    "screenClass": "label"
   }
 ]

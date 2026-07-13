@@ -2,6 +2,13 @@ import { sharedColour, seraColour, spacing, radius, type as typo, interaction, b
 import { landmarkFirstLines } from '@sera/logistics-service';
 import { buildSandboxWorld } from './sandbox-world';
 import { SANDBOX_DOOR_ORDER, SANDBOX_DOOR_PAID_SIGNAL, SANDBOX_DWELL, SANDBOX_OUTCOMES } from './sandbox-followup';
+import {
+  SANDBOX_INCIDENT_QUEUED,
+  SANDBOX_INCIDENT_RAISED,
+  acknowledgeSos,
+  canAcknowledge,
+  type IncidentView,
+} from './sandbox-incident';
 import { DoorSignalFollower } from './door-signal';
 import { t } from './i18n';
 
@@ -206,6 +213,81 @@ style.textContent = `
     cursor: pointer;
     padding: 0;
   }
+  /* WO-6.3 SOS alert — the loudest thing on the console when an incident is
+     raised: a thick danger border, danger title, at the very top. */
+  .sos-alert {
+    border: calc(var(--hair-strong) * 2) solid var(--danger);
+    background: var(--paper);
+    padding: var(--space-lg);
+    display: grid;
+    gap: var(--space-xs);
+  }
+  /* author display:grid would defeat the UA [hidden] rule — restore it so the
+     alert is truly absent until an incident is raised (never a fake alarm). */
+  .sos-alert[hidden] { display: none; }
+  .sos-alert.acknowledged { border-color: var(--accent-strong); }
+  .sos-alert.queued { border-style: dashed; }
+  .sos-title {
+    margin: 0 0 var(--space-xs) 0;
+    color: var(--danger);
+    font-size: var(--type-title);
+    font-weight: ${typo.scale.title.wght};
+    letter-spacing: var(--ls-label);
+    text-transform: uppercase;
+  }
+  .sos-alert.acknowledged .sos-title { color: var(--accent-strong); }
+  .sos-line { margin: 0; font-size: var(--type-body); }
+  .sos-meta {
+    margin: 0;
+    color: var(--muted);
+    font-size: var(--type-label);
+    font-weight: ${typo.scale.label.wght};
+    letter-spacing: var(--ls-label);
+    text-transform: uppercase;
+  }
+  .sos-custody {
+    margin: var(--space-xs) 0;
+    color: var(--ink);
+    background: var(--sand);
+    border-left: var(--hair-strong) solid var(--accent-strong);
+    padding: var(--space-sm) var(--space-md);
+    font-weight: ${typo.scale.bodyStrong.wght};
+  }
+  .sos-ackd {
+    margin: var(--space-xs) 0 0 0;
+    color: var(--accent-strong);
+    font-weight: ${typo.scale.bodyStrong.wght};
+  }
+  button.sos-ack {
+    min-height: var(--touch);
+    padding: 0 var(--space-xl);
+    border: 0;
+    border-radius: var(--radius-btn);
+    background: var(--danger);
+    color: var(--on-ink);
+    font-size: var(--type-row);
+    font-weight: ${typo.scale.title.wght};
+    letter-spacing: var(--ls-label);
+    text-transform: uppercase;
+    cursor: pointer;
+    margin-top: var(--space-sm);
+    justify-self: start;
+  }
+  button.sos-ack:disabled { background: var(--muted); cursor: not-allowed; opacity: 0.6; }
+  .sos-demo-controls { display: flex; gap: var(--space-lg); flex-wrap: wrap; }
+  button.sos-raise, button.sos-raise-queued {
+    min-height: var(--touch);
+    border: 0;
+    background: none;
+    color: var(--accent-strong);
+    font-size: var(--type-label);
+    font-weight: ${typo.scale.label.wght};
+    letter-spacing: var(--ls-label);
+    text-transform: uppercase;
+    text-decoration: underline;
+    cursor: pointer;
+    padding: 0;
+  }
 `;
 document.head.appendChild(style);
 
@@ -226,11 +308,115 @@ if (app) {
   strip.className = 'theme-strip';
 
   const main = document.createElement('main');
+
+  // WO-6.3 — the SOS alert lands at the TOP, ahead of every queue item and
+  // visually the loudest. It is EMPTY until an incident is raised (an always-on
+  // alert would be a fake alarm); the sandbox « (aperçu) » levers below raise
+  // one. Custody stays legible: the rider still holds the package — never
+  // orphaned.
+  const incidentSection = document.createElement('section');
+  incidentSection.className = 'sos-alert';
+  incidentSection.hidden = true;
+  let currentIncident: IncidentView | null = null;
+
+  const renderIncident = () => {
+    incidentSection.replaceChildren();
+    const inc = currentIncident;
+    if (inc === null) {
+      incidentSection.hidden = true;
+      incidentSection.className = 'sos-alert';
+      return;
+    }
+    incidentSection.hidden = false;
+    incidentSection.className = `sos-alert ${inc.status === 'acknowledged' ? 'acknowledged' : inc.status === 'queued' ? 'queued' : ''}`.trim();
+
+    const title = document.createElement('p');
+    title.className = 'sos-title';
+    title.textContent = t('console.sos_title');
+    incidentSection.appendChild(title);
+
+    const who = document.createElement('p');
+    who.className = 'sos-line';
+    who.textContent = `${t('console.sos_rider')} : ${inc.riderName}`;
+    incidentSection.appendChild(who);
+
+    const corr = document.createElement('p');
+    corr.className = 'sos-meta';
+    corr.textContent = `${t('console.sos_correlation')} : ${inc.correlationId}`;
+    incidentSection.appendChild(corr);
+
+    const task = document.createElement('p');
+    task.className = 'sos-line';
+    task.textContent = inc.activeTaskId
+      ? `${t('console.sos_task')} : ${inc.activeTaskId}`
+      : t('console.sos_no_task');
+    incidentSection.appendChild(task);
+
+    // SE-I08: coarse location IF present (rider on shift), else the honest
+    // off-shift fallback — never a fabricated fix.
+    const loc = document.createElement('p');
+    loc.className = 'sos-line';
+    loc.textContent = inc.coarseLocation
+      ? `${t('console.sos_location')} : ${inc.coarseLocation}`
+      : t('console.sos_no_location');
+    incidentSection.appendChild(loc);
+
+    // Custody line — WHO HOLDS THE PACKAGE: the rider still does; the package
+    // is NOT orphaned by an SOS.
+    const custody = document.createElement('p');
+    custody.className = 'sos-custody';
+    custody.textContent = t('console.sos_custody');
+    incidentSection.appendChild(custody);
+
+    const responder = document.createElement('p');
+    responder.className = 'sos-meta';
+    responder.textContent =
+      inc.responder === 'dispatcher' ? t('console.sos_responder_dispatcher') : t('console.sos_responder_founder');
+    incidentSection.appendChild(responder);
+
+    if (inc.status === 'acknowledged') {
+      const ackd = document.createElement('p');
+      ackd.className = 'sos-ackd';
+      ackd.textContent = t('console.sos_acknowledged');
+      incidentSection.appendChild(ackd);
+      return;
+    }
+
+    if (inc.status === 'queued') {
+      const waiting = document.createElement('p');
+      waiting.className = 'sos-meta';
+      waiting.textContent = t('console.sos_queued');
+      incidentSection.appendChild(waiting);
+    }
+
+    const ack = document.createElement('button');
+    ack.className = 'sos-ack';
+    ack.textContent = t('console.sos_ack_action');
+    // Honesty law: you cannot ack what has not arrived — a queued incident's
+    // lever is DISABLED. Live incidents route through acknowledgeSos.
+    ack.disabled = !canAcknowledge(inc);
+    if (!ack.disabled) {
+      ack.addEventListener('click', () => {
+        currentIncident = acknowledgeSos(inc, inc.responder);
+        renderIncident();
+      });
+    }
+    incidentSection.appendChild(ack);
+
+    if (inc.status === 'queued') {
+      const hint = document.createElement('p');
+      hint.className = 'sos-meta';
+      hint.textContent = t('console.sos_queued_hint');
+      incidentSection.appendChild(hint);
+    }
+  };
+  renderIncident();
+
   const heading = document.createElement('h2');
   heading.textContent = t('console.ready_queue');
   const body = document.createElement('div');
   body.id = 'queue-body';
-  main.append(heading, body);
+  main.append(incidentSection, heading, body);
 
   const render = (status?: { key: string; deadlineIso?: string; doneTaskId?: string }) => {
     body.replaceChildren();
@@ -367,6 +553,29 @@ if (app) {
     followCard.appendChild(row);
   }
   main.append(followHeading, followCard);
+
+  // WO-6.3 — sandbox « (aperçu) » levers that raise the demo SOS incident into
+  // the alert at the top (never faked as a live safety stream), mirroring the
+  // door « Essai » path: one raises the in-hours incident (dispatcher answers),
+  // one raises the queued/offline variant (ack DISABLED — not yet arrived).
+  const sosDemo = document.createElement('section');
+  sosDemo.className = 'sos-demo-controls';
+  const raiseBtn = document.createElement('button');
+  raiseBtn.className = 'sos-raise';
+  raiseBtn.textContent = t('console.sos_demo_raise');
+  raiseBtn.addEventListener('click', () => {
+    currentIncident = SANDBOX_INCIDENT_RAISED;
+    renderIncident();
+  });
+  const raiseQueuedBtn = document.createElement('button');
+  raiseQueuedBtn.className = 'sos-raise-queued';
+  raiseQueuedBtn.textContent = t('console.sos_demo_raise_queued');
+  raiseQueuedBtn.addEventListener('click', () => {
+    currentIncident = SANDBOX_INCIDENT_QUEUED;
+    renderIncident();
+  });
+  sosDemo.append(raiseBtn, raiseQueuedBtn);
+  main.append(sosDemo);
 
   // The REAL service-side deadline, ONE sweep for BOTH stores (WO-4.3).
   setInterval(() => {

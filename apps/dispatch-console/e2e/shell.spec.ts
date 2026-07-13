@@ -113,3 +113,44 @@ test('WO-4.3 lease expiry: past the 5-min window the honest expired state shows 
   await expect(page.locator('.task-card')).toHaveCount(1);
   await expect(page.locator('#queue-body .deadline-line')).toHaveCount(0); // no stale deadline claim
 });
+
+test('WO-6.3 SOS: a raised incident lands at the TOP, states custody + coarse location, and the dispatcher acknowledges', async ({ page }) => {
+  await page.goto('/');
+
+  // No incident by default — the console never fakes an alarm.
+  await expect(page.locator('.sos-alert')).toBeHidden();
+
+  // Raise the sandbox incident (« (aperçu) ») — the alert appears at the TOP,
+  // ahead of the ready-queue heading.
+  await page.locator('button.sos-raise').click();
+  const alert = page.locator('.sos-alert');
+  await expect(alert).toBeVisible();
+  // it is the FIRST element inside main, ahead of every queue item
+  await expect(page.locator('main > *').first()).toHaveClass(/sos-alert/);
+  await expect(alert.locator('.sos-title')).toHaveText('SOS — un livreur a besoin d\'aide');
+  // coarse location present (the rider is on shift) — never a fabricated fix
+  await expect(alert.getByText(/Localisation : /)).toBeVisible();
+  // custody stays legible: the rider still holds the package (not orphaned)
+  await expect(alert.locator('.sos-custody')).toHaveText(
+    'Le colis reste avec le livreur. La garde ne bouge pas.',
+  );
+
+  // the dispatcher acknowledges — the incident shows acknowledged, ack lever gone
+  await page.locator('button.sos-ack').click();
+  await expect(alert.locator('.sos-ackd')).toHaveText('Vu. Réponse en cours.');
+  await expect(page.locator('button.sos-ack')).toHaveCount(0);
+});
+
+test('WO-6.3 SOS: a queued (offline) incident shows « En attente du réseau » and the ack lever is DISABLED', async ({ page }) => {
+  await page.goto('/');
+  await page.locator('button.sos-raise-queued').click();
+
+  const alert = page.locator('.sos-alert');
+  await expect(alert).toBeVisible();
+  await expect(alert).toHaveClass(/queued/);
+  await expect(alert.getByText('En attente du réseau.')).toBeVisible();
+  // you cannot acknowledge what has not arrived — the lever is present BUT disabled
+  const ack = page.locator('button.sos-ack');
+  await expect(ack).toBeDisabled();
+  await expect(alert.getByText('On ne répond pas à un SOS qui n\'est pas encore arrivé.')).toBeVisible();
+});
