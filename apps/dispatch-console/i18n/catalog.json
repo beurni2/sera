@@ -180,6 +180,54 @@
     "screenClass": "label"
   },
   {
+    "key": "console.desk_heading",
+    "fr": "Bureau des exceptions",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.desk_reason_label",
+    "fr": "Raison",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.desk_outcome_label",
+    "fr": "Décision",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.desk_evidence_present",
+    "fr": "Preuve jointe",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.desk_never_unowned",
+    "fr": "Le colis reste gardé, jamais sans responsable.",
+    "register": "money",
+    "screenClass": "status"
+  },
+  {
+    "key": "console.desk_incident_note",
+    "fr": "Incident ouvert et suivi. Le colis reste gardé jusqu'au retour au vendeur.",
+    "register": "money",
+    "screenClass": "status"
+  },
+  {
+    "key": "console.desk_demo_routine",
+    "fr": "(aperçu) cas courants",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.desk_demo_incident",
+    "fr": "(aperçu) ouvrir l'incident",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
     "key": "console.done_action",
     "fr": "Marquer la course remise",
     "register": "neutral",
