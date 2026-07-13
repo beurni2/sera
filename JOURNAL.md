@@ -460,3 +460,9 @@ Format per entry:
 - Boutik's guard was NOT ported, deliberately: it is fontTools-or-SKIP (can no-op without the tool). Sera's pure-TS sfnt reader never skips, asserts `Set(families).size === 5`, and is proven non-vacuous by a planted real collision. **Flagged to APPS: their guard may be vacuous in tool-less environments.**
 - **STANDING PACKET RULE: the diff travels in every packet**, even a nine-line one. The merge guards substituted this time; they will not always.
 - Merged to sera main — merge sha `9108d2b0f578f730343fa2440d42f4a8d452344b`. Lockfile ssh-form-URL count on merged main: **0**.
+
+## 2026-07-13 · GREEN slice (CTO-assigned, first GREEN of the project) · self-merged — lockfile-URL gate
+- **Trigger:** WO-6.6's merge-time lockfile check returned **0** ssh-form URLs → CTO opened the GREEN lane to make that "must be 0" permanent.
+- **Built:** `scripts/gates/no-ssh-lockfile-urls.mjs` (reuses the shared `runScanGate`/`scan.mjs`) — reads the ROOT `pnpm-lock.yaml` and FAILS (exit 1) on any ssh-form git remote (`git@github.com:` scp form or `ssh://git@`); the lawful `git+https://…` passes. Wired into `run-gates.sh` as a positive (`must pass`) + a negative fixture (`must fail`).
+- **Negative fixture** `gates/fixtures/negative/lockfile-ssh-url/pnpm-lock.yaml` (outside the pnpm workspace globs; pnpm never reads it) carries the mangled scp URL. Proven it FIRES: positive exit 0, negative exit 1 (both hit lines printed), nonexistent-root exit 2 (can't-run ≠ pass, inherited guard). Full `run-gates.sh` **ALL GATES GREEN, exit 0** with the new gate in place.
+- **Scope/why safe:** scans the lockfile only — the ci.yml `insteadOf "git@github.com:…"` rewrites are lawful and live in the workflow, never scanned. No product code touched. GREEN self-merge per ruling; forfeit on any surprise.
