@@ -784,7 +784,7 @@ export function CourseValideeCelebration({ onDone }: { onDone: () => void }) {
 
 /* ============================ SOS (R14) ============================ */
 
-export type SosState = 'closed' | 'confirm' | 'raised' | 'ack' | 'enroute' | 'over';
+export type SosState = 'closed' | 'confirm' | 'queued' | 'raised' | 'escalated' | 'acknowledged' | 'over';
 
 /* The SOS button lives on EVERY screen, reachable in ONE gesture. It is
  * unmissable (a red-ringed ink disc, bottom-right) yet NOT accidentally
@@ -806,14 +806,23 @@ export function SosButton({ label, onOpen }: { label: string; onOpen: () => void
 }
 
 /* The SOS sheet — « MAINTENIR POUR DÉCLENCHER »: a hold, not a tap, so it can
- * be neither triggered by accident nor missed when it matters. */
+ * be neither triggered by accident nor missed when it matters. The states are
+ * driven from the store's incident status, never a timer:
+ *   queued       — offline: honest waiting, NO acknowledgment shown (Ten Laws #7).
+ *   raised       — in-hours: the dispatcher is being reached.
+ *   escalated    — out-of-hours: the responsable is alerted; transport PENDING.
+ *   acknowledged — someone answered (only ever via the store's acknowledgeSos).
+ * The rider CANNOT self-acknowledge: raised/escalated show a clearly-marked
+ * « (aperçu) » sandbox stand-in for the dispatch/network response arriving —
+ * queued shows none, because a queued incident is unacknowledgeable. */
 export function SosSheet({
   state,
   strings,
-  ackTime,
   onHoldStart,
   onHoldEnd,
   onCancel,
+  onSandboxAck,
+  onSafe,
   onClose,
 }: {
   state: SosState;
@@ -823,20 +832,27 @@ export function SosSheet({
     hold: string;
     cancel: string;
     holdNote: string;
+    queued: string;
+    queuedHint: string;
     raised: string;
     raisedHint: string;
-    ackHint: string;
-    enroute: string;
-    enrouteHint: string;
+    escalated: string;
+    escalatedHint: string;
+    transportPending: string;
+    acknowledged: string;
+    acknowledgedHint: string;
+    previewAck: string;
+    previewAckEscalated: string;
     safe: string;
     over: string;
     overHint: string;
     close: string;
   };
-  ackTime: string;
   onHoldStart: () => void;
   onHoldEnd: () => void;
   onCancel: () => void;
+  onSandboxAck: () => void;
+  onSafe: () => void;
   onClose: () => void;
 }) {
   const reduced = useReducedMotion();
@@ -874,23 +890,39 @@ export function SosSheet({
             <Text style={styles.sosNote}>{strings.holdNote}</Text>
           </>
         )}
+        {state === 'queued' && (
+          <>
+            {/* Offline law: queued = pending. NO acknowledgment is shown or
+                reachable — nothing was sent, so nothing was seen. */}
+            <Text style={styles.sosSheetTitle}>{strings.queued}</Text>
+            <Text style={styles.sosSheetHint}>{strings.queuedHint}</Text>
+            <Pressable style={styles.sosCancel} onPress={onCancel} accessibilityRole="button">
+              <Text style={styles.sosCancelText}>{strings.close}</Text>
+            </Pressable>
+          </>
+        )}
         {state === 'raised' && (
           <>
             <Text style={styles.sosSheetTitle}>{strings.raised}</Text>
             <Text style={styles.sosSheetHint}>{strings.raisedHint}</Text>
+            <SosSandboxAck label={strings.previewAck} onPress={onSandboxAck} />
           </>
         )}
-        {state === 'ack' && (
+        {state === 'escalated' && (
           <>
-            <Text style={styles.sosSheetTitleAmber}>{`${strings.raised} · ${ackTime}`}</Text>
-            <Text style={styles.sosSheetHint}>{strings.ackHint}</Text>
+            <Text style={styles.sosSheetTitleAmber}>{strings.escalated}</Text>
+            <Text style={styles.sosSheetHint}>{strings.escalatedHint}</Text>
+            {/* Transport unbound — named as PENDING, never a faked send. */}
+            <Text style={styles.sosNote}>{strings.transportPending}</Text>
+            {/* out-of-hours the responder is the FOUNDER, not the dispatch (NIT fix) */}
+            <SosSandboxAck label={strings.previewAckEscalated} onPress={onSandboxAck} />
           </>
         )}
-        {state === 'enroute' && (
+        {state === 'acknowledged' && (
           <>
-            <Text style={styles.sosSheetTitleAmber}>{strings.enroute}</Text>
-            <Text style={styles.sosSheetHint}>{strings.enrouteHint}</Text>
-            <Pressable style={({ pressed }) => [styles.sosSafe, pressed && styles.pressed]} onPress={onClose} accessibilityRole="button">
+            <Text style={styles.sosSheetTitleAmber}>{strings.acknowledged}</Text>
+            <Text style={styles.sosSheetHint}>{strings.acknowledgedHint}</Text>
+            <Pressable style={({ pressed }) => [styles.sosSafe, pressed && styles.pressed]} onPress={onSafe} accessibilityRole="button">
               <Text style={styles.sosSafeText}>{strings.safe}</Text>
             </Pressable>
           </>
@@ -899,13 +931,29 @@ export function SosSheet({
           <>
             <Text style={styles.sosSheetTitle}>{strings.over}</Text>
             <Text style={styles.sosSheetHint}>{strings.overHint}</Text>
-            <Pressable style={styles.sosCancel} onPress={onCancel} accessibilityRole="button">
+            <Pressable style={styles.sosCancel} onPress={onClose} accessibilityRole="button">
               <Text style={styles.sosCancelText}>{strings.close}</Text>
             </Pressable>
           </>
         )}
       </Animated.View>
     </View>
+  );
+}
+
+/* The dispatch/network response arriving — a SANDBOX stand-in, NOT the rider's
+ * own hand. Clearly marked « (aperçu) » and dashed so it can never read as the
+ * rider self-acknowledging; it drives the store's acknowledgeSos, which throws
+ * on a queued incident. The live inbound ack replaces this at assembly. */
+function SosSandboxAck({ label, onPress }: { label: string; onPress: () => void }) {
+  return (
+    <Pressable
+      style={({ pressed }) => [styles.sosPreviewAck, pressed && styles.pressed]}
+      onPress={onPress}
+      accessibilityRole="button"
+    >
+      <Text style={styles.sosPreviewAckText}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -1219,6 +1267,10 @@ const styles = StyleSheet.create({
   sosNote: { ...textOf(T.caption), color: C.onInk, opacity: interaction.disabledOpacity + 0.15 },
   sosSafe: { borderWidth: interaction.hairline.strong, borderColor: C.onInk, minHeight: touch.minTargetPx, borderRadius: radius.button, alignItems: 'center', justifyContent: 'center', marginTop: spacing.md },
   sosSafeText: { ...textOf(T.label), color: C.onInk, letterSpacing: T.label.ls, textTransform: 'uppercase' },
+  // The sandbox « (aperçu) » ack stand-in: dashed + dimmed so it can never be
+  // mistaken for the rider's own action or a real inbound acknowledgment.
+  sosPreviewAck: { borderWidth: interaction.hairline.strong, borderColor: C.onInk, borderStyle: 'dashed', minHeight: touch.minTargetPx, borderRadius: radius.button, alignItems: 'center', justifyContent: 'center', marginTop: spacing.sm, opacity: interaction.disabledOpacity + 0.25 },
+  sosPreviewAckText: { ...textOf(T.labelXS), color: C.onInk, letterSpacing: T.labelXS.ls, textTransform: 'uppercase' },
 
   sealMark: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, borderWidth: interaction.selectedBorderPx, borderColor: C.ink, padding: spacing.md, backgroundColor: C.accentTint },
   sealCode: { ...textOf(T.title), color: C.ink, fontVariant: ['tabular-nums'], letterSpacing: T.label.ls, flex: 1 },

@@ -44,6 +44,33 @@
           "caption": "Course remise dans la file — le livreur n'a pas accepté à temps (5 min) : l'état est dit, la carte revient"
         }
       ]
+    },
+    {
+      "title": "SOS — sécurité du livreur (SE8)",
+      "states": [
+        {
+          "id": "console-sos-raised",
+          "actions": [
+            "sos-raise"
+          ],
+          "caption": "SOS déclenché — l'alerte est en HAUT, la plus forte : identité du livreur, référence, course en cours, localisation grossière (en service seulement), et la ligne de garde — le colis reste avec le livreur (jamais orphelin). Levier « J'ai vu — je réponds »."
+        },
+        {
+          "id": "console-sos-acknowledged",
+          "actions": [
+            "sos-raise",
+            "sos-ack"
+          ],
+          "caption": "SOS pris en charge — le dispatcher a répondu : « Vu. Réponse en cours. » L'accusé passe par acknowledgeSos (jamais un faux)."
+        },
+        {
+          "id": "console-sos-queued",
+          "actions": [
+            "sos-raise-queued"
+          ],
+          "caption": "SOS hors réseau — « En attente du réseau » : le levier d'accusé est DÉSACTIVÉ (on n'accuse pas un SOS qui n'est pas encore arrivé)."
+        }
+      ]
     }
   ],
   "gaps": [

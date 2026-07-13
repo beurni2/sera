@@ -44,6 +44,12 @@ for (const group of manifest.groups) {
           await page.locator('button.door-demo').click();
         } else if (action === 'clock-6min') {
           await page.clock.fastForward('06:00');
+        } else if (action === 'sos-raise') {
+          await page.locator('button.sos-raise').click();
+        } else if (action === 'sos-raise-queued') {
+          await page.locator('button.sos-raise-queued').click();
+        } else if (action === 'sos-ack') {
+          await page.locator('button.sos-ack').click();
         } else {
           throw new Error(`unknown gallery action: ${action}`);
         }
