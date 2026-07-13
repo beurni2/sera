@@ -88,6 +88,23 @@
           "caption": "Le statut dit « livré », mais la garde dit que le colis est encore chez le livreur. La garde FAIT FOI : la divergence s'affiche comme un INCIDENT, jamais comme un accord (PART 8 §3)."
         }
       ]
+    },
+    {
+      "title": "Bureau des exceptions — une raison, une suite (D4, SE-I10, PART 8 §4)",
+      "states": [
+        {
+          "id": "console-desk",
+          "actions": [],
+          "caption": "Chaque colis non remis arrive avec sa raison structurée et sa preuve. Le répartiteur choisit UNE suite parmi les quatre : nouvel essai, autre passage, retour au vendeur, incident. Jamais un « échec » générique (SE-I10). Le colis reste gardé — jamais sans responsable."
+        },
+        {
+          "id": "console-desk-incident",
+          "actions": [
+            "desk-incident"
+          ],
+          "caption": "Le cas fort : une tromperie ouverte comme INCIDENT — suivie, et le colis reste gardé jusqu'au retour au vendeur. L'incident est une des quatre suites explicites, jamais un fourre-tout « échec »."
+        }
+      ]
     }
   ],
   "gaps": [

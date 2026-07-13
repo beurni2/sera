@@ -19,6 +19,8 @@ import {
   SANDBOX_RIDER_NAME,
   SANDBOX_STOP_LABELS,
 } from './sandbox-board';
+import { deriveDeskRow } from './exceptions';
+import { SANDBOX_DESK_ROUTINE, SANDBOX_DESK_WITH_INCIDENT, type DeskEntry } from './sandbox-exceptions';
 import { t } from './i18n';
 
 /**
@@ -284,7 +286,8 @@ style.textContent = `
   }
   button.sos-ack:disabled { background: var(--muted); cursor: not-allowed; opacity: 0.6; }
   .sos-demo-controls { display: flex; gap: var(--space-lg); flex-wrap: wrap; }
-  button.sos-raise, button.sos-raise-queued, button.board-demo-normal, button.board-demo-incident {
+  button.sos-raise, button.sos-raise-queued, button.board-demo-normal, button.board-demo-incident,
+  button.desk-demo-routine, button.desk-demo-incident {
     min-height: var(--touch);
     border: 0;
     background: none;
@@ -308,6 +311,17 @@ style.textContent = `
   .board-custody { margin: 0; color: var(--ink); background: var(--sand); border-left: var(--hair-strong) solid var(--accent-strong); padding: var(--space-xs) var(--space-sm); font-weight: ${typo.scale.bodyStrong.wght}; }
   .board-incident-title { margin: var(--space-xs) 0 0 0; color: var(--danger); font-size: var(--type-body); font-weight: ${typo.scale.title.wght}; letter-spacing: var(--ls-label); text-transform: uppercase; }
   .board-incident-body { margin: 0; color: var(--ink); font-size: var(--type-body); }
+  /* WO-6.9-d exceptions desk — read-only; structured reason → one of four outcomes, an incident is loud. */
+  .desk { border: var(--hair-strong) solid var(--ink); padding: var(--space-lg); display: grid; gap: var(--space-sm); }
+  .desk-row { border: var(--hair) solid var(--hairline-strong); padding: var(--space-md); display: grid; gap: var(--space-xs); }
+  .desk-row.incident { border: calc(var(--hair-strong) * 2) solid var(--danger); }
+  .desk-pkg-name { margin: 0; font-size: var(--type-body); font-weight: ${typo.scale.bodyStrong.wght}; }
+  .desk-reason { margin: 0; color: var(--ink); font-size: var(--type-body); }
+  .desk-outcome { margin: 0; color: var(--ink); background: var(--sand); border-left: var(--hair-strong) solid var(--accent-strong); padding: var(--space-xs) var(--space-sm); font-weight: ${typo.scale.bodyStrong.wght}; }
+  .desk-custody { margin: 0; color: var(--muted); font-size: var(--type-label); font-weight: ${typo.scale.label.wght}; letter-spacing: var(--ls-label); text-transform: uppercase; }
+  .desk-evidence { margin: 0; color: var(--muted); font-size: var(--type-label); font-weight: ${typo.scale.label.wght}; letter-spacing: var(--ls-label); text-transform: uppercase; }
+  .desk-incident-note { margin: var(--space-xs) 0 0 0; color: var(--danger); font-size: var(--type-body); }
+  .desk-never-unowned { margin: 0; color: var(--ink); background: var(--sand); border-left: var(--hair-strong) solid var(--accent-strong); padding: var(--space-xs) var(--space-sm); font-size: var(--type-body); }
 `;
 document.head.appendChild(style);
 
@@ -610,6 +624,85 @@ if (app) {
   });
   boardDemo.append(boardNormalBtn, boardIncidentBtn);
   main.append(boardHeading, boardSection, boardDemo);
+
+  // WO-6.9-d — the EXCEPTIONS DESK (D4): every failed delivery lands here with a
+  // STRUCTURED reason + evidence, and the dispatcher applies EXACTLY ONE outcome
+  // from the ratified family retry · reschedule · return · incident — there is NO
+  // generic « échec » (SE-I10; the canon family is exactly those four, so a
+  // generic failure is not even a value — see test/exceptions.test.ts). A package
+  // is NEVER unowned: custody stays with the rider or the hub until the two-key
+  // return handoff. READ-ONLY: the desk renders the resolution; issuing refunds/
+  // payouts and mutating custody are NOT the console's (§8.3). The (aperçu) levers
+  // only swap which demo SET is shown — never a custody write.
+  const deskHeading = document.createElement('h2');
+  deskHeading.textContent = t('console.desk_heading');
+  const deskSection = document.createElement('section');
+  deskSection.className = 'desk';
+  let deskEntries: readonly DeskEntry[] = SANDBOX_DESK_ROUTINE;
+  const renderDesk = () => {
+    deskSection.replaceChildren();
+    for (const e of deskEntries) {
+      const row = deriveDeskRow(e.outcome, e.evidence, e.custody);
+      const card = document.createElement('div');
+      card.className = `desk-row ${row.isIncident ? 'incident' : ''}`.trim();
+      const name = document.createElement('p');
+      name.className = 'desk-pkg-name';
+      name.textContent = e.label;
+      card.appendChild(name);
+      // The STRUCTURED reason — its human ref is a register-tagged catalog key.
+      const reason = document.createElement('p');
+      reason.className = 'desk-reason';
+      reason.textContent = `${t('console.desk_reason_label')} : ${t(row.humanReasonRef)}`;
+      card.appendChild(reason);
+      // The ONE applied outcome — always one of the four (a generic « échec » is not a value).
+      const outcome = document.createElement('p');
+      outcome.className = 'desk-outcome';
+      outcome.textContent = `${t('console.desk_outcome_label')} : ${t(`console.family_${row.family}`)}`;
+      card.appendChild(outcome);
+      // Custody stays legible — never unowned (SE-I10).
+      const custody = document.createElement('p');
+      custody.className = 'desk-custody';
+      custody.textContent = `${t('console.board_custody')} : ${custodianLabel(row.currentCustodian)}`;
+      card.appendChild(custody);
+      if (row.hasEvidence) {
+        const ev = document.createElement('p');
+        ev.className = 'desk-evidence';
+        ev.textContent = t('console.desk_evidence_present');
+        card.appendChild(ev);
+      }
+      if (row.isIncident) {
+        const note = document.createElement('p');
+        note.className = 'desk-incident-note';
+        note.textContent = t('console.desk_incident_note');
+        card.appendChild(note);
+      }
+      deskSection.appendChild(card);
+    }
+    // The desk's standing reassurance — a package is never left without a keeper.
+    const never = document.createElement('p');
+    never.className = 'desk-never-unowned';
+    never.textContent = t('console.desk_never_unowned');
+    deskSection.appendChild(never);
+  };
+  renderDesk();
+  const deskDemo = document.createElement('section');
+  deskDemo.className = 'sos-demo-controls';
+  const deskRoutineBtn = document.createElement('button');
+  deskRoutineBtn.className = 'desk-demo-routine';
+  deskRoutineBtn.textContent = t('console.desk_demo_routine');
+  deskRoutineBtn.addEventListener('click', () => {
+    deskEntries = SANDBOX_DESK_ROUTINE;
+    renderDesk();
+  });
+  const deskIncidentBtn = document.createElement('button');
+  deskIncidentBtn.className = 'desk-demo-incident';
+  deskIncidentBtn.textContent = t('console.desk_demo_incident');
+  deskIncidentBtn.addEventListener('click', () => {
+    deskEntries = SANDBOX_DESK_WITH_INCIDENT;
+    renderDesk();
+  });
+  deskDemo.append(deskRoutineBtn, deskIncidentBtn);
+  main.append(deskHeading, deskSection, deskDemo);
 
   // WO-2.2 — follow-up: dwell surfaced (D20: recorded and shown, never
   // enforced) + the delivery-outcome timeline on the canonical families.

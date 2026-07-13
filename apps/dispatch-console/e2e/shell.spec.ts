@@ -19,12 +19,13 @@ test('the console shell boots on the sera theme with catalog strings', async ({ 
   await expect(brand).toHaveCSS('color', hexToRgb(theme.colours.ink));
 
   await expect(page.locator('body')).toHaveCSS('background-color', hexToRgb(theme.colours.sand));
-  // WO-6.9-c: three sections now — the ready queue, the LIVE BOARD (D3), and the
-  // follow-up (dwell D20 + outcome timeline on the canonical families).
-  await expect(page.locator('h2')).toHaveCount(3);
+  // WO-6.9-d: four sections now — the ready queue, the LIVE BOARD (D3), the
+  // EXCEPTIONS DESK (D4), and the follow-up (dwell D20 + outcome timeline).
+  await expect(page.locator('h2')).toHaveCount(4);
   await expect(page.locator('h2').first()).toHaveText('Prêt à assigner');
   await expect(page.locator('h2').nth(1)).toHaveText('Tableau en direct');
-  await expect(page.locator('h2').nth(2)).toHaveText('Suivi des colis');
+  await expect(page.locator('h2').nth(2)).toHaveText('Bureau des exceptions');
+  await expect(page.locator('h2').nth(3)).toHaveText('Suivi des colis');
   await expect(page.getByText('Temps de contrôle au ramassage : 165 s — Dans la cible')).toBeVisible();
   await expect(page.getByText('12:18 · Retour au vendeur · Argent pas prêt')).toBeVisible();
   // D7 staffed-hours default — copy only.
