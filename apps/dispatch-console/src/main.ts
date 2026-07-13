@@ -311,8 +311,9 @@ style.textContent = `
   .board-custody { margin: 0; color: var(--ink); background: var(--sand); border-left: var(--hair-strong) solid var(--accent-strong); padding: var(--space-xs) var(--space-sm); font-weight: ${typo.scale.bodyStrong.wght}; }
   .board-incident-title { margin: var(--space-xs) 0 0 0; color: var(--danger); font-size: var(--type-body); font-weight: ${typo.scale.title.wght}; letter-spacing: var(--ls-label); text-transform: uppercase; }
   .board-incident-body { margin: 0; color: var(--ink); font-size: var(--type-body); }
-  /* WO-6.9-d exceptions desk — read-only; structured reason → one of four outcomes, an incident is loud. */
-  .desk { border: var(--hair-strong) solid var(--ink); padding: var(--space-lg); display: grid; gap: var(--space-sm); }
+  /* WO-6.9-d exceptions desk — read-only; structured reason → one of four outcomes, an incident is loud.
+     (own class, distinct from the .desk header overline at the top of this sheet — no cascade collision.) */
+  .exceptions-desk { border: var(--hair-strong) solid var(--ink); padding: var(--space-lg); display: grid; gap: var(--space-sm); }
   .desk-row { border: var(--hair) solid var(--hairline-strong); padding: var(--space-md); display: grid; gap: var(--space-xs); }
   .desk-row.incident { border: calc(var(--hair-strong) * 2) solid var(--danger); }
   .desk-pkg-name { margin: 0; font-size: var(--type-body); font-weight: ${typo.scale.bodyStrong.wght}; }
@@ -637,7 +638,7 @@ if (app) {
   const deskHeading = document.createElement('h2');
   deskHeading.textContent = t('console.desk_heading');
   const deskSection = document.createElement('section');
-  deskSection.className = 'desk';
+  deskSection.className = 'exceptions-desk';
   let deskEntries: readonly DeskEntry[] = SANDBOX_DESK_ROUTINE;
   const renderDesk = () => {
     deskSection.replaceChildren();
