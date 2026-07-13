@@ -454,3 +454,9 @@ Format per entry:
 - **No source change required or made.** Fonts already distinct; guard already present and running. This slice PROVES the closure with bytes (what the ledger had only claimed). FORBIDDEN respected: no journey/custody/money/SOS touched; WO-6.4's work not re-run.
 - **CLOSES NAMED DEBT ① (the font).** It no longer waits for the device-matrix pass: the committed bytes native embedding consumes are proven distinct, and a permanent CI guard fails if that ever regresses. Packet `_review/WO-6.6/` carries `logs/branch-log.txt` + warm & cold gate logs.
 - **Pending:** founder MERGE verdict on `e6/wo-6.6`.
+
+## 2026-07-13 · WO-6.6 · done (founder review PASS — merged; NAMED DEBT ① CLOSED)
+- The five committed Archivo TTFs carry five DISTINCT weight-specific identities (name-table bytes, per-file sha256). The WO-5.1 collision is ABSENT — WO-6.3's fix landed. **The CTO's "the defect is live" claim was FALSE and is corrected on record**; the work order was still right: an absence proven is a finding, an absence assumed is the defect.
+- Boutik's guard was NOT ported, deliberately: it is fontTools-or-SKIP (can no-op without the tool). Sera's pure-TS sfnt reader never skips, asserts `Set(families).size === 5`, and is proven non-vacuous by a planted real collision. **Flagged to APPS: their guard may be vacuous in tool-less environments.**
+- **STANDING PACKET RULE: the diff travels in every packet**, even a nine-line one. The merge guards substituted this time; they will not always.
+- Merged to sera main — merge sha `9108d2b0f578f730343fa2440d42f4a8d452344b`. Lockfile ssh-form-URL count on merged main: **0**.
