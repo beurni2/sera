@@ -1,0 +1,18 @@
+ac5aa59 docs(journal): WO-6.9 — premise error owned by CTO; split into batched slices 6.9-b..-e
+ JOURNAL.md | 1 +
+ 1 file changed, 1 insertion(+)
+9b3e63b chore(canon): WO-6.9 re-pin 0.9.0 → 0.9.4 (pin 04af4b5) — ui-tokens prints 0.9.4; docs synced; gates green
+ JOURNAL.md                                       |   5 +
+ apps/dispatch-console/package.json               |   4 +-
+ apps/rider-app/package.json                      |   4 +-
+ docs/ECOSYSTEM-MASTER-REFERENCE.md               |   6 +-
+ docs/Ecosystem-Engineering-Execution-Contract.md |  11 +++
+ package.json                                     |  10 +-
+ packages/commerce-core/package.json              |   4 +-
+ pnpm-lock.yaml                                   | 112 +++++++++++------------
+ pnpm-workspace.yaml                              |   6 +-
+ scripts/run-gates.sh                             |   4 +-
+ services/custody-service/package.json            |   4 +-
+ services/evidence-service/package.json           |   2 +-
+ services/logistics-service/package.json          |   2 +-
+ 13 files changed, 95 insertions(+), 79 deletions(-)

@@ -487,7 +487,7 @@ One **RouteManifest** per rider · **one current stop** (SE-I03) · **exactly on
 
 ### 4. The exceptions desk *(the most important screen in the building)*
 Every failure lands here with a **structured reason + evidence**. The dispatcher applies exactly one explicit outcome:
-**retry · reschedule · return_required · incident** — and **there is no generic "failed"** (SE-I10). A package is **never unowned**: custody stays with the rider or the hub until a **two-key return handoff + inspection** puts it back with the supplier.
+**retry · reschedule · return · incident** — and **there is no generic "failed"** (SE-I10). A package is **never unowned**: custody stays with the rider or the hub until a **two-key return handoff + inspection** puts it back with the supplier.
 
 ### 5. Break-glass verification *(the maker-checker seam)*
 Two different people, deliberately:
@@ -512,7 +512,7 @@ Pickup dwell **over 2–4 min is an ops signal** (a supplier who is slow to veri
 
 # PART 9 — THE PLATFORM OPS CONSOLE (the back-office — and an honest gap)
 
-> **⚠ FOUNDER DECISION REQUIRED.** The ops **roles** are defined across all three specs (Boutik+: "verification/moderation operator — Ops only"; Séra: payment operator, fleet manager, HR/payroll maker-checker). But the repo topology we locked — three apps + `platform-contracts` — **gives the cross-app Ops surface no home.** Protection Fund solvency, claims adjudication, and provider reconciliation are *inherently cross-domain*: they cannot live inside any one app without that app becoming a de-facto platform brain. **Recommendation: a fifth repo, `platform-ops`** — its own deployable, consuming the same pinned `platform-contracts`, reading through the authoritative services and **never writing to another domain's database.** (Alternatives: scatter admin screens per-app — but then the fund and reconciliation have no owner; or fold Ops into `platform-contracts` — rejected, contracts must stay a pure package, not a deployable.)
+> **⚠ FOUNDER DECISION REQUIRED.** The ops **roles** are defined across all three specs (Boutik+: "verification/moderation operator — Ops only"; Séra: payment operator, fleet manager, HR/payroll maker-checker). But the repo topology we locked — three apps + `platform-contracts` — **gives the cross-app Ops surface no home.** Protection Fund solvency, claims adjudication, and provider reconciliation are *inherently cross-domain*: they cannot live inside any one app without that app becoming a de-facto platform brain. **Recommendation: a fifth repo, `platform`** (github.com/beurni2/platform) — its own deployable, consuming the same pinned `platform-contracts`, reading through the authoritative services and **never writing to another domain's database.** (Alternatives: scatter admin screens per-app — but then the fund and reconciliation have no owner; or fold Ops into `platform-contracts` — rejected, contracts must stay a pure package, not a deployable.)
 
 ## 9.1 The iron rule of Ops
 > **Ops never edits the ledger. No human ever "just fixes" money.**
@@ -709,7 +709,7 @@ Performance budgets are named at E0 and enforced: 60fps feel on a 1GB device, sk
 | Tax / invoice / record retention | Launch | Retain everything |
 | **PackLab:** the three ceiling values · restock multiple · upgrade score · platform-as-owner legal structure | B+9 | Gate closed |
 | **Cercle:** campaign-allocation structure at the partner · MoMo top-up legality · moderation SLA | SP9 | Gate closed |
-| **⚠ Where the platform Ops console lives** (recommend a fifth repo `platform-ops`) — see Part 9 | Fund, claims, reconciliation, moderation, T&S, kill-switches | **Undecided — ops functions are specified but homeless** |
+| **⚠ Where the platform Ops console lives** (recommend a fifth repo `platform`) — see Part 9 | Fund, claims, reconciliation, moderation, T&S, kill-switches | **Undecided — ops functions are specified but homeless** |
 | Dispatcher/incident-response staffing SLA | Pilot | Contract E-exit requires it |
 
 **The discipline:** an open decision is **never** closed by an agent or by convenience. It is implemented at its documented safest default, flagged, and escalated to the founder.
