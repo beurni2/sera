@@ -828,6 +828,12 @@
     "screenClass": "label"
   },
   {
+    "key": "sos.preview_ack_escalated",
+    "fr": "(aperçu) réponse du responsable",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
     "key": "sos.safe",
     "fr": "Je suis en sécurité — clore",
     "register": "neutral",

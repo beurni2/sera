@@ -842,6 +842,7 @@ export function SosSheet({
     acknowledged: string;
     acknowledgedHint: string;
     previewAck: string;
+    previewAckEscalated: string;
     safe: string;
     over: string;
     overHint: string;
@@ -913,7 +914,8 @@ export function SosSheet({
             <Text style={styles.sosSheetHint}>{strings.escalatedHint}</Text>
             {/* Transport unbound — named as PENDING, never a faked send. */}
             <Text style={styles.sosNote}>{strings.transportPending}</Text>
-            <SosSandboxAck label={strings.previewAck} onPress={onSandboxAck} />
+            {/* out-of-hours the responder is the FOUNDER, not the dispatch (NIT fix) */}
+            <SosSandboxAck label={strings.previewAckEscalated} onPress={onSandboxAck} />
           </>
         )}
         {state === 'acknowledged' && (

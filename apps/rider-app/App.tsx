@@ -856,6 +856,7 @@ export default function App() {
           acknowledged: t('sos.acknowledged'),
           acknowledgedHint: t('sos.acknowledged_hint'),
           previewAck: t('sos.preview_ack'),
+          previewAckEscalated: t('sos.preview_ack_escalated'),
           safe: t('sos.safe'),
           over: t('sos.over'),
           overHint: t('sos.over_hint'),
