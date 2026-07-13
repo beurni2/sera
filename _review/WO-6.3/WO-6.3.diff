@@ -1,0 +1,1536 @@
+diff --git a/apps/dispatch-console/e2e/gallery.spec.ts b/apps/dispatch-console/e2e/gallery.spec.ts
+index e1ab82b..9de9003 100644
+--- a/apps/dispatch-console/e2e/gallery.spec.ts
++++ b/apps/dispatch-console/e2e/gallery.spec.ts
+@@ -44,6 +44,12 @@ for (const group of manifest.groups) {
+           await page.locator('button.door-demo').click();
+         } else if (action === 'clock-6min') {
+           await page.clock.fastForward('06:00');
++        } else if (action === 'sos-raise') {
++          await page.locator('button.sos-raise').click();
++        } else if (action === 'sos-raise-queued') {
++          await page.locator('button.sos-raise-queued').click();
++        } else if (action === 'sos-ack') {
++          await page.locator('button.sos-ack').click();
+         } else {
+           throw new Error(`unknown gallery action: ${action}`);
+         }
+diff --git a/apps/dispatch-console/e2e/shell.spec.ts b/apps/dispatch-console/e2e/shell.spec.ts
+index d14e065..87113c9 100644
+--- a/apps/dispatch-console/e2e/shell.spec.ts
++++ b/apps/dispatch-console/e2e/shell.spec.ts
+@@ -113,3 +113,44 @@ test('WO-4.3 lease expiry: past the 5-min window the honest expired state shows
+   await expect(page.locator('.task-card')).toHaveCount(1);
+   await expect(page.locator('#queue-body .deadline-line')).toHaveCount(0); // no stale deadline claim
+ });
++
++test('WO-6.3 SOS: a raised incident lands at the TOP, states custody + coarse location, and the dispatcher acknowledges', async ({ page }) => {
++  await page.goto('/');
++
++  // No incident by default — the console never fakes an alarm.
++  await expect(page.locator('.sos-alert')).toBeHidden();
++
++  // Raise the sandbox incident (« (aperçu) ») — the alert appears at the TOP,
++  // ahead of the ready-queue heading.
++  await page.locator('button.sos-raise').click();
++  const alert = page.locator('.sos-alert');
++  await expect(alert).toBeVisible();
++  // it is the FIRST element inside main, ahead of every queue item
++  await expect(page.locator('main > *').first()).toHaveClass(/sos-alert/);
++  await expect(alert.locator('.sos-title')).toHaveText('SOS — un livreur a besoin d\'aide');
++  // coarse location present (the rider is on shift) — never a fabricated fix
++  await expect(alert.getByText(/Localisation : /)).toBeVisible();
++  // custody stays legible: the rider still holds the package (not orphaned)
++  await expect(alert.locator('.sos-custody')).toHaveText(
++    'Le colis reste avec le livreur. La garde ne bouge pas.',
++  );
++
++  // the dispatcher acknowledges — the incident shows acknowledged, ack lever gone
++  await page.locator('button.sos-ack').click();
++  await expect(alert.locator('.sos-ackd')).toHaveText('Vu. Réponse en cours.');
++  await expect(page.locator('button.sos-ack')).toHaveCount(0);
++});
++
++test('WO-6.3 SOS: a queued (offline) incident shows « En attente du réseau » and the ack lever is DISABLED', async ({ page }) => {
++  await page.goto('/');
++  await page.locator('button.sos-raise-queued').click();
++
++  const alert = page.locator('.sos-alert');
++  await expect(alert).toBeVisible();
++  await expect(alert).toHaveClass(/queued/);
++  await expect(alert.getByText('En attente du réseau.')).toBeVisible();
++  // you cannot acknowledge what has not arrived — the lever is present BUT disabled
++  const ack = page.locator('button.sos-ack');
++  await expect(ack).toBeDisabled();
++  await expect(alert.getByText('On ne répond pas à un SOS qui n\'est pas encore arrivé.')).toBeVisible();
++});
+diff --git a/apps/dispatch-console/i18n/catalog.json b/apps/dispatch-console/i18n/catalog.json
+index 428e802..b5c3e9e 100644
+--- a/apps/dispatch-console/i18n/catalog.json
++++ b/apps/dispatch-console/i18n/catalog.json
+@@ -190,5 +190,101 @@
+     "fr": "Course remise. Le bail est libéré.",
+     "register": "neutral",
+     "screenClass": "status"
++  },
++  {
++    "key": "console.sos_title",
++    "fr": "SOS — un livreur a besoin d'aide",
++    "register": "neutral",
++    "screenClass": "general"
++  },
++  {
++    "key": "console.sos_rider",
++    "fr": "Livreur",
++    "register": "neutral",
++    "screenClass": "label"
++  },
++  {
++    "key": "console.sos_correlation",
++    "fr": "Référence",
++    "register": "neutral",
++    "screenClass": "label"
++  },
++  {
++    "key": "console.sos_task",
++    "fr": "Course en cours",
++    "register": "neutral",
++    "screenClass": "label"
++  },
++  {
++    "key": "console.sos_no_task",
++    "fr": "Aucune course en cours.",
++    "register": "neutral",
++    "screenClass": "status"
++  },
++  {
++    "key": "console.sos_location",
++    "fr": "Localisation",
++    "register": "neutral",
++    "screenClass": "label"
++  },
++  {
++    "key": "console.sos_no_location",
++    "fr": "Localisation non disponible (hors service).",
++    "register": "neutral",
++    "screenClass": "label"
++  },
++  {
++    "key": "console.sos_custody",
++    "fr": "Le colis reste avec le livreur. La garde ne bouge pas.",
++    "register": "neutral",
++    "screenClass": "status"
++  },
++  {
++    "key": "console.sos_responder_dispatcher",
++    "fr": "Répartition — en journée",
++    "register": "neutral",
++    "screenClass": "label"
++  },
++  {
++    "key": "console.sos_responder_founder",
++    "fr": "Responsable — hors des heures",
++    "register": "neutral",
++    "screenClass": "label"
++  },
++  {
++    "key": "console.sos_ack_action",
++    "fr": "J'ai vu — je réponds",
++    "register": "neutral",
++    "screenClass": "general"
++  },
++  {
++    "key": "console.sos_acknowledged",
++    "fr": "Vu. Réponse en cours.",
++    "register": "neutral",
++    "screenClass": "status"
++  },
++  {
++    "key": "console.sos_queued",
++    "fr": "En attente du réseau.",
++    "register": "neutral",
++    "screenClass": "status"
++  },
++  {
++    "key": "console.sos_queued_hint",
++    "fr": "On ne répond pas à un SOS qui n'est pas encore arrivé.",
++    "register": "neutral",
++    "screenClass": "status"
++  },
++  {
++    "key": "console.sos_demo_raise",
++    "fr": "(aperçu) SOS d'un livreur",
++    "register": "neutral",
++    "screenClass": "label"
++  },
++  {
++    "key": "console.sos_demo_raise_queued",
++    "fr": "(aperçu) SOS hors réseau",
++    "register": "neutral",
++    "screenClass": "label"
+   }
+ ]
+diff --git a/apps/dispatch-console/src/main.ts b/apps/dispatch-console/src/main.ts
+index 564d752..c4c1805 100644
+--- a/apps/dispatch-console/src/main.ts
++++ b/apps/dispatch-console/src/main.ts
+@@ -2,6 +2,13 @@ import { sharedColour, seraColour, spacing, radius, type as typo, interaction, b
+ import { landmarkFirstLines } from '@sera/logistics-service';
+ import { buildSandboxWorld } from './sandbox-world';
+ import { SANDBOX_DOOR_ORDER, SANDBOX_DOOR_PAID_SIGNAL, SANDBOX_DWELL, SANDBOX_OUTCOMES } from './sandbox-followup';
++import {
++  SANDBOX_INCIDENT_QUEUED,
++  SANDBOX_INCIDENT_RAISED,
++  acknowledgeSos,
++  canAcknowledge,
++  type IncidentView,
++} from './sandbox-incident';
+ import { DoorSignalFollower } from './door-signal';
+ import { t } from './i18n';
+ 
+@@ -206,6 +213,81 @@ style.textContent = `
+     cursor: pointer;
+     padding: 0;
+   }
++  /* WO-6.3 SOS alert — the loudest thing on the console when an incident is
++     raised: a thick danger border, danger title, at the very top. */
++  .sos-alert {
++    border: calc(var(--hair-strong) * 2) solid var(--danger);
++    background: var(--paper);
++    padding: var(--space-lg);
++    display: grid;
++    gap: var(--space-xs);
++  }
++  /* author display:grid would defeat the UA [hidden] rule — restore it so the
++     alert is truly absent until an incident is raised (never a fake alarm). */
++  .sos-alert[hidden] { display: none; }
++  .sos-alert.acknowledged { border-color: var(--accent-strong); }
++  .sos-alert.queued { border-style: dashed; }
++  .sos-title {
++    margin: 0 0 var(--space-xs) 0;
++    color: var(--danger);
++    font-size: var(--type-title);
++    font-weight: ${typo.scale.title.wght};
++    letter-spacing: var(--ls-label);
++    text-transform: uppercase;
++  }
++  .sos-alert.acknowledged .sos-title { color: var(--accent-strong); }
++  .sos-line { margin: 0; font-size: var(--type-body); }
++  .sos-meta {
++    margin: 0;
++    color: var(--muted);
++    font-size: var(--type-label);
++    font-weight: ${typo.scale.label.wght};
++    letter-spacing: var(--ls-label);
++    text-transform: uppercase;
++  }
++  .sos-custody {
++    margin: var(--space-xs) 0;
++    color: var(--ink);
++    background: var(--sand);
++    border-left: var(--hair-strong) solid var(--accent-strong);
++    padding: var(--space-sm) var(--space-md);
++    font-weight: ${typo.scale.bodyStrong.wght};
++  }
++  .sos-ackd {
++    margin: var(--space-xs) 0 0 0;
++    color: var(--accent-strong);
++    font-weight: ${typo.scale.bodyStrong.wght};
++  }
++  button.sos-ack {
++    min-height: var(--touch);
++    padding: 0 var(--space-xl);
++    border: 0;
++    border-radius: var(--radius-btn);
++    background: var(--danger);
++    color: var(--on-ink);
++    font-size: var(--type-row);
++    font-weight: ${typo.scale.title.wght};
++    letter-spacing: var(--ls-label);
++    text-transform: uppercase;
++    cursor: pointer;
++    margin-top: var(--space-sm);
++    justify-self: start;
++  }
++  button.sos-ack:disabled { background: var(--muted); cursor: not-allowed; opacity: 0.6; }
++  .sos-demo-controls { display: flex; gap: var(--space-lg); flex-wrap: wrap; }
++  button.sos-raise, button.sos-raise-queued {
++    min-height: var(--touch);
++    border: 0;
++    background: none;
++    color: var(--accent-strong);
++    font-size: var(--type-label);
++    font-weight: ${typo.scale.label.wght};
++    letter-spacing: var(--ls-label);
++    text-transform: uppercase;
++    text-decoration: underline;
++    cursor: pointer;
++    padding: 0;
++  }
+ `;
+ document.head.appendChild(style);
+ 
+@@ -226,11 +308,115 @@ if (app) {
+   strip.className = 'theme-strip';
+ 
+   const main = document.createElement('main');
++
++  // WO-6.3 — the SOS alert lands at the TOP, ahead of every queue item and
++  // visually the loudest. It is EMPTY until an incident is raised (an always-on
++  // alert would be a fake alarm); the sandbox « (aperçu) » levers below raise
++  // one. Custody stays legible: the rider still holds the package — never
++  // orphaned.
++  const incidentSection = document.createElement('section');
++  incidentSection.className = 'sos-alert';
++  incidentSection.hidden = true;
++  let currentIncident: IncidentView | null = null;
++
++  const renderIncident = () => {
++    incidentSection.replaceChildren();
++    const inc = currentIncident;
++    if (inc === null) {
++      incidentSection.hidden = true;
++      incidentSection.className = 'sos-alert';
++      return;
++    }
++    incidentSection.hidden = false;
++    incidentSection.className = `sos-alert ${inc.status === 'acknowledged' ? 'acknowledged' : inc.status === 'queued' ? 'queued' : ''}`.trim();
++
++    const title = document.createElement('p');
++    title.className = 'sos-title';
++    title.textContent = t('console.sos_title');
++    incidentSection.appendChild(title);
++
++    const who = document.createElement('p');
++    who.className = 'sos-line';
++    who.textContent = `${t('console.sos_rider')} : ${inc.riderName}`;
++    incidentSection.appendChild(who);
++
++    const corr = document.createElement('p');
++    corr.className = 'sos-meta';
++    corr.textContent = `${t('console.sos_correlation')} : ${inc.correlationId}`;
++    incidentSection.appendChild(corr);
++
++    const task = document.createElement('p');
++    task.className = 'sos-line';
++    task.textContent = inc.activeTaskId
++      ? `${t('console.sos_task')} : ${inc.activeTaskId}`
++      : t('console.sos_no_task');
++    incidentSection.appendChild(task);
++
++    // SE-I08: coarse location IF present (rider on shift), else the honest
++    // off-shift fallback — never a fabricated fix.
++    const loc = document.createElement('p');
++    loc.className = 'sos-line';
++    loc.textContent = inc.coarseLocation
++      ? `${t('console.sos_location')} : ${inc.coarseLocation}`
++      : t('console.sos_no_location');
++    incidentSection.appendChild(loc);
++
++    // Custody line — WHO HOLDS THE PACKAGE: the rider still does; the package
++    // is NOT orphaned by an SOS.
++    const custody = document.createElement('p');
++    custody.className = 'sos-custody';
++    custody.textContent = t('console.sos_custody');
++    incidentSection.appendChild(custody);
++
++    const responder = document.createElement('p');
++    responder.className = 'sos-meta';
++    responder.textContent =
++      inc.responder === 'dispatcher' ? t('console.sos_responder_dispatcher') : t('console.sos_responder_founder');
++    incidentSection.appendChild(responder);
++
++    if (inc.status === 'acknowledged') {
++      const ackd = document.createElement('p');
++      ackd.className = 'sos-ackd';
++      ackd.textContent = t('console.sos_acknowledged');
++      incidentSection.appendChild(ackd);
++      return;
++    }
++
++    if (inc.status === 'queued') {
++      const waiting = document.createElement('p');
++      waiting.className = 'sos-meta';
++      waiting.textContent = t('console.sos_queued');
++      incidentSection.appendChild(waiting);
++    }
++
++    const ack = document.createElement('button');
++    ack.className = 'sos-ack';
++    ack.textContent = t('console.sos_ack_action');
++    // Honesty law: you cannot ack what has not arrived — a queued incident's
++    // lever is DISABLED. Live incidents route through acknowledgeSos.
++    ack.disabled = !canAcknowledge(inc);
++    if (!ack.disabled) {
++      ack.addEventListener('click', () => {
++        currentIncident = acknowledgeSos(inc, inc.responder);
++        renderIncident();
++      });
++    }
++    incidentSection.appendChild(ack);
++
++    if (inc.status === 'queued') {
++      const hint = document.createElement('p');
++      hint.className = 'sos-meta';
++      hint.textContent = t('console.sos_queued_hint');
++      incidentSection.appendChild(hint);
++    }
++  };
++  renderIncident();
++
+   const heading = document.createElement('h2');
+   heading.textContent = t('console.ready_queue');
+   const body = document.createElement('div');
+   body.id = 'queue-body';
+-  main.append(heading, body);
++  main.append(incidentSection, heading, body);
+ 
+   const render = (status?: { key: string; deadlineIso?: string; doneTaskId?: string }) => {
+     body.replaceChildren();
+@@ -368,6 +554,29 @@ if (app) {
+   }
+   main.append(followHeading, followCard);
+ 
++  // WO-6.3 — sandbox « (aperçu) » levers that raise the demo SOS incident into
++  // the alert at the top (never faked as a live safety stream), mirroring the
++  // door « Essai » path: one raises the in-hours incident (dispatcher answers),
++  // one raises the queued/offline variant (ack DISABLED — not yet arrived).
++  const sosDemo = document.createElement('section');
++  sosDemo.className = 'sos-demo-controls';
++  const raiseBtn = document.createElement('button');
++  raiseBtn.className = 'sos-raise';
++  raiseBtn.textContent = t('console.sos_demo_raise');
++  raiseBtn.addEventListener('click', () => {
++    currentIncident = SANDBOX_INCIDENT_RAISED;
++    renderIncident();
++  });
++  const raiseQueuedBtn = document.createElement('button');
++  raiseQueuedBtn.className = 'sos-raise-queued';
++  raiseQueuedBtn.textContent = t('console.sos_demo_raise_queued');
++  raiseQueuedBtn.addEventListener('click', () => {
++    currentIncident = SANDBOX_INCIDENT_QUEUED;
++    renderIncident();
++  });
++  sosDemo.append(raiseBtn, raiseQueuedBtn);
++  main.append(sosDemo);
++
+   // The REAL service-side deadline, ONE sweep for BOTH stores (WO-4.3).
+   setInterval(() => {
+     void dispatch.expireDue(new Date().toISOString()).then(({ requeued }) => {
+diff --git a/apps/dispatch-console/src/sandbox-incident.ts b/apps/dispatch-console/src/sandbox-incident.ts
+new file mode 100644
+index 0000000..b9d70b7
+--- /dev/null
++++ b/apps/dispatch-console/src/sandbox-incident.ts
+@@ -0,0 +1,81 @@
++/**
++ * WO-6.3 SANDBOX SOS incident data for the console (SE8). Runtime DATA feeding
++ * the alert card — like sandbox-followup.ts, not interface copy (UI strings
++ * live in the i18n catalog). The event names MIRROR the pinned
++ * @platform/contracts EVENT_NAMES (safety.sos_created.v1 · incident.opened.v1);
++ * the SERVICE emits, the console reflects. Live safety.* streams replace this
++ * at assembly. NO franc anywhere — Séra emits signals, never money.
++ */
++
++export type SosStatus = 'queued' | 'raised' | 'escalated' | 'acknowledged';
++export type SosResponder = 'dispatcher' | 'founder';
++
++export const SOS_EVENTS = {
++  created: 'safety.sos_created.v1',
++  acknowledged: 'safety.sos_acknowledged.v1',
++  incidentOpened: 'incident.opened.v1',
++} as const;
++
++export interface IncidentView {
++  id: string;
++  correlationId: string;
++  riderId: string;
++  riderName: string;
++  /** The rider's active task/lease, if any — shown so custody stays legible. */
++  activeTaskId: string | null;
++  /** SE-I08: a coarse landmark IFF the rider is on shift, else null. */
++  coarseLocation: string | null;
++  onShift: boolean;
++  hours: 'in_hours' | 'out_of_hours';
++  responder: SosResponder;
++  status: SosStatus;
++  acknowledgedBy: SosResponder | null;
++}
++
++/**
++ * The honesty law, mirrored on the console: a dispatcher can acknowledge ONLY a
++ * LIVE incident (raised or escalated). A queued incident has NOT arrived — you
++ * cannot ack what has not arrived; the guard THROWS, exactly like the rider
++ * store's acknowledgeSos. The acknowledged event is the canon name.
++ */
++export function acknowledgeSos(incident: IncidentView, by: SosResponder): IncidentView {
++  if (incident.status !== 'raised' && incident.status !== 'escalated') {
++    throw new Error(`cannot acknowledge an SOS at '${incident.status}' — only 'raised' or 'escalated'`);
++  }
++  return { ...incident, status: 'acknowledged', acknowledgedBy: by };
++}
++
++/** Whether the ack lever may be enabled — false for a not-yet-arrived incident. */
++export function canAcknowledge(incident: IncidentView): boolean {
++  return incident.status === 'raised' || incident.status === 'escalated';
++}
++
++/**
++ * The in-hours raised incident the console renders at the top (loudest). Coarse
++ * location present because the rider is on shift (SE-I08). Obviously demo data
++ * (« (démo) ») — it can never pass for a real rider.
++ */
++export const SANDBOX_INCIDENT_RAISED: IncidentView = {
++  id: 'sos-rider-issa-demo',
++  correlationId: 'corr-sos-e1-0001',
++  riderId: 'rider-issa',
++  riderName: 'Issa O. (démo)',
++  activeTaskId: 'task-e1-0001',
++  coarseLocation: 'Vers le grand marché — secteur 1 (démo)',
++  onShift: true,
++  hours: 'in_hours',
++  responder: 'dispatcher',
++  status: 'raised',
++  acknowledgedBy: null,
++};
++
++/**
++ * The queued (offline) variant — known to the demo but NOT yet delivered: the
++ * console shows « En attente du réseau » and the ack lever is DISABLED (you
++ * cannot ack what has not arrived).
++ */
++export const SANDBOX_INCIDENT_QUEUED: IncidentView = {
++  ...SANDBOX_INCIDENT_RAISED,
++  id: 'sos-rider-issa-demo-queued',
++  status: 'queued',
++};
+diff --git a/apps/rider-app/App.tsx b/apps/rider-app/App.tsx
+index 313b4ea..4ae3418 100644
+--- a/apps/rider-app/App.tsx
++++ b/apps/rider-app/App.tsx
+@@ -3,11 +3,13 @@ import { StatusBar } from 'expo-status-bar';
+ import { FlatList, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+ import { seraTheme, spacing, radius, touch, type as typo, interaction, money } from '@platform/ui-tokens';
+ import {
++  CONNECTIVITY,
+   FAILURE_REASON_IDS,
+   POLICY_CHECK_IDS,
+   SANDBOX_DOOR_SIGNAL,
+   type PolicyCheckId,
+ } from './src/custody-flow';
++import { SANDBOX_DISPATCH_HOURS } from './src/safety';
+ import { IS_PREVIEW } from './src/preview';
+ import { t } from './src/i18n';
+ import { COURSE_BACK_STEPS, JOURNEY, START, type Screen } from './src/journey';
+@@ -15,10 +17,12 @@ import { attemptReturnHandover } from './src/two-key-return';
+ import {
+   acceptInspection,
+   acknowledgeCourse,
++  acknowledgeSos,
+   applyProviderDoorSignal,
+   beginPickup,
+   captureEvidence,
+   chooseFailureReason,
++  clearSos,
+   completeReturn,
+   createDemoWorld,
+   declineCourse,
+@@ -26,6 +30,7 @@ import {
+   expireRetryWindow,
+   passVerification,
+   prepareReturn,
++  raiseSos,
+   refusePickup,
+   registerSeal,
+   reportProblem,
+@@ -171,10 +176,9 @@ const proposalDeadlineHhmm = (): string => {
+   const until = new Date(Date.now() + 5 * 60_000);
+   return `${String(until.getHours()).padStart(2, '0')}:${String(until.getMinutes()).padStart(2, '0')}`;
+ };
+-const hhmmNow = (): string => {
+-  const now = new Date();
+-  return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+-};
++
++/** A fixed demo rider identity for the SOS incident (obviously not real). */
++const DEMO_RIDER_ID = 'rider-moussa-demo';
+ 
+ /** The buyer's code is six digits (demo). The store's validateDropCode owns
+  * finality; this is only the entry surface, and it exists ONLY on the drop
+@@ -194,7 +198,6 @@ export default function App() {
+   const [codeStr, setCodeStr] = useState('');
+   const [celebrate, setCelebrate] = useState(false);
+   const [sos, setSos] = useState<SosState>('closed');
+-  const [sosAt, setSosAt] = useState('');
+   const [key1, setKey1] = useState(false);
+   const [key2, setKey2] = useState(false);
+   const [oneKeyMsg, setOneKeyMsg] = useState(false);
+@@ -202,18 +205,17 @@ export default function App() {
+   const active = world.courses.find((c) => c.id === activeId) ?? null;
+   const allChecked = POLICY_CHECK_IDS.every((id) => checks[id] === true);
+ 
+-  // SOS hold + escalation timers — deliberate HOLD to fire, cleared on release.
++  // SOS hold timer — a deliberate HOLD fires the SOS; released or unmounted, it
++  // is cleared. There are NO post-fire timers: the acknowledgment comes from the
++  // store (a real dispatch/network response), never a fake countdown.
+   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+-  const sosTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+-  const clearSosTimers = useCallback(() => {
+-    sosTimers.current.forEach(clearTimeout);
+-    sosTimers.current = [];
++  const clearHold = useCallback(() => {
+     if (holdTimer.current) {
+       clearTimeout(holdTimer.current);
+       holdTimer.current = null;
+     }
+   }, []);
+-  useEffect(() => clearSosTimers, [clearSosTimers]);
++  useEffect(() => clearHold, [clearHold]);
+ 
+   const go = useCallback((next: Screen) => {
+     if (!JOURNEY[stack[stack.length - 1] ?? START].includes(next)) return;
+@@ -239,7 +241,8 @@ export default function App() {
+     }
+   }, [stack]);
+   const reset = useCallback(() => {
+-    clearSosTimers();
++    clearHold();
++    // createDemoWorld() also clears any incident (incident: null).
+     setWorld(createDemoWorld());
+     setStack([START]);
+     setShift('off');
+@@ -255,7 +258,7 @@ export default function App() {
+     setKey1(false);
+     setKey2(false);
+     setOneKeyMsg(false);
+-  }, [clearSosTimers]);
++  }, [clearHold]);
+ 
+   /** Every custody move: the store calls custody-flow (throws out-of-order),
+    * the world re-renders, the stack follows the rule's outcome. */
+@@ -287,28 +290,50 @@ export default function App() {
+   // requires a deliberate HOLD (neither accidental nor missable).
+   const openSos = useCallback(() => setSos('confirm'), []);
+   const cancelSos = useCallback(() => {
+-    clearSosTimers();
++    clearHold();
+     setSos('closed');
+-  }, [clearSosTimers]);
++  }, [clearHold]);
++  // Firing builds the REAL incident in the store (custody-safe: no course is
++  // read or moved) and drives the sheet from its honest status — queued
++  // (offline, no ack) / raised (in-hours) / escalated (out-of-hours). The
++  // connectivity + dispatch-hours are typed sandbox constants (both branches
++  // real code); the live feeds drive them at assembly.
++  const fireSos = useCallback(() => {
++    raiseSos(world, {
++      riderId: DEMO_RIDER_ID,
++      onShift: shift === 'on',
++      activeCourseId: activeId,
++      connectivity: CONNECTIVITY,
++      hours: SANDBOX_DISPATCH_HOURS,
++    });
++    setWorld({ ...world });
++    const status = world.incident?.status ?? 'raised';
++    if (status === 'queued') setSos('queued');
++    else if (status === 'escalated') setSos('escalated');
++    else if (status === 'acknowledged') setSos('acknowledged');
++    else setSos('raised');
++  }, [world, shift, activeId]);
+   const sosHoldStart = useCallback(() => {
+     if (holdTimer.current) clearTimeout(holdTimer.current);
+-    holdTimer.current = setTimeout(() => {
+-      setSosAt(hhmmNow());
+-      setSos('raised');
+-      sosTimers.current.push(setTimeout(() => setSos('ack'), 1600));
+-      sosTimers.current.push(setTimeout(() => setSos('enroute'), 3200));
+-    }, 650);
+-  }, []);
+-  const sosHoldEnd = useCallback(() => {
+-    if (holdTimer.current) {
+-      clearTimeout(holdTimer.current);
+-      holdTimer.current = null;
+-    }
+-  }, []);
++    holdTimer.current = setTimeout(fireSos, 650);
++  }, [fireSos]);
++  const sosHoldEnd = useCallback(() => clearHold(), [clearHold]);
++  // The rider CANNOT self-acknowledge. This is the dispatch/network response
++  // arriving — a SANDBOX stand-in that drives the store's acknowledgeSos (which
++  // THROWS on a queued incident), never the rider's own hand.
++  const sosSandboxAck = useCallback(() => {
++    if (world.incident === null) return;
++    acknowledgeSos(world, world.incident.responder);
++    setWorld({ ...world });
++    setSos('acknowledged');
++  }, [world]);
++  const sosSafe = useCallback(() => setSos('over'), []);
+   const sosClose = useCallback(() => {
+-    clearSosTimers();
+-    setSos('over');
+-  }, [clearSosTimers]);
++    clearSos(world);
++    setWorld({ ...world });
++    clearHold();
++    setSos('closed');
++  }, [world, clearHold]);
+ 
+   const arriving = world.courses.find((c) => !c.closed && c.step === 'affectation') ?? null;
+   const shiftAction = shift === 'off' ? t('shift.start_action') : t('shift.end_action');
+@@ -815,18 +840,22 @@ export default function App() {
+       <SosButton label={t('sos.label')} onOpen={openSos} />
+       <SosSheet
+         state={sos}
+-        ackTime={sosAt}
+         strings={{
+           title: t('sos.title'),
+           confirmHint: t('sos.confirm_hint'),
+           hold: t('sos.hold'),
+           cancel: t('sos.cancel'),
+           holdNote: t('sos.hold_note'),
++          queued: t('sos.queued'),
++          queuedHint: t('sos.queued_hint'),
+           raised: t('sos.raised'),
+           raisedHint: t('sos.raised_hint'),
+-          ackHint: t('sos.ack_hint'),
+-          enroute: t('sos.enroute'),
+-          enrouteHint: t('sos.enroute_hint'),
++          escalated: t('sos.escalated'),
++          escalatedHint: t('sos.escalated_hint'),
++          transportPending: t('sos.transport_pending'),
++          acknowledged: t('sos.acknowledged'),
++          acknowledgedHint: t('sos.acknowledged_hint'),
++          previewAck: t('sos.preview_ack'),
+           safe: t('sos.safe'),
+           over: t('sos.over'),
+           overHint: t('sos.over_hint'),
+@@ -835,6 +864,8 @@ export default function App() {
+         onHoldStart={sosHoldStart}
+         onHoldEnd={sosHoldEnd}
+         onCancel={cancelSos}
++        onSandboxAck={sosSandboxAck}
++        onSafe={sosSafe}
+         onClose={sosClose}
+       />
+     </SafeAreaView>
+diff --git a/apps/rider-app/i18n/catalog.json b/apps/rider-app/i18n/catalog.json
+index 842488b..9b8fdf4 100644
+--- a/apps/rider-app/i18n/catalog.json
++++ b/apps/rider-app/i18n/catalog.json
+@@ -767,36 +767,66 @@
+     "register": "neutral",
+     "screenClass": "status"
+   },
++  {
++    "key": "sos.queued",
++    "fr": "SOS en attente du réseau.",
++    "register": "neutral",
++    "screenClass": "status"
++  },
++  {
++    "key": "sos.queued_hint",
++    "fr": "Rien ne part tant que le réseau ne revient pas. On ne fait pas semblant.",
++    "register": "neutral",
++    "screenClass": "status"
++  },
+   {
+     "key": "sos.raised",
+-    "fr": "SOS déclenché",
++    "fr": "Alerte envoyée.",
+     "register": "neutral",
+     "screenClass": "status"
+   },
+   {
+     "key": "sos.raised_hint",
+-    "fr": "Le dispatch est prévenu. Restez où vous êtes si c'est sûr.",
++    "fr": "On cherche quelqu'un pour vous. Restez où vous êtes si c'est sûr.",
++    "register": "neutral",
++    "screenClass": "status"
++  },
++  {
++    "key": "sos.escalated",
++    "fr": "Hors des heures — on alerte le responsable.",
++    "register": "neutral",
++    "screenClass": "status"
++  },
++  {
++    "key": "sos.escalated_hint",
++    "fr": "On prévient le responsable pour vous. Restez joignable.",
+     "register": "neutral",
+     "screenClass": "status"
+   },
+   {
+-    "key": "sos.ack_hint",
+-    "fr": "Le dispatch a vu. Tout le reste attend.",
++    "key": "sos.transport_pending",
++    "fr": "Canal d'alerte au responsable : en cours de branchement (SMS ou appel).",
+     "register": "neutral",
+     "screenClass": "status"
+   },
+   {
+-    "key": "sos.enroute",
+-    "fr": "Secours en route",
++    "key": "sos.acknowledged",
++    "fr": "On vous a vu.",
+     "register": "neutral",
+     "screenClass": "status"
+   },
+   {
+-    "key": "sos.enroute_hint",
+-    "fr": "Quelqu'un vient. Restez en sécurité, restez joignable.",
++    "key": "sos.acknowledged_hint",
++    "fr": "Quelqu'un arrive pour vous. Restez joignable.",
+     "register": "neutral",
+     "screenClass": "status"
+   },
++  {
++    "key": "sos.preview_ack",
++    "fr": "(aperçu) réponse du dispatch",
++    "register": "neutral",
++    "screenClass": "label"
++  },
+   {
+     "key": "sos.safe",
+     "fr": "Je suis en sécurité — clore",
+diff --git a/apps/rider-app/src/demo/store.ts b/apps/rider-app/src/demo/store.ts
+index a81a4b6..79d93fe 100644
+--- a/apps/rider-app/src/demo/store.ts
++++ b/apps/rider-app/src/demo/store.ts
+@@ -12,6 +12,14 @@ import {
+   type FailureReasonId,
+   type PolicyCheckId,
+ } from '../custody-flow';
++import {
++  SOS_EVENTS,
++  raisedStatusForHours,
++  responderForHours,
++  type DispatchHours,
++  type SosResponder,
++  type SosStatus,
++} from '../safety';
+ 
+ /**
+  * WO-4.1 demo world — in-memory, seeded, honest. Every custody move on every
+@@ -49,8 +57,34 @@ export interface DemoCourse {
+   readonly closed: boolean;
+ }
+ 
++/**
++ * WO-6.3 — a SAFETY incident (SE8), ADDITIVE to the custody world: raising an
++ * SOS never reads or mutates a course, so the package keeps its exact custody
++ * step and its ONE current custodian. `hours` is stored so a queued incident's
++ * reconnect (deliverQueuedSos) takes the branch it was raised under.
++ */
++export interface SosIncident {
++  readonly id: string;
++  readonly correlationId: string;
++  readonly riderId: string;
++  readonly activeCourseId: string | null;
++  /** SE-I08 location law: a coarse landmark IFF the rider is on shift, else null. */
++  readonly coarseLocation: string | null;
++  readonly onShift: boolean;
++  readonly hours: DispatchHours;
++  readonly responder: SosResponder;
++  readonly status: SosStatus;
++  readonly raisedAt: string;
++  readonly acknowledgedAt: string | null;
++  readonly acknowledgedBy: SosResponder | null;
++  /** The canonical event names emitted so far — [] while offline/queued. */
++  readonly events: string[];
++}
++
+ export interface DemoWorld {
+   courses: DemoCourse[];
++  /** At most one open incident in the demo world; null when none is raised. */
++  incident: SosIncident | null;
+ }
+ 
+ const seed = (
+@@ -119,7 +153,7 @@ export function seedCourses(): DemoCourse[] {
+ }
+ 
+ export function createDemoWorld(): DemoWorld {
+-  return { courses: seedCourses() };
++  return { courses: seedCourses(), incident: null };
+ }
+ 
+ function courseById(world: DemoWorld, id: string): DemoCourse {
+@@ -315,3 +349,103 @@ export function completeReturn(world: DemoWorld, id: string): CourseStep {
+   expectStep(courseById(world, id), ['retour_colis']);
+   return update(world, id, { closed: true }).step;
+ }
++
++/* ============================ WO-6.3 SAFETY / SOS ============================ */
++
++/**
++ * SE-I08 location law: a fixed, obviously-fictional coarse landmark, attached
++ * to an SOS ONLY when the rider is on shift (never a live GPS fix; Séra
++ * collects location only on shift/task). Landmark-first, « (démo) »-marked so
++ * it can never pass for real user data.
++ */
++const SANDBOX_SOS_COARSE_LOCATION = 'Vers le grand marché — secteur 1 (démo)';
++
++/**
++ * Raise an SOS (SE8). ADDITIVE and custody-safe: this reads and mutates NO
++ * course, so the package keeps its exact custody step and one current
++ * custodian. Offline law (Ten Laws #7): an offline SOS is QUEUED = pending —
++ * NOTHING is emitted and NOTHING can be acknowledged until the network returns.
++ * Online, the incident takes the branch its dispatch-hours dictate (in-hours →
++ * raised/dispatcher, out-of-hours → escalated/founder) and emits the created +
++ * incidentOpened events.
++ */
++export function raiseSos(
++  world: DemoWorld,
++  params: {
++    riderId: string;
++    onShift: boolean;
++    activeCourseId: string | null;
++    connectivity: typeof CONNECTIVITY;
++    hours: DispatchHours;
++  },
++): SosIncident {
++  const { riderId, onShift, activeCourseId, connectivity, hours } = params;
++  const raisedAt = new Date().toISOString();
++  const queued = connectivity === 'offline';
++  const incident: SosIncident = {
++    id: `sos-${riderId}-${raisedAt}`,
++    correlationId: `corr-sos-${riderId}-${raisedAt}`,
++    riderId,
++    activeCourseId,
++    // SE-I08: coarse location attaches IFF the rider is on shift — never off it.
++    coarseLocation: onShift ? SANDBOX_SOS_COARSE_LOCATION : null,
++    onShift,
++    hours,
++    responder: responderForHours(hours),
++    // Offline = queued = pending: no delivery, nothing emitted.
++    status: queued ? 'queued' : raisedStatusForHours(hours),
++    raisedAt,
++    acknowledgedAt: null,
++    acknowledgedBy: null,
++    events: queued ? [] : [SOS_EVENTS.created, SOS_EVENTS.incidentOpened],
++  };
++  world.incident = incident;
++  return incident;
++}
++
++/**
++ * Reconnect path: a QUEUED (offline) SOS is delivered when the network
++ * returns — it takes the branch its stored hours dictate and NOW emits the
++ * created + incidentOpened events. Anything but a queued incident throws.
++ */
++export function deliverQueuedSos(world: DemoWorld): SosIncident {
++  const incident = world.incident;
++  if (incident === null || incident.status !== 'queued') {
++    throw new Error(`deliverQueuedSos requires a queued incident, got '${incident?.status ?? 'none'}'`);
++  }
++  const delivered: SosIncident = {
++    ...incident,
++    status: raisedStatusForHours(incident.hours),
++    events: [SOS_EVENTS.created, SOS_EVENTS.incidentOpened],
++  };
++  world.incident = delivered;
++  return delivered;
++}
++
++/**
++ * The honesty law, STRUCTURAL: an acknowledgment can land ONLY on a LIVE
++ * incident (raised or escalated). A queued (offline) or already-acknowledged
++ * incident is UNACKNOWLEDGEABLE and THROWS — on a safety path a fake ack is the
++ * worst possible bug. The responder that answered is recorded and the
++ * acknowledged event is emitted.
++ */
++export function acknowledgeSos(world: DemoWorld, by: SosResponder): SosIncident {
++  const incident = world.incident;
++  if (incident === null || (incident.status !== 'raised' && incident.status !== 'escalated')) {
++    throw new Error(`cannot acknowledge an SOS at '${incident?.status ?? 'none'}' — only 'raised' or 'escalated'`);
++  }
++  const acknowledged: SosIncident = {
++    ...incident,
++    status: 'acknowledged',
++    acknowledgedBy: by,
++    acknowledgedAt: new Date().toISOString(),
++    events: [...incident.events, SOS_EVENTS.acknowledged],
++  };
++  world.incident = acknowledged;
++  return acknowledged;
++}
++
++/** The rider is safe / the sheet resets — the incident clears. */
++export function clearSos(world: DemoWorld): void {
++  world.incident = null;
++}
+diff --git a/apps/rider-app/src/safety.ts b/apps/rider-app/src/safety.ts
+new file mode 100644
+index 0000000..deef674
+--- /dev/null
++++ b/apps/rider-app/src/safety.ts
+@@ -0,0 +1,63 @@
++/**
++ * WO-6.3 — Séra rider SAFETY rule source (SE8: "SOS visible from every rider
++ * flow; ack within SLA; secure/quarantine custody; live drill before pilot").
++ * Mirrors the custody-flow.ts pattern: PURE functions + typed sandbox
++ * constants where BOTH branches are real code paths. The SERVICE emits the
++ * canonical events; this shell only reflects them. No franc anywhere — Séra
++ * emits signals, never money.
++ */
++
++/**
++ * The three canonical SOS / incident event names. These MIRROR the pinned
++ * @platform/contracts EVENT_NAMES (safety.sos_created.v1 ·
++ * safety.sos_acknowledged.v1 · incident.opened.v1) — the SERVICE emits them,
++ * the shell reflects. Names are never invented here.
++ */
++export const SOS_EVENTS = {
++  created: 'safety.sos_created.v1',
++  acknowledged: 'safety.sos_acknowledged.v1',
++  incidentOpened: 'incident.opened.v1',
++} as const;
++
++export type SosStatus = 'queued' | 'raised' | 'escalated' | 'acknowledged';
++export type SosResponder = 'dispatcher' | 'founder';
++export type DispatchHours = 'in_hours' | 'out_of_hours';
++
++/**
++ * ACK SLA — CTO safest-default on an OPEN Decision (⏳ Sera-Build-Spec:185 /
++ * Sera-Building-Plan:76 "ack within SLA (named)"): a 60 s in-hours ack TARGET,
++ * stored as VERSIONED POLICY DATA so it is tunable at pilot — never silently.
++ * This is a target the live drill measures against, NOT a timer that fakes an
++ * acknowledgment: an ack lands only through acknowledgeSos (which throws on a
++ * queued incident).
++ */
++export const SOS_ACK_SLA_POLICY = {
++  version: 'sos-ack-sla.v1',
++  inHoursTargetSeconds: 60,
++} as const;
++
++/**
++ * Sandbox dispatch-hours (typed data like custody-flow's CONNECTIVITY): BOTH
++ * branches are REAL paths. 'in_hours' → the DISPATCHER answers on the console;
++ * 'out_of_hours' → the SOS escalates to the FOUNDER's phone. The live clock /
++ * on-call roster feed drives this value at assembly; the rider never sets it.
++ */
++export const SANDBOX_DISPATCH_HOURS: DispatchHours = 'in_hours';
++
++/**
++ * The out-of-hours escalation TRANSPORT (SMS / push / call) is an OPEN founder
++ * item — WO-6.3 §2. The PATH is built and the state is real; the transport is
++ * unbound (channel null). We NEVER fake an acknowledgment on an unbound
++ * channel — the honesty law is structural (acknowledgeSos throws on queued).
++ */
++export const ESCALATION_TRANSPORT = { status: 'pending', channel: null } as const;
++
++/** In dispatch hours the dispatcher answers; out of hours it is the founder. */
++export function responderForHours(hours: DispatchHours): SosResponder {
++  return hours === 'in_hours' ? 'dispatcher' : 'founder';
++}
++
++/** In-hours a raised SOS is 'raised' (dispatcher); out-of-hours 'escalated'. */
++export function raisedStatusForHours(hours: DispatchHours): 'raised' | 'escalated' {
++  return hours === 'in_hours' ? 'raised' : 'escalated';
++}
+diff --git a/apps/rider-app/src/ui/kit.tsx b/apps/rider-app/src/ui/kit.tsx
+index 87ce770..1b62e5b 100644
+--- a/apps/rider-app/src/ui/kit.tsx
++++ b/apps/rider-app/src/ui/kit.tsx
+@@ -784,7 +784,7 @@ export function CourseValideeCelebration({ onDone }: { onDone: () => void }) {
+ 
+ /* ============================ SOS (R14) ============================ */
+ 
+-export type SosState = 'closed' | 'confirm' | 'raised' | 'ack' | 'enroute' | 'over';
++export type SosState = 'closed' | 'confirm' | 'queued' | 'raised' | 'escalated' | 'acknowledged' | 'over';
+ 
+ /* The SOS button lives on EVERY screen, reachable in ONE gesture. It is
+  * unmissable (a red-ringed ink disc, bottom-right) yet NOT accidentally
+@@ -806,14 +806,23 @@ export function SosButton({ label, onOpen }: { label: string; onOpen: () => void
+ }
+ 
+ /* The SOS sheet — « MAINTENIR POUR DÉCLENCHER »: a hold, not a tap, so it can
+- * be neither triggered by accident nor missed when it matters. */
++ * be neither triggered by accident nor missed when it matters. The states are
++ * driven from the store's incident status, never a timer:
++ *   queued       — offline: honest waiting, NO acknowledgment shown (Ten Laws #7).
++ *   raised       — in-hours: the dispatcher is being reached.
++ *   escalated    — out-of-hours: the responsable is alerted; transport PENDING.
++ *   acknowledged — someone answered (only ever via the store's acknowledgeSos).
++ * The rider CANNOT self-acknowledge: raised/escalated show a clearly-marked
++ * « (aperçu) » sandbox stand-in for the dispatch/network response arriving —
++ * queued shows none, because a queued incident is unacknowledgeable. */
+ export function SosSheet({
+   state,
+   strings,
+-  ackTime,
+   onHoldStart,
+   onHoldEnd,
+   onCancel,
++  onSandboxAck,
++  onSafe,
+   onClose,
+ }: {
+   state: SosState;
+@@ -823,20 +832,26 @@ export function SosSheet({
+     hold: string;
+     cancel: string;
+     holdNote: string;
++    queued: string;
++    queuedHint: string;
+     raised: string;
+     raisedHint: string;
+-    ackHint: string;
+-    enroute: string;
+-    enrouteHint: string;
++    escalated: string;
++    escalatedHint: string;
++    transportPending: string;
++    acknowledged: string;
++    acknowledgedHint: string;
++    previewAck: string;
+     safe: string;
+     over: string;
+     overHint: string;
+     close: string;
+   };
+-  ackTime: string;
+   onHoldStart: () => void;
+   onHoldEnd: () => void;
+   onCancel: () => void;
++  onSandboxAck: () => void;
++  onSafe: () => void;
+   onClose: () => void;
+ }) {
+   const reduced = useReducedMotion();
+@@ -874,23 +889,38 @@ export function SosSheet({
+             <Text style={styles.sosNote}>{strings.holdNote}</Text>
+           </>
+         )}
++        {state === 'queued' && (
++          <>
++            {/* Offline law: queued = pending. NO acknowledgment is shown or
++                reachable — nothing was sent, so nothing was seen. */}
++            <Text style={styles.sosSheetTitle}>{strings.queued}</Text>
++            <Text style={styles.sosSheetHint}>{strings.queuedHint}</Text>
++            <Pressable style={styles.sosCancel} onPress={onCancel} accessibilityRole="button">
++              <Text style={styles.sosCancelText}>{strings.close}</Text>
++            </Pressable>
++          </>
++        )}
+         {state === 'raised' && (
+           <>
+             <Text style={styles.sosSheetTitle}>{strings.raised}</Text>
+             <Text style={styles.sosSheetHint}>{strings.raisedHint}</Text>
++            <SosSandboxAck label={strings.previewAck} onPress={onSandboxAck} />
+           </>
+         )}
+-        {state === 'ack' && (
++        {state === 'escalated' && (
+           <>
+-            <Text style={styles.sosSheetTitleAmber}>{`${strings.raised} · ${ackTime}`}</Text>
+-            <Text style={styles.sosSheetHint}>{strings.ackHint}</Text>
++            <Text style={styles.sosSheetTitleAmber}>{strings.escalated}</Text>
++            <Text style={styles.sosSheetHint}>{strings.escalatedHint}</Text>
++            {/* Transport unbound — named as PENDING, never a faked send. */}
++            <Text style={styles.sosNote}>{strings.transportPending}</Text>
++            <SosSandboxAck label={strings.previewAck} onPress={onSandboxAck} />
+           </>
+         )}
+-        {state === 'enroute' && (
++        {state === 'acknowledged' && (
+           <>
+-            <Text style={styles.sosSheetTitleAmber}>{strings.enroute}</Text>
+-            <Text style={styles.sosSheetHint}>{strings.enrouteHint}</Text>
+-            <Pressable style={({ pressed }) => [styles.sosSafe, pressed && styles.pressed]} onPress={onClose} accessibilityRole="button">
++            <Text style={styles.sosSheetTitleAmber}>{strings.acknowledged}</Text>
++            <Text style={styles.sosSheetHint}>{strings.acknowledgedHint}</Text>
++            <Pressable style={({ pressed }) => [styles.sosSafe, pressed && styles.pressed]} onPress={onSafe} accessibilityRole="button">
+               <Text style={styles.sosSafeText}>{strings.safe}</Text>
+             </Pressable>
+           </>
+@@ -899,7 +929,7 @@ export function SosSheet({
+           <>
+             <Text style={styles.sosSheetTitle}>{strings.over}</Text>
+             <Text style={styles.sosSheetHint}>{strings.overHint}</Text>
+-            <Pressable style={styles.sosCancel} onPress={onCancel} accessibilityRole="button">
++            <Pressable style={styles.sosCancel} onPress={onClose} accessibilityRole="button">
+               <Text style={styles.sosCancelText}>{strings.close}</Text>
+             </Pressable>
+           </>
+@@ -909,6 +939,22 @@ export function SosSheet({
+   );
+ }
+ 
++/* The dispatch/network response arriving — a SANDBOX stand-in, NOT the rider's
++ * own hand. Clearly marked « (aperçu) » and dashed so it can never read as the
++ * rider self-acknowledging; it drives the store's acknowledgeSos, which throws
++ * on a queued incident. The live inbound ack replaces this at assembly. */
++function SosSandboxAck({ label, onPress }: { label: string; onPress: () => void }) {
++  return (
++    <Pressable
++      style={({ pressed }) => [styles.sosPreviewAck, pressed && styles.pressed]}
++      onPress={onPress}
++      accessibilityRole="button"
++    >
++      <Text style={styles.sosPreviewAckText}>{label}</Text>
++    </Pressable>
++  );
++}
++
+ /* Sealed / custody badge — the « scellé » proof language, ownable across the
+  * ecosystem (vérifié · scellé · livré par Séra). */
+ export function SealMark({ code, label }: { code: string; label: string }) {
+@@ -1219,6 +1265,10 @@ const styles = StyleSheet.create({
+   sosNote: { ...textOf(T.caption), color: C.onInk, opacity: interaction.disabledOpacity + 0.15 },
+   sosSafe: { borderWidth: interaction.hairline.strong, borderColor: C.onInk, minHeight: touch.minTargetPx, borderRadius: radius.button, alignItems: 'center', justifyContent: 'center', marginTop: spacing.md },
+   sosSafeText: { ...textOf(T.label), color: C.onInk, letterSpacing: T.label.ls, textTransform: 'uppercase' },
++  // The sandbox « (aperçu) » ack stand-in: dashed + dimmed so it can never be
++  // mistaken for the rider's own action or a real inbound acknowledgment.
++  sosPreviewAck: { borderWidth: interaction.hairline.strong, borderColor: C.onInk, borderStyle: 'dashed', minHeight: touch.minTargetPx, borderRadius: radius.button, alignItems: 'center', justifyContent: 'center', marginTop: spacing.sm, opacity: interaction.disabledOpacity + 0.25 },
++  sosPreviewAckText: { ...textOf(T.labelXS), color: C.onInk, letterSpacing: T.labelXS.ls, textTransform: 'uppercase' },
+ 
+   sealMark: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, borderWidth: interaction.selectedBorderPx, borderColor: C.ink, padding: spacing.md, backgroundColor: C.accentTint },
+   sealCode: { ...textOf(T.title), color: C.ink, fontVariant: ['tabular-nums'], letterSpacing: T.label.ls, flex: 1 },
+diff --git a/apps/rider-app/test/sos-drill.test.ts b/apps/rider-app/test/sos-drill.test.ts
+new file mode 100644
+index 0000000..083970f
+--- /dev/null
++++ b/apps/rider-app/test/sos-drill.test.ts
+@@ -0,0 +1,193 @@
++import { readFileSync } from 'node:fs';
++import { join } from 'node:path';
++import { describe, expect, it } from 'vitest';
++import {
++  POLICY_CHECK_IDS,
++  type PolicyCheckId,
++} from '../src/custody-flow.js';
++import { SOS_EVENTS } from '../src/safety.js';
++import {
++  acknowledgeSos,
++  beginPickup,
++  clearSos,
++  createDemoWorld,
++  deliverQueuedSos,
++  passVerification,
++  raiseSos,
++  registerSeal,
++} from '../src/demo/store.js';
++
++/**
++ * WO-6.3 SOS drill (SE8). The safety path proven, not claimed:
++ *  (a) the FULL path emits ONLY the three canon events and acknowledges;
++ *  (b) out-of-hours escalates to the founder and acknowledges;
++ *  (c) OFFLINE NEVER LIES — a queued incident is UNACKNOWLEDGEABLE (throws)
++ *      until the network delivers it;
++ *  (d) custody is preserved — raising an SOS moves NO course (no orphan);
++ *  (e) the location law — a coarse fix attaches IFF the rider is on shift;
++ *  (f) NO franc anywhere in the safety surface.
++ */
++
++const RIDER = 'rider-moussa-demo';
++const allChecks = (): Partial<Record<PolicyCheckId, boolean>> =>
++  Object.fromEntries(POLICY_CHECK_IDS.map((id) => [id, true]));
++
++const CANON_EVENTS = ['safety.sos_created.v1', 'safety.sos_acknowledged.v1', 'incident.opened.v1'];
++
++describe('SOS drill — the honest safety path (SE8)', () => {
++  it('(a) FULL PATH online in-hours: raised → the created + incidentOpened events → dispatcher ack → acknowledged (only canon events)', () => {
++    const world = createDemoWorld();
++    const raised = raiseSos(world, {
++      riderId: RIDER,
++      onShift: true,
++      activeCourseId: null,
++      connectivity: 'online',
++      hours: 'in_hours',
++    });
++    expect(raised.status).toBe('raised');
++    expect(raised.responder).toBe('dispatcher');
++    // exactly the canon created + incidentOpened, no invented name
++    expect(raised.events).toEqual([SOS_EVENTS.created, SOS_EVENTS.incidentOpened]);
++    expect(raised.events).toContain('safety.sos_created.v1');
++    expect(raised.events).toContain('incident.opened.v1');
++    expect(raised.acknowledgedAt).toBeNull();
++
++    const acked = acknowledgeSos(world, 'dispatcher');
++    expect(acked.status).toBe('acknowledged');
++    expect(acked.acknowledgedBy).toBe('dispatcher');
++    expect(acked.acknowledgedAt).not.toBeNull();
++    expect(acked.events).toContain('safety.sos_acknowledged.v1');
++    // every emitted event is one of the three canon names — nothing invented
++    expect(acked.events.every((e) => CANON_EVENTS.includes(e))).toBe(true);
++    expect(world.incident).toBe(acked);
++  });
++
++  it('(b) OUT-OF-HOURS: raised escalates to the founder, and the founder acknowledges', () => {
++    const world = createDemoWorld();
++    const raised = raiseSos(world, {
++      riderId: RIDER,
++      onShift: true,
++      activeCourseId: null,
++      connectivity: 'online',
++      hours: 'out_of_hours',
++    });
++    expect(raised.status).toBe('escalated');
++    expect(raised.responder).toBe('founder');
++    expect(raised.events).toEqual([SOS_EVENTS.created, SOS_EVENTS.incidentOpened]);
++
++    const acked = acknowledgeSos(world, 'founder');
++    expect(acked.status).toBe('acknowledged');
++    expect(acked.acknowledgedBy).toBe('founder');
++    expect(acked.events).toContain('safety.sos_acknowledged.v1');
++  });
++
++  it('(c) OFFLINE NEVER LIES: a queued incident emits NOTHING and is UNACKNOWLEDGEABLE until delivered', () => {
++    const world = createDemoWorld();
++    const queued = raiseSos(world, {
++      riderId: RIDER,
++      onShift: true,
++      activeCourseId: null,
++      connectivity: 'offline',
++      hours: 'in_hours',
++    });
++    expect(queued.status).toBe('queued');
++    expect(queued.events).toEqual([]); // nothing emitted — nothing was sent
++
++    // the honesty law, structural: you cannot acknowledge what has not arrived
++    expect(() => acknowledgeSos(world, 'dispatcher')).toThrow();
++    expect(world.incident?.status).toBe('queued'); // still queued — no fake ack
++
++    // reconnect: NOW it is delivered and emits the created + incidentOpened events
++    const delivered = deliverQueuedSos(world);
++    expect(delivered.status).toBe('raised');
++    expect(delivered.events).toEqual([SOS_EVENTS.created, SOS_EVENTS.incidentOpened]);
++
++    // only AFTER delivery can it be acknowledged
++    const acked = acknowledgeSos(world, 'dispatcher');
++    expect(acked.status).toBe('acknowledged');
++    expect(acked.events).toContain('safety.sos_acknowledged.v1');
++
++    // and an already-acknowledged incident is unacknowledgeable again
++    expect(() => acknowledgeSos(world, 'dispatcher')).toThrow();
++    // a delivered/raised incident cannot be re-delivered
++    const w2 = createDemoWorld();
++    raiseSos(w2, { riderId: RIDER, onShift: true, activeCourseId: null, connectivity: 'online', hours: 'in_hours' });
++    expect(() => deliverQueuedSos(w2)).toThrow();
++  });
++
++  it('(d) CUSTODY PRESERVED: raising an SOS mid-custody moves NO course — the package is not orphaned', () => {
++    const world = createDemoWorld();
++    const id = 'course-awa';
++    beginPickup(world, id);
++    passVerification(world, id, allChecks());
++    registerSeal(world, id); // custody has begun; the course sits at 'evidence'
++    const before = structuredClone(world.courses.find((c) => c.id === id)!);
++    const courseCountBefore = world.courses.length;
++
++    raiseSos(world, {
++      riderId: RIDER,
++      onShift: true,
++      activeCourseId: id,
++      connectivity: 'online',
++      hours: 'in_hours',
++    });
++
++    const after = world.courses.find((c) => c.id === id)!;
++    expect(after.step).toBe(before.step); // byte-unchanged custody step
++    expect(after).toEqual(before); // the whole course is untouched
++    expect(world.courses).toHaveLength(courseCountBefore); // still exists — not orphaned
++    expect(world.incident?.activeCourseId).toBe(id); // the incident references it, does not own it
++  });
++
++  it('(e) LOCATION LAW (SE-I08): a coarse fix attaches IFF the rider is on shift', () => {
++    const onShiftWorld = createDemoWorld();
++    const onShift = raiseSos(onShiftWorld, {
++      riderId: RIDER,
++      onShift: true,
++      activeCourseId: null,
++      connectivity: 'online',
++      hours: 'in_hours',
++    });
++    expect(typeof onShift.coarseLocation).toBe('string');
++    expect(onShift.coarseLocation).not.toBeNull();
++
++    const offShiftWorld = createDemoWorld();
++    const offShift = raiseSos(offShiftWorld, {
++      riderId: RIDER,
++      onShift: false,
++      activeCourseId: null,
++      connectivity: 'online',
++      hours: 'in_hours',
++    });
++    expect(offShift.coarseLocation).toBeNull(); // off shift → no location, ever
++  });
++
++  it('clearSos resets the incident (the rider is safe / the demo resets)', () => {
++    const world = createDemoWorld();
++    raiseSos(world, { riderId: RIDER, onShift: true, activeCourseId: null, connectivity: 'online', hours: 'in_hours' });
++    expect(world.incident).not.toBeNull();
++    clearSos(world);
++    expect(world.incident).toBeNull();
++  });
++
++  it('(f) NO franc anywhere on the safety surface (rule source + SOS catalog strings)', () => {
++    // A rendered franc amount: digits, a real separator (space/nbsp/nnbsp), then
++    // the currency unit — or the word franc. Built with \u escapes so the source
++    // stays pure ASCII; mirrors the WO-6.1 no-franc scan.
++    const SEP = '[\\d.,\\u00a0\\u202f ]';
++    const FRANC = new RegExp(`\\d${SEP}*[\\u00a0\\u202f ](?:FCFA|CFA|F)\\b|\\bfrancs?\\b`, 'i');
++    const appDir = join(import.meta.dirname, '..');
++    const safety = readFileSync(join(appDir, 'src/safety.ts'), 'utf8')
++      .replace(/\/\*[\s\S]*?\*\//g, '')
++      .replace(/\/\/.*$/gm, '');
++    expect(FRANC.exec(safety), 'safety.ts carries a franc amount').toBeNull();
++
++    const catalog = JSON.parse(readFileSync(join(appDir, 'i18n/catalog.json'), 'utf8')) as {
++      key: string;
++      fr: string;
++    }[];
++    for (const entry of catalog.filter((e) => e.key.startsWith('sos.'))) {
++      expect(FRANC.exec(entry.fr), `${entry.key} carries a franc amount: ${entry.fr}`).toBeNull();
++    }
++  });
++});
+diff --git a/apps/rider-app/test/wo6-invariants.test.ts b/apps/rider-app/test/wo6-invariants.test.ts
+index 7873994..5b830f9 100644
+--- a/apps/rider-app/test/wo6-invariants.test.ts
++++ b/apps/rider-app/test/wo6-invariants.test.ts
+@@ -123,8 +123,11 @@ describe('Money — Séra emits signals, never money: NO franc amount anywhere',
+     join(appDir, 'App.tsx'),
+     join(appDir, 'src/ui/kit.tsx'),
+     join(appDir, 'i18n/catalog.json'),
++    // WO-6.3 — the safety surfaces join the no-franc scan (Séra emits signals).
++    join(appDir, 'src/safety.ts'),
+     join(repoRoot, 'apps/dispatch-console/src/main.ts'),
+     join(repoRoot, 'apps/dispatch-console/i18n/catalog.json'),
++    join(repoRoot, 'apps/dispatch-console/src/sandbox-incident.ts'),
+   ];
+   // A rendered franc amount: a number, then a REAL separator (space/nbsp/nnbsp),
+   // then the currency unit \u2014 \u00ab 12 500 F \u00bb, \u00ab 5 000 FCFA \u00bb \u2014 or the word franc.
+diff --git a/docs/runbooks/SOS-DRILL.md b/docs/runbooks/SOS-DRILL.md
+new file mode 100644
+index 0000000..1fc69f6
+--- /dev/null
++++ b/docs/runbooks/SOS-DRILL.md
+@@ -0,0 +1,88 @@
++# SOS Drill — Séra rider safety (SE8)
++
++**Purpose.** Prove, before pilot, that a rider's SOS is answered — by the right person, in time, without ever faking an acknowledgment, and without ever putting the package's custody at risk. Run this drill with a real phone and a real second person (dispatcher in-hours, founder out-of-hours).
++
++> **Authority:** Sera-Build-Spec SE8 ("SOS visible from every rider flow; ack within SLA; secure/quarantine custody; **live drill before pilot**"). Location law: Sera-Build-Spec §12 / SE-I08 ("location only on shift/task"). Custody law: package never unowned; exactly one current custodian. Offline law (Ten Laws #7): queued = pending, never done.
++
++---
++
++## Open decisions in force (safest-defaults applied)
++
++| Item | Status | What this drill uses |
++| --- | --- | --- |
++| **Ack SLA value** | ⏳ open (Sera-Build-Spec:185 / Sera-Building-Plan:76 "ack within SLA (named)") | **CTO safest-default: 60 s in-hours ack target**, stored as versioned policy data `SOS_ACK_SLA_POLICY` (`sos-ack-sla.v1`, `inHoursTargetSeconds: 60`). Tunable at pilot — never silently. This is a **target the drill measures**, not a timer that fabricates an ack. |
++| **Out-of-hours escalation transport** | ⏳ open founder item (WO-6.3 §2) | The **path and state are built**; the transport channel (SMS / push / call) is **unbound** — `ESCALATION_TRANSPORT = { status: 'pending', channel: null }`. The rider app names it as pending; it never claims a send that did not happen. **Founder: choose the channel before pilot.** |
++
++---
++
++## Who answers (founder ruling, 2026-07-12)
++
++- **In dispatch hours → the DISPATCHER answers.** The dispatch console is the surface. The raised incident lands at the **top** of the console, loudest, with rider identity, reference, active course, coarse location (on-shift only), and the **custody line** (the rider still holds the package). The dispatcher taps **« J'ai vu — je réponds »** → the incident shows acknowledged.
++- **Out of dispatch hours → the SOS escalates to the FOUNDER's phone.** The rider app shows the escalated state and names the transport as **pending** (channel not yet bound). The founder acknowledges by the agreed channel once bound.
++
++Both paths exist in code and both must be exercised in the drill.
++
++---
++
++## Preconditions
++
++- Rider test device with the Séra rider app (Expo Go preview is fine).
++- A second person able to act as **dispatcher** (console open) and, separately, as **founder** (phone).
++- A stopwatch for the ack-time measurement.
++- Agree who plays which role for each pass.
++
++---
++
++## Pass 1 — In-hours, online (dispatcher answers) — target ack ≤ 60 s
++
++1. On the rider device, put the rider **on shift** (Service → « Prendre la route » → confirmed « En service »).
++2. Open any course screen (so there is an active course to attach).
++3. Tap **SOS** (bottom-right, reachable from every screen). The sheet opens on **« SOS »** (confirm). *Opening does not fire.*
++4. **Hold** « MAINTENIR POUR DÉCLENCHER ». The sheet moves to **« Alerte envoyée. »** — **start the stopwatch now.**
++5. On the dispatch console: confirm the SOS alert is at the **top**, loudest, and shows: rider, reference, active course, **Localisation : …** (present, because on shift), and **« Le colis reste avec le livreur. La garde ne bouge pas. »**
++6. Dispatcher taps **« J'ai vu — je réponds »**. **Stop the stopwatch.**
++7. On the rider device the sheet shows **« On vous a vu. »** with **« Je suis en sécurité — clore »**.
++8. Rider taps close → **« Clos. »** → « Fermer ».
++
++**Pass 1 passes iff:**
++- The ack appeared on the rider device **only after** the dispatcher acted (never on a timer).
++- Measured ack time is recorded; **≤ 60 s** meets the current target (⏳ tunable).
++- Coarse location was present on the console.
++- The active course's custody step did **not** change at any point; the package still shows exactly one custodian (the rider).
++
++## Pass 2 — Out-of-hours, online (founder's phone) — escalation path
++
++1. Repeat steps 1–4 of Pass 1 in the out-of-hours configuration (`SANDBOX_DISPATCH_HOURS = 'out_of_hours'` in the live drill build).
++2. The rider sheet shows **« Hors des heures — on alerte le responsable. »** and the honest transport line **« Canal d'alerte au responsable : en cours de branchement (SMS ou appel). »**
++3. The incident's responder is **founder**. Founder acknowledges via the agreed channel (once bound). In the sandbox, the founder/dispatcher stand-in drives the acknowledgment.
++4. Rider device shows **« On vous a vu. »** → close.
++
++**Pass 2 passes iff:** the escalated state named the transport as **pending** (no fake send), the responder was the founder, and the ack appeared only after a real response.
++
++## Pass 3 — Offline (queued never lies)
++
++1. Put the rider device **offline** (drill build: `CONNECTIVITY = 'offline'`).
++2. Trigger SOS as above (hold to fire).
++3. The rider sheet shows **« SOS en attente du réseau. »** and **« Rien ne part tant que le réseau ne revient pas. On ne fait pas semblant. »**
++4. Confirm there is **no acknowledgment control** and **no acknowledged state** — a queued SOS cannot be acknowledged.
++5. Restore the network. On reconnect, the queued SOS is delivered (`deliverQueuedSos`) and only then can it be acknowledged.
++
++**Pass 3 passes iff:** the offline SOS never showed an acknowledgment that had not happened, and an ack became possible **only after** the network delivered it.
++
++---
++
++## Global pass/fail criteria (all passes)
++
++- **No fake ack, ever.** An acknowledgment is shown only after `acknowledgeSos` runs on a live incident. A queued incident throws if an ack is attempted.
++- **Location law.** Coarse location is attached **only** when the rider is on shift; off-shift it is absent (« Localisation non disponible (hors service) »).
++- **Custody preserved.** Raising an SOS changes no course's custody step and orphans no package; exactly one current custodian throughout.
++- **Only canon events.** The incident emits only `safety.sos_created.v1`, `incident.opened.v1`, and (on ack) `safety.sos_acknowledged.v1`.
++- **Both answering paths exercised** — dispatcher (in-hours) and founder (out-of-hours).
++
++## Record for each pass
++
++Date · rider · responder · in/out of hours · online/offline · **measured ack time** · location present? (Y/N and matches shift state) · custody step unchanged? (Y/N) · notes.
++
++---
++
++*Automated backing:* `apps/rider-app/test/sos-drill.test.ts` (the full path, out-of-hours, offline-never-lies, custody-preserved, location-law, no-franc) and `apps/dispatch-console/e2e/shell.spec.ts` (incident-at-top + dispatcher ack; queued + disabled ack). Gallery states: `console-sos-raised`, `console-sos-acknowledged`, `console-sos-queued`.
+diff --git a/gallery/states.json b/gallery/states.json
+index 701916c..49fd079 100644
+--- a/gallery/states.json
++++ b/gallery/states.json
+@@ -44,6 +44,33 @@
+           "caption": "Course remise dans la file — le livreur n'a pas accepté à temps (5 min) : l'état est dit, la carte revient"
+         }
+       ]
++    },
++    {
++      "title": "SOS — sécurité du livreur (SE8)",
++      "states": [
++        {
++          "id": "console-sos-raised",
++          "actions": [
++            "sos-raise"
++          ],
++          "caption": "SOS déclenché — l'alerte est en HAUT, la plus forte : identité du livreur, référence, course en cours, localisation grossière (en service seulement), et la ligne de garde — le colis reste avec le livreur (jamais orphelin). Levier « J'ai vu — je réponds »."
++        },
++        {
++          "id": "console-sos-acknowledged",
++          "actions": [
++            "sos-raise",
++            "sos-ack"
++          ],
++          "caption": "SOS pris en charge — le dispatcher a répondu : « Vu. Réponse en cours. » L'accusé passe par acknowledgeSos (jamais un faux)."
++        },
++        {
++          "id": "console-sos-queued",
++          "actions": [
++            "sos-raise-queued"
++          ],
++          "caption": "SOS hors réseau — « En attente du réseau » : le levier d'accusé est DÉSACTIVÉ (on n'accuse pas un SOS qui n'est pas encore arrivé)."
++        }
++      ]
+     }
+   ],
+   "gaps": [
