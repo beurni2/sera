@@ -23,16 +23,23 @@ mkdirSync(imgDir, { recursive: true });
 for (const group of manifest.groups) {
   for (const state of group.states) {
     test(`gallery: ${state.id}`, async ({ page }) => {
-      // Determinism (WO-6.1, paying the named byte-stability debt): fixed
-      // viewport (test.use above) + reduced motion, so a capture is a function
-      // of the state alone. The PNGs are a build artifact (gitignored), never a
-      // tracked binary in the gate tree.
+      // NAME THE CONSUMER (WO-6.4, CTO Q3): NOTHING byte-compares these PNGs.
+      // This spec asserts a capture SUCCEEDS; build-gallery.mjs asserts the image
+      // EXISTS; there is no toHaveScreenshot / snapshot baseline anywhere and no
+      // PNG is tracked (they are gitignored). So byte-equality is a property
+      // nothing relies on — the WO-4.1 hazard (a *tracked* PNG re-encoding and
+      // dirtying the tree) is gone because the COMPARISON is gone, not because
+      // the bytes are stable.
+      //
+      // The fixed clock + reduced motion below are here ONLY to keep the
+      // gallery's VISIBLE content deterministic for the founder's eye (a lease
+      // HH:MM is a function of the fixed demo time, not the capture minute) — NOT
+      // to guarantee byte-equality. For the record, a two-run diff shows 7/8
+      // states byte-identical and the clock-requeue state (`console-course-remise`)
+      // carrying a ~7px sub-pixel AA flip a fixed clock does not remove; since no
+      // gate can see those bytes, that flip is irrelevant here.
+      await page.clock.install({ time: new Date('2026-07-12T09:00:00Z') });
       await page.emulateMedia({ reducedMotion: 'reduce' });
-      // Clock-driven states (the ack-deadline requeue) need the mocked clock
-      // installed BEFORE the page scripts start their interval timers.
-      if (state.actions.some((a) => a.startsWith('clock-'))) {
-        await page.clock.install();
-      }
       await page.goto('/');
       for (const action of state.actions) {
         if (action === 'assign') {

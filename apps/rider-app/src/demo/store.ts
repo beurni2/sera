@@ -63,7 +63,7 @@ export interface DemoCourse {
  * step and its ONE current custodian. `hours` is stored so a queued incident's
  * reconnect (deliverQueuedSos) takes the branch it was raised under.
  */
-export interface SosIncident {
+interface SosIncidentBase {
   readonly id: string;
   readonly correlationId: string;
   readonly riderId: string;
@@ -72,14 +72,24 @@ export interface SosIncident {
   readonly coarseLocation: string | null;
   readonly onShift: boolean;
   readonly hours: DispatchHours;
-  readonly responder: SosResponder;
   readonly status: SosStatus;
   readonly raisedAt: string;
   readonly acknowledgedAt: string | null;
-  readonly acknowledgedBy: SosResponder | null;
   /** The canonical event names emitted so far — [] while offline/queued. */
   readonly events: string[];
 }
+
+/**
+ * WO-6.4 (ruling ④) — RESPONDER-MATCH, structural. The responder identity is
+ * the DISCRIMINANT: an incident is a dispatcher-incident OR a founder-incident,
+ * and `acknowledgedBy` can ONLY ever be that SAME responder (or null while
+ * unacknowledged). A record that names a DIFFERENT human than its own responder
+ * is not a representable value of this type — the safety record cannot lie about
+ * who answered. Enforcement is BOTH here (type) and in acknowledgeSos (runtime).
+ */
+export type SosIncident =
+  | (SosIncidentBase & { readonly responder: 'dispatcher'; readonly acknowledgedBy: 'dispatcher' | null })
+  | (SosIncidentBase & { readonly responder: 'founder'; readonly acknowledgedBy: 'founder' | null });
 
 export interface DemoWorld {
   courses: DemoCourse[];
@@ -382,7 +392,7 @@ export function raiseSos(
   const { riderId, onShift, activeCourseId, connectivity, hours } = params;
   const raisedAt = new Date().toISOString();
   const queued = connectivity === 'offline';
-  const incident: SosIncident = {
+  const base: SosIncidentBase = {
     id: `sos-${riderId}-${raisedAt}`,
     correlationId: `corr-sos-${riderId}-${raisedAt}`,
     riderId,
@@ -391,14 +401,18 @@ export function raiseSos(
     coarseLocation: onShift ? SANDBOX_SOS_COARSE_LOCATION : null,
     onShift,
     hours,
-    responder: responderForHours(hours),
     // Offline = queued = pending: no delivery, nothing emitted.
     status: queued ? 'queued' : raisedStatusForHours(hours),
     raisedAt,
     acknowledgedAt: null,
-    acknowledgedBy: null,
     events: queued ? [] : [SOS_EVENTS.created, SOS_EVENTS.incidentOpened],
   };
+  // The responder literal selects the discriminated arm — acknowledgedBy starts
+  // null (unacknowledged) and can only ever become this responder (WO-6.4 ④).
+  const incident: SosIncident =
+    responderForHours(hours) === 'dispatcher'
+      ? { ...base, responder: 'dispatcher', acknowledgedBy: null }
+      : { ...base, responder: 'founder', acknowledgedBy: null };
   world.incident = incident;
   return incident;
 }
@@ -426,21 +440,32 @@ export function deliverQueuedSos(world: DemoWorld): SosIncident {
  * The honesty law, STRUCTURAL: an acknowledgment can land ONLY on a LIVE
  * incident (raised or escalated). A queued (offline) or already-acknowledged
  * incident is UNACKNOWLEDGEABLE and THROWS — on a safety path a fake ack is the
- * worst possible bug. The responder that answered is recorded and the
- * acknowledged event is emitted.
+ * worst possible bug.
+ *
+ * WO-6.4 (ruling ④) RESPONDER-MATCH: only the incident's OWN responder may
+ * acknowledge it. A mismatched `by` (a dispatcher answering a founder-escalated
+ * incident, or vice-versa) THROWS — the incident is left byte-unchanged, no
+ * partial mutation. The credited responder is the incident's responder itself
+ * (single source of truth), so the safety record can never name the wrong human.
  */
 export function acknowledgeSos(world: DemoWorld, by: SosResponder): SosIncident {
   const incident = world.incident;
   if (incident === null || (incident.status !== 'raised' && incident.status !== 'escalated')) {
     throw new Error(`cannot acknowledge an SOS at '${incident?.status ?? 'none'}' — only 'raised' or 'escalated'`);
   }
-  const acknowledged: SosIncident = {
-    ...incident,
-    status: 'acknowledged',
-    acknowledgedBy: by,
-    acknowledgedAt: new Date().toISOString(),
-    events: [...incident.events, SOS_EVENTS.acknowledged],
-  };
+  if (by !== incident.responder) {
+    throw new Error(
+      `only the '${incident.responder}' may acknowledge this SOS — got '${by}' (WO-6.4 ④: the record names the responder who answered)`,
+    );
+  }
+  // The discriminant narrows the arm; acknowledgedBy is credited to the
+  // incident's own responder (== by, guarded above) — never a supplied mismatch.
+  const acknowledgedAt = new Date().toISOString();
+  const events = [...incident.events, SOS_EVENTS.acknowledged];
+  const acknowledged: SosIncident =
+    incident.responder === 'dispatcher'
+      ? { ...incident, responder: 'dispatcher', status: 'acknowledged', acknowledgedBy: 'dispatcher', acknowledgedAt, events }
+      : { ...incident, responder: 'founder', status: 'acknowledged', acknowledgedBy: 'founder', acknowledgedAt, events };
   world.incident = acknowledged;
   return acknowledged;
 }

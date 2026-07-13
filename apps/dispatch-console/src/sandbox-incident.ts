@@ -16,7 +16,7 @@ export const SOS_EVENTS = {
   incidentOpened: 'incident.opened.v1',
 } as const;
 
-export interface IncidentView {
+interface IncidentViewBase {
   id: string;
   correlationId: string;
   riderId: string;
@@ -27,22 +27,41 @@ export interface IncidentView {
   coarseLocation: string | null;
   onShift: boolean;
   hours: 'in_hours' | 'out_of_hours';
-  responder: SosResponder;
   status: SosStatus;
-  acknowledgedBy: SosResponder | null;
 }
+
+/**
+ * WO-6.4 (ruling ④) — RESPONDER-MATCH, structural, mirroring the rider store.
+ * The responder identity is the DISCRIMINANT: `acknowledgedBy` can ONLY ever be
+ * this incident's OWN responder (or null while unacknowledged). A console record
+ * that credits a different human than its responder is not a representable value.
+ */
+export type IncidentView =
+  | (IncidentViewBase & { responder: 'dispatcher'; acknowledgedBy: 'dispatcher' | null })
+  | (IncidentViewBase & { responder: 'founder'; acknowledgedBy: 'founder' | null });
 
 /**
  * The honesty law, mirrored on the console: a dispatcher can acknowledge ONLY a
  * LIVE incident (raised or escalated). A queued incident has NOT arrived — you
  * cannot ack what has not arrived; the guard THROWS, exactly like the rider
  * store's acknowledgeSos. The acknowledged event is the canon name.
+ *
+ * WO-6.4 (ruling ④): only the incident's OWN responder may acknowledge it — a
+ * mismatched `by` THROWS, and the credited responder is the incident's own
+ * (single source of truth), so the console record can never name the wrong human.
  */
 export function acknowledgeSos(incident: IncidentView, by: SosResponder): IncidentView {
   if (incident.status !== 'raised' && incident.status !== 'escalated') {
     throw new Error(`cannot acknowledge an SOS at '${incident.status}' — only 'raised' or 'escalated'`);
   }
-  return { ...incident, status: 'acknowledged', acknowledgedBy: by };
+  if (by !== incident.responder) {
+    throw new Error(
+      `only the '${incident.responder}' may acknowledge this SOS — got '${by}' (WO-6.4 ④: the record names the responder who answered)`,
+    );
+  }
+  return incident.responder === 'dispatcher'
+    ? { ...incident, responder: 'dispatcher', status: 'acknowledged', acknowledgedBy: 'dispatcher' }
+    : { ...incident, responder: 'founder', status: 'acknowledged', acknowledgedBy: 'founder' };
 }
 
 /** Whether the ack lever may be enabled — false for a not-yet-arrived incident. */
