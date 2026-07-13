@@ -21,6 +21,8 @@ import {
 } from './sandbox-board';
 import { deriveDeskRow } from './exceptions';
 import { SANDBOX_DESK_ROUTINE, SANDBOX_DESK_WITH_INCIDENT, type DeskEntry } from './sandbox-exceptions';
+import { deriveBreakGlassBoard } from './break-glass';
+import { SANDBOX_BREAK_GLASS, SANDBOX_BREAK_GLASS_RIDER } from './sandbox-break-glass';
 import { t } from './i18n';
 
 /**
@@ -187,7 +189,7 @@ style.textContent = `
     color: var(--ink);
     padding: 0 var(--space-sm);
   }
-  button.assign, button.done {
+  button.assign, button.done, button.bg-ground {
     min-height: var(--touch);
     padding: 0 var(--space-xl);
     border: 0;
@@ -323,6 +325,19 @@ style.textContent = `
   .desk-evidence { margin: 0; color: var(--muted); font-size: var(--type-label); font-weight: ${typo.scale.label.wght}; letter-spacing: var(--ls-label); text-transform: uppercase; }
   .desk-incident-note { margin: var(--space-xs) 0 0 0; color: var(--danger); font-size: var(--type-body); }
   .desk-never-unowned { margin: 0; color: var(--ink); background: var(--sand); border-left: var(--hair-strong) solid var(--accent-strong); padding: var(--space-xs) var(--space-sm); font-size: var(--type-body); }
+  /* WO-6.9-e break-glass — read-only state machine; the dispatcher holds the ground half only, issuing is elsewhere. */
+  .break-glass { border: var(--hair-strong) solid var(--ink); padding: var(--space-lg); display: grid; gap: var(--space-sm); }
+  .bg-rider { margin: 0; font-size: var(--type-title-lg); font-weight: ${typo.scale.titleLG.wght}; line-height: 1.1; }
+  .bg-meta { margin: 0; color: var(--muted); font-size: var(--type-label); font-weight: ${typo.scale.label.wght}; letter-spacing: var(--ls-label); text-transform: uppercase; }
+  .bg-reason { margin: 0; color: var(--ink); font-size: var(--type-body); }
+  .bg-steps { display: grid; gap: var(--space-xs); border: var(--hair) solid var(--hairline-strong); padding: var(--space-md); }
+  .bg-step { margin: 0; font-size: var(--type-body); color: var(--muted); }
+  .bg-step.done { color: var(--ink); }
+  .bg-step.current { color: var(--ink); font-weight: ${typo.scale.bodyStrong.wght}; }
+  .bg-step.pending { color: var(--muted); }
+  .bg-ground-done { margin: 0; color: var(--ink); background: var(--sand); border-left: var(--hair-strong) solid var(--accent-strong); padding: var(--space-xs) var(--space-sm); font-weight: ${typo.scale.bodyStrong.wght}; }
+  .bg-maker-checker { margin: 0; color: var(--ink); border-left: calc(var(--hair-strong) * 2) solid var(--accent-strong); padding: var(--space-xs) var(--space-sm); font-size: var(--type-body); }
+  .drill-status { margin: var(--space-md) 0 0 0; color: var(--muted); font-size: var(--type-label); font-weight: ${typo.scale.label.wght}; letter-spacing: var(--ls-label); text-transform: uppercase; }
 `;
 document.head.appendChild(style);
 
@@ -705,6 +720,77 @@ if (app) {
   deskDemo.append(deskRoutineBtn, deskIncidentBtn);
   main.append(deskHeading, deskSection, deskDemo);
 
+  // WO-6.9-e — the BREAK-GLASS honest shell (D5, PART 8 §5, the maker-checker
+  // seam). The dispatcher's surface: the HandoffAuthorization state machine
+  // RENDERED READ-ONLY (provider-confirm + issuance honestly « en attente »,
+  // E3-gated — no UI pretends the network confirmed), the dispatcher's GROUND-
+  // verification capture ONLY, and an explicit note that ISSUING is the payment
+  // operator's, NOT here (« nobody holds both halves »). The fourth secret
+  // (signature) and every franc are structurally absent from the view; NO issuing
+  // lever exists (proven in test/break-glass.test.ts). The one lever is the
+  // dispatcher's ground half — it never advances the authorization.
+  const bgHeading = document.createElement('h2');
+  bgHeading.textContent = t('console.bg_heading');
+  const bgSection = document.createElement('section');
+  bgSection.className = 'break-glass';
+  let bgGroundVerified = false;
+  const renderBreakGlass = () => {
+    bgSection.replaceChildren();
+    const board = deriveBreakGlassBoard(SANDBOX_BREAK_GLASS, bgGroundVerified);
+    const rider = document.createElement('p');
+    rider.className = 'bg-rider';
+    rider.textContent = SANDBOX_BREAK_GLASS_RIDER;
+    bgSection.appendChild(rider);
+    const meta = document.createElement('p');
+    meta.className = 'bg-meta';
+    meta.textContent = `${t('console.bg_source_label')} : ${t('console.bg_source_break_glass')} · ${t('console.bg_case_label')} : ${board.caseId}`;
+    bgSection.appendChild(meta);
+    const reason = document.createElement('p');
+    reason.className = 'bg-reason';
+    reason.textContent = `${t('console.bg_reason_label')} : ${t(board.reasonRef)}`;
+    bgSection.appendChild(reason);
+    // The HandoffAuthorization state machine — READ-ONLY. Later steps render
+    // « en attente »: provider-confirm and issuance are not the console's to reach.
+    const steps = document.createElement('div');
+    steps.className = 'bg-steps';
+    for (const step of board.steps) {
+      const row = document.createElement('p');
+      row.className = `bg-step ${step.status}`;
+      const mark = step.status === 'done' ? '✓ ' : step.status === 'current' ? '→ ' : '· ';
+      const suffix = step.status === 'pending' ? ` — ${t('console.bg_pending')}` : '';
+      row.textContent = `${mark}${t(`console.bg_state_${step.state}`)}${suffix}`;
+      steps.appendChild(row);
+    }
+    bgSection.appendChild(steps);
+    // The dispatcher's GROUND half — captured locally; it never advances the state.
+    if (board.groundVerified) {
+      const done = document.createElement('p');
+      done.className = 'bg-ground-done';
+      done.textContent = t('console.bg_ground_done');
+      bgSection.appendChild(done);
+    }
+    // Maker-checker, stated plainly: issuing is the operator's, never here.
+    const mc = document.createElement('p');
+    mc.className = 'bg-maker-checker';
+    mc.textContent = t('console.bg_maker_checker');
+    bgSection.appendChild(mc);
+  };
+  renderBreakGlass();
+  // The ONLY lever here is the dispatcher's GROUND verification — there is NO
+  // issuing lever (issuing is the payment operator's, in the platform ops surface).
+  const bgControls = document.createElement('section');
+  bgControls.className = 'sos-demo-controls';
+  const bgGroundBtn = document.createElement('button');
+  bgGroundBtn.className = 'bg-ground';
+  bgGroundBtn.textContent = t('console.bg_ground_action');
+  bgGroundBtn.addEventListener('click', () => {
+    bgGroundVerified = true;
+    renderBreakGlass();
+    bgGroundBtn.hidden = true;
+  });
+  bgControls.append(bgGroundBtn);
+  main.append(bgHeading, bgSection, bgControls);
+
   // WO-2.2 — follow-up: dwell surfaced (D20: recorded and shown, never
   // enforced) + the delivery-outcome timeline on the canonical families.
   const followHeading = document.createElement('h2');
@@ -769,6 +855,15 @@ if (app) {
   });
   sosDemo.append(raiseBtn, raiseQueuedBtn);
   main.append(sosDemo);
+
+  // WO-6.9-e — D6 drill status: the SOS raise→ack path above IS the drill
+  // mechanism (WO-6.3, verified present). This line is HONEST about the pre-pilot
+  // drill — « à faire avant le pilote » — never a fake « réussi ». A live SOS +
+  // dispatcher-response drill must PASS before the pilot (PART 8 §6).
+  const drillStatus = document.createElement('p');
+  drillStatus.className = 'drill-status';
+  drillStatus.textContent = t('console.drill_status');
+  main.append(drillStatus);
 
   // The REAL service-side deadline, ONE sweep for BOTH stores (WO-4.3).
   setInterval(() => {

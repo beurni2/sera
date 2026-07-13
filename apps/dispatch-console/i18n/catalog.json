@@ -228,6 +228,102 @@
     "screenClass": "label"
   },
   {
+    "key": "console.bg_heading",
+    "fr": "Remise exceptionnelle",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.bg_state_requested",
+    "fr": "Demande ouverte",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.bg_state_operator_verifying",
+    "fr": "L'opérateur vérifie",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.bg_state_provider_confirmed",
+    "fr": "Paiement confirmé",
+    "register": "money",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.bg_state_issued",
+    "fr": "Autorisation donnée",
+    "register": "money",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.bg_state_consumed",
+    "fr": "Remise faite",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.bg_pending",
+    "fr": "En attente",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.bg_source_label",
+    "fr": "Voie",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.bg_source_break_glass",
+    "fr": "Exceptionnelle",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.bg_case_label",
+    "fr": "Dossier",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.bg_reason_label",
+    "fr": "Motif",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "console.bg_reason_demo",
+    "fr": "Le réseau n'a pas confirmé à temps. L'opérateur vérifie le paiement à la main.",
+    "register": "money",
+    "screenClass": "status"
+  },
+  {
+    "key": "console.bg_ground_action",
+    "fr": "Je confirme la remise sur place",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "console.bg_ground_done",
+    "fr": "Remise vérifiée sur place.",
+    "register": "money",
+    "screenClass": "status"
+  },
+  {
+    "key": "console.bg_maker_checker",
+    "fr": "L'autorisation est donnée par l'opérateur de paiement, jamais ici.",
+    "register": "money",
+    "screenClass": "status"
+  },
+  {
+    "key": "console.drill_status",
+    "fr": "Exercice de réponse SOS : à faire avant le pilote.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
     "key": "console.done_action",
     "fr": "Marquer la course remise",
     "register": "neutral",

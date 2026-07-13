@@ -61,6 +61,8 @@ for (const group of manifest.groups) {
           await page.locator('button.board-demo-incident').click();
         } else if (action === 'desk-incident') {
           await page.locator('button.desk-demo-incident').click();
+        } else if (action === 'bg-ground') {
+          await page.locator('button.bg-ground').click();
         } else {
           throw new Error(`unknown gallery action: ${action}`);
         }
