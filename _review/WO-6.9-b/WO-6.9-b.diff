@@ -1,0 +1,117 @@
+diff --git a/JOURNAL.md b/JOURNAL.md
+index 550b5a0..8ed200a 100644
+--- a/JOURNAL.md
++++ b/JOURNAL.md
+@@ -472,3 +472,10 @@ Format per entry:
+ - **Derive-or-stop confirmed the re-pin was mandatory, not cosmetic:** v0.9.4 PART 8 §4 changed the outcome family `return_required` → **`return`** (WO-6.9 D4 quotes `return` — so the WO is written against v0.9.4; building D4 on the 0.9.0 pin would have shipped the wrong canonical outcome). PART 9's ops home also moved `platform-ops` → **`platform`** (confirms D5's issuing lever lives in the `platform` repo, not this console). v0.9.4 also ratified §3.1 (RED/AMBER/GREEN tiers) as canon.
+ - **🚩 SCOPE FLAG (grounded, §6/§8) — the WO premise "verify present, do not rebuild" holds for only three of the six.** Clean presence check across `apps/dispatch-console/src`: D1 ready queue PRESENT (`queuedTasks`; the funded-per-mode+readiness+non-cancelled admission rule lives in `logistics-service/ready-queue.ts`), D2 assign PRESENT but **deterministic suggestion ABSENT** (`suggestion|nearest|candidate` = 0 hits), D6 dwell+SOS PRESENT. But **D3 live board (`RouteManifest|currentStop` = 0), D4 exceptions desk (`retry|reschedule|return_required` = 0), D5 break-glass (`HandoffAuthorization|break-glass` = 0) are NET-NEW screens**, not present. So WO-6.9 is a canon re-pin + three net-new custody/dispatch screens + D1/D2/D6 hardening + 3 negative fixtures in one diff — too large to review honestly. Recommended a BATCHED AMBER split (§3.1 permits it); re-pin delivered as the foundational first slice. Awaiting the founder's sequencing call before building the screens. NOT merged.
+ - **Premise error owned by the CTO (founder ruling 2026-07-13):** "verify present, do not rebuild" was written from the CTO's recollection, not from the bytes; the session grounded it — D3/D4/D5 and D2's suggestion are net-new. The re-pin was correctly identified as a DERIVATION PREREQUISITE (v0.9.4 text: `return`, `platform`), not a side-task, and the session refused to absorb a 4× scope error into one custody diff. Split approved into batched-AMBER slices 6.9-b…-e, each branching from the previous slice's head (forced review order, no second writer).
++
++## 2026-07-13 · WO-6.9-b · in-review (D1 unfunded-UNRENDERABLE + suggestion STOP; do NOT merge)
++- **Branch `e6/wo-6.9-b`** off the merged slice-1 head (`e4aaef0`, canon v0.9.4). Batched, not parallel — 6.9-c branches from b's head when b's packet ships.
++- **D1 — unfunded is UNRENDERABLE, not filtered — BUILT + NON-VACUOUS.** `apps/dispatch-console/test/ready-queue-admission.test.ts` proves it two ways, per SE-I02 / PART 8 §1 (« not at the bottom of the list — it is not in the room »): (a) BEHAVIOURAL — the console's real `ReadyQueue` intake REFUSES an unfunded order (`onTaskReady` → `{admitted:false, reason:'not_funded_for_mode'}`); it never enters `queuedTasks()`, so only the funded task is in the room; (b) STRUCTURAL — `main.ts` (the render) carries ZERO funding/funded/admitted/`.filter(` logic (grep-confirmed; the only funding refs are mock SETUP in `sandbox-world.ts`), so the console *cannot* hide an admitted task — the funded-gate is entirely upstream in `ReadyQueue`. Non-vacuity proven: `confirmFunding('order-B')` makes it admitted → the behavioural assertion FAILS; reverted → 2/2 green. Runs in CI via `pnpm test`.
++- **ack/decline→requeue (SE2.3) — VERIFIED PRESENT, not rebuilt.** Service `LeasedDispatch.acknowledge` (anchors the lease) + `.decline` (server-confirmed release, cause 'declined'; offline decline pending) + `expireDue` (unacknowledged → requeue); the console drives `expireDue` on its sweep and renders the honest requeued state (WO-4.3).
++- **🛑 STOP — D2 deterministic suggestion + coupled override-with-reason (per the founder's "QUOTED from PART 8 §2 or STOP").** PART 8 §2 verbatim is « The dispatcher assigns; a rider can never self-assign. The lease is an atomic Durable Object … **Deterministic suggestion offered; human decides.** » — there is NO tie-break sentence to quote. Three independent gaps make it unbuildable without inventing a ranking (Ten-Laws #5 / founder guard): (1) SE2.2 names factors « Availability/distance/capacity/stale-location » but states no precedence/weighting/final tie-break; (2) "distance" is undefined everywhere and cannot be a real proximity calc under « no route-optimization/ETA model »; (3) `RiderRegistry.RiderRecord` = `riderId·certified·shift-status·privacyAck` — **no zone/location/capacity field to rank on**. Override-with-reason is coupled (it overrides the suggested candidate; without a suggestion there is nothing to override). Both deferred to a future slice pending a founder-ruled one-sentence tie-break + a rider-model extension. NOT invented.
++- **Scope note (§8):** with the suggestion+override STOPPED and ack/decline present, 6.9-b's net-new BUILD is the D1 proof. No new console UI → no new gallery state (gallery unchanged, byte-stable from WO-6.4); copy-lint green (no new strings). FORBIDDEN respected: no ledger write · no refund/payout lever · no route/ETA/ranking model · no franc in sera · journey/custody untouched.
+diff --git a/apps/dispatch-console/test/ready-queue-admission.test.ts b/apps/dispatch-console/test/ready-queue-admission.test.ts
+new file mode 100644
+index 0000000..181bad7
+--- /dev/null
++++ b/apps/dispatch-console/test/ready-queue-admission.test.ts
+@@ -0,0 +1,96 @@
++import { readFileSync } from 'node:fs';
++import { join } from 'node:path';
++import { describe, expect, it } from 'vitest';
++import { MockBoutikReadiness, MockShopPlusFunding, ReadyQueue } from '@sera/logistics-service';
++
++/**
++ * WO-6.9-b · D1 — an UNFUNDED order is UNRENDERABLE in the dispatch console,
++ * NOT hidden by a filter.
++ *
++ * Spec (SE-I02; ECOSYSTEM-MASTER-REFERENCE PART 8 §1): a task appears only when
++ * funded-per-mode + supplier-ready + non-cancelled — "An unfunded or unprepared
++ * order is not 'at the bottom of the list' — **it is not in the room.**"
++ *
++ * The console renders whatever `queue.queuedTasks()` returns and nothing else
++ * (main.ts). The proof of "unrenderable, not filtered" is two-sided:
++ *  (a) BEHAVIOURAL — the queue the console reads REFUSES an unfunded order at
++ *      intake, so it never enters `queuedTasks()`; and
++ *  (b) STRUCTURAL — the console source carries NO funding/funded/admitted/filter
++ *      logic at all, so it *cannot* hide an admitted task; the funded-gate lives
++ *      entirely upstream in ReadyQueue. There is nothing for a render filter to do.
++ */
++
++const T = '2026-07-09T12:00:00.000Z';
++const SHA = 'a3f5c9d21e8b47061234567890abcdef1234567890abcdef1234567890abcdef';
++
++const taskFor = (id: string, orderId: string) => ({
++  type: 'delivery' as const,
++  id,
++  orderId,
++  location: {
++    pin: { lat: 12.3714, lng: -1.5197 },
++    zone: 'Gounghin',
++    landmark: 'Face à la pharmacie du marché',
++    directions: 'Deuxième porte bleue après le kiosque',
++    maskedRelay: `relay-${orderId}`,
++  },
++  window: { start: T, end: '2026-07-09T14:00:00.000Z' },
++  status: 'ready' as const,
++});
++
++const readyEvent = (command_id: string, correlation_id: string, orderId: string, taskId: string) => ({
++  name: 'logistics.task_ready.v1',
++  envelope: { command_id, correlation_id, aggregateVersion: 1, actor: 'logistics-service:d1-test', serverTime: T, version: '1' },
++  payload: { task: taskFor(taskId, orderId) },
++});
++
++const readiness = (orderId: string) => ({
++  orderId,
++  photoRef: { ref: `media/${orderId}.jpg`, sha256: SHA, mimeType: 'image/jpeg' },
++  readinessChallenge: `challenge-${orderId}`,
++  qty: 1,
++  variant: 'taille unique',
++  availableConfirmed: true,
++  at: T,
++});
++
++describe('WO-6.9-b D1 — unfunded is UNRENDERABLE, not filtered (SE-I02, PART 8 §1)', () => {
++  it('the console queue REFUSES an unfunded order at intake — it never enters queuedTasks()', () => {
++    const funding = new MockShopPlusFunding({});
++    const rd = new MockBoutikReadiness({});
++    // FUNDED order A: checkout + confirm + readiness → admissible.
++    funding.initiateCheckout('order-A', 'FULL_PREPAY', 'corr-A');
++    funding.confirmFunding('order-A', 'collect-A', T);
++    rd.recordOrderKnown('order-A', 'corr-A');
++    rd.confirmReadiness(readiness('order-A'), T);
++    // UNFUNDED order B: checkout + readiness but NO confirmFunding → not in the room.
++    funding.initiateCheckout('order-B', 'FULL_PREPAY', 'corr-B');
++    rd.recordOrderKnown('order-B', 'corr-B');
++    rd.confirmReadiness(readiness('order-B'), T);
++
++    const q = new ReadyQueue({ funding, readiness: rd });
++
++    expect(q.onTaskReady(readyEvent('cmd-A', 'corr-A', 'order-A', 'task-A'), T)).toMatchObject({ admitted: true });
++    // the unfunded order is REFUSED at intake — structurally absent, not queued-then-hidden
++    expect(q.onTaskReady(readyEvent('cmd-B', 'corr-B', 'order-B', 'task-B'), T)).toEqual({
++      admitted: false,
++      reason: 'not_funded_for_mode',
++    });
++
++    const ids = q.queuedTasks().map((t) => t.task.id);
++    expect(ids).toEqual(['task-A']); // ONLY the funded task is in the room
++    expect(ids).not.toContain('task-B'); // the unfunded order is UNRENDERABLE — never queued
++  });
++
++  it('the console CANNOT filter on funding — main.ts carries no funding/funded/admitted/filter logic', () => {
++    const main = readFileSync(join(import.meta.dirname, '..', 'src', 'main.ts'), 'utf8')
++      .replace(/\/\*[\s\S]*?\*\//g, '')
++      .replace(/\/\/.*$/gm, '');
++    // the render's ONLY queue source is queue.queuedTasks()
++    expect(main).toMatch(/queue\.queuedTasks\(\)/);
++    // and there is NO funding awareness or queue filter in the console — so an
++    // admitted task can never be hidden; the funded-gate is upstream (ReadyQueue).
++    expect(main).not.toMatch(/\bfunded\b|\bfunding\b|\badmitted\b|\bunfunded\b/);
++    expect(main).not.toMatch(/queuedTasks\(\)\s*\.\s*filter\(/);
++  });
++});

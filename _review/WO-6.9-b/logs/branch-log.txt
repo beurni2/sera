@@ -1,0 +1,4 @@
+db0701a feat(console): WO-6.9-b D1 — prove an unfunded order is UNRENDERABLE, not filtered (SE-I02)
+ JOURNAL.md                                         |  7 ++
+ .../test/ready-queue-admission.test.ts             | 96 ++++++++++++++++++++++
+ 2 files changed, 103 insertions(+)
