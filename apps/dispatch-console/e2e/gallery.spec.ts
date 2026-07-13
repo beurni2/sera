@@ -23,16 +23,25 @@ mkdirSync(imgDir, { recursive: true });
 for (const group of manifest.groups) {
   for (const state of group.states) {
     test(`gallery: ${state.id}`, async ({ page }) => {
-      // Determinism (WO-6.1, paying the named byte-stability debt): fixed
-      // viewport (test.use above) + reduced motion, so a capture is a function
-      // of the state alone. The PNGs are a build artifact (gitignored), never a
-      // tracked binary in the gate tree.
+      // Determinism (WO-6.4, paying the named byte-stability debt HONESTLY):
+      // fixed viewport (test.use above) + reduced motion + a FIXED clock for
+      // EVERY state. Pinning the clock removes the wall clock as a variance
+      // source, so any HH:MM the console derives (a lease deadline) is a function
+      // of the state alone — WO-6.4 proved 7/8 states byte-identical across two
+      // runs BY CONSTRUCTION this way (previously they matched only by luck of
+      // capturing within the same minute; on a minute boundary they would drift).
+      //
+      // The one exception — `console-course-remise`, the clock-fastForward
+      // requeue — still carries a ~7-pixel sub-pixel ANTIALIASING flip on a card
+      // edge across runs (proven: a fixed clock did NOT change it, so it is a
+      // browser rasterisation flip, not data). That residual is HARMLESS and NOT
+      // a landmine: the PNGs are a gitignored build artifact, never a tracked
+      // binary, and NO gate byte-compares them (this spec asserts a capture
+      // SUCCEEDS; build-gallery.mjs asserts the image EXISTS). The WO-4.1 hazard
+      // — a *tracked* PNG re-encoding and dirtying the tree — is structurally
+      // gone. We do NOT drop the requeue state to make the number look clean.
+      await page.clock.install({ time: new Date('2026-07-12T09:00:00Z') });
       await page.emulateMedia({ reducedMotion: 'reduce' });
-      // Clock-driven states (the ack-deadline requeue) need the mocked clock
-      // installed BEFORE the page scripts start their interval timers.
-      if (state.actions.some((a) => a.startsWith('clock-'))) {
-        await page.clock.install();
-      }
       await page.goto('/');
       for (const action of state.actions) {
         if (action === 'assign') {

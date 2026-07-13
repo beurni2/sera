@@ -10,8 +10,10 @@ test-results/
 .env
 .env.*
 
-# WO-6.1: the gallery PNGs are a BUILD ARTIFACT, not a tracked binary — paying
-# the named debt (WO-4.3). Playwright regenerates them deterministically
-# (fixed viewport + reduced motion) on `test:e2e`; build-gallery.mjs assembles
-# gallery.html from them. Non-deterministic binaries never live in the gate tree.
+# WO-6.1/6.4: the gallery PNGs are a BUILD ARTIFACT, not a tracked binary —
+# paying the named debt (WO-4.3/4.1). Playwright regenerates them on `test:e2e`
+# (fixed viewport + reduced motion + fixed clock: 7/8 states byte-stable across
+# runs, the clock-requeue state carries a harmless sub-pixel AA flip — WO-6.4);
+# build-gallery.mjs assembles gallery.html from them. No gate byte-compares them,
+# so a non-deterministic binary can never live in — or fire — the gate tree.
 gallery/img/

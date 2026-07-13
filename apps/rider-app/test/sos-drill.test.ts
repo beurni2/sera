@@ -15,6 +15,7 @@ import {
   passVerification,
   raiseSos,
   registerSeal,
+  type SosIncident,
 } from '../src/demo/store.js';
 
 /**
@@ -79,6 +80,49 @@ describe('SOS drill — the honest safety path (SE8)', () => {
     expect(acked.status).toBe('acknowledged');
     expect(acked.acknowledgedBy).toBe('founder');
     expect(acked.events).toContain('safety.sos_acknowledged.v1');
+  });
+
+  it('(b2) RESPONDER-MATCH (WO-6.4 ④): only the incident’s OWN responder may ack — a mismatch THROWS and leaves the record byte-unchanged (runtime)', () => {
+    // out-of-hours → responder 'founder'; a DISPATCHER ack is refused
+    const outWorld = createDemoWorld();
+    const escalated = raiseSos(outWorld, { riderId: RIDER, onShift: true, activeCourseId: null, connectivity: 'online', hours: 'out_of_hours' });
+    expect(escalated.responder).toBe('founder');
+    const before = structuredClone(outWorld.incident);
+    expect(() => acknowledgeSos(outWorld, 'dispatcher')).toThrow(/founder/);
+    // no partial mutation: still escalated, unacknowledged, no acknowledged event
+    expect(outWorld.incident).toEqual(before);
+    expect(outWorld.incident?.status).toBe('escalated');
+    expect(outWorld.incident?.acknowledgedBy).toBeNull();
+    expect(outWorld.incident?.events).not.toContain('safety.sos_acknowledged.v1');
+    // the TRUE responder still acks, and is the one credited
+    const acked = acknowledgeSos(outWorld, 'founder');
+    expect(acked.status).toBe('acknowledged');
+    expect(acked.acknowledgedBy).toBe('founder');
+
+    // symmetric: in-hours → responder 'dispatcher'; a FOUNDER ack is refused
+    const inWorld = createDemoWorld();
+    const raised = raiseSos(inWorld, { riderId: RIDER, onShift: true, activeCourseId: null, connectivity: 'online', hours: 'in_hours' });
+    expect(raised.responder).toBe('dispatcher');
+    expect(() => acknowledgeSos(inWorld, 'founder')).toThrow(/dispatcher/);
+    expect(inWorld.incident?.status).toBe('raised');
+    expect(inWorld.incident?.acknowledgedBy).toBeNull();
+  });
+
+  it('(b3) RESPONDER-MATCH (WO-6.4 ④): a record naming a DIFFERENT human than its responder is UNREPRESENTABLE (type-level)', () => {
+    // A complete, valid base shared by both literals so the ONLY delta is
+    // acknowledgedBy — the type error can be nothing but the responder-match.
+    const base = {
+      id: 's', correlationId: 'c', riderId: RIDER, activeCourseId: null,
+      coarseLocation: null, onShift: true, hours: 'out_of_hours' as const,
+      status: 'acknowledged' as const, raisedAt: '', acknowledgedAt: '', events: [] as string[],
+    };
+    // CONTROL — a founder-incident credited to the FOUNDER typechecks:
+    const honest: SosIncident = { ...base, responder: 'founder', acknowledgedBy: 'founder' };
+    expect(honest.acknowledgedBy).toBe('founder');
+    // @ts-expect-error — WO-6.4 ④: crediting the DISPATCHER on a founder incident is not a representable SosIncident
+    const lying: SosIncident = { ...base, responder: 'founder', acknowledgedBy: 'dispatcher' };
+    // referencing `lying` keeps the directive live without asserting on the (impossible) value
+    expect(lying.responder).toBe('founder');
   });
 
   it('(c) OFFLINE NEVER LIES: a queued incident emits NOTHING and is UNACKNOWLEDGEABLE until delivered', () => {
