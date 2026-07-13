@@ -1,0 +1,14 @@
+68f0fed review(e6): WO-6.9-b — verifier verdict PASS (verbatim) + JOURNAL RiderRecord field-list correction (nit C)
+ JOURNAL.md                           |  2 +-
+ _review/WO-6.9-b/verifier-verdict.md | 25 +++++++++++++++++++++++++
+ 2 files changed, 26 insertions(+), 1 deletion(-)
+8e58160 review(e6): WO-6.9-b packet — D1 unfunded-unrenderable + suggestion STOP + fresh-HOME cold proof (with finding)
+ _review/WO-6.9-b/README.md           |  28 +++++++++
+ _review/WO-6.9-b/WO-6.9-b.diff       | 117 +++++++++++++++++++++++++++++++++++
+ _review/WO-6.9-b/cold-gates.log      |  15 +++++
+ _review/WO-6.9-b/logs/branch-log.txt |   4 ++
+ 4 files changed, 164 insertions(+)
+db0701a feat(console): WO-6.9-b D1 — prove an unfunded order is UNRENDERABLE, not filtered (SE-I02)
+ JOURNAL.md                                         |  7 ++
+ .../test/ready-queue-admission.test.ts             | 96 ++++++++++++++++++++++
+ 2 files changed, 103 insertions(+)

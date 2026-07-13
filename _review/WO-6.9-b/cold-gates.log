@@ -1,0 +1,15 @@
+=== WO-6.9-b COLD PROOF — explicit fresh HOME (cache-cold), auth re-injected as CI does ===
+$ export HOME=/tmp/claude-0/-home-user/4a38e8fa-225f-5cd8-9cf7-fa2d337ab965/scratchpad/fresh-home-6.9b   # fresh empty dir: pnpm store (696M) + all caches isolated
+$ git config --global url."http://***@127.0.0.1:.../git/".insteadOf https://github.com/   # the SAME url-rewrite CI injects (auth/config, NOT a cache) — without it the private @platform git-dep fetch cannot authenticate
+total 8
+drwxr-xr-x  2 root root 4096 Jul 13 08:05 .
+drwx------ 11 root root 4096 Jul 13 08:05 ..
+cold HEAD: db0701a
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+Done in 33.1s using pnpm v10.33.0
+frozen install exit: 0
+cold @platform/ui-tokens: 0.9.4
+cold build OK (0-cached)
+
+ALL GATES GREEN (positives passed; every negative fixture failed as required)
