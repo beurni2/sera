@@ -205,6 +205,12 @@ capture no-expo-token-leak-positive pass node scripts/gates/no-expo-token-leak.m
 log "gate: no-expo-token-leak — NEGATIVE FIXTURE (committed token literal, must fail)"
 capture no-expo-token-leak-negative fail node scripts/gates/no-expo-token-leak.mjs gates/fixtures/negative/no-expo-token-leak
 
+log "gate: no-ssh-lockfile-urls — the root lockfile carries only https git URLs (must pass)"
+capture no-ssh-lockfile-urls-positive pass node scripts/gates/no-ssh-lockfile-urls.mjs
+
+log "gate: no-ssh-lockfile-urls — NEGATIVE FIXTURE (ssh/scp git URL in a lockfile, must fail)"
+capture no-ssh-lockfile-urls-negative fail node scripts/gates/no-ssh-lockfile-urls.mjs gates/fixtures/negative/lockfile-ssh-url
+
 log "gate: single-level — repo source (must pass)"
 capture single-level-positive pass node scripts/gates/single-level.mjs
 

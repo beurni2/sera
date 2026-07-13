@@ -1,0 +1,14 @@
+# NEGATIVE FIXTURE (CTO-assigned GREEN slice, 2026-07-13) — a pnpm-lock.yaml
+# whose @platform git-dep URL was mangled from the lawful `git+https://…` form
+# into the ssh (scp) form. pnpm does this on some machines; the ssh form needs a
+# key CI lacks, so the frozen install fails to authenticate. This fixture MUST
+# make no-ssh-lockfile-urls.mjs FAIL (exit 1). It is NOT a real lockfile — it
+# lives under gates/fixtures/ (outside the pnpm workspace globs), and pnpm never
+# reads it.
+lockfileVersion: '9.0'
+importers:
+  .:
+    dependencies:
+      '@platform/contracts':
+        specifier: 'git@github.com:beurni2/platform-contracts.git#fa2ff246dc747a6d28f319278ecf85d54ca067dd&path:packages/contracts'
+        version: 'git@github.com:beurni2/platform-contracts.git#fa2ff246dc747a6d28f319278ecf85d54ca067dd&path:packages/contracts'
