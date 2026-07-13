@@ -105,6 +105,23 @@
           "caption": "Le cas fort : une tromperie ouverte comme INCIDENT — suivie, et le colis reste gardé jusqu'au retour au vendeur. L'incident est une des quatre suites explicites, jamais un fourre-tout « échec »."
         }
       ]
+    },
+    {
+      "title": "Remise exceptionnelle — contrôle à deux (D5, PART 8 §5)",
+      "states": [
+        {
+          "id": "console-breakglass",
+          "actions": [],
+          "caption": "La machine d'état de l'autorisation, EN LECTURE SEULE : « demande ouverte » faite, « l'opérateur vérifie » en cours, la suite (confirmé par le réseau, autorisation donnée, remise faite) EN ATTENTE. Le répartiteur ne fait que la vérification au sol ; l'autorisation est donnée par l'opérateur de paiement, jamais ici. Aucun montant, aucune signature."
+        },
+        {
+          "id": "console-breakglass-ground",
+          "actions": [
+            "bg-ground"
+          ],
+          "caption": "Le répartiteur confirme la remise sur place — sa moitié du contrôle à deux. « Remise vérifiée sur place. » La machine d'état ne bouge PAS : vérifier au sol n'est pas délivrer. Nobody holds both halves."
+        }
+      ]
     }
   ],
   "gaps": [
