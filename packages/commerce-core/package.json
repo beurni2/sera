@@ -19,8 +19,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@platform/contracts": "git+https://github.com/beurni2/platform-contracts.git#fa2ff246dc747a6d28f319278ecf85d54ca067dd&path:packages/contracts",
-    "@platform/kernel-types": "git+https://github.com/beurni2/platform-contracts.git#fa2ff246dc747a6d28f319278ecf85d54ca067dd&path:packages/kernel-types"
+    "@platform/contracts": "git+https://github.com/beurni2/platform-contracts.git#04af4b5266d53866a2b6d5800e270d3fffac2b35&path:packages/contracts",
+    "@platform/kernel-types": "git+https://github.com/beurni2/platform-contracts.git#04af4b5266d53866a2b6d5800e270d3fffac2b35&path:packages/kernel-types"
   },
   "devDependencies": {
     "typescript": "^5.9.2",

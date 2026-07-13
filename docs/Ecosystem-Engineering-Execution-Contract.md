@@ -93,6 +93,17 @@ Boutik+ (supply)     Séra (custody/delivery)     Shop+ (reseller + buyer + chec
 
 ---
 
+## 3.1 Tiered review — RED · AMBER · GREEN (founder-ruled 2026-07-12)
+**Every work order declares its TIER in its first line. The CTO assigns it; the session obeys it. A session may NEVER self-assign a tier.** The tier sets the ceremony a slice must clear before it merges — never the care taken building it.
+
+- 🔴 **RED** — money · custody · secrets · attribution · canon shapes · safety (SOS, break-glass, maker-checker) · **anything that could move a franc or orphan a package.** Full ceremony: packet · fresh-context verifier · CTO line-by-line · founder ruling · **merge only on an explicit paste.** NEVER accelerated. A rubber-stamped money slice destroys the only asset this project has.
+- 🟠 **AMBER** — multi-screen UX on **frozen semantics** · consoles · ops surfaces · canon docs/tokens. Packet + fresh-context verifier + CTO review, but **BATCHED**: the CTO may approve several at once, and a session may **start the next slice while the previous is in review**. **Merge still requires the CTO's paste.**
+- 🟢 **GREEN** — pure restyles on frozen semantics · gallery/docs refreshes · string-catalog updates · lint/test hygiene. The session runs its own fresh-context verifier and, on a full-green verdict, **MERGES ITSELF** and reports one paragraph. The CTO audits; it does not gate. **GREEN IS FORFEIT ON SIGHT:** any surprise — a semantic change, a failing gate, a dropped state, an invented value — reverts the slice to AMBER and it **stays there**.
+
+**UNCHANGED AND ABSOLUTE IN ALL TIERS:** packet-primacy · derive-never-invent · self-anchoring guards · the isolation-evidence law · no state dropped to fit a design · STOP-and-flag over guess.
+
+---
+
 ## 4. Schema & event migration standard
 - **Expand → migrate → contract.** No destructive schema change may ship in the **same release** that introduces its replacement.
 - **Backfills** are **resumable + idempotent**, with a written plan and a verification step. **Financial and custody records are verified post-migration** against the immutable event log.
