@@ -101,11 +101,18 @@ describe('the approved dependencies — nothing else', () => {
     // embedding) resolves when eas spawns expo raw. Not a new capability — the
     // package that backs the app.json plugin WO-6.1 already declared.
     expect(pkg.dependencies['expo-font']).toBe('~14.0.12');
-    // the only deps beyond the pre-WO set are exactly these three
+    // SERA-S1 re-pin (canon v0.9.8): the persistent-outbox primitive's two
+    // authorized substrates — expo-crypto (the founder's command_id ruling:
+    // UUIDv4 · OS CSPRNG · Math.random forbidden — mandated for RN by the v0.9.5
+    // mint rule) and expo-file-system (the durable document-dir store, boutik's
+    // expoDocumentStore precedent — survives kill+reboot). SDK-54 bundled versions.
+    expect(pkg.dependencies['expo-crypto']).toBe('~15.0.9');
+    expect(pkg.dependencies['expo-file-system']).toBe('~19.0.23');
+    // the only deps beyond the pre-WO set are exactly these five
     const before = new Set([
       '@platform/ui-tokens', 'expo', 'expo-status-bar', 'expo-updates', 'react', 'react-native',
     ]);
     const added = Object.keys(pkg.dependencies).filter((d) => !before.has(d));
-    expect(added.sort()).toEqual(['expo-font', 'expo-haptics', 'react-native-svg']);
+    expect(added.sort()).toEqual(['expo-crypto', 'expo-file-system', 'expo-font', 'expo-haptics', 'react-native-svg']);
   });
 });
