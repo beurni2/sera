@@ -559,7 +559,7 @@
   },
   {
     "key": "offline.persist_failed",
-    "fr": "Un envoi n'est pas parti. Il repartira à la reconnexion.",
+    "fr": "Un envoi n'a pas pu être enregistré. À refaire.",
     "register": "neutral",
     "screenClass": "status"
   },

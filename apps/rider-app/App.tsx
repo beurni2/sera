@@ -233,7 +233,9 @@ export default function App() {
   // walkable demo. The rider never asserts this.
   const sandboxReconnectSender = useCallback(async (): Promise<FlushOutcome> => 'applied', []);
   const refreshBacklog = useCallback(() => {
-    void pendingCount(outboxStore).then(setBacklog);
+    // a durable-read failure is itself a durability-health signal → surface it,
+    // never an unhandled rejection.
+    void pendingCount(outboxStore).then(setBacklog, () => setPersistFailed(true));
   }, [outboxStore]);
   // The port drives `connectivity`; on device expo-network feeds the same port.
   useEffect(() => {
