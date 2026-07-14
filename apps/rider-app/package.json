@@ -11,8 +11,10 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@platform/ui-tokens": "git+https://github.com/beurni2/platform-contracts.git#04af4b5266d53866a2b6d5800e270d3fffac2b35&path:packages/ui-tokens",
+    "@platform/ui-tokens": "git+https://github.com/beurni2/platform-contracts.git#67bda02646019cb4ab28a16fadf388b522da2799&path:packages/ui-tokens",
     "expo": "~54.0.35",
+    "expo-crypto": "~15.0.9",
+    "expo-file-system": "~19.0.23",
     "expo-font": "~14.0.12",
     "expo-haptics": "~15.0.8",
     "expo-status-bar": "~3.0.9",
@@ -27,6 +29,6 @@
     "@types/react": "~19.1.0",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4",
-    "@platform/i18n": "git+https://github.com/beurni2/platform-contracts.git#04af4b5266d53866a2b6d5800e270d3fffac2b35&path:packages/i18n"
+    "@platform/i18n": "git+https://github.com/beurni2/platform-contracts.git#67bda02646019cb4ab28a16fadf388b522da2799&path:packages/i18n"
   }
 }
