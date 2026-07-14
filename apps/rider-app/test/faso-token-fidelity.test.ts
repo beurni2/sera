@@ -20,7 +20,7 @@ const HEX = /#[0-9a-fA-F]{3,8}\b/g;
 const hexesIn = (rel: string): string[] => stripComments(readFileSync(join(appDir, rel), 'utf8')).match(HEX) ?? [];
 
 /** The Faso component surface built so far — style/render code that must be hex-free. */
-const COMPONENT_SURFACE = ['src/ui/signature.tsx'];
+const COMPONENT_SURFACE = ['src/ui/signature.tsx', 'src/ui/faso-sos.tsx'];
 
 describe('WO-FP-SERA — token fidelity: zero hand-copied hex on the Faso component surface', () => {
   it('every Faso component resolves colour through the bridge — no #hex literal in component code', () => {

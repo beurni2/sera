@@ -72,14 +72,12 @@ import {
   ScreenTransition,
   SealMark,
   SecondaryButton,
-  SosButton,
-  SosSheet,
   StatusChip,
   TabBar,
   ThemeStrip,
   type ChipTone,
-  type SosState,
 } from './src/ui/kit';
+import { SosButton, SosSheet, type SosState } from './src/ui/faso-sos';
 import {
   IconColis,
   IconReprendre,
