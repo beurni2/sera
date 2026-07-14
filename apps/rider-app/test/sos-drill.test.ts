@@ -6,6 +6,7 @@ import {
   type PolicyCheckId,
 } from '../src/custody-flow.js';
 import { SOS_EVENTS } from '../src/safety.js';
+import { mintCommandId } from '../src/offline/commandId.js';
 import {
   acknowledgeSos,
   beginPickup,
@@ -38,7 +39,7 @@ const CANON_EVENTS = ['safety.sos_created.v1', 'safety.sos_acknowledged.v1', 'in
 describe('SOS drill — the honest safety path (SE8)', () => {
   it('(a) FULL PATH online in-hours: raised → the created + incidentOpened events → dispatcher ack → acknowledged (only canon events)', () => {
     const world = createDemoWorld();
-    const raised = raiseSos(world, {
+    const raised = raiseSos(world, mintCommandId(), {
       riderId: RIDER,
       onShift: true,
       activeCourseId: null,
@@ -65,7 +66,7 @@ describe('SOS drill — the honest safety path (SE8)', () => {
 
   it('(b) OUT-OF-HOURS: raised escalates to the founder, and the founder acknowledges', () => {
     const world = createDemoWorld();
-    const raised = raiseSos(world, {
+    const raised = raiseSos(world, mintCommandId(), {
       riderId: RIDER,
       onShift: true,
       activeCourseId: null,
@@ -85,7 +86,7 @@ describe('SOS drill — the honest safety path (SE8)', () => {
   it('(b2) RESPONDER-MATCH (WO-6.4 ④): only the incident’s OWN responder may ack — a mismatch THROWS and leaves the record byte-unchanged (runtime)', () => {
     // out-of-hours → responder 'founder'; a DISPATCHER ack is refused
     const outWorld = createDemoWorld();
-    const escalated = raiseSos(outWorld, { riderId: RIDER, onShift: true, activeCourseId: null, connectivity: 'online', hours: 'out_of_hours' });
+    const escalated = raiseSos(outWorld, mintCommandId(), { riderId: RIDER, onShift: true, activeCourseId: null, connectivity: 'online', hours: 'out_of_hours' });
     expect(escalated.responder).toBe('founder');
     const before = structuredClone(outWorld.incident);
     expect(() => acknowledgeSos(outWorld, 'dispatcher')).toThrow(/founder/);
@@ -101,7 +102,7 @@ describe('SOS drill — the honest safety path (SE8)', () => {
 
     // symmetric: in-hours → responder 'dispatcher'; a FOUNDER ack is refused
     const inWorld = createDemoWorld();
-    const raised = raiseSos(inWorld, { riderId: RIDER, onShift: true, activeCourseId: null, connectivity: 'online', hours: 'in_hours' });
+    const raised = raiseSos(inWorld, mintCommandId(), { riderId: RIDER, onShift: true, activeCourseId: null, connectivity: 'online', hours: 'in_hours' });
     expect(raised.responder).toBe('dispatcher');
     expect(() => acknowledgeSos(inWorld, 'founder')).toThrow(/dispatcher/);
     expect(inWorld.incident?.status).toBe('raised');
@@ -127,7 +128,7 @@ describe('SOS drill — the honest safety path (SE8)', () => {
 
   it('(c) OFFLINE NEVER LIES: a queued incident emits NOTHING and is UNACKNOWLEDGEABLE until delivered', () => {
     const world = createDemoWorld();
-    const queued = raiseSos(world, {
+    const queued = raiseSos(world, mintCommandId(), {
       riderId: RIDER,
       onShift: true,
       activeCourseId: null,
@@ -155,7 +156,7 @@ describe('SOS drill — the honest safety path (SE8)', () => {
     expect(() => acknowledgeSos(world, 'dispatcher')).toThrow();
     // a delivered/raised incident cannot be re-delivered
     const w2 = createDemoWorld();
-    raiseSos(w2, { riderId: RIDER, onShift: true, activeCourseId: null, connectivity: 'online', hours: 'in_hours' });
+    raiseSos(w2, mintCommandId(), { riderId: RIDER, onShift: true, activeCourseId: null, connectivity: 'online', hours: 'in_hours' });
     expect(() => deliverQueuedSos(w2)).toThrow();
   });
 
@@ -168,7 +169,7 @@ describe('SOS drill — the honest safety path (SE8)', () => {
     const before = structuredClone(world.courses.find((c) => c.id === id)!);
     const courseCountBefore = world.courses.length;
 
-    raiseSos(world, {
+    raiseSos(world, mintCommandId(), {
       riderId: RIDER,
       onShift: true,
       activeCourseId: id,
@@ -185,7 +186,7 @@ describe('SOS drill — the honest safety path (SE8)', () => {
 
   it('(e) LOCATION LAW (SE-I08): a coarse fix attaches IFF the rider is on shift', () => {
     const onShiftWorld = createDemoWorld();
-    const onShift = raiseSos(onShiftWorld, {
+    const onShift = raiseSos(onShiftWorld, mintCommandId(), {
       riderId: RIDER,
       onShift: true,
       activeCourseId: null,
@@ -196,7 +197,7 @@ describe('SOS drill — the honest safety path (SE8)', () => {
     expect(onShift.coarseLocation).not.toBeNull();
 
     const offShiftWorld = createDemoWorld();
-    const offShift = raiseSos(offShiftWorld, {
+    const offShift = raiseSos(offShiftWorld, mintCommandId(), {
       riderId: RIDER,
       onShift: false,
       activeCourseId: null,
@@ -208,7 +209,7 @@ describe('SOS drill — the honest safety path (SE8)', () => {
 
   it('clearSos resets the incident (the rider is safe / the demo resets)', () => {
     const world = createDemoWorld();
-    raiseSos(world, { riderId: RIDER, onShift: true, activeCourseId: null, connectivity: 'online', hours: 'in_hours' });
+    raiseSos(world, mintCommandId(), { riderId: RIDER, onShift: true, activeCourseId: null, connectivity: 'online', hours: 'in_hours' });
     expect(world.incident).not.toBeNull();
     clearSos(world);
     expect(world.incident).toBeNull();
