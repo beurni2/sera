@@ -7,6 +7,7 @@ import {
   FAILURE_REASON_IDS,
   POLICY_CHECK_IDS,
   SANDBOX_DOOR_SIGNAL,
+  SANDBOX_EVIDENCE_ACK,
   type PolicyCheckId,
 } from './src/custody-flow';
 import { SANDBOX_DISPATCH_HOURS } from './src/safety';
@@ -16,11 +17,13 @@ import { COURSE_BACK_STEPS, JOURNEY, START, type Screen } from './src/journey';
 import { attemptReturnHandover } from './src/two-key-return';
 import { mintCommandId } from './src/offline/commandId';
 import { appendSosRaise } from './src/offline/sos';
+import { appendEvidence } from './src/offline/evidence';
 import { createDocumentOutboxStore } from './src/offline/documentStore';
 import {
   acceptInspection,
   acknowledgeCourse,
   acknowledgeSos,
+  applyEvidenceServerAck,
   applyProviderDoorSignal,
   beginPickup,
   captureEvidence,
@@ -191,7 +194,9 @@ const DROP_CODE_LEN = 6;
 export default function App() {
   const [world, setWorld] = useState<DemoWorld>(() => createDemoWorld());
   // SERA-S3: the device-durable SOS outbox (document dir — survives kill+reboot).
-  const sosStore = useMemo(() => createDocumentOutboxStore(), []);
+  // ONE durable outbox for every rider write kind (SOS raise, delivery evidence):
+  // a single document-dir queue, entries discriminated by `kind`.
+  const outboxStore = useMemo(() => createDocumentOutboxStore(), []);
   const [stack, setStack] = useState<Screen[]>([START]);
   const [shift, setShift] = useState<ShiftView>('off');
   const [offline, setOffline] = useState(false);
@@ -317,7 +322,7 @@ export default function App() {
       hours: SANDBOX_DISPATCH_HOURS,
     });
     setWorld({ ...world });
-    void appendSosRaise(sosStore, commandId, {
+    void appendSosRaise(outboxStore, commandId, {
       riderId: DEMO_RIDER_ID,
       hours: SANDBOX_DISPATCH_HOURS,
       onShift: shift === 'on',
@@ -329,7 +334,7 @@ export default function App() {
     else if (status === 'escalated') setSos('escalated');
     else if (status === 'acknowledged') setSos('acknowledged');
     else setSos('raised');
-  }, [world, shift, activeId, sosStore]);
+  }, [world, shift, activeId, outboxStore]);
   const sosHoldStart = useCallback(() => {
     if (holdTimer.current) clearTimeout(holdTimer.current);
     holdTimer.current = setTimeout(fireSos, 650);
@@ -618,21 +623,44 @@ export default function App() {
               <PrimaryButton
                 label={t('evidence.action')}
                 onPress={() => {
-                  // WO-2.4: the door inspection precedes the drop in BOTH modes;
-                  // offline evidence still locks everything downstream (queued =
-                  // pending — the store walks the honest branch).
-                  walk((w) => captureEvidence(w, active.id, offline ? 'offline' : 'online'));
+                  // SERA-S2 · SE-I06: mint the command_id ONCE at the gesture (the
+                  // capture's identity), land evidence_pending INSTANTLY, then persist
+                  // the capture to the outbox in the background — durable across a
+                  // kill+reboot, flushed at-least-once with dedup on this id. The drop
+                  // stays LOCKED until that flush returns the authoritative server ack;
+                  // being online is not being acked.
+                  const commandId = mintCommandId();
+                  walk((w) => captureEvidence(w, active.id));
+                  void appendEvidence(outboxStore, commandId, {
+                    courseId: active.id,
+                    capturedAt: new Date().toISOString(),
+                  });
                 }}
               />
             </Card>
           )}
 
-          {screen === 'evidence_pending' && (
+          {screen === 'evidence_pending' && active !== null && (
             <Card>
-              {/* Offline law: the photo is queued = pending; the drop step is
-                  LOCKED — finality never happens offline. */}
-              <PendingNotice lines={[t('evidence.pending')]} />
-              <SecondaryButton label={t('nav.retour_courses')} onPress={toCourses} />
+              {/* SE-I06: capturing queued the photo = PENDING and the drop is
+                  LOCKED. The rider CANNOT unlock it — ONLY the authoritative
+                  server ack (the outbox flush outcome) advances this screen. Being
+                  online is not being acked; offline shows only the wait. The
+                  sandbox constant stands in for the live flush outcome at assembly. */}
+              {!offline && SANDBOX_EVIDENCE_ACK === 'applied' ? (
+                <>
+                  <PosterTitle>{t('evidence.confirmed_status')}</PosterTitle>
+                  <PrimaryButton
+                    label={t('evidence.continue_action')}
+                    onPress={() => walk((w) => applyEvidenceServerAck(w, active.id, SANDBOX_EVIDENCE_ACK))}
+                  />
+                </>
+              ) : (
+                <>
+                  <PendingNotice lines={[t('evidence.pending')]} />
+                  <SecondaryButton label={t('nav.retour_courses')} onPress={toCourses} />
+                </>
+              )}
             </Card>
           )}
 

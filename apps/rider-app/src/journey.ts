@@ -1,11 +1,12 @@
 import {
   FAILURE_REASON_IDS,
-  nextAfterEvidence,
   stepAfterDoorSignal,
+  stepAfterEvidenceAck,
   stepAfterInspection,
   stepAfterWindowExpiry,
   type CustodyStep,
 } from './custody-flow';
+import type { FlushOutcome } from './offline/outbox';
 
 /**
  * WO-4.1 — the rider journey as DATA. The App renders a stack over this map;
@@ -25,10 +26,11 @@ export type Screen = 'service' | 'courses' | 'affectation' | 'retour_colis' | Cu
 export const START: Screen = 'service';
 
 /** WO-2.4 mapping, kept from the shell: the door inspection precedes the
- * drop in BOTH payment modes — an online evidence outcome of 'drop' enters
- * through door_inspection. */
-const afterEvidence = (connectivity: 'online' | 'offline'): CustodyStep => {
-  const next = nextAfterEvidence(connectivity);
+ * drop in BOTH payment modes — a server-acked evidence outcome of 'drop'
+ * enters through door_inspection. SE-I06: the ack, not connectivity, is the
+ * edge out of evidence_pending. */
+const afterAck = (ack: FlushOutcome): CustodyStep => {
+  const next = stepAfterEvidenceAck(ack);
   return next === 'drop' ? 'door_inspection' : next;
 };
 
@@ -67,9 +69,17 @@ export const JOURNEY: Record<Screen, readonly Screen[]> = {
   verify: ['seal', 'refused'],
   refused: ['courses'],
   seal: ['evidence'],
-  // Both connectivity branches, produced by nextAfterEvidence.
-  evidence: uniq([afterEvidence('online'), afterEvidence('offline')]),
-  evidence_pending: ['courses'],
+  // SE-I06: capturing ALWAYS lands evidence_pending (online or offline); the
+  // drop stays locked until the server ack. Never an edge straight to the door.
+  evidence: ['evidence_pending'],
+  // The ONLY forward edge is the authoritative server ack, produced by
+  // stepAfterEvidenceAck: applied/idempotentReplay → door_inspection;
+  // collision-refused maps to itself (waiting is a state, not an edge). « Retour »
+  // to the course list is the quiet arm.
+  evidence_pending: [
+    ...uniq([afterAck('applied'), afterAck('collision-refused')]).filter((s) => s !== 'evidence_pending'),
+    'courses',
+  ],
   // Both payment modes, produced by stepAfterInspection; the problem path
   // (refusal ladder entry) is the documented quiet arm.
   door_inspection: [

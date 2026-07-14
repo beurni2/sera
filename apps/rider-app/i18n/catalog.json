@@ -217,9 +217,21 @@
   },
   {
     "key": "evidence.pending",
-    "fr": "La photo est partie. En attente du réseau.",
+    "fr": "La photo est partie. La remise attend la confirmation de Séra.",
     "register": "neutral",
     "screenClass": "status"
+  },
+  {
+    "key": "evidence.confirmed_status",
+    "fr": "Séra a confirmé la photo.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "evidence.continue_action",
+    "fr": "Continuer",
+    "register": "neutral",
+    "screenClass": "general"
   },
   {
     "key": "drop.title",

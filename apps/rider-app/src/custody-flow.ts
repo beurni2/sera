@@ -1,3 +1,5 @@
+import type { FlushOutcome } from './offline/outbox';
+
 /**
  * Rider-shell custody flow model (WO-1.3). The check ids MIRROR
  * pickup-verification-policy.v1 — the SERVICE owns the policy; the shell
@@ -72,10 +74,24 @@ export function stepAfterWindowExpiry(reason: FailureReasonId): CustodyStep {
  * live connectivity feed drives at assembly. */
 export const CONNECTIVITY: 'online' | 'offline' = 'online';
 
-export function nextAfterEvidence(connectivity: 'online' | 'offline'): CustodyStep {
-  // Offline evidence is queued = pending; the drop step stays locked.
-  return connectivity === 'online' ? 'drop' : 'evidence_pending';
+/**
+ * SE-I06 · evidence finality waits for the AUTHORITATIVE SERVER ACK, never for
+ * mere connectivity. Capturing evidence queues it (the outbox) = PENDING and the
+ * drop stays LOCKED; the ONLY thing that advances it is the server ack — the
+ * outbox flush outcome (`assignment-lease.ts` vocabulary): `applied` |
+ * `idempotentReplay` settle the evidence and the drop unlocks (through the door
+ * inspection, WO-2.4 mapping), while `collision-refused` keeps it PENDING
+ * (surfaced, never a silent unlock). This mirrors stepAfterDoorSignal: an
+ * EXTERNAL confirmation — not the rider, not being online — moves the locked step.
+ */
+export function stepAfterEvidenceAck(ack: FlushOutcome): CustodyStep {
+  return ack === 'collision-refused' ? 'evidence_pending' : 'drop';
 }
+
+/** Sandbox evidence ack (typed data, like SANDBOX_DOOR_SIGNAL): 'applied' so the
+ * flow is walkable end-to-end; the live outbox flush drives this at assembly.
+ * The rider has NO control over it — capturing evidence never confers finality. */
+export const SANDBOX_EVIDENCE_ACK: FlushOutcome = 'applied';
 
 /** WO-2.4 sandbox payment mode + door signal (typed data, like CONNECTIVITY):
  * Option-B so the door flow is walkable; the PROVIDER signal — never the

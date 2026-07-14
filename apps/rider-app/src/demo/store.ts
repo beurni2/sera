@@ -4,14 +4,16 @@ import {
   CONNECTIVITY,
   POLICY_CHECK_IDS,
   SANDBOX_DOOR_SIGNAL,
+  SANDBOX_EVIDENCE_ACK,
   SANDBOX_PAYMENT_MODE,
-  nextAfterEvidence,
   stepAfterDoorSignal,
+  stepAfterEvidenceAck,
   stepAfterInspection,
   stepAfterWindowExpiry,
   type FailureReasonId,
   type PolicyCheckId,
 } from '../custody-flow';
+import type { FlushOutcome } from '../offline/outbox';
 import {
   SOS_EVENTS,
   raisedStatusForHours,
@@ -254,16 +256,27 @@ export function registerSeal(world: DemoWorld, id: string): CourseStep {
   return update(world, id, { step: 'evidence' }).step;
 }
 
-/** Evidence photo — the branch comes from nextAfterEvidence; the WO-2.4
- * mapping keeps the door inspection ahead of the drop in both modes.
- * Offline: queued = PENDING, the drop step stays LOCKED. */
-export function captureEvidence(
+/** Evidence photo — SE-I06: capturing ALWAYS queues = PENDING and LOCKS the drop,
+ * online or offline. Being online is not being acked; only the authoritative
+ * server ack (applyEvidenceServerAck) advances the step. The durable write rides
+ * the outbox (offline/evidence.ts); this moves only the in-memory step. */
+export function captureEvidence(world: DemoWorld, id: string): CourseStep {
+  expectStep(courseById(world, id), ['evidence']);
+  return update(world, id, { step: 'evidence_pending' }).step;
+}
+
+/** SE-I06: the ONLY way out of evidence_pending. The input is the authoritative
+ * SERVER ACK (the outbox flush outcome) and nothing else — no rider action, and
+ * being online alone, advances this. `applied`/`idempotentReplay` unlock the drop
+ * (through the door inspection, WO-2.4 mapping); `collision-refused` keeps it
+ * PENDING (surfaced, never a silent unlock). Mirrors applyProviderDoorSignal. */
+export function applyEvidenceServerAck(
   world: DemoWorld,
   id: string,
-  connectivity: typeof CONNECTIVITY = CONNECTIVITY,
+  ack: FlushOutcome = SANDBOX_EVIDENCE_ACK,
 ): CourseStep {
-  expectStep(courseById(world, id), ['evidence']);
-  const next = nextAfterEvidence(connectivity);
+  expectStep(courseById(world, id), ['evidence_pending']);
+  const next = stepAfterEvidenceAck(ack);
   return update(world, id, { step: next === 'drop' ? 'door_inspection' : next }).step;
 }
 
