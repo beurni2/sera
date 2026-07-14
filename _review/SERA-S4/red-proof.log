@@ -1,0 +1,1164 @@
+
+ RUN  v3.2.7 /home/user/sera/apps/rider-app
+
+ ❯ test/connectivity-truthful.test.ts (2 tests | 2 failed) 9ms
+   × SERA-S4 — connectivity is real, not a constant > the CONNECTIVITY constant is GONE from custody-flow (a real port replaces it) 6ms
+     → expected 'import type { FlushOutcome } from \'.…' not to match /export const CONNECTIVITY/
+   × SERA-S4 — connectivity is real, not a constant > the App threads the real connectivity signal into the store — never the retired constant 1ms
+     → expected 'import { useCallback, useEffect, useM…' to match /declineCourse\(\s*world,\s*active\.id…/
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/connectivity-truthful.test.ts > SERA-S4 — connectivity is real, not a constant > the CONNECTIVITY constant is GONE from custody-flow (a real port replaces it)
+AssertionError: expected 'import type { FlushOutcome } from \'.…' not to match /export const CONNECTIVITY/
+
+[32m- Expected:[39m 
+/export const CONNECTIVITY/
+
+[31m+ Received:[39m 
+"import type { FlushOutcome } from './offline/outbox';
+
+/**
+ * Rider-shell custody flow model (WO-1.3). The check ids MIRROR
+ * pickup-verification-policy.v1 — the SERVICE owns the policy; the shell
+ * renders its checklist from these ids via catalog keys `check.<id>`.
+ * Offline law: evidence sent without the network is queued = PENDING and
+ * the drop step stays LOCKED — finality never happens offline. The sandbox
+ * has no live connectivity wiring (it lands at E1 assembly): CONNECTIVITY
+ * below is typed data, and both branches are real code paths.
+ */
+
+export const POLICY_CHECK_IDS = [
+  'order_ref',
+  'identity',
+  'variant',
+  'colour',
+  'size_label',
+  'qty',
+  'damage',
+  'pieces',
+  'manufacturer_seal',
+] as const;
+export type PolicyCheckId = (typeof POLICY_CHECK_IDS)[number];
+
+export type CustodyStep =
+  | 'verify'
+  | 'refused'
+  | 'seal'
+  | 'evidence'
+  | 'evidence_pending'
+  | 'drop'
+  | 'delivered'
+  | 'refusal_reason'
+  | 'retry_window'
+  | 'refused_final'
+  | 'reschedule_planned'
+  | 'door_inspection'
+  | 'payment_wait';
+
+/**
+ * WO-2.2 — the refusal ladder's reason ids MIRROR the canonical
+ * DELIVERY_FAILURE_REASONS (the SERVICE owns the ladder policy;
+ * REFUSAL_LADDER_POLICY_V1 owns the escalation split). The shell renders
+ * the picker from these ids via catalog keys `reason.<id>` and walks the
+ * arm the policy dictates.
+ */
+export const FAILURE_REASON_IDS = [
+  'honest_absence',
+  'unusable_location',
+  'insufficient_balance',
+  'change_of_mind',
+  'repeated_abuse',
+  'fraud',
+  'provider_failure',
+] as const;
+export type FailureReasonId = (typeof FAILURE_REASON_IDS)[number];
+
+/** Mirror of the policy's escalation split (Shop §6.4: honest absence /
+ * provider failure do NOT escalate like change-of-mind/abuse). */
+export const ESCALATING_REASON_IDS: readonly FailureReasonId[] = [
+  'insufficient_balance',
+  'change_of_mind',
+  'repeated_abuse',
+  'fraud',
+];
+
+export function stepAfterWindowExpiry(reason: FailureReasonId): CustodyStep {
+  return ESCALATING_REASON_IDS.includes(reason) ? 'refused_final' : 'reschedule_planned';
+}
+
+/** Sandbox connectivity: 'online' at E1 so the flow is walkable end-to-end;
+ * the 'offline' branch (pending evidence, locked drop) is the same code the
+ * live connectivity feed drives at assembly. */
+export const CONNECTIVITY: 'online' | 'offline' = 'online';
+
+/**
+ * SE-I06 · evidence finality waits for the AUTHORITATIVE SERVER ACK, never for
+ * mere connectivity. Capturing evidence queues it (the outbox) = PENDING and the
+ * drop stays LOCKED; the ONLY thing that advances it is the server ack — the
+ * outbox flush outcome (`assignment-lease.ts` vocabulary): `applied` |
+ * `idempotentReplay` settle the evidence and the drop unlocks (through the door
+ * inspection, WO-2.4 mapping), while `collision-refused` keeps it PENDING
+ * (surfaced, never a silent unlock). This mirrors stepAfterDoorSignal: an
+ * EXTERNAL confirmation — not the rider, not being online — moves the locked step.
+ */
+export function stepAfterEvidenceAck(ack: FlushOutcome): CustodyStep {
+  return ack === 'collision-refused' ? 'evidence_pending' : 'drop';
+}
+
+/** Sandbox evidence ack (typed data, like SANDBOX_DOOR_SIGNAL): 'applied' so the
+ * flow is walkable end-to-end; the live outbox flush drives this at assembly.
+ * The rider has NO control over it — capturing evidence never confers finality. */
+export const SANDBOX_EVIDENCE_ACK: FlushOutcome = 'applied';
+
+/** WO-2.4 sandbox payment mode + door signal (typed data, like CONNECTIVITY):
+ * Option-B so the door flow is walkable; the PROVIDER signal — never the
+ * rider — advances payment_wait. 'confirmed' simulates the received signal;
+ * the 'pending' branch is the honest waiting screen the live feed drives at
+ * assembly. The rider has NO control over this value. */
+export const SANDBOX_PAYMENT_MODE: 'FULL_PREPAY' | 'DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR' = 'DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR';
+export const SANDBOX_DOOR_SIGNAL: 'confirmed' | 'pending' = 'confirmed';
+
+export function stepAfterInspection(mode: typeof SANDBOX_PAYMENT_MODE): CustodyStep {
+  // Option-B (SE-I11): inspect → PAY (provider-confirmed) → drop code LAST.
+  return mode === 'DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR' ? 'payment_wait' : 'drop';
+}
+
+export function stepAfterDoorSignal(signal: typeof SANDBOX_DOOR_SIGNAL): CustodyStep {
+  return signal === 'confirmed' ? 'drop' : 'payment_wait';
+}
+"
+
+ ❯ test/connectivity-truthful.test.ts:20:46
+     18| describe('SERA-S4 — connectivity is real, not a constant', () => {
+     19|   it('the CONNECTIVITY constant is GONE from custody-flow (a real port…
+     20|     expect(rider('src/custody-flow.ts')).not.toMatch(/export const CON…
+       |                                              ^
+     21|   });
+     22| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  test/connectivity-truthful.test.ts > SERA-S4 — connectivity is real, not a constant > the App threads the real connectivity signal into the store — never the retired constant
+AssertionError: expected 'import { useCallback, useEffect, useM…' to match /declineCourse\(\s*world,\s*active\.id…/
+
+[32m- Expected:[39m 
+/declineCourse\(\s*world,\s*active\.id,\s*connectivity/
+
+[31m+ Received:[39m 
+"import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { StatusBar } from 'expo-status-bar';
+import { FlatList, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { seraTheme, spacing, radius, touch, type as typo, interaction, money } from '@platform/ui-tokens';
+import {
+  CONNECTIVITY,
+  FAILURE_REASON_IDS,
+  POLICY_CHECK_IDS,
+  SANDBOX_DOOR_SIGNAL,
+  SANDBOX_EVIDENCE_ACK,
+  type PolicyCheckId,
+} from './src/custody-flow';
+import { SANDBOX_DISPATCH_HOURS } from './src/safety';
+import { IS_PREVIEW } from './src/preview';
+import { t } from './src/i18n';
+import { COURSE_BACK_STEPS, JOURNEY, START, type Screen } from './src/journey';
+import { attemptReturnHandover } from './src/two-key-return';
+import { mintCommandId } from './src/offline/commandId';
+import { appendSosRaise } from './src/offline/sos';
+import { appendEvidence } from './src/offline/evidence';
+import { createDocumentOutboxStore } from './src/offline/documentStore';
+import {
+  acceptInspection,
+  acknowledgeCourse,
+  acknowledgeSos,
+  applyEvidenceServerAck,
+  applyProviderDoorSignal,
+  beginPickup,
+  captureEvidence,
+  chooseFailureReason,
+  clearSos,
+  completeReturn,
+  createDemoWorld,
+  declineCourse,
+  expireProposal,
+  expireRetryWindow,
+  passVerification,
+  prepareReturn,
+  raiseSos,
+  refusePickup,
+  registerSeal,
+  reportProblem,
+  retryDelivery,
+  validateDropCode,
+  type CourseKind,
+  type CourseStep,
+  type DemoCourse,
+  type DemoWorld,
+} from './src/demo/store';
+import {
+  AppHeader,
+  Body,
+  Card,
+  CheckRow,
+  CodeCells,
+  CourseValideeCelebration,
+  DangerButton,
+  EmptyState,
+  GhostButton,
+  Keypad,
+  LandmarkCard,
+  ListRow,
+  OfflineBanner,
+  Overline,
+  PendingNotice,
+  PosterTitle,
+  PrimaryButton,
+  QuoteRule,
+  ScreenTransition,
+  SealMark,
+  SecondaryButton,
+  SosButton,
+  SosSheet,
+  StatusChip,
+  TabBar,
+  ThemeStrip,
+  type ChipTone,
+  type SosState,
+} from './src/ui/kit';
+import {
+  IconColis,
+  IconReprendre,
+  IconRefus,
+  IconMoto,
+  IconScelle,
+  IconCamera,
+  IconCle,
+  IconCoche,
+  type IconProps,
+} from './src/ui/icons';
+
+/**
+ * WO-6.1 — LE VISAGE, Grand Teint (sera theme), over WO-4.1/4.3's walkable
+ * custody world. The RESKIN law: every screen adopts the Grand Teint kit but
+ * the journey spine and custody SEMANTICS stay byte-identical — same 17
+ * screens, same edges, same TOTAL back law (course → liste → accueil, no pop
+ * arm), same custody moves through the same demo store (which calls
+ * custody-flow.ts, the rule source, and throws on any out-of-order move).
+ * R1–R14 is the design bundle's vocabulary over these screens; R4 « le repère »
+ * is the illustrated LandmarkCard treatment on affectation + the door, R14
+ * « SOS » is an overlay mounted UNCONDITIONALLY (one gesture, every screen),
+ * never a spine node. Offline law unchanged: queued = pending, never done.
+ */
+
+const C = seraTheme.colours;
+const T = typo.scale;
+
+type ShiftView = 'off' | 'pending' | 'on';
+
+/** Course-list badges: honest status per step (keys live in the catalog). */
+const STATUS_KEY: Record<CourseStep, string> = {
+  affectation: 'courses.statut_a_ramasser',
+  verify: 'courses.statut_a_ramasser',
+  seal: 'courses.statut_a_ramasser',
+  refused: 'refuse.status',
+  evidence: 'courses.statut_en_route',
+  evidence_pending: 'evidence.pending',
+  door_inspection: 'courses.statut_en_route',
+  payment_wait: 'courses.statut_en_route',
+  drop: 'courses.statut_en_route',
+  delivered: 'delivered.status',
+  refusal_reason: 'courses.statut_en_route',
+  retry_window: 'courses.statut_en_route',
+  refused_final: 'refused_final.status',
+  reschedule_planned: 'reschedule.status',
+  retour_colis: 'courses.statut_retour_en_cours',
+};
+
+const statusKeyFor = (course: DemoCourse): string =>
+  course.proposalOutcome === 'declined'
+    ? 'courses.statut_rendue'
+    : course.proposalOutcome === 'expired'
+      ? 'courses.statut_expiree'
+      : course.step === 'affectation' && course.ack === 'decline_pending'
+        ? 'assignment.decline_pending'
+        : course.step === 'retour_colis' && course.closed
+          ? 'courses.statut_retour_fait'
+          : STATUS_KEY[course.step];
+
+/** Chip tones mirror the honest status — never a fake green, never a shame red. */
+const STATUS_TONE: Record<CourseStep, ChipTone> = {
+  affectation: 'info',
+  verify: 'info',
+  seal: 'info',
+  refused: 'muted',
+  evidence: 'info',
+  evidence_pending: 'warn',
+  door_inspection: 'info',
+  payment_wait: 'warn',
+  drop: 'info',
+  delivered: 'ok',
+  refusal_reason: 'warn',
+  retry_window: 'warn',
+  refused_final: 'bad',
+  reschedule_planned: 'info',
+  retour_colis: 'info',
+};
+
+const toneFor = (course: DemoCourse): ChipTone =>
+  course.proposalOutcome !== null
+    ? 'muted' // a closed proposal is honest and at rest — never a shame red
+    : course.step === 'affectation' && course.ack === 'decline_pending'
+      ? 'warn' // queued = pending, never done
+      : course.step === 'retour_colis' && course.closed
+        ? 'ok'
+        : STATUS_TONE[course.step];
+
+/** Course glyphs by kind — icons always paired with text (the chip + title). */
+const KIND_ICON: Record<CourseKind, (p: IconProps) => React.JSX.Element> = {
+  livraison: IconColis,
+  deuxieme_passage: IconReprendre,
+  retour: IconRefus,
+};
+
+/** The bottom hubs (WO-4.2R): Service · Courses — waypoint resets only. */
+const HUBS: readonly Screen[] = ['service', 'courses'];
+
+/** WO-4.3 — the demo's answer window for a proposed course (« Réponds
+ * avant : HH:MM »). ⚠ CTO safest default: reuses WO-1.2's founder-reviewed
+ * ACK_DEADLINE_MS (5 min — assignment-lease-ttl.v1). */
+const proposalDeadlineHhmm = (): string => {
+  const until = new Date(Date.now() + 5 * 60_000);
+  return `${String(until.getHours()).padStart(2, '0')}:${String(until.getMinutes()).padStart(2, '0')}`;
+};
+
+/** A fixed demo rider identity for the SOS incident (obviously not real). */
+const DEMO_RIDER_ID = 'rider-moussa-demo';
+
+/** The buyer's code is six digits (demo). The store's validateDropCode owns
+ * finality; this is only the entry surface, and it exists ONLY on the drop
+ * screen — which the spine makes reachable only after provider confirmation. */
+const DROP_CODE_LEN = 6;
+
+export default function App() {
+  const [world, setWorld] = useState<DemoWorld>(() => createDemoWorld());
+  // SERA-S3: the device-durable SOS outbox (document dir — survives kill+reboot).
+  // ONE durable outbox for every rider write kind (SOS raise, delivery evidence):
+  // a single document-dir queue, entries discriminated by `kind`.
+  const outboxStore = useMemo(() => createDocumentOutboxStore(), []);
+  const [stack, setStack] = useState<Screen[]>([START]);
+  const [shift, setShift] = useState<ShiftView>('off');
+  const [offline, setOffline] = useState(false);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [checks, setChecks] = useState<Partial<Record<PolicyCheckId, boolean>>>({});
+  const [windowUntil, setWindowUntil] = useState('');
+  const [proposalUntil, setProposalUntil] = useState(proposalDeadlineHhmm);
+  const [playing, setPlaying] = useState(false);
+  const [codeStr, setCodeStr] = useState('');
+  const [celebrate, setCelebrate] = useState(false);
+  const [sos, setSos] = useState<SosState>('closed');
+  const [key1, setKey1] = useState(false);
+  const [key2, setKey2] = useState(false);
+  const [oneKeyMsg, setOneKeyMsg] = useState(false);
+  const screen = stack[stack.length - 1] ?? START;
+  const active = world.courses.find((c) => c.id === activeId) ?? null;
+  const allChecked = POLICY_CHECK_IDS.every((id) => checks[id] === true);
+
+  // SOS hold timer — a deliberate HOLD fires the SOS; released or unmounted, it
+  // is cleared. There are NO post-fire timers: the acknowledgment comes from the
+  // store (a real dispatch/network response), never a fake countdown.
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearHold = useCallback(() => {
+    if (holdTimer.current) {
+      clearTimeout(holdTimer.current);
+      holdTimer.current = null;
+    }
+  }, []);
+  useEffect(() => clearHold, [clearHold]);
+
+  const go = useCallback((next: Screen) => {
+    if (!JOURNEY[stack[stack.length - 1] ?? START].includes(next)) return;
+    setStack((s) => [...s, next]);
+  }, [stack]);
+  // The course list is a fixed waypoint, never a pushed layer: every in-course
+  // « Retour aux courses » lands here, so the list can never sit above a stale
+  // course screen (the verifier's push-then-pop route).
+  const toCourses = useCallback(() => setStack([START, 'courses']), []);
+  const back = useCallback(() => {
+    // WO-4.1 rule (journaled; a TOTAL rule after two verifier findings — stale
+    // in-course screens must be unreachable BY CONSTRUCTION): a course's truth
+    // lives in course.step, so no course screen is ever revealed by popping.
+    // « Retour » on a course screen goes to the course list; on the list it
+    // goes home; on the root it does nothing. No pop arm exists.
+    const current = stack[stack.length - 1] ?? START;
+    if (current === 'courses') {
+      setStack([START]);
+      return;
+    }
+    if (COURSE_BACK_STEPS.includes(current)) {
+      setStack([START, 'courses']);
+    }
+  }, [stack]);
+  const reset = useCallback(() => {
+    clearHold();
+    // createDemoWorld() also clears any incident (incident: null).
+    setWorld(createDemoWorld());
+    setStack([START]);
+    setShift('off');
+    setOffline(false);
+    setActiveId(null);
+    setChecks({});
+    setWindowUntil('');
+    setProposalUntil(proposalDeadlineHhmm());
+    setPlaying(false);
+    setCodeStr('');
+    setCelebrate(false);
+    setSos('closed');
+    setKey1(false);
+    setKey2(false);
+    setOneKeyMsg(false);
+  }, [clearHold]);
+
+  /** Every custody move: the store calls custody-flow (throws out-of-order),
+   * the world re-renders, the stack follows the rule's outcome. */
+  const walk = useCallback((move: (w: DemoWorld) => CourseStep) => {
+    const next = move(world);
+    setWorld({ ...world });
+    go(next);
+  }, [world, go]);
+
+  const openCourse = useCallback((course: DemoCourse) => {
+    setActiveId(course.id);
+    setChecks({});
+    setCodeStr('');
+    setPlaying(false);
+    setKey1(false);
+    setKey2(false);
+    setOneKeyMsg(false);
+    go(course.step);
+  }, [go]);
+
+  // The arrival celebration fires when the drop code lands the course at
+  // 'delivered' — ≤ 800 ms, non-blocking, tap-to-skip, static under reduced
+  // motion (the component owns that).
+  useEffect(() => {
+    if (screen === 'delivered') setCelebrate(true);
+  }, [screen]);
+
+  // SOS — one gesture from any screen; opening only reveals the sheet, firing
+  // requires a deliberate HOLD (neither accidental nor missable).
+  const openSos = useCallback(() => setSos('confirm'), []);
+  const cancelSos = useCallback(() => {
+    clearHold();
+    setSos('closed');
+  }, [clearHold]);
+  // Firing builds the REAL incident in the store (custody-safe: no course is
+  // read or moved) and drives the sheet from its honest status — queued
+  // (offline, no ack) / raised (in-hours) / escalated (out-of-hours). The
+  // connectivity + dispatch-hours are typed sandbox constants (both branches
+  // real code); the live feeds drive them at assembly.
+  const fireSos = useCallback(() => {
+    // SERA-S3: mint the command_id ONCE at the gesture (the incident's stable
+    // identity), raise the in-memory incident INSTANTLY (a safety SOS never waits
+    // on disk), then persist the raise to the outbox in the background — so it
+    // survives a kill+reboot and flushes at-least-once with dedup on this id.
+    const commandId = mintCommandId();
+    const raised = raiseSos(world, commandId, {
+      riderId: DEMO_RIDER_ID,
+      onShift: shift === 'on',
+      activeCourseId: activeId,
+      connectivity: CONNECTIVITY,
+      hours: SANDBOX_DISPATCH_HOURS,
+    });
+    setWorld({ ...world });
+    void appendSosRaise(outboxStore, commandId, {
+      riderId: DEMO_RIDER_ID,
+      hours: SANDBOX_DISPATCH_HOURS,
+      onShift: shift === 'on',
+      activeCourseId: activeId,
+      raisedAt: raised.raisedAt,
+    });
+    const status = raised.status;
+    if (status === 'queued') setSos('queued');
+    else if (status === 'escalated') setSos('escalated');
+    else if (status === 'acknowledged') setSos('acknowledged');
+    else setSos('raised');
+  }, [world, shift, activeId, outboxStore]);
+  const sosHoldStart = useCallback(() => {
+    if (holdTimer.current) clearTimeout(holdTimer.current);
+    holdTimer.current = setTimeout(fireSos, 650);
+  }, [fireSos]);
+  const sosHoldEnd = useCallback(() => clearHold(), [clearHold]);
+  // The rider CANNOT self-acknowledge. This is the dispatch/network response
+  // arriving — a SANDBOX stand-in that drives the store's acknowledgeSos (which
+  // THROWS on a queued incident), never the rider's own hand.
+  const sosSandboxAck = useCallback(() => {
+    if (world.incident === null) return;
+    acknowledgeSos(world, world.incident.responder);
+    setWorld({ ...world });
+    setSos('acknowledged');
+  }, [world]);
+  const sosSafe = useCallback(() => setSos('over'), []);
+  const sosClose = useCallback(() => {
+    clearSos(world);
+    setWorld({ ...world });
+    clearHold();
+    setSos('closed');
+  }, [world, clearHold]);
+
+  const arriving = world.courses.find((c) => !c.closed && c.step === 'affectation') ?? null;
+  const shiftAction = shift === 'off' ? t('shift.start_action') : t('shift.end_action');
+
+  const headerTitle =
+    screen === 'service'
+      ? t('app.title')
+      : screen === 'courses'
+        ? t('courses.title')
+        : active !== null
+          ? active.name
+          : t('app.title');
+  const headerChip = screen === 'service' ? (shift === 'on' ? t('shift.on') : t('shift.off')) : t('assignment.title');
+
+  const voiceFor = () => ({
+    label: playing ? t('repere.voice_playing') : t('repere.voice'),
+    time: '0:11',
+    playing,
+    onPress: () => setPlaying((p) => !p),
+  });
+  // The seal ID's digit grouping uses the canon narrow-no-break-space (U+202F,
+  // money.groupSeparator) — the one place any grouping surfaces in Séra, which
+  // carries NO franc amount anywhere. Its glyph is whitespace; the fallback
+  // system face carries it, so no tofu.
+  const SEAL_ID = `SC-77${money.groupSeparator}412`;
+
+  return (
+    <SafeAreaView style={styles.screen}>
+      {/* Grand Teint status bar ink over warm paper (statusbar token). */}
+      <StatusBar style=\"dark\" backgroundColor={C.paper} />
+      <ThemeStrip />
+      <AppHeader
+        title={headerTitle}
+        subtitle={screen === 'service' ? t('service.tagline') : undefined}
+        backLabel={`← ${t('nav.retour')}`}
+        onBack={stack.length > 1 ? back : undefined}
+        right={<StatusChip tone={shift === 'on' ? 'ok' : 'muted'} label={headerChip} />}
+      />
+      {offline && <OfflineBanner label={t('offline.banner')} />}
+      {IS_PREVIEW && (
+        <View style={styles.previewBanner}>
+          <Text style={styles.previewBannerText}>{t('preview.banner')}</Text>
+        </View>
+      )}
+
+      <ScreenTransition screenKey={screen}>
+        <View style={styles.content}>
+          {screen === 'service' && (
+            <View style={styles.stackGap}>
+              {shift === 'off' && (
+                <>
+                  <PosterTitle>{t('service.off_title')}</PosterTitle>
+                  <Body>{t('service.off_body')}</Body>
+                  <Card ink>
+                    <View style={styles.certRow}>
+                      <IconScelle size={T.body.size} color={C.ink} />
+                      <Body style={styles.certText}>{t('service.location_note')}</Body>
+                    </View>
+                    <View style={styles.certRow}>
+                      <StatusChip tone=\"info\" label={t('service.certified')} />
+                      <Body style={styles.certText}>{t('service.certified_name')}</Body>
+                    </View>
+                  </Card>
+                  <PrimaryButton
+                    label={shiftAction}
+                    onPress={() => {
+                      // No server in the sandbox: a start stays queued = PENDING —
+                      // an offline shift-start confers NOTHING (R1 law).
+                      setShift('pending');
+                    }}
+                  />
+                </>
+              )}
+              {shift === 'pending' && (
+                <Card ink>
+                  <Overline>{t('shift.pending_title')}</Overline>
+                  {/* Queued = pending, never done — never a fake « En service ». */}
+                  <PendingNotice lines={[t('service.pending_note')]} />
+                </Card>
+              )}
+              {shift === 'on' && (
+                <>
+                  <Card accent>
+                    <View style={styles.onRow}>
+                      <View style={styles.onDot} />
+                      <PosterTitle>{t('shift.on')}</PosterTitle>
+                    </View>
+                    <Body>{t('service.on_note')}</Body>
+                  </Card>
+                  {arriving !== null && (
+                    <ListRow
+                      Icon={KIND_ICON[arriving.kind]}
+                      code={t('assignment.title')}
+                      title={arriving.locationLines[0]}
+                      meta={`${arriving.locationLines[2]} · ${t('assignment.landmark_label')}`}
+                      chip={<StatusChip tone=\"info\" label={t(statusKeyFor(arriving))} />}
+                      onPress={() => openCourse(arriving)}
+                    />
+                  )}
+                  <PrimaryButton label={t('courses.title')} onPress={() => go('courses')} />
+                  <GhostButton label={t('shift.end_action')} onPress={() => setShift('off')} />
+                </>
+              )}
+              <SecondaryButton label={t('offline.toggle')} onPress={() => setOffline((o) => !o)} />
+            </View>
+          )}
+
+          {screen === 'courses' && (
+            <View style={styles.listWrap}>
+              <Overline>{t('courses.overline')}</Overline>
+              <FlatList
+                data={world.courses}
+                keyExtractor={(c) => c.id}
+                initialNumToRender={6}
+                windowSize={5}
+                contentContainerStyle={styles.listContent}
+                ListEmptyComponent={<EmptyState Icon={IconMoto} title={t('shell.no_task')} hint={t('courses.empty_hint')} />}
+                ListFooterComponent={<Text style={styles.listFoot}>{t('courses.one_guardian')}</Text>}
+                renderItem={({ item }) => (
+                  <ListRow
+                    Icon={KIND_ICON[item.kind]}
+                    code={item.id.toUpperCase()}
+                    title={item.locationLines[0]}
+                    meta={`${item.locationLines[2]} · ${item.name}`}
+                    muted={item.closed}
+                    chip={
+                      <>
+                        <StatusChip tone={toneFor(item)} label={t(statusKeyFor(item))} />
+                        {item.attempt === 2 && <StatusChip tone=\"info\" label={t('courses.lineage_2e')} />}
+                      </>
+                    }
+                    onPress={item.closed ? undefined : () => openCourse(item)}
+                  />
+                )}
+              />
+            </View>
+          )}
+
+          {screen === 'affectation' && (
+            <Card style={styles.flexCard}>
+              {active === null ? (
+                <EmptyState Icon={IconMoto} title={t('shell.no_task')} />
+              ) : (
+                <>
+                  <Overline>{`${t('assignment.deadline')} ${proposalUntil}`}</Overline>
+                  {/* R4 « le repère » — the illustrated signature card (SE0.3,
+                      the D18 label class), voice directions playable. */}
+                  <LandmarkCard
+                    zone={active.locationLines[2]}
+                    lines={active.locationLines}
+                    repereLabel={t('assignment.landmark_label')}
+                    indicationsLabel={t('repere.indications')}
+                    illustrated
+                    voice={voiceFor()}
+                  />
+                  <QuoteRule>{t('repere.no_gps')}</QuoteRule>
+                  {active.ack === 'decline_pending' ? (
+                    /* The refusal went out WITHOUT the network: queued =
+                       PENDING, it confers nothing — only a server-confirmed
+                       decline releases; the window still runs. */
+                    <PendingNotice lines={[t('assignment.decline_pending')]} />
+                  ) : active.ack === 'ack_pending' ? (
+                    <>
+                      {/* Queued = PENDING; walking to the pickup is navigation. */}
+                      <PendingNotice lines={[t('assignment.ack_pending')]} />
+                      <PrimaryButton label={t('assignment.pickup_action')} onPress={() => walk((w) => beginPickup(w, active.id))} />
+                      <DangerButton
+                        label={t('assignment.decline_action')}
+                        onPress={() => {
+                          declineCourse(world, active.id);
+                          setWorld({ ...world });
+                          toCourses();
+                        }}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <PrimaryButton
+                        label={t('assignment.ack_action')}
+                        onPress={() => {
+                          acknowledgeCourse(world, active.id);
+                          setWorld({ ...world });
+                        }}
+                      />
+                      <DangerButton
+                        label={t('assignment.decline_action')}
+                        onPress={() => {
+                          declineCourse(world, active.id);
+                          setWorld({ ...world });
+                          toCourses();
+                        }}
+                      />
+                    </>
+                  )}
+                  <GhostButton
+                    label={t('assignment.expired_action')}
+                    onPress={() => {
+                      expireProposal(world, active.id);
+                      setWorld({ ...world });
+                      toCourses();
+                    }}
+                  />
+                </>
+              )}
+            </Card>
+          )}
+
+          {/* The custody walk — every transition below goes through the demo
+              store, which calls custody-flow.ts (the rule source) and throws
+              on any out-of-order move. */}
+          {screen === 'verify' && active !== null && (
+            <Card style={styles.flexCard}>
+              <PosterTitle>{t('verify.title')}</PosterTitle>
+              <Body>{t('verify.body')}</Body>
+              <View style={styles.checkList}>
+                {POLICY_CHECK_IDS.map((id) => (
+                  <CheckRow key={id} label={t(`check.${id}`)} checked={checks[id] === true} onPress={() => setChecks({ ...checks, [id]: !checks[id] })} />
+                ))}
+              </View>
+              <PrimaryButton
+                label={t('verify.accept_action')}
+                disabled={!allChecked}
+                onPress={() => walk((w) => passVerification(w, active.id, checks))}
+              />
+              {/* The refusal arm is as dignified as acceptance — its own
+                  polished danger style, never a shame path. */}
+              <DangerButton label={t('verify.refuse_action')} onPress={() => walk((w) => refusePickup(w, active.id))} />
+            </Card>
+          )}
+
+          {screen === 'refused' && (
+            <Card>
+              {/* The refusal path, money-register calm — what happened, what
+                  happens next; the course closes with dignity. */}
+              <PosterTitle>{t('refuse.status')}</PosterTitle>
+              <Body>{t('refuse.next')}</Body>
+              <SecondaryButton label={t('nav.retour_courses')} onPress={toCourses} />
+            </Card>
+          )}
+
+          {screen === 'seal' && active !== null && (
+            <Card ink>
+              {/* R7 « le scellé » — custody begins HERE, not a second before. */}
+              <PosterTitle>{t('seal.title')}</PosterTitle>
+              <Body>{t('seal.body')}</Body>
+              <SealMark code={SEAL_ID} label={t('seal.single_use')} />
+              {offline ? (
+                <PendingNotice lines={[t('seal.offline')]} />
+              ) : (
+                <PrimaryButton label={t('seal.action')} onPress={() => walk((w) => registerSeal(w, active.id))} />
+              )}
+            </Card>
+          )}
+
+          {screen === 'evidence' && active !== null && (
+            <Card>
+              <PosterTitle>{t('evidence.title')}</PosterTitle>
+              <View style={styles.photoFrame}>
+                <IconCamera size={T.display.size} color={C.soft} />
+                <View style={[styles.cornerTick, styles.tickTL]} />
+                <View style={[styles.cornerTick, styles.tickTR]} />
+                <View style={[styles.cornerTick, styles.tickBL]} />
+                <View style={[styles.cornerTick, styles.tickBR]} />
+              </View>
+              <PrimaryButton
+                label={t('evidence.action')}
+                onPress={() => {
+                  // SERA-S2 · SE-I06: mint the command_id ONCE at the gesture (the
+                  // capture's identity), land evidence_pending INSTANTLY, then persist
+                  // the capture to the outbox in the background — durable across a
+                  // kill+reboot, flushed at-least-once with dedup on this id. The drop
+                  // stays LOCKED until that flush returns the authoritative server ack;
+                  // being online is not being acked.
+                  const commandId = mintCommandId();
+                  walk((w) => captureEvidence(w, active.id));
+                  void appendEvidence(outboxStore, commandId, {
+                    courseId: active.id,
+                    capturedAt: new Date().toISOString(),
+                  });
+                }}
+              />
+            </Card>
+          )}
+
+          {screen === 'evidence_pending' && active !== null && (
+            <Card>
+              {/* SE-I06: capturing queued the photo = PENDING and the drop is
+                  LOCKED. The rider CANNOT unlock it — ONLY the authoritative
+                  server ack (the outbox flush outcome) advances this screen. Being
+                  online is not being acked; offline shows only the wait. The
+                  sandbox constant stands in for the live flush outcome at assembly. */}
+              {!offline && SANDBOX_EVIDENCE_ACK === 'applied' ? (
+                <>
+                  <PosterTitle>{t('evidence.confirmed_status')}</PosterTitle>
+                  <PrimaryButton
+                    label={t('evidence.continue_action')}
+                    onPress={() => walk((w) => applyEvidenceServerAck(w, active.id, SANDBOX_EVIDENCE_ACK))}
+                  />
+                </>
+              ) : (
+                <>
+                  <PendingNotice lines={[t('evidence.pending')]} />
+                  <SecondaryButton label={t('nav.retour_courses')} onPress={toCourses} />
+                </>
+              )}
+            </Card>
+          )}
+
+          {screen === 'door_inspection' && active !== null && (
+            <Card style={styles.flexCard}>
+              <PosterTitle>{t('inspect.title')}</PosterTitle>
+              <Body>{t('inspect.body')}</Body>
+              {active.attempt === 2 && <StatusChip tone=\"info\" label={t('courses.lineage_2e')} />}
+              {/* The signature card again at the door — the rider stands at the
+                  repère, never at a street address. */}
+              <LandmarkCard
+                zone={active.locationLines[2]}
+                lines={active.locationLines}
+                repereLabel={t('assignment.landmark_label')}
+                indicationsLabel={t('repere.indications')}
+              />
+              <PrimaryButton label={t('inspect.accept_action')} onPress={() => walk((w) => acceptInspection(w, active.id))} />
+              <GhostButton label={t('problem.action')} onPress={() => walk((w) => reportProblem(w, active.id))} />
+              <Pressable style={styles.linkRow} onPress={() => walk((w) => reportProblem(w, active.id))} accessibilityRole=\"button\">
+                <Text style={styles.linkText}>{t('inspect.cantpay')}</Text>
+              </Pressable>
+            </Card>
+          )}
+
+          {screen === 'payment_wait' && active !== null && (
+            <Card>
+              {/* R9 « à la porte » — SE-I11: the rider CANNOT assert payment.
+                  No button, no field, no gesture advances this screen; ONLY the
+                  provider signal does. The waiting screen is UNSKIPPABLE. The
+                  sandbox constant stands in for the live signal at assembly. */}
+              {SANDBOX_DOOR_SIGNAL === 'confirmed' ? (
+                <>
+                  <PosterTitle>{t('pay_ok.status')}</PosterTitle>
+                  <Body>{t('pay_ok.body')}</Body>
+                  <PrimaryButton
+                    label={t('pay_ok.continue_action')}
+                    onPress={() => walk((w) => applyProviderDoorSignal(w, active.id, SANDBOX_DOOR_SIGNAL))}
+                  />
+                </>
+              ) : (
+                <>
+                  <PosterTitle>{t('pay_wait.status')}</PosterTitle>
+                  <PendingNotice lines={[t('pay_wait.hint'), t('pay_wait.operator')]} />
+                </>
+              )}
+            </Card>
+          )}
+
+          {screen === 'drop' && active !== null && (
+            <Card style={styles.flexCard}>
+              {/* R10 « le code de remise » — the buyer's code is the LAST key.
+                  This entry exists ONLY here; the spine makes 'drop' reachable
+                  only after the provider-confirmed payment. */}
+              <Overline>{t('drop.title')}</Overline>
+              <Body>{t('drop.hint')}</Body>
+              <CodeCells value={codeStr} length={DROP_CODE_LEN} />
+              <Keypad
+                onKey={(d) => setCodeStr((c) => (c.length < DROP_CODE_LEN ? c + d : c))}
+                onBack={() => setCodeStr((c) => c.slice(0, -1))}
+              />
+              <PrimaryButton
+                label={t('drop.action')}
+                disabled={codeStr.length !== DROP_CODE_LEN}
+                onPress={() => walk((w) => validateDropCode(w, active.id))}
+              />
+              {/* WO-2.2 refusal ladder entry — as dignified as the purchase
+                  path; it whispers, never shouts. */}
+              <GhostButton label={t('problem.action')} onPress={() => walk((w) => reportProblem(w, active.id))} />
+            </Card>
+          )}
+
+          {screen === 'refusal_reason' && active !== null && (
+            <Card style={styles.flexCard}>
+              <PosterTitle>{t('reason.title')}</PosterTitle>
+              {FAILURE_REASON_IDS.map((id) => (
+                <GhostButton
+                  key={id}
+                  label={t(`reason.${id}`)}
+                  onPress={() => {
+                    // The ONE retry window (~15 min policy default; the live
+                    // windowExpiresAt arrives with the service outcome at
+                    // assembly — the display is honest either way).
+                    const until = new Date(Date.now() + 15 * 60_000);
+                    setWindowUntil(`${String(until.getHours()).padStart(2, '0')}:${String(until.getMinutes()).padStart(2, '0')}`);
+                    walk((w) => chooseFailureReason(w, active.id, id));
+                  }}
+                />
+              ))}
+            </Card>
+          )}
+
+          {screen === 'retry_window' && active !== null && (
+            <Card>
+              {/* R12 « l'échelle des échecs » — retry arm. No generic « échec »
+                  exists; the drop code stays LAST, behind the payment leg. */}
+              <PosterTitle>{t('retry.status')}</PosterTitle>
+              <StatusChip tone=\"warn\" label={`${t('retry.until')} ${windowUntil}`} />
+              <PrimaryButton label={t('retry.retry_action')} onPress={() => walk((w) => retryDelivery(w, active.id))} />
+              <GhostButton label={t('retry.expired_action')} onPress={() => walk((w) => expireRetryWindow(w, active.id))} />
+            </Card>
+          )}
+
+          {screen === 'refused_final' && active !== null && (
+            <Card>
+              {/* Buyer-fault refusal, register:money — calm, cause and
+                  what-happens-next stated; no shame, no jargon. */}
+              <PosterTitle>{t('refused_final.status')}</PosterTitle>
+              <Body>{t('refused_final.fee')}</Body>
+              <Body>{t('refused_final.next')}</Body>
+              <PrimaryButton label={t('refused_final.retour_action')} onPress={() => walk((w) => prepareReturn(w, active.id))} />
+            </Card>
+          )}
+
+          {screen === 'reschedule_planned' && (
+            <Card>
+              {/* The non-escalating arm: honest absence / provider failure —
+                  nothing is lost, the order stays whole; the 2e passage appears
+                  on the course list with its lineage. */}
+              <PosterTitle>{t('reschedule.status')}</PosterTitle>
+              <Body>{t('reschedule.next')}</Body>
+              <StatusChip tone=\"info\" label={t('reschedule.lineage')} />
+              <SecondaryButton label={t('nav.retour_courses')} onPress={toCourses} />
+            </Card>
+          )}
+
+          {screen === 'retour_colis' && active !== null && (
+            <Card style={styles.flexCard}>
+              {/* R13 « le retour à deux clés » (SE6.2): the seller's key and the
+                  rider's key, both or neither. A single key REFUSES. */}
+              <PosterTitle>{t('retour.title')}</PosterTitle>
+              <QuoteRule tone=\"accent\">{t('retour.custodian')}</QuoteRule>
+              <Overline>{t('retour.two_keys')}</Overline>
+              <View style={styles.keyRow}>
+                <View style={styles.keyLabel}>
+                  <IconCle size={T.body.size} color={C.ink} />
+                  <Body style={styles.keyText}>{t('retour.key_seller')}</Body>
+                </View>
+                {key1 ? (
+                  <IconCoche size={T.title.size} color={C.success} />
+                ) : (
+                  <GhostButton label={t('retour.key_seller_action')} onPress={() => setKey1(true)} />
+                )}
+              </View>
+              <View style={styles.keyRow}>
+                <View style={styles.keyLabel}>
+                  <IconCle size={T.body.size} color={C.ink} />
+                  <Body style={styles.keyText}>{t('retour.key_rider')}</Body>
+                </View>
+                {key2 ? (
+                  <IconCoche size={T.title.size} color={C.success} />
+                ) : (
+                  <GhostButton
+                    label={t('retour.key_rider_action')}
+                    onPress={() => {
+                      // A single-key attempt REFUSES: both hands, or the custody
+                      // does not move (attemptReturnHandover is the pure gate).
+                      if (attemptReturnHandover({ seller: key1, rider: true }) === 'refused') {
+                        setOneKeyMsg(true);
+                        return;
+                      }
+                      setKey2(true);
+                    }}
+                  />
+                )}
+              </View>
+              {oneKeyMsg && !key2 && (
+                <View style={styles.refuseNote}>
+                  <Body style={styles.refuseNoteText}>{t('retour.one_key_refused')}</Body>
+                </View>
+              )}
+              <PrimaryButton
+                label={t('retour.action')}
+                disabled={attemptReturnHandover({ seller: key1, rider: key2 }) === 'refused'}
+                onPress={() => {
+                  completeReturn(world, active.id);
+                  setWorld({ ...world });
+                  toCourses();
+                }}
+              />
+            </Card>
+          )}
+
+          {screen === 'delivered' && (
+            <Card ink style={styles.flexCard}>
+              {/* R11 « course validée » — the proof is complete; Séra emits a
+                  SIGNAL, never money. The celebration overlays this card. */}
+              <View style={styles.validRow}>
+                <IconCoche size={T.title.size} color={C.success} />
+                <PosterTitle>{t('delivered.status')}</PosterTitle>
+              </View>
+              <View style={styles.proofList}>
+                <ProofLine label={t('delivered.proof_package')} />
+                <ProofLine label={t('delivered.proof_seal')} />
+                <ProofLine label={t('delivered.proof_code')} />
+              </View>
+              <QuoteRule>{t('delivered.no_money')}</QuoteRule>
+              <SecondaryButton label={t('nav.retour_courses')} onPress={toCourses} />
+              {celebrate && <CourseValideeCelebration onDone={() => setCelebrate(false)} />}
+            </Card>
+          )}
+        </View>
+      </ScreenTransition>
+
+      <View style={styles.footer}>
+        <Text style={styles.footerHint}>{t('demo.donnees')}</Text>
+        <Pressable style={styles.resetAction} onPress={reset}>
+          <Text style={styles.resetActionText}>{t('nav.recommencer')}</Text>
+        </Pressable>
+      </View>
+
+      {HUBS.includes(screen) && (
+        <TabBar
+          items={[
+            { key: 'service', Icon: IconMoto, label: t('nav.tab_service'), active: screen === 'service', onPress: () => setStack([START]) },
+            { key: 'courses', Icon: IconColis, label: t('nav.tab_courses'), active: screen === 'courses', onPress: () => toCourses() },
+          ]}
+        />
+      )}
+
+      {/* R14 « SOS » — mounted UNCONDITIONALLY, outside every screen branch: one
+          gesture from ANY screen, unmissable, never accidentally triggerable. */}
+      <SosButton label={t('sos.label')} onOpen={openSos} />
+      <SosSheet
+        state={sos}
+        strings={{
+          title: t('sos.title'),
+          confirmHint: t('sos.confirm_hint'),
+          hold: t('sos.hold'),
+          cancel: t('sos.cancel'),
+          holdNote: t('sos.hold_note'),
+          queued: t('sos.queued'),
+          queuedHint: t('sos.queued_hint'),
+          raised: t('sos.raised'),
+          raisedHint: t('sos.raised_hint'),
+          escalated: t('sos.escalated'),
+          escalatedHint: t('sos.escalated_hint'),
+          transportPending: t('sos.transport_pending'),
+          acknowledged: t('sos.acknowledged'),
+          acknowledgedHint: t('sos.acknowledged_hint'),
+          previewAck: t('sos.preview_ack'),
+          previewAckEscalated: t('sos.preview_ack_escalated'),
+          safe: t('sos.safe'),
+          over: t('sos.over'),
+          overHint: t('sos.over_hint'),
+          close: t('sos.close'),
+        }}
+        onHoldStart={sosHoldStart}
+        onHoldEnd={sosHoldEnd}
+        onCancel={cancelSos}
+        onSandboxAck={sosSandboxAck}
+        onSafe={sosSafe}
+        onClose={sosClose}
+      />
+    </SafeAreaView>
+  );
+}
+
+function ProofLine({ label }: { label: string }) {
+  return (
+    <View style={styles.proofRow}>
+      <IconCoche size={T.body.size} color={C.success} />
+      <Text style={styles.proofText}>{label}</Text>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: C.paper },
+  content: {
+    flex: 1,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
+    gap: spacing.md,
+  },
+  flexCard: { flex: 0 },
+  stackGap: { gap: spacing.md, paddingTop: spacing.sm },
+  listWrap: { flex: 1, gap: spacing.sm },
+  listContent: { gap: spacing.sm, paddingBottom: spacing.sm },
+  listFoot: { color: C.muted, fontSize: T.caption.size, lineHeight: T.caption.size * T.caption.lh, textAlign: 'center', paddingVertical: spacing.md },
+  checkList: { gap: spacing.sm },
+  certRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  certText: { flex: 1 },
+  onRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  onDot: { width: spacing.sm, height: spacing.sm, borderRadius: radius.pill, backgroundColor: C.success },
+  photoFrame: {
+    minHeight: spacing.xxl * 3,
+    borderWidth: interaction.hairline.thin,
+    borderColor: C.hairlineMid,
+    backgroundColor: C.sand,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.lg,
+  },
+  cornerTick: { position: 'absolute', width: interaction.cornerTick.sizePx, height: interaction.cornerTick.sizePx, borderColor: C.scrim },
+  tickTL: { top: spacing.sm, left: spacing.sm, borderTopWidth: interaction.cornerTick.strokePx, borderLeftWidth: interaction.cornerTick.strokePx },
+  tickTR: { top: spacing.sm, right: spacing.sm, borderTopWidth: interaction.cornerTick.strokePx, borderRightWidth: interaction.cornerTick.strokePx },
+  tickBL: { bottom: spacing.sm, left: spacing.sm, borderBottomWidth: interaction.cornerTick.strokePx, borderLeftWidth: interaction.cornerTick.strokePx },
+  tickBR: { bottom: spacing.sm, right: spacing.sm, borderBottomWidth: interaction.cornerTick.strokePx, borderRightWidth: interaction.cornerTick.strokePx },
+  linkRow: { alignItems: 'center', paddingVertical: spacing.sm, minHeight: touch.minTargetPx, justifyContent: 'center' },
+  linkText: { color: C.accentStrong, fontSize: T.label.size, lineHeight: T.label.size * T.label.lh, fontWeight: '800', letterSpacing: T.label.ls, textTransform: 'uppercase', textDecorationLine: 'underline' },
+  keyRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, borderWidth: interaction.hairline.strong, borderColor: C.ink, padding: spacing.md, minHeight: touch.minTargetPx },
+  keyLabel: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  keyText: { flex: 1 },
+  refuseNote: { borderLeftWidth: interaction.accentEdgePx - 1, borderLeftColor: C.danger, backgroundColor: C.dangerTint, padding: spacing.md },
+  refuseNoteText: { color: C.dangerDeep },
+  validRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  proofList: { gap: spacing.sm },
+  proofRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  proofText: { color: C.onInk, fontSize: T.body.size, lineHeight: T.body.size * T.body.lh, flex: 1 },
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+    minHeight: touch.minTargetPx,
+  },
+  footerHint: { color: C.soft, fontSize: T.caption.size, lineHeight: T.caption.size * T.caption.lh },
+  resetAction: { minHeight: touch.minTargetPx, justifyContent: 'center', paddingHorizontal: spacing.md },
+  resetActionText: { color: C.muted, fontSize: T.caption.size, lineHeight: T.caption.size * T.caption.lh, fontWeight: '800', letterSpacing: T.label.ls, textTransform: 'uppercase' },
+  previewBanner: {
+    backgroundColor: C.warningTint,
+    borderBottomWidth: interaction.hairline.thin,
+    borderBottomColor: C.warningStripe,
+    paddingVertical: spacing.xs,
+    alignItems: 'center',
+  },
+  previewBannerText: {
+    color: C.warning,
+    fontSize: T.labelXS.size,
+    lineHeight: T.labelXS.size * T.labelXS.lh,
+    fontWeight: '800',
+    letterSpacing: T.labelXS.ls,
+    textTransform: 'uppercase',
+  },
+});
+"
+
+ ❯ test/connectivity-truthful.test.ts:26:17
+     24|     const app = rider('App.tsx');
+     25|     // the decline must receive the real connectivity signal (not a co…
+     26|     expect(app).toMatch(/declineCourse\(\s*world,\s*active\.id,\s*conn…
+       |                 ^
+     27|     // no store call is fed the retired compile-time constant
+     28|     expect(app).not.toMatch(/connectivity:\s*CONNECTIVITY/);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed (2)
+   Start at  03:27:00
+   Duration  333ms (transform 35ms, setup 0ms, collect 30ms, tests 9ms, environment 0ms, prepare 63ms)
+

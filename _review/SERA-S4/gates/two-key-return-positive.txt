@@ -1,0 +1,3 @@
+$ node scripts/gates/two-key-return.mjs gates/fixtures/return.two-keys.json
+OK: TWO keys consumed both-or-neither → custody courier→seller, chain verifies, return closed
+(exit code: 0)

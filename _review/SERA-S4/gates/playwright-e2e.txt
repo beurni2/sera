@@ -1,0 +1,33 @@
+$ pnpm --filter @sera/dispatch-console test:e2e
+
+> @sera/dispatch-console@0.0.1 test:e2e /home/user/sera/apps/dispatch-console
+> playwright test
+
+
+Running 22 tests using 2 workers
+
+  ✓   2 [chromium] › e2e/shell.spec.ts:12:1 › the console shell boots on the sera theme with catalog strings (384ms)
+  ✓   3 [chromium] › e2e/shell.spec.ts:36:1 › WO-2.7 item 2 (NB⑤): the door line is SIGNAL-DRIVEN — honest pending BEFORE the signal, « Confirmé par le réseau » only AFTER it (218ms)
+  ✓   4 [chromium] › e2e/shell.spec.ts:52:1 › WO-1.2 manual assignment: landmark-first task card → « Donner la course » → honest waiting state (239ms)
+  ✓   1 [chromium] › e2e/gallery.spec.ts:25:5 › gallery: console-file-prete (918ms)
+  ✓   5 [chromium] › e2e/shell.spec.ts:72:1 › WO-4.3 lease: the PROPOSED assignment states its deadline — « Course proposée — répondez avant HH:MM » from the lease expiresAt (291ms)
+  ✓   7 [chromium] › e2e/shell.spec.ts:86:1 › WO-6.1 (ruling ⑤) the « done » lever marks the proposed course delivered — releaseOnCompletion, honest state (284ms)
+  ✓   6 [chromium] › e2e/gallery.spec.ts:25:5 › gallery: console-course-donnee (801ms)
+  ✓   8 [chromium] › e2e/shell.spec.ts:102:1 › WO-4.3 lease expiry: past the 5-min window the honest expired state shows and the task is BACK in the queue (270ms)
+  ✓  10 [chromium] › e2e/shell.spec.ts:120:1 › WO-6.3 SOS: a raised incident lands at the TOP, states custody + coarse location, and the dispatcher acknowledges (308ms)
+  ✓  11 [chromium] › e2e/shell.spec.ts:147:1 › WO-6.3 SOS: a queued (offline) incident shows « En attente du réseau » and the ack lever is DISABLED (233ms)
+  ✓   9 [chromium] › e2e/gallery.spec.ts:25:5 › gallery: console-course-livree (767ms)
+  ✓  12 [chromium] › e2e/gallery.spec.ts:25:5 › gallery: console-porte-confirmee (770ms)
+  ✓  13 [chromium] › e2e/gallery.spec.ts:25:5 › gallery: console-course-remise (744ms)
+  ✓  14 [chromium] › e2e/gallery.spec.ts:25:5 › gallery: console-sos-raised (767ms)
+  ✓  15 [chromium] › e2e/gallery.spec.ts:25:5 › gallery: console-sos-acknowledged (751ms)
+  ✓  16 [chromium] › e2e/gallery.spec.ts:25:5 › gallery: console-sos-queued (746ms)
+  ✓  17 [chromium] › e2e/gallery.spec.ts:25:5 › gallery: console-board (791ms)
+  ✓  18 [chromium] › e2e/gallery.spec.ts:25:5 › gallery: console-board-incident (747ms)
+  ✓  19 [chromium] › e2e/gallery.spec.ts:25:5 › gallery: console-desk (740ms)
+  ✓  20 [chromium] › e2e/gallery.spec.ts:25:5 › gallery: console-desk-incident (742ms)
+  ✓  21 [chromium] › e2e/gallery.spec.ts:25:5 › gallery: console-breakglass (753ms)
+  ✓  22 [chromium] › e2e/gallery.spec.ts:25:5 › gallery: console-breakglass-ground (755ms)
+
+  22 passed (12.9s)
+(exit code: 0)

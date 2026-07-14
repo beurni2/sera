@@ -1,0 +1,3 @@
+$ node scripts/gates/outcome-family.mjs gates/fixtures/outcome.retry-canonical.json
+OK: reason 'insufficient_balance' → canonical DeliveryOutcome (family retry, fault buyer, window 2026-07-10T12:15:00.000Z)
+(exit code: 0)

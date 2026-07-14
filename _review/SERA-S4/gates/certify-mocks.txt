@@ -1,0 +1,29 @@
+$ node scripts/certify-mocks.mjs
+ RUN  v3.2.7 /home/user/sera/services/custody-service
+stdout | test/eligibility-consumer-certification.test.ts > commerce-core eligibility-consumer mock — certified by the pinned §3 suite > scores 8/8 — CERTIFIED
+CERTIFIED — eligibility — 8/8 §3 behaviors
+  ✓ emits_duplicates: duplicated command_ids under control: 1; without control: 0
+  ✓ delivers_out_of_order: clean delivery ordered: true; controlled delivery out of order: true
+  ✓ delays_events: requested 40ms, observed 41ms before first delivery (tolerance 2ms for clock quantization)
+  ✓ returns_stale_projections: fresh version 2, stale version 1
+  ✓ simulates_timeouts: MockTimeoutError raised
+  ✓ simulates_partial_failures: clean sequence 3 events; partial delivered 1 then failed: commerce-eligibility-consumer: mid-sequence failure
+  ✓ rejects_invalid_state_transitions: Paid -> Eligible: accepted=false (a paid settlement obligation can never regress to eligible)
+  ✓ generated_from_producer_contract_schema: producerSchema identical to domain registry: true; envelopes conformant: true; payload parse failures: 0/3
+ ✓ test/eligibility-consumer-certification.test.ts (4 tests) 63ms
+stdout | test/door-flow.test.ts > WO-2.4 item 6 — the shop door-paid emitter as a §3-misbehaving mock > scores 8/8 — CERTIFIED
+CERTIFIED — payment-provider — 8/8 §3 behaviors
+  ✓ emits_duplicates: duplicated command_ids under control: 1; without control: 0
+  ✓ delivers_out_of_order: clean delivery ordered: true; controlled delivery out of order: true
+  ✓ delays_events: requested 40ms, observed 41ms before first delivery (tolerance 2ms for clock quantization)
+  ✓ returns_stale_projections: fresh version 2, stale version 1
+  ✓ simulates_timeouts: MockTimeoutError raised
+  ✓ simulates_partial_failures: clean sequence 2 events; partial delivered 1 then failed: shop-door-payment-emitter: mid-sequence failure
+  ✓ rejects_invalid_state_transitions: captured -> held: accepted=false (a captured door leg can never regress to held)
+  ✓ generated_from_producer_contract_schema: producerSchema identical to domain registry: true; envelopes conformant: true; payload parse failures: 0/2
+ ✓ test/door-flow.test.ts (18 tests) 75ms
+ Test Files  2 passed (2)
+      Tests  22 passed (22)
+   Start at  03:37:39
+   Duration  604ms (transform 211ms, setup 0ms, collect 466ms, tests 138ms, environment 0ms, prepare 134ms)
+(exit code: 0)

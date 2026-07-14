@@ -1,0 +1,9 @@
+$ node scripts/baseline-check.mjs
+productSubtotal           11500
+buyerTotal                12500
+sellerNet                 8500
+resellerNet               2000
+platformProductFeeRevenue 1000
+assertQuoteReconciles: no throw
+§5.4 worked baseline OK (10,000 / 1,000 / 1,500 / 1,000)
+(exit code: 0)

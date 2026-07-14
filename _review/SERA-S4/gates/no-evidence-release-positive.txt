@@ -1,0 +1,3 @@
+$ node scripts/gates/no-evidence-release.mjs
+no-evidence-release OK — no banned pattern in apps, services, packages (§5.5 evidence supports, never releases — no EvidenceBundle→settlement path)
+(exit code: 0)

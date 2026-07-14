@@ -1,0 +1,3 @@
+$ pnpm exec copy-lint apps/dispatch-console/i18n/catalog.json
+copy-lint OK: 84 entries, 0 violations
+(exit code: 0)

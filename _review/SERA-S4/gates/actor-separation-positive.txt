@@ -1,0 +1,3 @@
+$ node scripts/gates/custody-actor-separation.mjs gates/fixtures/custody.distinct-actors.json
+OK: rider r-1 ≠ supplier sup-1 — custody transferred, chain verifies
+(exit code: 0)
