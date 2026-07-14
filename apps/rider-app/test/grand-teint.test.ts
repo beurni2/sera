@@ -108,9 +108,12 @@ describe('the approved dependencies — nothing else', () => {
     // expoDocumentStore precedent — survives kill+reboot). SDK-54 bundled versions.
     expect(pkg.dependencies['expo-crypto']).toBe('~15.0.9');
     expect(pkg.dependencies['expo-file-system']).toBe('~19.0.23');
-    // the only deps beyond the pre-WO set are exactly these five
+    // the only deps beyond the pre-WO set are exactly these five. @platform/*
+    // are baseline canon infra (not third-party capabilities): SERA-S1 adds
+    // @platform/contracts as the home of the canon `mintCommandId` helper, consumed
+    // RN-safe via the pure-zod /dist/command-id subpath (never the barrel).
     const before = new Set([
-      '@platform/ui-tokens', 'expo', 'expo-status-bar', 'expo-updates', 'react', 'react-native',
+      '@platform/contracts', '@platform/ui-tokens', 'expo', 'expo-status-bar', 'expo-updates', 'react', 'react-native',
     ]);
     const added = Object.keys(pkg.dependencies).filter((d) => !before.has(d));
     expect(added.sort()).toEqual(['expo-crypto', 'expo-file-system', 'expo-font', 'expo-haptics', 'react-native-svg']);
