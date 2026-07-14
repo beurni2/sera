@@ -540,6 +540,30 @@
     "screenClass": "status"
   },
   {
+    "key": "offline.backlog_prefix",
+    "fr": "Hors ligne :",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "offline.backlog_suffix_one",
+    "fr": "action en attente",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "offline.backlog_suffix_many",
+    "fr": "actions en attente",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "offline.persist_failed",
+    "fr": "Un envoi n'est pas parti. Il repartira à la reconnexion.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
     "key": "offline.toggle",
     "fr": "Basculer hors ligne (essai)",
     "register": "neutral",

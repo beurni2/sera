@@ -38,7 +38,7 @@ export const SOS_ACK_SLA_POLICY = {
 } as const;
 
 /**
- * Sandbox dispatch-hours (typed data like custody-flow's CONNECTIVITY): BOTH
+ * Sandbox dispatch-hours (typed data like SANDBOX_DOOR_SIGNAL): BOTH
  * branches are REAL paths. 'in_hours' → the DISPATCHER answers on the console;
  * 'out_of_hours' → the SOS escalates to the FOUNDER's phone. The live clock /
  * on-call roster feed drives this value at assembly; the rider never sets it.

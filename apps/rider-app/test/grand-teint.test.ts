@@ -108,7 +108,11 @@ describe('the approved dependencies — nothing else', () => {
     // expoDocumentStore precedent — survives kill+reboot). SDK-54 bundled versions.
     expect(pkg.dependencies['expo-crypto']).toBe('~15.0.9');
     expect(pkg.dependencies['expo-file-system']).toBe('~19.0.23');
-    // the only deps beyond the pre-WO set are exactly these five. @platform/*
+    // SERA-S4 (closes the durability arc): expo-network — REAL connectivity behind
+    // a port (the CTO-authorized substrate), retiring the compile-time CONNECTIVITY
+    // constant. SDK-54 bundled version.
+    expect(pkg.dependencies['expo-network']).toBe('~8.0.8');
+    // the only deps beyond the pre-WO set are exactly these six. @platform/*
     // are baseline canon infra (not third-party capabilities): SERA-S1 adds
     // @platform/contracts as the home of the canon `mintCommandId` helper, consumed
     // RN-safe via the pure-zod /dist/command-id subpath (never the barrel).
@@ -116,6 +120,6 @@ describe('the approved dependencies — nothing else', () => {
       '@platform/contracts', '@platform/ui-tokens', 'expo', 'expo-status-bar', 'expo-updates', 'react', 'react-native',
     ]);
     const added = Object.keys(pkg.dependencies).filter((d) => !before.has(d));
-    expect(added.sort()).toEqual(['expo-crypto', 'expo-file-system', 'expo-font', 'expo-haptics', 'react-native-svg']);
+    expect(added.sort()).toEqual(['expo-crypto', 'expo-file-system', 'expo-font', 'expo-haptics', 'expo-network', 'react-native-svg']);
   });
 });

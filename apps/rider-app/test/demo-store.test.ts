@@ -196,12 +196,12 @@ describe('demo world custody walk', () => {
     // closed = closed: no ack, no pickup, no second decline, no expiry
     expect(() => acknowledgeCourse(world, id)).toThrow();
     expect(() => beginPickup(world, id)).toThrow();
-    expect(() => declineCourse(world, id)).toThrow();
+    expect(() => declineCourse(world, id, 'online')).toThrow();
     expect(() => expireProposal(world, id)).toThrow();
     // and a course past the proposal cannot be declined — custody has begun
     const w2 = createDemoWorld();
     beginPickup(w2, id);
-    expect(() => declineCourse(w2, id)).toThrow();
+    expect(() => declineCourse(w2, id, 'online')).toThrow();
     expect(() => expireProposal(w2, id)).toThrow();
   });
 

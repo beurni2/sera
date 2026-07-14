@@ -3,7 +3,6 @@ import { StatusBar } from 'expo-status-bar';
 import { FlatList, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { seraTheme, spacing, radius, touch, type as typo, interaction, money } from '@platform/ui-tokens';
 import {
-  CONNECTIVITY,
   FAILURE_REASON_IDS,
   POLICY_CHECK_IDS,
   SANDBOX_DOOR_SIGNAL,
@@ -19,6 +18,10 @@ import { mintCommandId } from './src/offline/commandId';
 import { appendSosRaise } from './src/offline/sos';
 import { appendEvidence } from './src/offline/evidence';
 import { createDocumentOutboxStore } from './src/offline/documentStore';
+import { createManualConnectivity, type Connectivity } from './src/offline/connectivity';
+import { bindDeviceConnectivity } from './src/offline/expoConnectivity';
+import { pendingCount, drainOnReconnect } from './src/offline/backlog';
+import type { FlushOutcome } from './src/offline/outbox';
 import {
   acceptInspection,
   acknowledgeCourse,
@@ -197,9 +200,18 @@ export default function App() {
   // ONE durable outbox for every rider write kind (SOS raise, delivery evidence):
   // a single document-dir queue, entries discriminated by `kind`.
   const outboxStore = useMemo(() => createDocumentOutboxStore(), []);
+  // SERA-S4: connectivity is REAL, behind a port (expo-network on device); the
+  // manual port also backs the demo toggle. `offline` is DERIVED from it — the
+  // retired compile-time connectivity constant is gone. `backlog` is the REAL
+  // count of pending durable writes; `persistFailed` is where a background-persist
+  // failure surfaces (the offline banner is that surface).
+  const net = useMemo(() => createManualConnectivity(), []);
+  const [connectivity, setConnectivity] = useState<Connectivity>('online');
+  const [backlog, setBacklog] = useState(0);
+  const [persistFailed, setPersistFailed] = useState(false);
+  const offline = connectivity === 'offline';
   const [stack, setStack] = useState<Screen[]>([START]);
   const [shift, setShift] = useState<ShiftView>('off');
-  const [offline, setOffline] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [checks, setChecks] = useState<Partial<Record<PolicyCheckId, boolean>>>({});
   const [windowUntil, setWindowUntil] = useState('');
@@ -214,6 +226,36 @@ export default function App() {
   const screen = stack[stack.length - 1] ?? START;
   const active = world.courses.find((c) => c.id === activeId) ?? null;
   const allChecked = POLICY_CHECK_IDS.every((id) => checks[id] === true);
+
+  // SERA-S4 · the reconnect drain sender. The LIVE sender posts each queued write to
+  // its service at assembly; here it models the server accepting on reconnect
+  // ('applied', like SANDBOX_EVIDENCE_ACK) so the backlog drains truthfully in the
+  // walkable demo. The rider never asserts this.
+  const sandboxReconnectSender = useCallback(async (): Promise<FlushOutcome> => 'applied', []);
+  const refreshBacklog = useCallback(() => {
+    void pendingCount(outboxStore).then(setBacklog);
+  }, [outboxStore]);
+  // The port drives `connectivity`; on device expo-network feeds the same port.
+  useEffect(() => {
+    const unsubscribe = net.subscribe(setConnectivity);
+    const unbind = bindDeviceConnectivity(net);
+    return () => {
+      unsubscribe();
+      unbind();
+    };
+  }, [net]);
+  // Reconnect → flush the durable outbox, the banner clears with the backlog; offline
+  // just re-counts what is queued (queued = pending, never done — SE-I06 family).
+  useEffect(() => {
+    if (connectivity === 'online') {
+      void drainOnReconnect(outboxStore, sandboxReconnectSender).then((remaining) => {
+        setBacklog(remaining);
+        if (remaining === 0) setPersistFailed(false);
+      });
+    } else {
+      refreshBacklog();
+    }
+  }, [connectivity, outboxStore, sandboxReconnectSender, refreshBacklog]);
 
   // SOS hold timer — a deliberate HOLD fires the SOS; released or unmounted, it
   // is cleared. There are NO post-fire timers: the acknowledgment comes from the
@@ -256,7 +298,9 @@ export default function App() {
     setWorld(createDemoWorld());
     setStack([START]);
     setShift('off');
-    setOffline(false);
+    net.set('online');
+    setBacklog(0);
+    setPersistFailed(false);
     setActiveId(null);
     setChecks({});
     setWindowUntil('');
@@ -268,7 +312,7 @@ export default function App() {
     setKey1(false);
     setKey2(false);
     setOneKeyMsg(false);
-  }, [clearHold]);
+  }, [clearHold, net]);
 
   /** Every custody move: the store calls custody-flow (throws out-of-order),
    * the world re-renders, the stack follows the rule's outcome. */
@@ -305,9 +349,9 @@ export default function App() {
   }, [clearHold]);
   // Firing builds the REAL incident in the store (custody-safe: no course is
   // read or moved) and drives the sheet from its honest status — queued
-  // (offline, no ack) / raised (in-hours) / escalated (out-of-hours). The
-  // connectivity + dispatch-hours are typed sandbox constants (both branches
-  // real code); the live feeds drive them at assembly.
+  // (offline, no ack) / raised (in-hours) / escalated (out-of-hours). SERA-S4:
+  // the connectivity is now the REAL port signal (the dispatch-hours stay a typed
+  // sandbox value the live roster feed drives at assembly).
   const fireSos = useCallback(() => {
     // SERA-S3: mint the command_id ONCE at the gesture (the incident's stable
     // identity), raise the in-memory incident INSTANTLY (a safety SOS never waits
@@ -318,23 +362,26 @@ export default function App() {
       riderId: DEMO_RIDER_ID,
       onShift: shift === 'on',
       activeCourseId: activeId,
-      connectivity: CONNECTIVITY,
+      connectivity,
       hours: SANDBOX_DISPATCH_HOURS,
     });
     setWorld({ ...world });
+    // SERA-S4: the S3-named `.catch` hardening lands here — a background-persist
+    // failure routes to the banner surface (persistFailed); success refreshes the
+    // real backlog count. The safety incident already showed instantly regardless.
     void appendSosRaise(outboxStore, commandId, {
       riderId: DEMO_RIDER_ID,
       hours: SANDBOX_DISPATCH_HOURS,
       onShift: shift === 'on',
       activeCourseId: activeId,
       raisedAt: raised.raisedAt,
-    });
+    }).then(refreshBacklog, () => setPersistFailed(true));
     const status = raised.status;
     if (status === 'queued') setSos('queued');
     else if (status === 'escalated') setSos('escalated');
     else if (status === 'acknowledged') setSos('acknowledged');
     else setSos('raised');
-  }, [world, shift, activeId, outboxStore]);
+  }, [world, shift, activeId, connectivity, outboxStore, refreshBacklog]);
   const sosHoldStart = useCallback(() => {
     if (holdTimer.current) clearTimeout(holdTimer.current);
     holdTimer.current = setTimeout(fireSos, 650);
@@ -394,7 +441,18 @@ export default function App() {
         onBack={stack.length > 1 ? back : undefined}
         right={<StatusChip tone={shift === 'on' ? 'ok' : 'muted'} label={headerChip} />}
       />
-      {offline && <OfflineBanner label={t('offline.banner')} />}
+      {offline && (
+        <OfflineBanner
+          label={
+            backlog === 0
+              ? t('offline.banner')
+              : `${t('offline.backlog_prefix')} ${backlog} ${backlog === 1 ? t('offline.backlog_suffix_one') : t('offline.backlog_suffix_many')}`
+          }
+        />
+      )}
+      {/* SERA-S4: a background-persist failure surfaces HERE (the CTO's banner
+          surface) — honest « à réessayer », never a lost-in-silence write. */}
+      {persistFailed && <PendingNotice lines={[t('offline.persist_failed')]} />}
       {IS_PREVIEW && (
         <View style={styles.previewBanner}>
           <Text style={styles.previewBannerText}>{t('preview.banner')}</Text>
@@ -459,7 +517,7 @@ export default function App() {
                   <GhostButton label={t('shift.end_action')} onPress={() => setShift('off')} />
                 </>
               )}
-              <SecondaryButton label={t('offline.toggle')} onPress={() => setOffline((o) => !o)} />
+              <SecondaryButton label={t('offline.toggle')} onPress={() => net.set(offline ? 'online' : 'offline')} />
             </View>
           )}
 
@@ -525,7 +583,10 @@ export default function App() {
                       <DangerButton
                         label={t('assignment.decline_action')}
                         onPress={() => {
-                          declineCourse(world, active.id);
+                          // SERA-S4: the REAL connectivity decides queued-vs-sent —
+                          // offline = decline_pending (confers nothing), online =
+                          // server-confirmed decline. The retired constant lied here.
+                          declineCourse(world, active.id, connectivity);
                           setWorld({ ...world });
                           toCourses();
                         }}
@@ -543,7 +604,10 @@ export default function App() {
                       <DangerButton
                         label={t('assignment.decline_action')}
                         onPress={() => {
-                          declineCourse(world, active.id);
+                          // SERA-S4: the REAL connectivity decides queued-vs-sent —
+                          // offline = decline_pending (confers nothing), online =
+                          // server-confirmed decline. The retired constant lied here.
+                          declineCourse(world, active.id, connectivity);
                           setWorld({ ...world });
                           toCourses();
                         }}
@@ -631,10 +695,12 @@ export default function App() {
                   // being online is not being acked.
                   const commandId = mintCommandId();
                   walk((w) => captureEvidence(w, active.id));
+                  // SERA-S4 `.catch`: a background-persist failure routes to the
+                  // banner surface; success refreshes the real backlog count.
                   void appendEvidence(outboxStore, commandId, {
                     courseId: active.id,
                     capturedAt: new Date().toISOString(),
-                  });
+                  }).then(refreshBacklog, () => setPersistFailed(true));
                 }}
               />
             </Card>
