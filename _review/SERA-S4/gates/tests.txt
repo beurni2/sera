@@ -1,0 +1,272 @@
+$ pnpm test
+
+> sera@0.0.1 test /home/user/sera
+> turbo run test
+
+• turbo 2.10.4
+
+   • Packages in scope: @sera/commerce-core, @sera/custody-service, @sera/dispatch-console, @sera/evidence-service, @sera/flags-client, @sera/logistics-service, @sera/observability, @sera/rider-app
+   • Running test in 8 packages
+   • Remote caching disabled
+
+@sera/commerce-core:build: cache hit, replaying logs 90804253a4394a0c
+@sera/commerce-core:build: 
+@sera/commerce-core:build: > @sera/commerce-core@0.0.1 build /home/user/sera/packages/commerce-core
+@sera/commerce-core:build: > tsc -p tsconfig.json
+@sera/commerce-core:build: 
+@sera/flags-client:build: cache hit, replaying logs 61301d7e32e9f812
+@sera/flags-client:build: 
+@sera/flags-client:build: > @sera/flags-client@0.0.1 build /home/user/sera/packages/flags-client
+@sera/flags-client:build: > tsc -p tsconfig.json
+@sera/flags-client:build: 
+@sera/observability:build: cache hit, replaying logs eb69f39240275045
+@sera/observability:build: 
+@sera/observability:build: > @sera/observability@0.0.1 build /home/user/sera/packages/observability
+@sera/observability:build: > tsc -p tsconfig.json
+@sera/observability:build: 
+@sera/commerce-core:test: cache hit, replaying logs 618b9ad5f6b1475b
+@sera/commerce-core:test: 
+@sera/commerce-core:test: > @sera/commerce-core@0.0.1 test /home/user/sera/packages/commerce-core
+@sera/commerce-core:test: > vitest run
+@sera/commerce-core:test: 
+@sera/commerce-core:test: 
+@sera/commerce-core:test:  RUN  v3.2.7 /home/user/sera/packages/commerce-core
+@sera/commerce-core:test: 
+@sera/commerce-core:test:  ✓ test/money-gate.test.ts (7 tests) 32ms
+@sera/commerce-core:test: 
+@sera/commerce-core:test:  Test Files  1 passed (1)
+@sera/commerce-core:test:       Tests  7 passed (7)
+@sera/commerce-core:test:    Start at  01:12:55
+@sera/commerce-core:test:    Duration  1.39s (transform 154ms, setup 0ms, collect 348ms, tests 32ms, environment 0ms, prepare 274ms)
+@sera/commerce-core:test: 
+@sera/flags-client:test: cache hit, replaying logs 2c6207e6afd57ea6
+@sera/flags-client:test: 
+@sera/flags-client:test: > @sera/flags-client@0.0.1 test /home/user/sera/packages/flags-client
+@sera/flags-client:test: > vitest run
+@sera/flags-client:test: 
+@sera/flags-client:test: 
+@sera/flags-client:test:  RUN  v3.2.7 /home/user/sera/packages/flags-client
+@sera/flags-client:test: 
+@sera/flags-client:test:  ✓ test/flags.test.ts (3 tests) 8ms
+@sera/flags-client:test: 
+@sera/flags-client:test:  Test Files  1 passed (1)
+@sera/flags-client:test:       Tests  3 passed (3)
+@sera/flags-client:test:    Start at  01:12:54
+@sera/flags-client:test:    Duration  2.99s (transform 156ms, setup 0ms, collect 130ms, tests 8ms, environment 0ms, prepare 2.04s)
+@sera/flags-client:test: 
+@sera/rider-app:test: cache miss, executing 6e62e50fbd648e5b
+@sera/logistics-service:build: cache hit, replaying logs 6ae592d87e74757a
+@sera/logistics-service:build: 
+@sera/logistics-service:build: > @sera/logistics-service@0.0.1 build /home/user/sera/services/logistics-service
+@sera/logistics-service:build: > tsc -p tsconfig.json
+@sera/logistics-service:build: 
+@sera/observability:test: cache hit, replaying logs 9f006bf5981b475a
+@sera/observability:test: 
+@sera/observability:test: > @sera/observability@0.0.1 test /home/user/sera/packages/observability
+@sera/observability:test: > vitest run
+@sera/observability:test: 
+@sera/observability:test: 
+@sera/observability:test:  RUN  v3.2.7 /home/user/sera/packages/observability
+@sera/observability:test: 
+@sera/observability:test:  ✓ test/correlation.test.ts (3 tests) 47ms
+@sera/observability:test: 
+@sera/observability:test:  Test Files  1 passed (1)
+@sera/observability:test:       Tests  3 passed (3)
+@sera/observability:test:    Start at  01:12:51
+@sera/observability:test:    Duration  1.37s (transform 201ms, setup 0ms, collect 199ms, tests 47ms, environment 0ms, prepare 292ms)
+@sera/observability:test: 
+@sera/evidence-service:build: cache hit, replaying logs 28e6cd6ca1c9e756
+@sera/evidence-service:build: 
+@sera/evidence-service:build: > @sera/evidence-service@0.0.1 build /home/user/sera/services/evidence-service
+@sera/evidence-service:build: > tsc -p tsconfig.json
+@sera/evidence-service:build: 
+@sera/custody-service:build: cache hit, replaying logs a148835264b1cc0a
+@sera/custody-service:build: 
+@sera/custody-service:build: > @sera/custody-service@0.0.1 build /home/user/sera/services/custody-service
+@sera/custody-service:build: > tsc -p tsconfig.json
+@sera/custody-service:build: 
+@sera/logistics-service:test: cache hit, replaying logs c40d9c99d8b39d79
+@sera/logistics-service:test: 
+@sera/logistics-service:test: > @sera/logistics-service@0.0.1 pretest /home/user/sera/services/logistics-service
+@sera/logistics-service:test: > pnpm bundle:worker
+@sera/logistics-service:test: 
+@sera/logistics-service:test: 
+@sera/logistics-service:test: > @sera/logistics-service@0.0.1 bundle:worker /home/user/sera/services/logistics-service
+@sera/logistics-service:test: > esbuild worker/assignment-lease-do.ts --bundle --format=esm --outfile=dist-worker/assignment-worker.mjs --platform=neutral --conditions=import
+@sera/logistics-service:test: 
+@sera/logistics-service:test: 
+@sera/logistics-service:test:   dist-worker/assignment-worker.mjs  6.0kb
+@sera/logistics-service:test: 
+@sera/logistics-service:test: ⚡ Done in 7ms
+@sera/logistics-service:test: 
+@sera/logistics-service:test: > @sera/logistics-service@0.0.1 test /home/user/sera/services/logistics-service
+@sera/logistics-service:test: > vitest run
+@sera/logistics-service:test: 
+@sera/logistics-service:test: 
+@sera/logistics-service:test:  RUN  v3.2.7 /home/user/sera/services/logistics-service
+@sera/logistics-service:test: 
+@sera/logistics-service:test:  ✓ test/intake-misbehavior.test.ts (24 tests) 84ms
+@sera/logistics-service:test:  ✓ test/assignment-lease.test.ts (15 tests) 14ms
+@sera/logistics-service:test:  ✓ test/manual-assignment.test.ts (12 tests) 17ms
+@sera/logistics-service:test:  ✓ test/reschedule.test.ts (6 tests) 18ms
+@sera/logistics-service:test:  ✓ test/assignment-lease-do.e2e.test.ts (6 tests) 1277ms
+@sera/logistics-service:test:    ✓ AssignmentLeaseDO on workerd — THE singular dispatch authority > ① 20 CONCURRENT ACQUIRES, one task, 20 distinct riders → EXACTLY 1 winner, 19 task_already_leased (SE-I01: never double-booked)  1131ms
+@sera/logistics-service:test:  ✓ test/delivery-location.test.ts (5 tests) 7ms
+@sera/logistics-service:test:  ✓ test/leased-dispatch.e2e.test.ts (11 tests) 1185ms
+@sera/logistics-service:test:    ✓ LeasedDispatch — the full grant path on the real authority > GRANT PATH: recheck + assignability + atomic acquire + witnessed book entry; pickup.assigned.v1 carries the chain; replay is idempotent end-to-end  942ms
+@sera/logistics-service:test:  ✓ test/rider-registry.test.ts (10 tests) 8ms
+@sera/logistics-service:test:  ✓ test/assignment-authority.test.ts (3 tests) 6ms
+@sera/logistics-service:test: stdout | test/health.test.ts > logistics-service > serves /health and names itself
+@sera/logistics-service:test: {"ts":"2026-07-14T01:14:18.712Z","level":"info","correlation_id":"dca9a4ad-74d2-4e75-a88a-733cfea1397b","service":"logistics-service","msg":"health check","path":"/health"}
+@sera/logistics-service:test: 
+@sera/logistics-service:test: stdout | test/health.test.ts > logistics-service > unknown routes are 404 — no features at this slice
+@sera/logistics-service:test: {"ts":"2026-07-14T01:14:18.717Z","level":"warn","correlation_id":"0a67ac52-bdfd-4d0b-ae6e-e2bac2ffcc87","service":"logistics-service","msg":"route not found","path":"/anything"}
+@sera/logistics-service:test: 
+@sera/logistics-service:test:  ✓ test/health.test.ts (2 tests) 10ms
+@sera/logistics-service:test: 
+@sera/logistics-service:test:  Test Files  10 passed (10)
+@sera/logistics-service:test:       Tests  94 passed (94)
+@sera/logistics-service:test:    Start at  01:14:14
+@sera/logistics-service:test:    Duration  4.19s (transform 615ms, setup 0ms, collect 4.18s, tests 2.63s, environment 2ms, prepare 1.52s)
+@sera/logistics-service:test: 
+@sera/evidence-service:test: cache hit, replaying logs 475df5814129c42c
+@sera/evidence-service:test: 
+@sera/evidence-service:test: > @sera/evidence-service@0.0.1 test /home/user/sera/services/evidence-service
+@sera/evidence-service:test: > vitest run
+@sera/evidence-service:test: 
+@sera/evidence-service:test: 
+@sera/evidence-service:test:  RUN  v3.2.7 /home/user/sera/services/evidence-service
+@sera/evidence-service:test: 
+@sera/evidence-service:test:  ✓ test/readiness-evidence.test.ts (3 tests) 23ms
+@sera/evidence-service:test: stdout | test/health.test.ts > evidence-service > serves /health and names itself
+@sera/evidence-service:test: {"ts":"2026-07-14T01:14:14.966Z","level":"info","correlation_id":"2052143a-5a82-4131-abaf-0cae9f689418","service":"evidence-service","msg":"health check","path":"/health"}
+@sera/evidence-service:test: 
+@sera/evidence-service:test: stdout | test/health.test.ts > evidence-service > unknown routes are 404 — no features at this slice
+@sera/evidence-service:test: {"ts":"2026-07-14T01:14:14.979Z","level":"warn","correlation_id":"870509d5-7969-4142-b9ba-a58ad01a13f4","service":"evidence-service","msg":"route not found","path":"/anything"}
+@sera/evidence-service:test: 
+@sera/evidence-service:test:  ✓ test/health.test.ts (2 tests) 45ms
+@sera/evidence-service:test: 
+@sera/evidence-service:test:  Test Files  2 passed (2)
+@sera/evidence-service:test:       Tests  5 passed (5)
+@sera/evidence-service:test:    Start at  01:14:13
+@sera/evidence-service:test:    Duration  1.37s (transform 223ms, setup 0ms, collect 694ms, tests 68ms, environment 5ms, prepare 354ms)
+@sera/evidence-service:test: 
+@sera/dispatch-console:build: cache hit, replaying logs 34514ee414468294
+@sera/dispatch-console:build: 
+@sera/dispatch-console:build: > @sera/dispatch-console@0.0.1 build /home/user/sera/apps/dispatch-console
+@sera/dispatch-console:build: > vite build
+@sera/dispatch-console:build: 
+@sera/dispatch-console:build: vite v6.4.3 building for production...
+@sera/dispatch-console:build: transforming...
+@sera/dispatch-console:build: ✓ 135 modules transformed.
+@sera/dispatch-console:build: rendering chunks...
+@sera/dispatch-console:build: computing gzip size...
+@sera/dispatch-console:build: dist/index.html                  0.33 kB │ gzip:  0.25 kB
+@sera/custody-service:test: cache hit, replaying logs b3ea90170b75c7fc
+@sera/dispatch-console:build: dist/assets/index-Cw99Shw0.js  149.87 kB │ gzip: 38.90 kB
+@sera/dispatch-console:build: ✓ built in 3.30s
+@sera/custody-service:test: 
+@sera/custody-service:test: > @sera/custody-service@0.0.1 test /home/user/sera/services/custody-service
+@sera/custody-service:test: > vitest run
+@sera/custody-service:test: 
+@sera/custody-service:test: 
+@sera/custody-service:test:  RUN  v3.2.7 /home/user/sera/services/custody-service
+@sera/custody-service:test: 
+@sera/custody-service:test:  ✓ test/custody-ledger.test.ts (5 tests) 57ms
+@sera/custody-service:test:  ✓ test/custody-spine.test.ts (17 tests) 176ms
+@sera/custody-service:test:  ✓ test/failure-flows.test.ts (23 tests) 235ms
+@sera/custody-service:test: stdout | test/door-flow.test.ts > WO-2.4 item 6 — the shop door-paid emitter as a §3-misbehaving mock > scores 8/8 — CERTIFIED
+@sera/custody-service:test: CERTIFIED — payment-provider — 8/8 §3 behaviors
+@sera/custody-service:test:   ✓ emits_duplicates: duplicated command_ids under control: 1; without control: 0
+@sera/custody-service:test:   ✓ delivers_out_of_order: clean delivery ordered: true; controlled delivery out of order: true
+@sera/custody-service:test:   ✓ delays_events: requested 40ms, observed 42ms before first delivery (tolerance 2ms for clock quantization)
+@sera/custody-service:test:   ✓ returns_stale_projections: fresh version 2, stale version 1
+@sera/custody-service:test:   ✓ simulates_timeouts: MockTimeoutError raised
+@sera/custody-service:test:   ✓ simulates_partial_failures: clean sequence 2 events; partial delivered 1 then failed: shop-door-payment-emitter: mid-sequence failure
+@sera/custody-service:test:   ✓ rejects_invalid_state_transitions: captured -> held: accepted=false (a captured door leg can never regress to held)
+@sera/custody-service:test:   ✓ generated_from_producer_contract_schema: producerSchema identical to domain registry: true; envelopes conformant: true; payload parse failures: 0/2
+@sera/custody-service:test: 
+@sera/custody-service:test:  ✓ test/door-flow.test.ts (18 tests) 194ms
+@sera/custody-service:test:  ✓ test/wo27-hardening.test.ts (9 tests) 27ms
+@sera/custody-service:test: stdout | test/eligibility-consumer-certification.test.ts > commerce-core eligibility-consumer mock — certified by the pinned §3 suite > scores 8/8 — CERTIFIED
+@sera/custody-service:test: CERTIFIED — eligibility — 8/8 §3 behaviors
+@sera/custody-service:test:   ✓ emits_duplicates: duplicated command_ids under control: 1; without control: 0
+@sera/custody-service:test:   ✓ delivers_out_of_order: clean delivery ordered: true; controlled delivery out of order: true
+@sera/custody-service:test:   ✓ delays_events: requested 40ms, observed 46ms before first delivery (tolerance 2ms for clock quantization)
+@sera/custody-service:test:   ✓ returns_stale_projections: fresh version 2, stale version 1
+@sera/custody-service:test:   ✓ simulates_timeouts: MockTimeoutError raised
+@sera/custody-service:test:   ✓ simulates_partial_failures: clean sequence 3 events; partial delivered 1 then failed: commerce-eligibility-consumer: mid-sequence failure
+@sera/custody-service:test:   ✓ rejects_invalid_state_transitions: Paid -> Eligible: accepted=false (a paid settlement obligation can never regress to eligible)
+@sera/custody-service:test:   ✓ generated_from_producer_contract_schema: producerSchema identical to domain registry: true; envelopes conformant: true; payload parse failures: 0/3
+@sera/custody-service:test: 
+@sera/custody-service:test:  ✓ test/eligibility-consumer-certification.test.ts (4 tests) 117ms
+@sera/custody-service:test:  ✓ test/pickup-verification.test.ts (5 tests) 35ms
+@sera/custody-service:test: stdout | test/health.test.ts > custody-service > serves /health and names itself
+@sera/dispatch-console:test: cache hit, replaying logs 84dbfcef4187b82b
+@sera/custody-service:test: {"ts":"2026-07-14T01:12:57.057Z","level":"info","correlation_id":"bd76da2f-7af7-4d37-9b66-02601ee854bf","service":"custody-service","msg":"health check","path":"/health"}
+@sera/custody-service:test: 
+@sera/custody-service:test: stdout | test/health.test.ts > custody-service > unknown routes are 404 — no features at this slice
+@sera/custody-service:test: {"ts":"2026-07-14T01:12:57.071Z","level":"warn","correlation_id":"a0b69cbe-9d53-4104-a3ee-b2fa189b72ac","service":"custody-service","msg":"route not found","path":"/anything"}
+@sera/custody-service:test: 
+@sera/dispatch-console:test: 
+@sera/custody-service:test:  ✓ test/health.test.ts (2 tests) 43ms
+@sera/dispatch-console:test: > @sera/dispatch-console@0.0.1 test /home/user/sera/apps/dispatch-console
+@sera/custody-service:test:  ✓ test/custody-transition.test.ts (4 tests) 45ms
+@sera/dispatch-console:test: > vitest run
+@sera/custody-service:test: 
+@sera/dispatch-console:test: 
+@sera/custody-service:test:  Test Files  9 passed (9)
+@sera/dispatch-console:test: 
+@sera/custody-service:test:       Tests  87 passed (87)
+@sera/dispatch-console:test:  RUN  v3.2.7 /home/user/sera/apps/dispatch-console
+@sera/custody-service:test:    Start at  01:12:51
+@sera/dispatch-console:test: 
+@sera/custody-service:test:    Duration  6.64s (transform 1.28s, setup 0ms, collect 6.48s, tests 930ms, environment 2ms, prepare 2.77s)
+@sera/dispatch-console:test:  ✓ test/icons.test.ts (3 tests) 27ms
+@sera/custody-service:test: 
+@sera/dispatch-console:test:  ✓ test/catalog.test.ts (2 tests) 35ms
+@sera/dispatch-console:test:  ✓ test/ready-queue-admission.test.ts (2 tests) 53ms
+@sera/dispatch-console:test:  ✓ test/board.test.ts (5 tests) 25ms
+@sera/dispatch-console:test:  ✓ test/exceptions.test.ts (7 tests) 24ms
+@sera/dispatch-console:test:  ✓ test/break-glass.test.ts (5 tests) 23ms
+@sera/dispatch-console:test:  ✓ test/sandbox-incident.test.ts (4 tests) 8ms
+@sera/dispatch-console:test: 
+@sera/dispatch-console:test:  Test Files  7 passed (7)
+@sera/dispatch-console:test:       Tests  28 passed (28)
+@sera/dispatch-console:test:    Start at  01:14:13
+@sera/dispatch-console:test:    Duration  2.97s (transform 708ms, setup 0ms, collect 2.12s, tests 194ms, environment 5ms, prepare 1.63s)
+@sera/dispatch-console:test: 
+@sera/rider-app:test: 
+@sera/rider-app:test: > @sera/rider-app@0.0.1 test /home/user/sera/apps/rider-app
+@sera/rider-app:test: > vitest run
+@sera/rider-app:test: 
+@sera/rider-app:test: 
+@sera/rider-app:test:  RUN  v3.2.7 /home/user/sera/apps/rider-app
+@sera/rider-app:test: 
+@sera/rider-app:test:  ✓ test/ui-kit.test.ts (13 tests) 23ms
+@sera/rider-app:test:  ✓ test/outbox.test.ts (6 tests) 21ms
+@sera/rider-app:test:  ✓ test/sos-drill.test.ts (9 tests) 15ms
+@sera/rider-app:test:  ✓ test/grand-teint.test.ts (8 tests) 12ms
+@sera/rider-app:test:  ✓ test/wo6-invariants.test.ts (11 tests) 12ms
+@sera/rider-app:test:  ✓ test/demo-store.test.ts (12 tests) 12ms
+@sera/rider-app:test:  ✓ test/journey-spine.test.ts (6 tests) 10ms
+@sera/rider-app:test:  ✓ test/evidence-outbox.test.ts (3 tests) 9ms
+@sera/rider-app:test:  ✓ test/sos-outbox.test.ts (3 tests) 10ms
+@sera/rider-app:test:  ✓ test/shell.test.ts (3 tests) 23ms
+@sera/rider-app:test:  ✓ test/connectivity.test.ts (4 tests) 12ms
+@sera/rider-app:test:  ✓ test/preview-font-embedding.test.ts (3 tests) 5ms
+@sera/rider-app:test:  ✓ test/evidence-finality.test.ts (5 tests) 5ms
+@sera/rider-app:test:  ✓ test/font-embedding.test.ts (2 tests) 5ms
+@sera/rider-app:test:  ✓ test/connectivity-truthful.test.ts (2 tests) 4ms
+@sera/rider-app:test:  ✓ test/preview-banner.test.ts (2 tests) 3ms
+@sera/rider-app:test: 
+@sera/rider-app:test:  Test Files  16 passed (16)
+@sera/rider-app:test:       Tests  92 passed (92)
+@sera/rider-app:test:    Start at  03:48:25
+@sera/rider-app:test:    Duration  2.04s (transform 359ms, setup 0ms, collect 920ms, tests 180ms, environment 3ms, prepare 1.27s)
+@sera/rider-app:test: 
+
+ Tasks:    15 successful, 15 total
+Cached:    14 cached, 15 total
+  Time:    3s 
+(exit code: 0)

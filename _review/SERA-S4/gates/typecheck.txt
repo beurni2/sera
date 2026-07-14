@@ -1,0 +1,71 @@
+$ pnpm typecheck
+
+> sera@0.0.1 typecheck /home/user/sera
+> turbo run typecheck
+
+• turbo 2.10.4
+
+   • Packages in scope: @sera/commerce-core, @sera/custody-service, @sera/dispatch-console, @sera/evidence-service, @sera/flags-client, @sera/logistics-service, @sera/observability, @sera/rider-app
+   • Running typecheck in 8 packages
+   • Remote caching disabled
+
+@sera/flags-client:typecheck: cache hit, replaying logs 78ccba7870462850
+@sera/flags-client:typecheck: 
+@sera/flags-client:typecheck: > @sera/flags-client@0.0.1 typecheck /home/user/sera/packages/flags-client
+@sera/flags-client:typecheck: > tsc -p tsconfig.json --noEmit
+@sera/flags-client:typecheck: 
+@sera/observability:typecheck: cache hit, replaying logs 9e0d760da298e55d
+@sera/observability:typecheck: 
+@sera/observability:typecheck: > @sera/observability@0.0.1 typecheck /home/user/sera/packages/observability
+@sera/observability:typecheck: > tsc -p tsconfig.json --noEmit
+@sera/observability:typecheck: 
+@sera/commerce-core:typecheck: cache hit, replaying logs 19cf6b6e33c8fe93
+@sera/commerce-core:typecheck: 
+@sera/commerce-core:typecheck: > @sera/commerce-core@0.0.1 typecheck /home/user/sera/packages/commerce-core
+@sera/commerce-core:typecheck: > tsc -p tsconfig.json --noEmit
+@sera/commerce-core:typecheck: 
+@sera/observability:build: cache hit, replaying logs eb69f39240275045
+@sera/observability:build: 
+@sera/observability:build: > @sera/observability@0.0.1 build /home/user/sera/packages/observability
+@sera/observability:build: > tsc -p tsconfig.json
+@sera/observability:build: 
+@sera/rider-app:typecheck: cache miss, executing 20d13013ffe6d8cb
+@sera/custody-service:build: cache hit, replaying logs a148835264b1cc0a
+@sera/custody-service:build: 
+@sera/custody-service:build: > @sera/custody-service@0.0.1 build /home/user/sera/services/custody-service
+@sera/custody-service:build: > tsc -p tsconfig.json
+@sera/custody-service:build: 
+@sera/custody-service:typecheck: cache hit, replaying logs d7c468e68326551c
+@sera/custody-service:typecheck: 
+@sera/custody-service:typecheck: > @sera/custody-service@0.0.1 typecheck /home/user/sera/services/custody-service
+@sera/custody-service:typecheck: > tsc -p tsconfig.json --noEmit
+@sera/custody-service:typecheck: 
+@sera/logistics-service:typecheck: cache hit, replaying logs 3e09bda41bfe70a8
+@sera/logistics-service:typecheck: 
+@sera/logistics-service:typecheck: > @sera/logistics-service@0.0.1 typecheck /home/user/sera/services/logistics-service
+@sera/logistics-service:typecheck: > tsc -p tsconfig.json --noEmit && tsc -p worker/tsconfig.json
+@sera/logistics-service:typecheck: 
+@sera/evidence-service:typecheck: cache hit, replaying logs e593036b39093421
+@sera/evidence-service:typecheck: 
+@sera/evidence-service:typecheck: > @sera/evidence-service@0.0.1 typecheck /home/user/sera/services/evidence-service
+@sera/evidence-service:typecheck: > tsc -p tsconfig.json --noEmit
+@sera/evidence-service:typecheck: 
+@sera/logistics-service:build: cache hit, replaying logs 6ae592d87e74757a
+@sera/logistics-service:build: 
+@sera/logistics-service:build: > @sera/logistics-service@0.0.1 build /home/user/sera/services/logistics-service
+@sera/logistics-service:build: > tsc -p tsconfig.json
+@sera/logistics-service:build: 
+@sera/dispatch-console:typecheck: cache hit, replaying logs d319ddccfd2e5452
+@sera/dispatch-console:typecheck: 
+@sera/dispatch-console:typecheck: > @sera/dispatch-console@0.0.1 typecheck /home/user/sera/apps/dispatch-console
+@sera/dispatch-console:typecheck: > tsc -p tsconfig.json --noEmit
+@sera/dispatch-console:typecheck: 
+@sera/rider-app:typecheck: 
+@sera/rider-app:typecheck: > @sera/rider-app@0.0.1 typecheck /home/user/sera/apps/rider-app
+@sera/rider-app:typecheck: > tsc -p tsconfig.json --noEmit
+@sera/rider-app:typecheck: 
+
+ Tasks:    11 successful, 11 total
+Cached:    10 cached, 11 total
+  Time:    3.079s 
+(exit code: 0)

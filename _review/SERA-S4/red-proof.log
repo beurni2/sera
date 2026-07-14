@@ -1,8 +1,157 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
+ RUN  v3.2.7 /home/user/sera/apps/rider-app
+
+ ❯ test/connectivity-truthful.test.ts (2 tests | 2 failed) 9ms
+   × SERA-S4 — connectivity is real, not a constant > the CONNECTIVITY constant is GONE from custody-flow (a real port replaces it) 6ms
+     → expected 'import type { FlushOutcome } from \'.…' not to match /export const CONNECTIVITY/
+   × SERA-S4 — connectivity is real, not a constant > the App threads the real connectivity signal into the store — never the retired constant 1ms
+     → expected 'import { useCallback, useEffect, useM…' to match /declineCourse\(\s*world,\s*active\.id…/
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/connectivity-truthful.test.ts > SERA-S4 — connectivity is real, not a constant > the CONNECTIVITY constant is GONE from custody-flow (a real port replaces it)
+AssertionError: expected 'import type { FlushOutcome } from \'.…' not to match /export const CONNECTIVITY/
+
+[32m- Expected:[39m 
+/export const CONNECTIVITY/
+
+[31m+ Received:[39m 
+"import type { FlushOutcome } from './offline/outbox';
+
+/**
+ * Rider-shell custody flow model (WO-1.3). The check ids MIRROR
+ * pickup-verification-policy.v1 — the SERVICE owns the policy; the shell
+ * renders its checklist from these ids via catalog keys `check.<id>`.
+ * Offline law: evidence sent without the network is queued = PENDING and
+ * the drop step stays LOCKED — finality never happens offline. The sandbox
+ * has no live connectivity wiring (it lands at E1 assembly): CONNECTIVITY
+ * below is typed data, and both branches are real code paths.
+ */
+
+export const POLICY_CHECK_IDS = [
+  'order_ref',
+  'identity',
+  'variant',
+  'colour',
+  'size_label',
+  'qty',
+  'damage',
+  'pieces',
+  'manufacturer_seal',
+] as const;
+export type PolicyCheckId = (typeof POLICY_CHECK_IDS)[number];
+
+export type CustodyStep =
+  | 'verify'
+  | 'refused'
+  | 'seal'
+  | 'evidence'
+  | 'evidence_pending'
+  | 'drop'
+  | 'delivered'
+  | 'refusal_reason'
+  | 'retry_window'
+  | 'refused_final'
+  | 'reschedule_planned'
+  | 'door_inspection'
+  | 'payment_wait';
+
+/**
+ * WO-2.2 — the refusal ladder's reason ids MIRROR the canonical
+ * DELIVERY_FAILURE_REASONS (the SERVICE owns the ladder policy;
+ * REFUSAL_LADDER_POLICY_V1 owns the escalation split). The shell renders
+ * the picker from these ids via catalog keys `reason.<id>` and walks the
+ * arm the policy dictates.
+ */
+export const FAILURE_REASON_IDS = [
+  'honest_absence',
+  'unusable_location',
+  'insufficient_balance',
+  'change_of_mind',
+  'repeated_abuse',
+  'fraud',
+  'provider_failure',
+] as const;
+export type FailureReasonId = (typeof FAILURE_REASON_IDS)[number];
+
+/** Mirror of the policy's escalation split (Shop §6.4: honest absence /
+ * provider failure do NOT escalate like change-of-mind/abuse). */
+export const ESCALATING_REASON_IDS: readonly FailureReasonId[] = [
+  'insufficient_balance',
+  'change_of_mind',
+  'repeated_abuse',
+  'fraud',
+];
+
+export function stepAfterWindowExpiry(reason: FailureReasonId): CustodyStep {
+  return ESCALATING_REASON_IDS.includes(reason) ? 'refused_final' : 'reschedule_planned';
+}
+
+/** Sandbox connectivity: 'online' at E1 so the flow is walkable end-to-end;
+ * the 'offline' branch (pending evidence, locked drop) is the same code the
+ * live connectivity feed drives at assembly. */
+export const CONNECTIVITY: 'online' | 'offline' = 'online';
+
+/**
+ * SE-I06 · evidence finality waits for the AUTHORITATIVE SERVER ACK, never for
+ * mere connectivity. Capturing evidence queues it (the outbox) = PENDING and the
+ * drop stays LOCKED; the ONLY thing that advances it is the server ack — the
+ * outbox flush outcome (`assignment-lease.ts` vocabulary): `applied` |
+ * `idempotentReplay` settle the evidence and the drop unlocks (through the door
+ * inspection, WO-2.4 mapping), while `collision-refused` keeps it PENDING
+ * (surfaced, never a silent unlock). This mirrors stepAfterDoorSignal: an
+ * EXTERNAL confirmation — not the rider, not being online — moves the locked step.
+ */
+export function stepAfterEvidenceAck(ack: FlushOutcome): CustodyStep {
+  return ack === 'collision-refused' ? 'evidence_pending' : 'drop';
+}
+
+/** Sandbox evidence ack (typed data, like SANDBOX_DOOR_SIGNAL): 'applied' so the
+ * flow is walkable end-to-end; the live outbox flush drives this at assembly.
+ * The rider has NO control over it — capturing evidence never confers finality. */
+export const SANDBOX_EVIDENCE_ACK: FlushOutcome = 'applied';
+
+/** WO-2.4 sandbox payment mode + door signal (typed data, like CONNECTIVITY):
+ * Option-B so the door flow is walkable; the PROVIDER signal — never the
+ * rider — advances payment_wait. 'confirmed' simulates the received signal;
+ * the 'pending' branch is the honest waiting screen the live feed drives at
+ * assembly. The rider has NO control over this value. */
+export const SANDBOX_PAYMENT_MODE: 'FULL_PREPAY' | 'DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR' = 'DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR';
+export const SANDBOX_DOOR_SIGNAL: 'confirmed' | 'pending' = 'confirmed';
+
+export function stepAfterInspection(mode: typeof SANDBOX_PAYMENT_MODE): CustodyStep {
+  // Option-B (SE-I11): inspect → PAY (provider-confirmed) → drop code LAST.
+  return mode === 'DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR' ? 'payment_wait' : 'drop';
+}
+
+export function stepAfterDoorSignal(signal: typeof SANDBOX_DOOR_SIGNAL): CustodyStep {
+  return signal === 'confirmed' ? 'drop' : 'payment_wait';
+}
+"
+
+ ❯ test/connectivity-truthful.test.ts:20:46
+     18| describe('SERA-S4 — connectivity is real, not a constant', () => {
+     19|   it('the CONNECTIVITY constant is GONE from custody-flow (a real port…
+     20|     expect(rider('src/custody-flow.ts')).not.toMatch(/export const CON…
+       |                                              ^
+     21|   });
+     22| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  test/connectivity-truthful.test.ts > SERA-S4 — connectivity is real, not a constant > the App threads the real connectivity signal into the store — never the retired constant
+AssertionError: expected 'import { useCallback, useEffect, useM…' to match /declineCourse\(\s*world,\s*active\.id…/
+
+[32m- Expected:[39m 
+/declineCourse\(\s*world,\s*active\.id,\s*connectivity/
+
+[31m+ Received:[39m 
+"import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { FlatList, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { seraTheme, spacing, radius, touch, type as typo, interaction, money } from '@platform/ui-tokens';
 import {
+  CONNECTIVITY,
   FAILURE_REASON_IDS,
   POLICY_CHECK_IDS,
   SANDBOX_DOOR_SIGNAL,
@@ -18,10 +167,6 @@ import { mintCommandId } from './src/offline/commandId';
 import { appendSosRaise } from './src/offline/sos';
 import { appendEvidence } from './src/offline/evidence';
 import { createDocumentOutboxStore } from './src/offline/documentStore';
-import { createManualConnectivity, type Connectivity } from './src/offline/connectivity';
-import { bindDeviceConnectivity } from './src/offline/expoConnectivity';
-import { pendingCount, drainOnReconnect } from './src/offline/backlog';
-import type { FlushOutcome } from './src/offline/outbox';
 import {
   acceptInspection,
   acknowledgeCourse,
@@ -200,18 +345,9 @@ export default function App() {
   // ONE durable outbox for every rider write kind (SOS raise, delivery evidence):
   // a single document-dir queue, entries discriminated by `kind`.
   const outboxStore = useMemo(() => createDocumentOutboxStore(), []);
-  // SERA-S4: connectivity is REAL, behind a port (expo-network on device); the
-  // manual port also backs the demo toggle. `offline` is DERIVED from it — the
-  // retired compile-time connectivity constant is gone. `backlog` is the REAL
-  // count of pending durable writes; `persistFailed` is where a background-persist
-  // failure surfaces (the offline banner is that surface).
-  const net = useMemo(() => createManualConnectivity(), []);
-  const [connectivity, setConnectivity] = useState<Connectivity>('online');
-  const [backlog, setBacklog] = useState(0);
-  const [persistFailed, setPersistFailed] = useState(false);
-  const offline = connectivity === 'offline';
   const [stack, setStack] = useState<Screen[]>([START]);
   const [shift, setShift] = useState<ShiftView>('off');
+  const [offline, setOffline] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [checks, setChecks] = useState<Partial<Record<PolicyCheckId, boolean>>>({});
   const [windowUntil, setWindowUntil] = useState('');
@@ -226,38 +362,6 @@ export default function App() {
   const screen = stack[stack.length - 1] ?? START;
   const active = world.courses.find((c) => c.id === activeId) ?? null;
   const allChecked = POLICY_CHECK_IDS.every((id) => checks[id] === true);
-
-  // SERA-S4 · the reconnect drain sender. The LIVE sender posts each queued write to
-  // its service at assembly; here it models the server accepting on reconnect
-  // ('applied', like SANDBOX_EVIDENCE_ACK) so the backlog drains truthfully in the
-  // walkable demo. The rider never asserts this.
-  const sandboxReconnectSender = useCallback(async (): Promise<FlushOutcome> => 'applied', []);
-  const refreshBacklog = useCallback(() => {
-    // a durable-read failure is itself a durability-health signal → surface it,
-    // never an unhandled rejection.
-    void pendingCount(outboxStore).then(setBacklog, () => setPersistFailed(true));
-  }, [outboxStore]);
-  // The port drives `connectivity`; on device expo-network feeds the same port.
-  useEffect(() => {
-    const unsubscribe = net.subscribe(setConnectivity);
-    const unbind = bindDeviceConnectivity(net);
-    return () => {
-      unsubscribe();
-      unbind();
-    };
-  }, [net]);
-  // Reconnect → flush the durable outbox, the banner clears with the backlog; offline
-  // just re-counts what is queued (queued = pending, never done — SE-I06 family).
-  useEffect(() => {
-    if (connectivity === 'online') {
-      void drainOnReconnect(outboxStore, sandboxReconnectSender).then((remaining) => {
-        setBacklog(remaining);
-        if (remaining === 0) setPersistFailed(false);
-      });
-    } else {
-      refreshBacklog();
-    }
-  }, [connectivity, outboxStore, sandboxReconnectSender, refreshBacklog]);
 
   // SOS hold timer — a deliberate HOLD fires the SOS; released or unmounted, it
   // is cleared. There are NO post-fire timers: the acknowledgment comes from the
@@ -300,9 +404,7 @@ export default function App() {
     setWorld(createDemoWorld());
     setStack([START]);
     setShift('off');
-    net.set('online');
-    setBacklog(0);
-    setPersistFailed(false);
+    setOffline(false);
     setActiveId(null);
     setChecks({});
     setWindowUntil('');
@@ -314,7 +416,7 @@ export default function App() {
     setKey1(false);
     setKey2(false);
     setOneKeyMsg(false);
-  }, [clearHold, net]);
+  }, [clearHold]);
 
   /** Every custody move: the store calls custody-flow (throws out-of-order),
    * the world re-renders, the stack follows the rule's outcome. */
@@ -351,9 +453,9 @@ export default function App() {
   }, [clearHold]);
   // Firing builds the REAL incident in the store (custody-safe: no course is
   // read or moved) and drives the sheet from its honest status — queued
-  // (offline, no ack) / raised (in-hours) / escalated (out-of-hours). SERA-S4:
-  // the connectivity is now the REAL port signal (the dispatch-hours stay a typed
-  // sandbox value the live roster feed drives at assembly).
+  // (offline, no ack) / raised (in-hours) / escalated (out-of-hours). The
+  // connectivity + dispatch-hours are typed sandbox constants (both branches
+  // real code); the live feeds drive them at assembly.
   const fireSos = useCallback(() => {
     // SERA-S3: mint the command_id ONCE at the gesture (the incident's stable
     // identity), raise the in-memory incident INSTANTLY (a safety SOS never waits
@@ -364,26 +466,23 @@ export default function App() {
       riderId: DEMO_RIDER_ID,
       onShift: shift === 'on',
       activeCourseId: activeId,
-      connectivity,
+      connectivity: CONNECTIVITY,
       hours: SANDBOX_DISPATCH_HOURS,
     });
     setWorld({ ...world });
-    // SERA-S4: the S3-named `.catch` hardening lands here — a background-persist
-    // failure routes to the banner surface (persistFailed); success refreshes the
-    // real backlog count. The safety incident already showed instantly regardless.
     void appendSosRaise(outboxStore, commandId, {
       riderId: DEMO_RIDER_ID,
       hours: SANDBOX_DISPATCH_HOURS,
       onShift: shift === 'on',
       activeCourseId: activeId,
       raisedAt: raised.raisedAt,
-    }).then(refreshBacklog, () => setPersistFailed(true));
+    });
     const status = raised.status;
     if (status === 'queued') setSos('queued');
     else if (status === 'escalated') setSos('escalated');
     else if (status === 'acknowledged') setSos('acknowledged');
     else setSos('raised');
-  }, [world, shift, activeId, connectivity, outboxStore, refreshBacklog]);
+  }, [world, shift, activeId, outboxStore]);
   const sosHoldStart = useCallback(() => {
     if (holdTimer.current) clearTimeout(holdTimer.current);
     holdTimer.current = setTimeout(fireSos, 650);
@@ -434,7 +533,7 @@ export default function App() {
   return (
     <SafeAreaView style={styles.screen}>
       {/* Grand Teint status bar ink over warm paper (statusbar token). */}
-      <StatusBar style="dark" backgroundColor={C.paper} />
+      <StatusBar style=\"dark\" backgroundColor={C.paper} />
       <ThemeStrip />
       <AppHeader
         title={headerTitle}
@@ -443,18 +542,7 @@ export default function App() {
         onBack={stack.length > 1 ? back : undefined}
         right={<StatusChip tone={shift === 'on' ? 'ok' : 'muted'} label={headerChip} />}
       />
-      {offline && (
-        <OfflineBanner
-          label={
-            backlog === 0
-              ? t('offline.banner')
-              : `${t('offline.backlog_prefix')} ${backlog} ${backlog === 1 ? t('offline.backlog_suffix_one') : t('offline.backlog_suffix_many')}`
-          }
-        />
-      )}
-      {/* SERA-S4: a background-persist failure surfaces HERE (the CTO's banner
-          surface) — honest « à réessayer », never a lost-in-silence write. */}
-      {persistFailed && <PendingNotice lines={[t('offline.persist_failed')]} />}
+      {offline && <OfflineBanner label={t('offline.banner')} />}
       {IS_PREVIEW && (
         <View style={styles.previewBanner}>
           <Text style={styles.previewBannerText}>{t('preview.banner')}</Text>
@@ -475,7 +563,7 @@ export default function App() {
                       <Body style={styles.certText}>{t('service.location_note')}</Body>
                     </View>
                     <View style={styles.certRow}>
-                      <StatusChip tone="info" label={t('service.certified')} />
+                      <StatusChip tone=\"info\" label={t('service.certified')} />
                       <Body style={styles.certText}>{t('service.certified_name')}</Body>
                     </View>
                   </Card>
@@ -511,7 +599,7 @@ export default function App() {
                       code={t('assignment.title')}
                       title={arriving.locationLines[0]}
                       meta={`${arriving.locationLines[2]} · ${t('assignment.landmark_label')}`}
-                      chip={<StatusChip tone="info" label={t(statusKeyFor(arriving))} />}
+                      chip={<StatusChip tone=\"info\" label={t(statusKeyFor(arriving))} />}
                       onPress={() => openCourse(arriving)}
                     />
                   )}
@@ -519,7 +607,7 @@ export default function App() {
                   <GhostButton label={t('shift.end_action')} onPress={() => setShift('off')} />
                 </>
               )}
-              <SecondaryButton label={t('offline.toggle')} onPress={() => net.set(offline ? 'online' : 'offline')} />
+              <SecondaryButton label={t('offline.toggle')} onPress={() => setOffline((o) => !o)} />
             </View>
           )}
 
@@ -544,7 +632,7 @@ export default function App() {
                     chip={
                       <>
                         <StatusChip tone={toneFor(item)} label={t(statusKeyFor(item))} />
-                        {item.attempt === 2 && <StatusChip tone="info" label={t('courses.lineage_2e')} />}
+                        {item.attempt === 2 && <StatusChip tone=\"info\" label={t('courses.lineage_2e')} />}
                       </>
                     }
                     onPress={item.closed ? undefined : () => openCourse(item)}
@@ -585,10 +673,7 @@ export default function App() {
                       <DangerButton
                         label={t('assignment.decline_action')}
                         onPress={() => {
-                          // SERA-S4: the REAL connectivity decides queued-vs-sent —
-                          // offline = decline_pending (confers nothing), online =
-                          // server-confirmed decline. The retired constant lied here.
-                          declineCourse(world, active.id, connectivity);
+                          declineCourse(world, active.id);
                           setWorld({ ...world });
                           toCourses();
                         }}
@@ -606,10 +691,7 @@ export default function App() {
                       <DangerButton
                         label={t('assignment.decline_action')}
                         onPress={() => {
-                          // SERA-S4: the REAL connectivity decides queued-vs-sent —
-                          // offline = decline_pending (confers nothing), online =
-                          // server-confirmed decline. The retired constant lied here.
-                          declineCourse(world, active.id, connectivity);
+                          declineCourse(world, active.id);
                           setWorld({ ...world });
                           toCourses();
                         }}
@@ -697,12 +779,10 @@ export default function App() {
                   // being online is not being acked.
                   const commandId = mintCommandId();
                   walk((w) => captureEvidence(w, active.id));
-                  // SERA-S4 `.catch`: a background-persist failure routes to the
-                  // banner surface; success refreshes the real backlog count.
                   void appendEvidence(outboxStore, commandId, {
                     courseId: active.id,
                     capturedAt: new Date().toISOString(),
-                  }).then(refreshBacklog, () => setPersistFailed(true));
+                  });
                 }}
               />
             </Card>
@@ -736,7 +816,7 @@ export default function App() {
             <Card style={styles.flexCard}>
               <PosterTitle>{t('inspect.title')}</PosterTitle>
               <Body>{t('inspect.body')}</Body>
-              {active.attempt === 2 && <StatusChip tone="info" label={t('courses.lineage_2e')} />}
+              {active.attempt === 2 && <StatusChip tone=\"info\" label={t('courses.lineage_2e')} />}
               {/* The signature card again at the door — the rider stands at the
                   repère, never at a street address. */}
               <LandmarkCard
@@ -747,7 +827,7 @@ export default function App() {
               />
               <PrimaryButton label={t('inspect.accept_action')} onPress={() => walk((w) => acceptInspection(w, active.id))} />
               <GhostButton label={t('problem.action')} onPress={() => walk((w) => reportProblem(w, active.id))} />
-              <Pressable style={styles.linkRow} onPress={() => walk((w) => reportProblem(w, active.id))} accessibilityRole="button">
+              <Pressable style={styles.linkRow} onPress={() => walk((w) => reportProblem(w, active.id))} accessibilityRole=\"button\">
                 <Text style={styles.linkText}>{t('inspect.cantpay')}</Text>
               </Pressable>
             </Card>
@@ -825,7 +905,7 @@ export default function App() {
               {/* R12 « l'échelle des échecs » — retry arm. No generic « échec »
                   exists; the drop code stays LAST, behind the payment leg. */}
               <PosterTitle>{t('retry.status')}</PosterTitle>
-              <StatusChip tone="warn" label={`${t('retry.until')} ${windowUntil}`} />
+              <StatusChip tone=\"warn\" label={`${t('retry.until')} ${windowUntil}`} />
               <PrimaryButton label={t('retry.retry_action')} onPress={() => walk((w) => retryDelivery(w, active.id))} />
               <GhostButton label={t('retry.expired_action')} onPress={() => walk((w) => expireRetryWindow(w, active.id))} />
             </Card>
@@ -849,7 +929,7 @@ export default function App() {
                   on the course list with its lineage. */}
               <PosterTitle>{t('reschedule.status')}</PosterTitle>
               <Body>{t('reschedule.next')}</Body>
-              <StatusChip tone="info" label={t('reschedule.lineage')} />
+              <StatusChip tone=\"info\" label={t('reschedule.lineage')} />
               <SecondaryButton label={t('nav.retour_courses')} onPress={toCourses} />
             </Card>
           )}
@@ -859,7 +939,7 @@ export default function App() {
               {/* R13 « le retour à deux clés » (SE6.2): the seller's key and the
                   rider's key, both or neither. A single key REFUSES. */}
               <PosterTitle>{t('retour.title')}</PosterTitle>
-              <QuoteRule tone="accent">{t('retour.custodian')}</QuoteRule>
+              <QuoteRule tone=\"accent\">{t('retour.custodian')}</QuoteRule>
               <Overline>{t('retour.two_keys')}</Overline>
               <View style={styles.keyRow}>
                 <View style={styles.keyLabel}>
@@ -1064,3 +1144,21 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
 });
+"
+
+ ❯ test/connectivity-truthful.test.ts:26:17
+     24|     const app = rider('App.tsx');
+     25|     // the decline must receive the real connectivity signal (not a co…
+     26|     expect(app).toMatch(/declineCourse\(\s*world,\s*active\.id,\s*conn…
+       |                 ^
+     27|     // no store call is fed the retired compile-time constant
+     28|     expect(app).not.toMatch(/connectivity:\s*CONNECTIVITY/);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed (2)
+   Start at  03:27:00
+   Duration  333ms (transform 35ms, setup 0ms, collect 30ms, tests 9ms, environment 0ms, prepare 63ms)
+

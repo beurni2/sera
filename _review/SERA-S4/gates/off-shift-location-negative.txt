@@ -1,0 +1,5 @@
+$ node scripts/gates/off-shift-location.mjs gates/fixtures/negative/off-shift-location
+off-shift-location FAILED (SE-I08 — off-shift location not collected) — 2 hit(s) outside the shift-scoped module:
+  gates/fixtures/negative/off-shift-location/ambient-tracker.ts:3 [expo-location import] import * as Location from 'expo-location';
+  gates/fixtures/negative/off-shift-location/ambient-tracker.ts:5 [background location] return Location.startLocationUpdatesAsync('ambient', {});
+(exit code: 1)

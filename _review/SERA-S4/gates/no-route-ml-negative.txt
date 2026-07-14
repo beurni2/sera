@@ -1,0 +1,6 @@
+$ node scripts/gates/no-ml-libs.mjs gates/fixtures/negative/no-ml-libs
+no-ml-libs FAILED (SE §5.3 deterministic only — no ML, no route-optimization/ETA model) — 3 problem(s):
+  gates/fixtures/negative/no-ml-libs/package.json: banned ML/inference dependency "@tensorflow/tfjs" (matches "tensorflow")
+  gates/fixtures/negative/no-ml-libs/package.json: banned ML/inference dependency "@tensorflow/tfjs" (matches "@tensorflow")
+  gates/fixtures/negative/no-ml-libs/infer.ts:3 [import:onnx] import { InferenceSession } from 'onnxruntime-node';
+(exit code: 1)

@@ -1,7 +1,6 @@
 import type { Screen } from '../journey';
 import { SANDBOX_ASSIGNMENT } from '../sandbox-assignment';
 import {
-  CONNECTIVITY,
   POLICY_CHECK_IDS,
   SANDBOX_DOOR_SIGNAL,
   SANDBOX_EVIDENCE_ACK,
@@ -14,6 +13,7 @@ import {
   type PolicyCheckId,
 } from '../custody-flow';
 import type { FlushOutcome } from '../offline/outbox';
+import type { Connectivity } from '../offline/connectivity';
 import {
   SOS_EVENTS,
   raisedStatusForHours,
@@ -204,7 +204,7 @@ export function acknowledgeCourse(world: DemoWorld, id: string): void {
 export function declineCourse(
   world: DemoWorld,
   id: string,
-  connectivity: typeof CONNECTIVITY = CONNECTIVITY,
+  connectivity: Connectivity,
 ): CourseStep {
   expectStep(courseById(world, id), ['affectation']);
   if (connectivity === 'offline') {
@@ -405,7 +405,7 @@ export function raiseSos(
     riderId: string;
     onShift: boolean;
     activeCourseId: string | null;
-    connectivity: typeof CONNECTIVITY;
+    connectivity: Connectivity;
     hours: DispatchHours;
   },
 ): SosIncident {

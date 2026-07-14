@@ -5,9 +5,9 @@ import type { FlushOutcome } from './offline/outbox';
  * pickup-verification-policy.v1 — the SERVICE owns the policy; the shell
  * renders its checklist from these ids via catalog keys `check.<id>`.
  * Offline law: evidence sent without the network is queued = PENDING and
- * the drop step stays LOCKED — finality never happens offline. The sandbox
- * has no live connectivity wiring (it lands at E1 assembly): CONNECTIVITY
- * below is typed data, and both branches are real code paths.
+ * the drop step stays LOCKED — finality never happens offline. Connectivity
+ * is now REAL (SERA-S4: the `offline/connectivity` port, expo-network on
+ * device) — the retired `CONNECTIVITY` constant that lied is gone.
  */
 
 export const POLICY_CHECK_IDS = [
@@ -69,11 +69,6 @@ export function stepAfterWindowExpiry(reason: FailureReasonId): CustodyStep {
   return ESCALATING_REASON_IDS.includes(reason) ? 'refused_final' : 'reschedule_planned';
 }
 
-/** Sandbox connectivity: 'online' at E1 so the flow is walkable end-to-end;
- * the 'offline' branch (pending evidence, locked drop) is the same code the
- * live connectivity feed drives at assembly. */
-export const CONNECTIVITY: 'online' | 'offline' = 'online';
-
 /**
  * SE-I06 · evidence finality waits for the AUTHORITATIVE SERVER ACK, never for
  * mere connectivity. Capturing evidence queues it (the outbox) = PENDING and the
@@ -93,7 +88,7 @@ export function stepAfterEvidenceAck(ack: FlushOutcome): CustodyStep {
  * The rider has NO control over it — capturing evidence never confers finality. */
 export const SANDBOX_EVIDENCE_ACK: FlushOutcome = 'applied';
 
-/** WO-2.4 sandbox payment mode + door signal (typed data, like CONNECTIVITY):
+/** WO-2.4 sandbox payment mode + door signal (typed data, like SANDBOX_EVIDENCE_ACK):
  * Option-B so the door flow is walkable; the PROVIDER signal — never the
  * rider — advances payment_wait. 'confirmed' simulates the received signal;
  * the 'pending' branch is the honest waiting screen the live feed drives at

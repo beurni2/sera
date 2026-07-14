@@ -1,0 +1,3 @@
+$ node scripts/gates/no-street-address-location.mjs gates/fixtures/negative/location.with-street-address.json
+VIOLATION: street-address material in a delivery location: location.streetAddress
+(exit code: 1)
