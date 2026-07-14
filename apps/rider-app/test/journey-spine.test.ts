@@ -3,11 +3,12 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   FAILURE_REASON_IDS,
-  nextAfterEvidence,
   stepAfterDoorSignal,
+  stepAfterEvidenceAck,
   stepAfterInspection,
   stepAfterWindowExpiry,
 } from '../src/custody-flow.js';
+import type { FlushOutcome } from '../src/offline/outbox.js';
 import { COURSE_BACK_STEPS, COURSE_OPEN_STEPS, JOURNEY, START, type Screen } from '../src/journey.js';
 
 /**
@@ -60,14 +61,17 @@ describe('rider journey spine', () => {
   });
 
   it('rule-owned edges are exactly what custody-flow produces — both branches, never re-encoded', () => {
-    // WO-2.4 mapping (as in the shell): the door inspection precedes the drop.
-    const afterEvidence = (c: 'online' | 'offline') => {
-      const n = nextAfterEvidence(c);
+    // SE-I06: capturing ALWAYS lands evidence_pending (never an edge to the door);
+    // the ONLY forward edge is the authoritative server ack, produced by
+    // stepAfterEvidenceAck (WO-2.4 mapping: through the door inspection).
+    expect([...JOURNEY.evidence]).toEqual(['evidence_pending']);
+    const afterAck = (o: FlushOutcome) => {
+      const n = stepAfterEvidenceAck(o);
       return n === 'drop' ? 'door_inspection' : n;
     };
-    expect([...JOURNEY.evidence].sort()).toEqual(
-      [...new Set([afterEvidence('online'), afterEvidence('offline')])].sort(),
-    );
+    expect(JOURNEY.evidence_pending).toContain(afterAck('applied')); // door_inspection unlocks
+    expect(afterAck('collision-refused')).toBe('evidence_pending'); // refused → no forward edge
+    expect([...JOURNEY.evidence_pending].sort()).toEqual(['courses', 'door_inspection'].sort());
     // SE-I11: the ONLY edge out of the payment wait is the provider-confirmed
     // outcome; the pending signal is a state, not an edge.
     expect([...JOURNEY.payment_wait]).toEqual([stepAfterDoorSignal('confirmed')]);

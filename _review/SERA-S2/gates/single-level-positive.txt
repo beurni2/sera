@@ -1,0 +1,3 @@
+$ node scripts/gates/single-level.mjs
+single-level OK — no banned pattern in apps, services, packages (single-level only — no recruitment/downline mechanics)
+(exit code: 0)

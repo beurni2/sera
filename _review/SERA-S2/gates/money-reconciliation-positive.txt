@@ -1,0 +1,3 @@
+$ node scripts/gates/money-reconciliation.mjs gates/fixtures/quote.baseline.json
+money-reconciliation OK — gates/fixtures/quote.baseline.json reconciles to the franc (§5.4)
+(exit code: 0)

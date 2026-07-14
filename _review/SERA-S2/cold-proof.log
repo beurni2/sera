@@ -1,0 +1,20 @@
+=== SERA-S2 COLD PROOF — explicit fresh HOME (cache-cold), auth re-injected as CI does ===
+$ export HOME=/tmp/claude-0/-home-user/4a38e8fa-225f-5cd8-9cf7-fa2d337ab965/scratchpad/fresh-home-s2   # fresh empty dir: pnpm store + all caches isolated
+$ git config --global url."http://***@127.0.0.1:41729/git/".insteadOf https://github.com/   # SAME url-rewrite CI injects (auth/config, NOT a cache)
+cold HEAD: 9eec59e2e0be460f4551581b41ab4607f9a6754d
+--- AUTH line: ssh-form git URLs in root lockfile (must be 0) ---
+ssh-form count: 0
+--- COLD frozen install (no warm store) ---
+frozen install exit: 0
+╰──────────────────────────────────────────────────────────────────────────────╯
+Done in 23.1s using pnpm v10.33.0
+cold @platform/contracts: 0.9.8
+--- COLD typecheck (rider-app) ---
+cold typecheck exit: 0
+--- COLD test (rider-app) ---
+
+ Test Files  14 passed (14)
+      Tests  86 passed (86)
+   Start at  03:07:07
+   Duration  2.02s (transform 389ms, setup 0ms, collect 979ms, tests 199ms, environment 3ms, prepare 1.27s)
+

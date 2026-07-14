@@ -1,0 +1,3 @@
+$ node scripts/gates/rider-assignability.mjs gates/fixtures/assignment.eligible-rider.json
+OK: rider r-1 is certified, privacy-acked (privacy-notice.v1), on shift (server-confirmed) — assignable
+(exit code: 0)

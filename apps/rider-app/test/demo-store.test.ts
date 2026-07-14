@@ -10,6 +10,7 @@ import * as store from '../src/demo/store.js';
 import {
   acceptInspection,
   acknowledgeCourse,
+  applyEvidenceServerAck,
   applyProviderDoorSignal,
   beginPickup,
   captureEvidence,
@@ -55,8 +56,10 @@ describe('demo world custody walk', () => {
     expect(() => passVerification(world, id, { order_ref: true })).toThrow();
     expect(passVerification(world, id, allChecks())).toBe('seal');
     expect(registerSeal(world, id)).toBe('evidence');
-    // WO-2.4: the door inspection precedes the drop in the online branch
-    expect(captureEvidence(world, id, 'online')).toBe('door_inspection');
+    // SE-I06: capturing LOCKS the drop at evidence_pending; only the authoritative
+    // server ack advances (WO-2.4 mapping: through the door inspection).
+    expect(captureEvidence(world, id)).toBe('evidence_pending');
+    expect(applyEvidenceServerAck(world, id, 'applied')).toBe('door_inspection');
     // Option-B: the inspection outcome comes from stepAfterInspection
     expect(acceptInspection(world, id, SANDBOX_PAYMENT_MODE)).toBe(stepAfterInspection(SANDBOX_PAYMENT_MODE));
     expect(applyProviderDoorSignal(world, id, 'confirmed')).toBe('drop');
@@ -74,15 +77,20 @@ describe('demo world custody walk', () => {
     expect(() => registerSeal(world, id)).toThrow();
   });
 
-  it('offline evidence stays queued = PENDING and the drop stays locked', () => {
+  it('evidence stays queued = PENDING and the drop stays locked until the server ack', () => {
     const world = createDemoWorld();
     const id = 'course-awa';
     beginPickup(world, id);
     passVerification(world, id, allChecks());
     registerSeal(world, id);
-    expect(captureEvidence(world, id, 'offline')).toBe('evidence_pending');
-    expect(() => validateDropCode(world, id)).toThrow(); // finality never happens offline
-    // the seeded offline course carries the same honest state
+    // SE-I06: capture is pending regardless of connectivity — being online is not
+    // being acked; the drop is unreachable until the authoritative server ack.
+    expect(captureEvidence(world, id)).toBe('evidence_pending');
+    expect(() => validateDropCode(world, id)).toThrow(); // finality never happens before the ack
+    // a refused ack does NOT unlock it — still pending, drop still locked
+    expect(applyEvidenceServerAck(world, id, 'collision-refused')).toBe('evidence_pending');
+    expect(() => validateDropCode(world, id)).toThrow();
+    // the seeded pending course carries the same honest state
     expect(seedCourses().find((c) => c.id === 'course-issouf')!.step).toBe('evidence_pending');
   });
 
@@ -92,7 +100,8 @@ describe('demo world custody walk', () => {
     beginPickup(world, id);
     passVerification(world, id, allChecks());
     registerSeal(world, id);
-    captureEvidence(world, id, 'online');
+    captureEvidence(world, id);
+    applyEvidenceServerAck(world, id, 'applied'); // the ack unlocks the door
     reportProblem(world, id);
     chooseFailureReason(world, id, 'honest_absence');
     expect(stepAfterWindowExpiry('honest_absence')).toBe('reschedule_planned');
