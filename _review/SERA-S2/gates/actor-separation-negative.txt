@@ -1,0 +1,3 @@
+$ node scripts/gates/custody-actor-separation.mjs gates/fixtures/negative/custody.supplier-as-rider.json
+VIOLATION (caught, refused closed): supplier sup-1 attempted custody as the rider → actor_separation_supplier_is_rider
+(exit code: 1)

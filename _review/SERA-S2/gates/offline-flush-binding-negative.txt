@@ -1,0 +1,5 @@
+$ node scripts/gates/offline-flush-binding.mjs gates/fixtures/negative/offline-flush-bypass
+VIOLATION (caught): 2 bypass access(es) to the offline queue outside the binding path:
+  gates/fixtures/negative/offline-flush-bypass/direct-drain.ts:6 [queue field access] const queue = (spine as { pendingOfflineEvidence: unknown[] }).pendingOfflineEvidence;
+  gates/fixtures/negative/offline-flush-bypass/direct-drain.ts:8 [evidence slot assignment] (spine as { evidenceSubmitted: unknown }).evidenceSubmitted = raw;
+(exit code: 1)

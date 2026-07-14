@@ -1,0 +1,3 @@
+$ node scripts/gates/offline-never-final.mjs gates/fixtures/negative/evidence.queued-offline-finality.json
+VIOLATION (caught, refused closed): offline evidence stayed PENDING — validation {"ok":false,"reason":"validation_before_evidence"}, drop {"ok":false,"reason":"not_validated"}, custodian courier:r-1, eligibility signals 0
+(exit code: 1)
