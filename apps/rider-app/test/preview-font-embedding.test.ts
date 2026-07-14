@@ -54,10 +54,20 @@ describe('WO-6.2 — the preview publish embeds Archivo natively (no silent type
     expect(plugin, 'app.json must list the expo-font config plugin (RULING ②: font in the binary at first frame)').toBeDefined();
   });
 
-  it('DROP MODE 3: every font the plugin references exists on disk (5 Archivo weights)', () => {
+  it('DROP MODE 3: every font the plugin references exists on disk; the 6 Faso Premium faces are embedded', () => {
     const plugin = fontPlugin();
     const fonts = plugin?.[1]?.fonts ?? [];
-    expect(fonts.length, 'the plugin must embed the five Archivo weights').toBe(5);
+    // WO-FP-SERA STEP 0: the plugin now embeds the 6 Faso Premium faces (Bricolage
+    // 700/800 + Instrument 400-700). Archivo rides alongside during the transition
+    // shim and is removed when the last rider view migrates off /legacy.
+    const FASO = [
+      'Bricolage-700.ttf', 'Bricolage-800.ttf',
+      'Instrument-400.ttf', 'Instrument-500.ttf', 'Instrument-600.ttf', 'Instrument-700.ttf',
+    ];
+    for (const face of FASO) {
+      expect(fonts.some((f) => f.endsWith(face)), `plugin must embed ${face}`).toBe(true);
+    }
+    expect(fonts.length, 'at least the 6 Faso Premium faces').toBeGreaterThanOrEqual(6);
     for (const rel of fonts) {
       const abs = join(appDir, rel);
       expect(existsSync(abs), `font asset missing: ${rel}`).toBe(true);
