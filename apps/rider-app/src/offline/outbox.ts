@@ -62,14 +62,23 @@ export async function restore(store: OutboxStore): Promise<OutboxEntry[]> {
 }
 
 /**
+ * Persist a pre-built entry whose `command_id` was ALREADY minted once at intent
+ * (e.g. the SOS raise mints at the gesture, for instant UI, then persists in the
+ * background). The entry's id is never recomputed here. `enqueue` = mint + append.
+ */
+export async function append(store: OutboxStore, entry: OutboxEntry): Promise<void> {
+  const existing = await restore(store);
+  await store.write(serialize([...existing, entry]));
+}
+
+/**
  * Enqueue a write intent: mint the `command_id` ONCE here, persist
  * `{commandId, kind, payload, status:'pending'}`. The minted id is the one every
  * later flush/retry reuses — it is never recomputed.
  */
 export async function enqueue(store: OutboxStore, kind: string, payload: unknown): Promise<OutboxEntry> {
-  const existing = await restore(store);
   const entry: OutboxEntry = { commandId: mintCommandId(), kind, payload, status: 'pending' };
-  await store.write(serialize([...existing, entry]));
+  await append(store, entry);
   return entry;
 }
 

@@ -20,6 +20,7 @@ import {
   type SosResponder,
   type SosStatus,
 } from '../safety';
+import type { CommandId } from '../offline/commandId';
 
 /**
  * WO-4.1 demo world — in-memory, seeded, honest. Every custody move on every
@@ -381,6 +382,12 @@ const SANDBOX_SOS_COARSE_LOCATION = 'Vers le grand marché — secteur 1 (démo)
  */
 export function raiseSos(
   world: DemoWorld,
+  // SERA-S3: the incident's identity is the client-minted command_id (canon
+  // `mintCommandId`), minted ONCE at the gesture, PERSISTED to the outbox, and
+  // stable across reconnect retries. It replaces the old per-attempt id
+  // `sos-${riderId}-${raisedAt}` — an id a reboot-retry regenerated (two SOS for
+  // one press, or a lost SOS shown pending forever).
+  commandId: CommandId,
   params: {
     riderId: string;
     onShift: boolean;
@@ -393,8 +400,8 @@ export function raiseSos(
   const raisedAt = new Date().toISOString();
   const queued = connectivity === 'offline';
   const base: SosIncidentBase = {
-    id: `sos-${riderId}-${raisedAt}`,
-    correlationId: `corr-sos-${riderId}-${raisedAt}`,
+    id: commandId,
+    correlationId: `corr-${commandId}`,
     riderId,
     activeCourseId,
     // SE-I08: coarse location attaches IFF the rider is on shift — never off it.

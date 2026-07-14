@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { FlatList, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { seraTheme, spacing, radius, touch, type as typo, interaction, money } from '@platform/ui-tokens';
@@ -14,6 +14,9 @@ import { IS_PREVIEW } from './src/preview';
 import { t } from './src/i18n';
 import { COURSE_BACK_STEPS, JOURNEY, START, type Screen } from './src/journey';
 import { attemptReturnHandover } from './src/two-key-return';
+import { mintCommandId } from './src/offline/commandId';
+import { appendSosRaise } from './src/offline/sos';
+import { createDocumentOutboxStore } from './src/offline/documentStore';
 import {
   acceptInspection,
   acknowledgeCourse,
@@ -187,6 +190,8 @@ const DROP_CODE_LEN = 6;
 
 export default function App() {
   const [world, setWorld] = useState<DemoWorld>(() => createDemoWorld());
+  // SERA-S3: the device-durable SOS outbox (document dir — survives kill+reboot).
+  const sosStore = useMemo(() => createDocumentOutboxStore(), []);
   const [stack, setStack] = useState<Screen[]>([START]);
   const [shift, setShift] = useState<ShiftView>('off');
   const [offline, setOffline] = useState(false);
@@ -299,7 +304,12 @@ export default function App() {
   // connectivity + dispatch-hours are typed sandbox constants (both branches
   // real code); the live feeds drive them at assembly.
   const fireSos = useCallback(() => {
-    raiseSos(world, {
+    // SERA-S3: mint the command_id ONCE at the gesture (the incident's stable
+    // identity), raise the in-memory incident INSTANTLY (a safety SOS never waits
+    // on disk), then persist the raise to the outbox in the background — so it
+    // survives a kill+reboot and flushes at-least-once with dedup on this id.
+    const commandId = mintCommandId();
+    const raised = raiseSos(world, commandId, {
       riderId: DEMO_RIDER_ID,
       onShift: shift === 'on',
       activeCourseId: activeId,
@@ -307,12 +317,19 @@ export default function App() {
       hours: SANDBOX_DISPATCH_HOURS,
     });
     setWorld({ ...world });
-    const status = world.incident?.status ?? 'raised';
+    void appendSosRaise(sosStore, commandId, {
+      riderId: DEMO_RIDER_ID,
+      hours: SANDBOX_DISPATCH_HOURS,
+      onShift: shift === 'on',
+      activeCourseId: activeId,
+      raisedAt: raised.raisedAt,
+    });
+    const status = raised.status;
     if (status === 'queued') setSos('queued');
     else if (status === 'escalated') setSos('escalated');
     else if (status === 'acknowledged') setSos('acknowledged');
     else setSos('raised');
-  }, [world, shift, activeId]);
+  }, [world, shift, activeId, sosStore]);
   const sosHoldStart = useCallback(() => {
     if (holdTimer.current) clearTimeout(holdTimer.current);
     holdTimer.current = setTimeout(fireSos, 650);
