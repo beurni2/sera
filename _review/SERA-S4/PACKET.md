@@ -23,7 +23,16 @@ Two disjoint notions of connectivity shipped: the compile-time `custody-flow.CON
 - **Rider-app 92/92** (new: `connectivity` 4/4 · `connectivity-truthful` 2/2 — the red-proof, now green). **Typecheck clean.**
 - **`run-gates.sh` ALL GREEN** — every positive passed, every negative fired exit 1. Includes RN-safe shell (App imports clean; expo-network isolated to the adapter), grand-teint dep-allowlist (expo-network ~8.0.8), mint-path-entropy, copy-lint (`OK: 149 entries, 0 violations`), offline-never-final + offline-flush-binding (pos/neg), drift-check 0.9.8, Playwright 22/22. Per-gate logs under `gates/`.
 - **COLD PROOF both lines** (`cold-proof.log`, cold HEAD `61578df`): **COLD** — fresh HOME, frozen install 0, cold `@platform/contracts` 0.9.8, **cold `expo-network` 8.0.8 resolves**, cold typecheck 0, cold **92/92**; **AUTH** — 0 ssh-form URLs.
-- **Fresh-context verifier:** _(folded in on completion — verdict + any notes)_.
+- **Fresh-context verifier: SCOPE MET, no FAIL** (`verifier-verdict.md`, verbatim; A–G, 26 calls; ran its own 92/92 + typecheck + copy-lint). Traced the constant dead + the real signal threaded into both `declineCourse` and `raiseSos`; the backlog N real; the reconnect drain keeping `collision-refused` counted; both persists' `.catch` routing with no swallow. Fixtures proved non-vacuous by mutation.
+
+## Post-verifier fixes (transparent, re-green'd; for CTO ratification)
+
+The verifier's three carry-forwards, none a FAIL — two fixed, one accepted:
+1. **[FIXED] `offline.persist_failed` over-promised auto-retry** (safety-adjacent). A *persist failure* means the write never entered the outbox, so `drainOnReconnect` (which flushes only persisted entries) has nothing to resend — « Il repartira à la reconnexion » was a promise the code cannot keep. Reworded to the honest **« Un envoi n'a pas pu être enregistré. À refaire. »** (states what happened + the true next step; no false auto-resend). copy-lint still 149/0.
+2. **[FIXED] `refreshBacklog` had no rejection handler** (a swallowed *recount*, not a swallowed persist). Now `pendingCount(...).then(setBacklog, () => setPersistFailed(true))` — a durable-read failure is itself a durability-health signal, surfaced, never an unhandled rejection.
+3. **[ACCEPTED] optimistic `'online'` cold-start default** before `getNetworkStateAsync` seeds (sub-second). Matches prior behavior (old `offline` started `false`); async detection has no synchronous seed; the seed race is guarded by the adapter's `active` flag. Documented, not changed.
+
+Post-fix: rider-app **92/92**, typecheck clean, copy-lint **149/0**, `run-gates.sh` re-run **ALL GREEN**.
 
 ## Design boundaries (honest)
 

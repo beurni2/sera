@@ -10,52 +10,52 @@
    • Running typecheck in 8 packages
    • Remote caching disabled
 
-@sera/observability:typecheck: cache hit, replaying logs 9e0d760da298e55d
-@sera/observability:typecheck: 
-@sera/observability:typecheck: > @sera/observability@0.0.1 typecheck /home/user/sera/packages/observability
-@sera/observability:typecheck: > tsc -p tsconfig.json --noEmit
-@sera/observability:typecheck: 
-@sera/rider-app:typecheck: cache miss, executing fb4aadaf901ab366
-@sera/observability:build: cache hit, replaying logs eb69f39240275045
-@sera/observability:build: 
-@sera/observability:build: > @sera/observability@0.0.1 build /home/user/sera/packages/observability
-@sera/observability:build: > tsc -p tsconfig.json
-@sera/observability:build: 
 @sera/flags-client:typecheck: cache hit, replaying logs 78ccba7870462850
 @sera/flags-client:typecheck: 
 @sera/flags-client:typecheck: > @sera/flags-client@0.0.1 typecheck /home/user/sera/packages/flags-client
 @sera/flags-client:typecheck: > tsc -p tsconfig.json --noEmit
 @sera/flags-client:typecheck: 
+@sera/observability:typecheck: cache hit, replaying logs 9e0d760da298e55d
+@sera/observability:typecheck: 
+@sera/observability:typecheck: > @sera/observability@0.0.1 typecheck /home/user/sera/packages/observability
+@sera/observability:typecheck: > tsc -p tsconfig.json --noEmit
+@sera/observability:typecheck: 
 @sera/commerce-core:typecheck: cache hit, replaying logs 19cf6b6e33c8fe93
 @sera/commerce-core:typecheck: 
 @sera/commerce-core:typecheck: > @sera/commerce-core@0.0.1 typecheck /home/user/sera/packages/commerce-core
 @sera/commerce-core:typecheck: > tsc -p tsconfig.json --noEmit
 @sera/commerce-core:typecheck: 
+@sera/observability:build: cache hit, replaying logs eb69f39240275045
+@sera/observability:build: 
+@sera/observability:build: > @sera/observability@0.0.1 build /home/user/sera/packages/observability
+@sera/observability:build: > tsc -p tsconfig.json
+@sera/observability:build: 
+@sera/rider-app:typecheck: cache miss, executing 20d13013ffe6d8cb
+@sera/custody-service:build: cache hit, replaying logs a148835264b1cc0a
+@sera/custody-service:build: 
+@sera/custody-service:build: > @sera/custody-service@0.0.1 build /home/user/sera/services/custody-service
+@sera/custody-service:build: > tsc -p tsconfig.json
+@sera/custody-service:build: 
 @sera/custody-service:typecheck: cache hit, replaying logs d7c468e68326551c
 @sera/custody-service:typecheck: 
 @sera/custody-service:typecheck: > @sera/custody-service@0.0.1 typecheck /home/user/sera/services/custody-service
 @sera/custody-service:typecheck: > tsc -p tsconfig.json --noEmit
 @sera/custody-service:typecheck: 
+@sera/logistics-service:typecheck: cache hit, replaying logs 3e09bda41bfe70a8
+@sera/logistics-service:typecheck: 
+@sera/logistics-service:typecheck: > @sera/logistics-service@0.0.1 typecheck /home/user/sera/services/logistics-service
+@sera/logistics-service:typecheck: > tsc -p tsconfig.json --noEmit && tsc -p worker/tsconfig.json
+@sera/logistics-service:typecheck: 
 @sera/evidence-service:typecheck: cache hit, replaying logs e593036b39093421
 @sera/evidence-service:typecheck: 
 @sera/evidence-service:typecheck: > @sera/evidence-service@0.0.1 typecheck /home/user/sera/services/evidence-service
 @sera/evidence-service:typecheck: > tsc -p tsconfig.json --noEmit
 @sera/evidence-service:typecheck: 
 @sera/logistics-service:build: cache hit, replaying logs 6ae592d87e74757a
-@sera/custody-service:build: cache hit, replaying logs a148835264b1cc0a
-@sera/logistics-service:typecheck: cache hit, replaying logs 3e09bda41bfe70a8
-@sera/logistics-service:typecheck: 
 @sera/logistics-service:build: 
 @sera/logistics-service:build: > @sera/logistics-service@0.0.1 build /home/user/sera/services/logistics-service
-@sera/logistics-service:typecheck: > @sera/logistics-service@0.0.1 typecheck /home/user/sera/services/logistics-service
-@sera/logistics-service:typecheck: > tsc -p tsconfig.json --noEmit && tsc -p worker/tsconfig.json
-@sera/logistics-service:typecheck: 
 @sera/logistics-service:build: > tsc -p tsconfig.json
 @sera/logistics-service:build: 
-@sera/custody-service:build: 
-@sera/custody-service:build: > @sera/custody-service@0.0.1 build /home/user/sera/services/custody-service
-@sera/custody-service:build: > tsc -p tsconfig.json
-@sera/custody-service:build: 
 @sera/dispatch-console:typecheck: cache hit, replaying logs d319ddccfd2e5452
 @sera/dispatch-console:typecheck: 
 @sera/dispatch-console:typecheck: > @sera/dispatch-console@0.0.1 typecheck /home/user/sera/apps/dispatch-console
@@ -68,7 +68,7 @@
 
  Tasks:    11 successful, 11 total
 Cached:    10 cached, 11 total
-  Time:    3.089s 
+  Time:    3.079s 
 (exit code: 0)
 
 === tests (custody/assignment/evidence seeds, delivery view, correlation hello-world, flags, health, catalogs) ===
@@ -82,11 +82,6 @@ Cached:    10 cached, 11 total
    • Running test in 8 packages
    • Remote caching disabled
 
-@sera/observability:build: cache hit, replaying logs eb69f39240275045
-@sera/observability:build: 
-@sera/observability:build: > @sera/observability@0.0.1 build /home/user/sera/packages/observability
-@sera/observability:build: > tsc -p tsconfig.json
-@sera/observability:build: 
 @sera/commerce-core:build: cache hit, replaying logs 90804253a4394a0c
 @sera/commerce-core:build: 
 @sera/commerce-core:build: > @sera/commerce-core@0.0.1 build /home/user/sera/packages/commerce-core
@@ -97,17 +92,47 @@ Cached:    10 cached, 11 total
 @sera/flags-client:build: > @sera/flags-client@0.0.1 build /home/user/sera/packages/flags-client
 @sera/flags-client:build: > tsc -p tsconfig.json
 @sera/flags-client:build: 
-@sera/evidence-service:build: cache hit, replaying logs 28e6cd6ca1c9e756
-@sera/evidence-service:build: 
-@sera/evidence-service:build: > @sera/evidence-service@0.0.1 build /home/user/sera/services/evidence-service
-@sera/evidence-service:build: > tsc -p tsconfig.json
-@sera/evidence-service:build: 
-@sera/custody-service:build: cache hit, replaying logs a148835264b1cc0a
-@sera/custody-service:build: 
-@sera/custody-service:build: > @sera/custody-service@0.0.1 build /home/user/sera/services/custody-service
-@sera/custody-service:build: > tsc -p tsconfig.json
-@sera/custody-service:build: 
-@sera/rider-app:test: cache miss, executing e06d88d3730025a5
+@sera/observability:build: cache hit, replaying logs eb69f39240275045
+@sera/observability:build: 
+@sera/observability:build: > @sera/observability@0.0.1 build /home/user/sera/packages/observability
+@sera/observability:build: > tsc -p tsconfig.json
+@sera/observability:build: 
+@sera/commerce-core:test: cache hit, replaying logs 618b9ad5f6b1475b
+@sera/commerce-core:test: 
+@sera/commerce-core:test: > @sera/commerce-core@0.0.1 test /home/user/sera/packages/commerce-core
+@sera/commerce-core:test: > vitest run
+@sera/commerce-core:test: 
+@sera/commerce-core:test: 
+@sera/commerce-core:test:  RUN  v3.2.7 /home/user/sera/packages/commerce-core
+@sera/commerce-core:test: 
+@sera/commerce-core:test:  ✓ test/money-gate.test.ts (7 tests) 32ms
+@sera/commerce-core:test: 
+@sera/commerce-core:test:  Test Files  1 passed (1)
+@sera/commerce-core:test:       Tests  7 passed (7)
+@sera/commerce-core:test:    Start at  01:12:55
+@sera/commerce-core:test:    Duration  1.39s (transform 154ms, setup 0ms, collect 348ms, tests 32ms, environment 0ms, prepare 274ms)
+@sera/commerce-core:test: 
+@sera/flags-client:test: cache hit, replaying logs 2c6207e6afd57ea6
+@sera/flags-client:test: 
+@sera/flags-client:test: > @sera/flags-client@0.0.1 test /home/user/sera/packages/flags-client
+@sera/flags-client:test: > vitest run
+@sera/flags-client:test: 
+@sera/flags-client:test: 
+@sera/flags-client:test:  RUN  v3.2.7 /home/user/sera/packages/flags-client
+@sera/flags-client:test: 
+@sera/flags-client:test:  ✓ test/flags.test.ts (3 tests) 8ms
+@sera/flags-client:test: 
+@sera/flags-client:test:  Test Files  1 passed (1)
+@sera/flags-client:test:       Tests  3 passed (3)
+@sera/flags-client:test:    Start at  01:12:54
+@sera/flags-client:test:    Duration  2.99s (transform 156ms, setup 0ms, collect 130ms, tests 8ms, environment 0ms, prepare 2.04s)
+@sera/flags-client:test: 
+@sera/rider-app:test: cache miss, executing 6e62e50fbd648e5b
+@sera/logistics-service:build: cache hit, replaying logs 6ae592d87e74757a
+@sera/logistics-service:build: 
+@sera/logistics-service:build: > @sera/logistics-service@0.0.1 build /home/user/sera/services/logistics-service
+@sera/logistics-service:build: > tsc -p tsconfig.json
+@sera/logistics-service:build: 
 @sera/observability:test: cache hit, replaying logs 9f006bf5981b475a
 @sera/observability:test: 
 @sera/observability:test: > @sera/observability@0.0.1 test /home/user/sera/packages/observability
@@ -123,6 +148,60 @@ Cached:    10 cached, 11 total
 @sera/observability:test:    Start at  01:12:51
 @sera/observability:test:    Duration  1.37s (transform 201ms, setup 0ms, collect 199ms, tests 47ms, environment 0ms, prepare 292ms)
 @sera/observability:test: 
+@sera/evidence-service:build: cache hit, replaying logs 28e6cd6ca1c9e756
+@sera/evidence-service:build: 
+@sera/evidence-service:build: > @sera/evidence-service@0.0.1 build /home/user/sera/services/evidence-service
+@sera/evidence-service:build: > tsc -p tsconfig.json
+@sera/evidence-service:build: 
+@sera/custody-service:build: cache hit, replaying logs a148835264b1cc0a
+@sera/custody-service:build: 
+@sera/custody-service:build: > @sera/custody-service@0.0.1 build /home/user/sera/services/custody-service
+@sera/custody-service:build: > tsc -p tsconfig.json
+@sera/custody-service:build: 
+@sera/logistics-service:test: cache hit, replaying logs c40d9c99d8b39d79
+@sera/logistics-service:test: 
+@sera/logistics-service:test: > @sera/logistics-service@0.0.1 pretest /home/user/sera/services/logistics-service
+@sera/logistics-service:test: > pnpm bundle:worker
+@sera/logistics-service:test: 
+@sera/logistics-service:test: 
+@sera/logistics-service:test: > @sera/logistics-service@0.0.1 bundle:worker /home/user/sera/services/logistics-service
+@sera/logistics-service:test: > esbuild worker/assignment-lease-do.ts --bundle --format=esm --outfile=dist-worker/assignment-worker.mjs --platform=neutral --conditions=import
+@sera/logistics-service:test: 
+@sera/logistics-service:test: 
+@sera/logistics-service:test:   dist-worker/assignment-worker.mjs  6.0kb
+@sera/logistics-service:test: 
+@sera/logistics-service:test: ⚡ Done in 7ms
+@sera/logistics-service:test: 
+@sera/logistics-service:test: > @sera/logistics-service@0.0.1 test /home/user/sera/services/logistics-service
+@sera/logistics-service:test: > vitest run
+@sera/logistics-service:test: 
+@sera/logistics-service:test: 
+@sera/logistics-service:test:  RUN  v3.2.7 /home/user/sera/services/logistics-service
+@sera/logistics-service:test: 
+@sera/logistics-service:test:  ✓ test/intake-misbehavior.test.ts (24 tests) 84ms
+@sera/logistics-service:test:  ✓ test/assignment-lease.test.ts (15 tests) 14ms
+@sera/logistics-service:test:  ✓ test/manual-assignment.test.ts (12 tests) 17ms
+@sera/logistics-service:test:  ✓ test/reschedule.test.ts (6 tests) 18ms
+@sera/logistics-service:test:  ✓ test/assignment-lease-do.e2e.test.ts (6 tests) 1277ms
+@sera/logistics-service:test:    ✓ AssignmentLeaseDO on workerd — THE singular dispatch authority > ① 20 CONCURRENT ACQUIRES, one task, 20 distinct riders → EXACTLY 1 winner, 19 task_already_leased (SE-I01: never double-booked)  1131ms
+@sera/logistics-service:test:  ✓ test/delivery-location.test.ts (5 tests) 7ms
+@sera/logistics-service:test:  ✓ test/leased-dispatch.e2e.test.ts (11 tests) 1185ms
+@sera/logistics-service:test:    ✓ LeasedDispatch — the full grant path on the real authority > GRANT PATH: recheck + assignability + atomic acquire + witnessed book entry; pickup.assigned.v1 carries the chain; replay is idempotent end-to-end  942ms
+@sera/logistics-service:test:  ✓ test/rider-registry.test.ts (10 tests) 8ms
+@sera/logistics-service:test:  ✓ test/assignment-authority.test.ts (3 tests) 6ms
+@sera/logistics-service:test: stdout | test/health.test.ts > logistics-service > serves /health and names itself
+@sera/logistics-service:test: {"ts":"2026-07-14T01:14:18.712Z","level":"info","correlation_id":"dca9a4ad-74d2-4e75-a88a-733cfea1397b","service":"logistics-service","msg":"health check","path":"/health"}
+@sera/logistics-service:test: 
+@sera/logistics-service:test: stdout | test/health.test.ts > logistics-service > unknown routes are 404 — no features at this slice
+@sera/logistics-service:test: {"ts":"2026-07-14T01:14:18.717Z","level":"warn","correlation_id":"0a67ac52-bdfd-4d0b-ae6e-e2bac2ffcc87","service":"logistics-service","msg":"route not found","path":"/anything"}
+@sera/logistics-service:test: 
+@sera/logistics-service:test:  ✓ test/health.test.ts (2 tests) 10ms
+@sera/logistics-service:test: 
+@sera/logistics-service:test:  Test Files  10 passed (10)
+@sera/logistics-service:test:       Tests  94 passed (94)
+@sera/logistics-service:test:    Start at  01:14:14
+@sera/logistics-service:test:    Duration  4.19s (transform 615ms, setup 0ms, collect 4.18s, tests 2.63s, environment 2ms, prepare 1.52s)
+@sera/logistics-service:test: 
 @sera/evidence-service:test: cache hit, replaying logs 475df5814129c42c
 @sera/evidence-service:test: 
 @sera/evidence-service:test: > @sera/evidence-service@0.0.1 test /home/user/sera/services/evidence-service
@@ -132,31 +211,33 @@ Cached:    10 cached, 11 total
 @sera/evidence-service:test:  RUN  v3.2.7 /home/user/sera/services/evidence-service
 @sera/evidence-service:test: 
 @sera/evidence-service:test:  ✓ test/readiness-evidence.test.ts (3 tests) 23ms
-@sera/flags-client:test: cache hit, replaying logs 2c6207e6afd57ea6
-@sera/flags-client:test: 
-@sera/flags-client:test: > @sera/flags-client@0.0.1 test /home/user/sera/packages/flags-client
-@sera/commerce-core:test: cache hit, replaying logs 618b9ad5f6b1475b
-@sera/flags-client:test: > vitest run
-@sera/flags-client:test: 
-@sera/flags-client:test: 
-@sera/flags-client:test:  RUN  v3.2.7 /home/user/sera/packages/flags-client
-@sera/flags-client:test: 
-@sera/commerce-core:test: 
-@sera/flags-client:test:  ✓ test/flags.test.ts (3 tests) 8ms
-@sera/commerce-core:test: > @sera/commerce-core@0.0.1 test /home/user/sera/packages/commerce-core
-@sera/commerce-core:test: > vitest run
-@sera/commerce-core:test: 
-@sera/commerce-core:test: 
-@sera/commerce-core:test:  RUN  v3.2.7 /home/user/sera/packages/commerce-core
-@sera/commerce-core:test: 
-@sera/commerce-core:test:  ✓ test/money-gate.test.ts (7 tests) 32ms
-@sera/commerce-core:test: 
-@sera/commerce-core:test:  Test Files  1 passed (1)
-@sera/commerce-core:test:       Tests  7 passed (7)
-@sera/commerce-core:test:    Start at  01:12:55
-@sera/commerce-core:test:    Duration  1.39s (transform 154ms, setup 0ms, collect 348ms, tests 32ms, environment 0ms, prepare 274ms)
-@sera/commerce-core:test: 
+@sera/evidence-service:test: stdout | test/health.test.ts > evidence-service > serves /health and names itself
+@sera/evidence-service:test: {"ts":"2026-07-14T01:14:14.966Z","level":"info","correlation_id":"2052143a-5a82-4131-abaf-0cae9f689418","service":"evidence-service","msg":"health check","path":"/health"}
+@sera/evidence-service:test: 
+@sera/evidence-service:test: stdout | test/health.test.ts > evidence-service > unknown routes are 404 — no features at this slice
+@sera/evidence-service:test: {"ts":"2026-07-14T01:14:14.979Z","level":"warn","correlation_id":"870509d5-7969-4142-b9ba-a58ad01a13f4","service":"evidence-service","msg":"route not found","path":"/anything"}
+@sera/evidence-service:test: 
+@sera/evidence-service:test:  ✓ test/health.test.ts (2 tests) 45ms
+@sera/evidence-service:test: 
+@sera/evidence-service:test:  Test Files  2 passed (2)
+@sera/evidence-service:test:       Tests  5 passed (5)
+@sera/evidence-service:test:    Start at  01:14:13
+@sera/evidence-service:test:    Duration  1.37s (transform 223ms, setup 0ms, collect 694ms, tests 68ms, environment 5ms, prepare 354ms)
+@sera/evidence-service:test: 
+@sera/dispatch-console:build: cache hit, replaying logs 34514ee414468294
+@sera/dispatch-console:build: 
+@sera/dispatch-console:build: > @sera/dispatch-console@0.0.1 build /home/user/sera/apps/dispatch-console
+@sera/dispatch-console:build: > vite build
+@sera/dispatch-console:build: 
+@sera/dispatch-console:build: vite v6.4.3 building for production...
+@sera/dispatch-console:build: transforming...
+@sera/dispatch-console:build: ✓ 135 modules transformed.
+@sera/dispatch-console:build: rendering chunks...
+@sera/dispatch-console:build: computing gzip size...
+@sera/dispatch-console:build: dist/index.html                  0.33 kB │ gzip:  0.25 kB
 @sera/custody-service:test: cache hit, replaying logs b3ea90170b75c7fc
+@sera/dispatch-console:build: dist/assets/index-Cw99Shw0.js  149.87 kB │ gzip: 38.90 kB
+@sera/dispatch-console:build: ✓ built in 3.30s
 @sera/custody-service:test: 
 @sera/custody-service:test: > @sera/custody-service@0.0.1 test /home/user/sera/services/custody-service
 @sera/custody-service:test: > vitest run
@@ -194,103 +275,28 @@ Cached:    10 cached, 11 total
 @sera/custody-service:test:  ✓ test/eligibility-consumer-certification.test.ts (4 tests) 117ms
 @sera/custody-service:test:  ✓ test/pickup-verification.test.ts (5 tests) 35ms
 @sera/custody-service:test: stdout | test/health.test.ts > custody-service > serves /health and names itself
-@sera/evidence-service:test: stdout | test/health.test.ts > evidence-service > serves /health and names itself
-@sera/evidence-service:test: {"ts":"2026-07-14T01:14:14.966Z","level":"info","correlation_id":"2052143a-5a82-4131-abaf-0cae9f689418","service":"evidence-service","msg":"health check","path":"/health"}
-@sera/evidence-service:test: 
-@sera/evidence-service:test: stdout | test/health.test.ts > evidence-service > unknown routes are 404 — no features at this slice
-@sera/evidence-service:test: {"ts":"2026-07-14T01:14:14.979Z","level":"warn","correlation_id":"870509d5-7969-4142-b9ba-a58ad01a13f4","service":"evidence-service","msg":"route not found","path":"/anything"}
-@sera/evidence-service:test: 
-@sera/evidence-service:test:  ✓ test/health.test.ts (2 tests) 45ms
-@sera/evidence-service:test: 
-@sera/evidence-service:test:  Test Files  2 passed (2)
-@sera/evidence-service:test:       Tests  5 passed (5)
-@sera/evidence-service:test:    Start at  01:14:13
-@sera/evidence-service:test:    Duration  1.37s (transform 223ms, setup 0ms, collect 694ms, tests 68ms, environment 5ms, prepare 354ms)
-@sera/evidence-service:test: 
-@sera/logistics-service:build: cache hit, replaying logs 6ae592d87e74757a
+@sera/dispatch-console:test: cache hit, replaying logs 84dbfcef4187b82b
 @sera/custody-service:test: {"ts":"2026-07-14T01:12:57.057Z","level":"info","correlation_id":"bd76da2f-7af7-4d37-9b66-02601ee854bf","service":"custody-service","msg":"health check","path":"/health"}
 @sera/custody-service:test: 
-@sera/logistics-service:build: 
 @sera/custody-service:test: stdout | test/health.test.ts > custody-service > unknown routes are 404 — no features at this slice
-@sera/logistics-service:build: > @sera/logistics-service@0.0.1 build /home/user/sera/services/logistics-service
 @sera/custody-service:test: {"ts":"2026-07-14T01:12:57.071Z","level":"warn","correlation_id":"a0b69cbe-9d53-4104-a3ee-b2fa189b72ac","service":"custody-service","msg":"route not found","path":"/anything"}
-@sera/logistics-service:build: > tsc -p tsconfig.json
 @sera/custody-service:test: 
-@sera/logistics-service:build: 
+@sera/dispatch-console:test: 
 @sera/custody-service:test:  ✓ test/health.test.ts (2 tests) 43ms
-@sera/custody-service:test:  ✓ test/custody-transition.test.ts (4 tests) 45ms
-@sera/custody-service:test: 
-@sera/custody-service:test:  Test Files  9 passed (9)
-@sera/custody-service:test:       Tests  87 passed (87)
-@sera/custody-service:test:    Start at  01:12:51
-@sera/custody-service:test:    Duration  6.64s (transform 1.28s, setup 0ms, collect 6.48s, tests 930ms, environment 2ms, prepare 2.77s)
-@sera/custody-service:test: 
-@sera/dispatch-console:build: cache hit, replaying logs 34514ee414468294
-@sera/logistics-service:test: cache hit, replaying logs c40d9c99d8b39d79
-@sera/dispatch-console:build: 
-@sera/dispatch-console:build: > @sera/dispatch-console@0.0.1 build /home/user/sera/apps/dispatch-console
-@sera/dispatch-console:build: > vite build
-@sera/dispatch-console:build: 
-@sera/dispatch-console:build: vite v6.4.3 building for production...
-@sera/logistics-service:test: 
-@sera/dispatch-console:build: transforming...
-@sera/logistics-service:test: > @sera/logistics-service@0.0.1 pretest /home/user/sera/services/logistics-service
-@sera/dispatch-console:build: ✓ 135 modules transformed.
-@sera/logistics-service:test: > pnpm bundle:worker
-@sera/dispatch-console:build: rendering chunks...
-@sera/logistics-service:test: 
-@sera/dispatch-console:build: computing gzip size...
-@sera/logistics-service:test: 
-@sera/dispatch-console:build: dist/index.html                  0.33 kB │ gzip:  0.25 kB
-@sera/logistics-service:test: > @sera/logistics-service@0.0.1 bundle:worker /home/user/sera/services/logistics-service
-@sera/dispatch-console:build: dist/assets/index-Cw99Shw0.js  149.87 kB │ gzip: 38.90 kB
-@sera/logistics-service:test: > esbuild worker/assignment-lease-do.ts --bundle --format=esm --outfile=dist-worker/assignment-worker.mjs --platform=neutral --conditions=import
-@sera/dispatch-console:build: ✓ built in 3.30s
-@sera/logistics-service:test: 
-@sera/logistics-service:test: 
-@sera/logistics-service:test:   dist-worker/assignment-worker.mjs  6.0kb
-@sera/logistics-service:test: 
-@sera/logistics-service:test: ⚡ Done in 7ms
-@sera/logistics-service:test: 
-@sera/logistics-service:test: > @sera/logistics-service@0.0.1 test /home/user/sera/services/logistics-service
-@sera/logistics-service:test: > vitest run
-@sera/logistics-service:test: 
-@sera/logistics-service:test: 
-@sera/logistics-service:test:  RUN  v3.2.7 /home/user/sera/services/logistics-service
-@sera/logistics-service:test: 
-@sera/logistics-service:test:  ✓ test/intake-misbehavior.test.ts (24 tests) 84ms
-@sera/logistics-service:test:  ✓ test/assignment-lease.test.ts (15 tests) 14ms
-@sera/logistics-service:test:  ✓ test/manual-assignment.test.ts (12 tests) 17ms
-@sera/logistics-service:test:  ✓ test/reschedule.test.ts (6 tests) 18ms
-@sera/logistics-service:test:  ✓ test/assignment-lease-do.e2e.test.ts (6 tests) 1277ms
-@sera/logistics-service:test:    ✓ AssignmentLeaseDO on workerd — THE singular dispatch authority > ① 20 CONCURRENT ACQUIRES, one task, 20 distinct riders → EXACTLY 1 winner, 19 task_already_leased (SE-I01: never double-booked)  1131ms
-@sera/logistics-service:test:  ✓ test/delivery-location.test.ts (5 tests) 7ms
-@sera/logistics-service:test:  ✓ test/leased-dispatch.e2e.test.ts (11 tests) 1185ms
-@sera/logistics-service:test:    ✓ LeasedDispatch — the full grant path on the real authority > GRANT PATH: recheck + assignability + atomic acquire + witnessed book entry; pickup.assigned.v1 carries the chain; replay is idempotent end-to-end  942ms
-@sera/logistics-service:test:  ✓ test/rider-registry.test.ts (10 tests) 8ms
-@sera/logistics-service:test:  ✓ test/assignment-authority.test.ts (3 tests) 6ms
-@sera/logistics-service:test: stdout | test/health.test.ts > logistics-service > serves /health and names itself
-@sera/logistics-service:test: {"ts":"2026-07-14T01:14:18.712Z","level":"info","correlation_id":"dca9a4ad-74d2-4e75-a88a-733cfea1397b","service":"logistics-service","msg":"health check","path":"/health"}
-@sera/logistics-service:test: 
-@sera/logistics-service:test: stdout | test/health.test.ts > logistics-service > unknown routes are 404 — no features at this slice
-@sera/logistics-service:test: {"ts":"2026-07-14T01:14:18.717Z","level":"warn","correlation_id":"0a67ac52-bdfd-4d0b-ae6e-e2bac2ffcc87","service":"logistics-service","msg":"route not found","path":"/anything"}
-@sera/logistics-service:test: 
-@sera/logistics-service:test:  ✓ test/health.test.ts (2 tests) 10ms
-@sera/logistics-service:test: 
-@sera/logistics-service:test:  Test Files  10 passed (10)
-@sera/logistics-service:test:       Tests  94 passed (94)
-@sera/logistics-service:test:    Start at  01:14:14
-@sera/logistics-service:test:    Duration  4.19s (transform 615ms, setup 0ms, collect 4.18s, tests 2.63s, environment 2ms, prepare 1.52s)
-@sera/logistics-service:test: 
-@sera/dispatch-console:test: cache hit, replaying logs 84dbfcef4187b82b
-@sera/dispatch-console:test: 
 @sera/dispatch-console:test: > @sera/dispatch-console@0.0.1 test /home/user/sera/apps/dispatch-console
+@sera/custody-service:test:  ✓ test/custody-transition.test.ts (4 tests) 45ms
 @sera/dispatch-console:test: > vitest run
+@sera/custody-service:test: 
 @sera/dispatch-console:test: 
+@sera/custody-service:test:  Test Files  9 passed (9)
 @sera/dispatch-console:test: 
+@sera/custody-service:test:       Tests  87 passed (87)
 @sera/dispatch-console:test:  RUN  v3.2.7 /home/user/sera/apps/dispatch-console
+@sera/custody-service:test:    Start at  01:12:51
 @sera/dispatch-console:test: 
+@sera/custody-service:test:    Duration  6.64s (transform 1.28s, setup 0ms, collect 6.48s, tests 930ms, environment 2ms, prepare 2.77s)
 @sera/dispatch-console:test:  ✓ test/icons.test.ts (3 tests) 27ms
+@sera/custody-service:test: 
 @sera/dispatch-console:test:  ✓ test/catalog.test.ts (2 tests) 35ms
 @sera/dispatch-console:test:  ✓ test/ready-queue-admission.test.ts (2 tests) 53ms
 @sera/dispatch-console:test:  ✓ test/board.test.ts (5 tests) 25ms
@@ -303,12 +309,6 @@ Cached:    10 cached, 11 total
 @sera/dispatch-console:test:    Start at  01:14:13
 @sera/dispatch-console:test:    Duration  2.97s (transform 708ms, setup 0ms, collect 2.12s, tests 194ms, environment 5ms, prepare 1.63s)
 @sera/dispatch-console:test: 
-@sera/flags-client:test: 
-@sera/flags-client:test:  Test Files  1 passed (1)
-@sera/flags-client:test:       Tests  3 passed (3)
-@sera/flags-client:test:    Start at  01:12:54
-@sera/flags-client:test:    Duration  2.99s (transform 156ms, setup 0ms, collect 130ms, tests 8ms, environment 0ms, prepare 2.04s)
-@sera/flags-client:test: 
 @sera/rider-app:test: 
 @sera/rider-app:test: > @sera/rider-app@0.0.1 test /home/user/sera/apps/rider-app
 @sera/rider-app:test: > vitest run
@@ -316,32 +316,32 @@ Cached:    10 cached, 11 total
 @sera/rider-app:test: 
 @sera/rider-app:test:  RUN  v3.2.7 /home/user/sera/apps/rider-app
 @sera/rider-app:test: 
-@sera/rider-app:test:  ✓ test/ui-kit.test.ts (13 tests) 16ms
-@sera/rider-app:test:  ✓ test/outbox.test.ts (6 tests) 13ms
-@sera/rider-app:test:  ✓ test/shell.test.ts (3 tests) 17ms
-@sera/rider-app:test:  ✓ test/sos-drill.test.ts (9 tests) 13ms
-@sera/rider-app:test:  ✓ test/grand-teint.test.ts (8 tests) 13ms
+@sera/rider-app:test:  ✓ test/ui-kit.test.ts (13 tests) 23ms
+@sera/rider-app:test:  ✓ test/outbox.test.ts (6 tests) 21ms
+@sera/rider-app:test:  ✓ test/sos-drill.test.ts (9 tests) 15ms
+@sera/rider-app:test:  ✓ test/grand-teint.test.ts (8 tests) 12ms
+@sera/rider-app:test:  ✓ test/wo6-invariants.test.ts (11 tests) 12ms
 @sera/rider-app:test:  ✓ test/demo-store.test.ts (12 tests) 12ms
-@sera/rider-app:test:  ✓ test/journey-spine.test.ts (6 tests) 16ms
-@sera/rider-app:test:  ✓ test/wo6-invariants.test.ts (11 tests) 15ms
+@sera/rider-app:test:  ✓ test/journey-spine.test.ts (6 tests) 10ms
+@sera/rider-app:test:  ✓ test/evidence-outbox.test.ts (3 tests) 9ms
 @sera/rider-app:test:  ✓ test/sos-outbox.test.ts (3 tests) 10ms
+@sera/rider-app:test:  ✓ test/shell.test.ts (3 tests) 23ms
+@sera/rider-app:test:  ✓ test/connectivity.test.ts (4 tests) 12ms
 @sera/rider-app:test:  ✓ test/preview-font-embedding.test.ts (3 tests) 5ms
-@sera/rider-app:test:  ✓ test/connectivity.test.ts (4 tests) 9ms
-@sera/rider-app:test:  ✓ test/evidence-outbox.test.ts (3 tests) 12ms
+@sera/rider-app:test:  ✓ test/evidence-finality.test.ts (5 tests) 5ms
 @sera/rider-app:test:  ✓ test/font-embedding.test.ts (2 tests) 5ms
-@sera/rider-app:test:  ✓ test/connectivity-truthful.test.ts (2 tests) 3ms
-@sera/rider-app:test:  ✓ test/evidence-finality.test.ts (5 tests) 7ms
+@sera/rider-app:test:  ✓ test/connectivity-truthful.test.ts (2 tests) 4ms
 @sera/rider-app:test:  ✓ test/preview-banner.test.ts (2 tests) 3ms
 @sera/rider-app:test: 
 @sera/rider-app:test:  Test Files  16 passed (16)
 @sera/rider-app:test:       Tests  92 passed (92)
-@sera/rider-app:test:    Start at  03:37:32
-@sera/rider-app:test:    Duration  2.09s (transform 376ms, setup 0ms, collect 965ms, tests 171ms, environment 3ms, prepare 1.34s)
+@sera/rider-app:test:    Start at  03:48:25
+@sera/rider-app:test:    Duration  2.04s (transform 359ms, setup 0ms, collect 920ms, tests 180ms, environment 3ms, prepare 1.27s)
 @sera/rider-app:test: 
 
  Tasks:    15 successful, 15 total
 Cached:    14 cached, 15 total
-  Time:    3.042s 
+  Time:    3s 
 (exit code: 0)
 
 === consumption baseline — pinned computeWaterfall reproduces the §5.4 worked baseline ===
@@ -553,7 +553,7 @@ CERTIFIED — eligibility — 8/8 §3 behaviors
   ✓ simulates_partial_failures: clean sequence 3 events; partial delivered 1 then failed: commerce-eligibility-consumer: mid-sequence failure
   ✓ rejects_invalid_state_transitions: Paid -> Eligible: accepted=false (a paid settlement obligation can never regress to eligible)
   ✓ generated_from_producer_contract_schema: producerSchema identical to domain registry: true; envelopes conformant: true; payload parse failures: 0/3
- ✓ test/eligibility-consumer-certification.test.ts (4 tests) 63ms
+ ✓ test/eligibility-consumer-certification.test.ts (4 tests) 60ms
 stdout | test/door-flow.test.ts > WO-2.4 item 6 — the shop door-paid emitter as a §3-misbehaving mock > scores 8/8 — CERTIFIED
 CERTIFIED — payment-provider — 8/8 §3 behaviors
   ✓ emits_duplicates: duplicated command_ids under control: 1; without control: 0
@@ -564,11 +564,11 @@ CERTIFIED — payment-provider — 8/8 §3 behaviors
   ✓ simulates_partial_failures: clean sequence 2 events; partial delivered 1 then failed: shop-door-payment-emitter: mid-sequence failure
   ✓ rejects_invalid_state_transitions: captured -> held: accepted=false (a captured door leg can never regress to held)
   ✓ generated_from_producer_contract_schema: producerSchema identical to domain registry: true; envelopes conformant: true; payload parse failures: 0/2
- ✓ test/door-flow.test.ts (18 tests) 75ms
+ ✓ test/door-flow.test.ts (18 tests) 76ms
  Test Files  2 passed (2)
       Tests  22 passed (22)
-   Start at  03:37:39
-   Duration  604ms (transform 211ms, setup 0ms, collect 466ms, tests 138ms, environment 0ms, prepare 134ms)
+   Start at  03:48:32
+   Duration  640ms (transform 199ms, setup 0ms, collect 510ms, tests 136ms, environment 0ms, prepare 146ms)
 (exit code: 0)
 
 === gate: one-assignment-authority — single-authority lease set (must pass) ===
@@ -645,7 +645,7 @@ no-drop-code-in-seller-evidence FAILED — payload is not a canonical PackageRea
 (exit code: 1)
 
 === gate: no-expo-token-leak — repo source + workflows + lockfile (must pass) ===
-no-expo-token-leak OK — no banned pattern in .github/workflows/ci.yml, .github/workflows/expo-preview.yml, AGENTS.md, CLAUDE.md, JOURNAL.md, PREVIEW.md, SDK-REPORT-v3-CANDIDATES.md, WORK-ORDERS/WO-SE0.1.md, _review/README.md, _review/SERA-S2/PACKET.md, _review/SERA-S2/verifier-verdict.md, _review/WO-6.1-verifier-brief.md, _review/WO-6.1-verifier-verdict.md, _review/WO-6.2/FAILING-LOG-QUOTE.md, _review/WO-6.2/README.md, _review/WO-6.2/verifier-brief.md, _review/WO-6.2/verifier-verdict.md, _review/WO-6.3/README.md, _review/WO-6.3/verifier-brief.md, _review/WO-6.3/verifier-verdict.md, _review/WO-6.4/README.md, _review/WO-6.4/byte-stability.md, _review/WO-6.4/preview-status.md, _review/WO-6.4/verifier-brief.md, _review/WO-6.4/verifier-verdict.md, _review/WO-6.6/README.md, _review/WO-6.6/guard-equivalence.md, _review/WO-6.9-b/README.md, _review/WO-6.9-b/verifier-verdict.md, _review/WO-6.9-slice1/README.md, _review/WO-6.9-slice1/verifier-verdict.md, adr/ADR-001-commerce-core-scope.md, adr/ADR-003-eligibility-consumer-trust-contract.md, apps/dispatch-console/e2e/gallery.spec.ts, apps/dispatch-console/e2e/shell.spec.ts, apps/dispatch-console/i18n/catalog.json, apps/dispatch-console/package.json, apps/dispatch-console/playwright.config.ts, apps/dispatch-console/src/board.ts, apps/dispatch-console/src/break-glass.ts, apps/dispatch-console/src/door-signal.ts, apps/dispatch-console/src/exceptions.ts, apps/dispatch-console/src/i18n.ts, apps/dispatch-console/src/icons.ts, apps/dispatch-console/src/main.ts, apps/dispatch-console/src/sandbox-board.ts, apps/dispatch-console/src/sandbox-break-glass.ts, apps/dispatch-console/src/sandbox-exceptions.ts, apps/dispatch-console/src/sandbox-followup.ts, apps/dispatch-console/src/sandbox-incident.ts, apps/dispatch-console/src/sandbox-world.ts, apps/dispatch-console/test/board.test.ts, apps/dispatch-console/test/break-glass.test.ts, apps/dispatch-console/test/catalog.test.ts, apps/dispatch-console/test/exceptions.test.ts, apps/dispatch-console/test/icons.test.ts, apps/dispatch-console/test/ready-queue-admission.test.ts, apps/dispatch-console/test/sandbox-incident.test.ts, apps/dispatch-console/tsconfig.json, apps/dispatch-console/vite.config.ts, apps/rider-app/App.tsx, apps/rider-app/WALKTHROUGH.md, apps/rider-app/app.json, apps/rider-app/assets/fonts/BUILD.md, apps/rider-app/assets/fonts/COLD-START.md, apps/rider-app/babel.config.js, apps/rider-app/i18n/catalog.json, apps/rider-app/index.ts, apps/rider-app/package.json, apps/rider-app/run-preview.bat, apps/rider-app/run-preview.sh, apps/rider-app/src/custody-flow.ts, apps/rider-app/src/demo/store.ts, apps/rider-app/src/i18n.ts, apps/rider-app/src/journey.ts, apps/rider-app/src/offline/commandId.ts, apps/rider-app/src/offline/documentStore.ts, apps/rider-app/src/offline/ensureCsprng.ts, apps/rider-app/src/offline/evidence.ts, apps/rider-app/src/offline/outbox.ts, apps/rider-app/src/offline/sos.ts, apps/rider-app/src/preview.ts, apps/rider-app/src/safety.ts, apps/rider-app/src/sandbox-assignment.ts, apps/rider-app/src/two-key-return.ts, apps/rider-app/src/ui/fonts.ts, apps/rider-app/src/ui/icons.tsx, apps/rider-app/src/ui/kit.tsx, apps/rider-app/test/demo-store.test.ts, apps/rider-app/test/evidence-finality.test.ts, apps/rider-app/test/evidence-outbox.test.ts, apps/rider-app/test/font-embedding.test.ts, apps/rider-app/test/grand-teint.test.ts, apps/rider-app/test/journey-spine.test.ts, apps/rider-app/test/outbox.test.ts, apps/rider-app/test/preview-banner.test.ts, apps/rider-app/test/preview-font-embedding.test.ts, apps/rider-app/test/shell.test.ts, apps/rider-app/test/sos-drill.test.ts, apps/rider-app/test/sos-outbox.test.ts, apps/rider-app/test/ui-kit.test.ts, apps/rider-app/test/wo6-invariants.test.ts, apps/rider-app/tsconfig.json, derivations/door-inspection-fault-mapping.md, design-reference/grand-teint/README.md, design-reference/grand-teint/docs/budget.md, design-reference/grand-teint/docs/components.md, design-reference/grand-teint/docs/copy.md, design-reference/grand-teint/docs/design-system.md, design-reference/grand-teint/docs/flows.md, design-reference/grand-teint/docs/motion.md, design-reference/grand-teint/docs/proposals.md, design-reference/grand-teint/docs/tokens.json, design-reference/grand-teint/icons/README.md, design-reference/grand-teint/share-cards/README.md, design-reference/grand-teint/support.js, docs/Boutik-Plus-Build-Spec.md, docs/Boutik-Plus-Building-Plan.md, docs/DESIGN-LANGUAGE.md, docs/ECOSYSTEM-MASTER-REFERENCE.md, docs/Ecosystem-Engineering-Execution-Contract.md, docs/GRAND-TEINT.md, docs/PERF-BUDGETS.md, docs/Sera-Build-Spec.md, docs/Sera-Building-Plan.md, docs/Shop-Plus-Build-Spec.md, docs/Shop-Plus-Building-Plan.md, docs/runbooks/SOS-DRILL.md, gallery/states.json, package.json, packages/commerce-core/package.json, packages/commerce-core/src/delivery-view.ts, packages/commerce-core/src/fixtures.ts, packages/commerce-core/src/index.ts, packages/commerce-core/test/money-gate.test.ts, packages/commerce-core/tsconfig.json, packages/flags-client/package.json, packages/flags-client/src/index.ts, packages/flags-client/test/flags.test.ts, packages/flags-client/tsconfig.json, packages/observability/package.json, packages/observability/src/health.ts, packages/observability/src/index.ts, packages/observability/src/logger.ts, packages/observability/test/correlation.test.ts, packages/observability/tsconfig.json, pnpm-lock.yaml, pnpm-workspace.yaml, scripts/baseline-check.mjs, scripts/build-gallery.mjs, scripts/certify-mocks.mjs, scripts/check-mint-path-entropy.mjs, scripts/e1-custody-happy-path.mjs, scripts/e1-dispatch-happy-path.mjs, scripts/gates/actor-provenance.mjs, scripts/gates/custody-actor-separation.mjs, scripts/gates/custody-ledger.mjs, scripts/gates/custody-transition.mjs, scripts/gates/door-custody-gate.mjs, scripts/gates/evidence-chain-binding.mjs, scripts/gates/money-reconciliation.mjs, scripts/gates/no-drop-code-in-seller-evidence.mjs, scripts/gates/no-evidence-release.mjs, scripts/gates/no-expo-token-leak.mjs, scripts/gates/no-ml-libs.mjs, scripts/gates/no-rider-asserted-payment.mjs, scripts/gates/no-ssh-lockfile-urls.mjs, scripts/gates/no-street-address-location.mjs, scripts/gates/no-wallet-no-funds.mjs, scripts/gates/off-shift-location.mjs, scripts/gates/offline-flush-binding.mjs, scripts/gates/offline-never-final.mjs, scripts/gates/one-assignment-authority.mjs, scripts/gates/outcome-family.mjs, scripts/gates/package-never-unowned.mjs, scripts/gates/rider-assignability.mjs, scripts/gates/scan.mjs, scripts/gates/single-level.mjs, scripts/gates/two-key-return.mjs, scripts/quote-shape-check.mjs, scripts/run-gates.sh, services/custody-service/mocks/commerce-eligibility-consumer-mock.ts, services/custody-service/mocks/shop-door-payment-emitter-mock.ts, services/custody-service/package.json, services/custody-service/src/actor-provenance.ts, services/custody-service/src/custody-ledger.ts, services/custody-service/src/custody-spine.ts, services/custody-service/src/custody-transition.ts, services/custody-service/src/door-flow.ts, services/custody-service/src/index.ts, services/custody-service/src/ops-monitor.ts, services/custody-service/src/pickup-verification-policy.ts, services/custody-service/src/refusal-ladder.ts, services/custody-service/src/secret-registry.ts, services/custody-service/test/custody-ledger.test.ts, services/custody-service/test/custody-spine.test.ts, services/custody-service/test/custody-transition.test.ts, services/custody-service/test/door-flow.test.ts, services/custody-service/test/eligibility-consumer-certification.test.ts, services/custody-service/test/failure-flows.test.ts, services/custody-service/test/health.test.ts, services/custody-service/test/pickup-verification.test.ts, services/custody-service/test/wo27-hardening.test.ts, services/custody-service/tsconfig.json, services/evidence-service/package.json, services/evidence-service/src/index.ts, services/evidence-service/src/readiness-evidence.ts, services/evidence-service/test/health.test.ts, services/evidence-service/test/readiness-evidence.test.ts, services/evidence-service/tsconfig.json, services/logistics-service/dist-worker/assignment-worker.mjs, services/logistics-service/package.json, services/logistics-service/src/assignment-authority.ts, services/logistics-service/src/assignment-lease.ts, services/logistics-service/src/delivery-location.ts, services/logistics-service/src/index.ts, services/logistics-service/src/leased-assignment.ts, services/logistics-service/src/manual-assignment.ts, services/logistics-service/src/mocks/boutik-readiness-mock.ts, services/logistics-service/src/mocks/shopplus-funding-mock.ts, services/logistics-service/src/ready-queue.ts, services/logistics-service/src/reschedule.ts, services/logistics-service/src/rider-registry.ts, services/logistics-service/src/shift-location.ts, services/logistics-service/test/assignment-authority.test.ts, services/logistics-service/test/assignment-lease-do.e2e.test.ts, services/logistics-service/test/assignment-lease.test.ts, services/logistics-service/test/delivery-location.test.ts, services/logistics-service/test/health.test.ts, services/logistics-service/test/intake-misbehavior.test.ts, services/logistics-service/test/leased-dispatch.e2e.test.ts, services/logistics-service/test/manual-assignment.test.ts, services/logistics-service/test/reschedule.test.ts, services/logistics-service/test/rider-registry.test.ts, services/logistics-service/tsconfig.json, services/logistics-service/worker/assignment-lease-do.ts, services/logistics-service/worker/tsconfig.json, tsconfig.base.json, turbo.json (WO-4.0 credentials never committed)
+no-expo-token-leak OK — no banned pattern in .github/workflows/ci.yml, .github/workflows/expo-preview.yml, AGENTS.md, CLAUDE.md, JOURNAL.md, PREVIEW.md, SDK-REPORT-v3-CANDIDATES.md, WORK-ORDERS/WO-SE0.1.md, _review/README.md, _review/SERA-S2/PACKET.md, _review/SERA-S2/verifier-verdict.md, _review/SERA-S4/PACKET.md, _review/WO-6.1-verifier-brief.md, _review/WO-6.1-verifier-verdict.md, _review/WO-6.2/FAILING-LOG-QUOTE.md, _review/WO-6.2/README.md, _review/WO-6.2/verifier-brief.md, _review/WO-6.2/verifier-verdict.md, _review/WO-6.3/README.md, _review/WO-6.3/verifier-brief.md, _review/WO-6.3/verifier-verdict.md, _review/WO-6.4/README.md, _review/WO-6.4/byte-stability.md, _review/WO-6.4/preview-status.md, _review/WO-6.4/verifier-brief.md, _review/WO-6.4/verifier-verdict.md, _review/WO-6.6/README.md, _review/WO-6.6/guard-equivalence.md, _review/WO-6.9-b/README.md, _review/WO-6.9-b/verifier-verdict.md, _review/WO-6.9-slice1/README.md, _review/WO-6.9-slice1/verifier-verdict.md, adr/ADR-001-commerce-core-scope.md, adr/ADR-003-eligibility-consumer-trust-contract.md, apps/dispatch-console/e2e/gallery.spec.ts, apps/dispatch-console/e2e/shell.spec.ts, apps/dispatch-console/i18n/catalog.json, apps/dispatch-console/package.json, apps/dispatch-console/playwright.config.ts, apps/dispatch-console/src/board.ts, apps/dispatch-console/src/break-glass.ts, apps/dispatch-console/src/door-signal.ts, apps/dispatch-console/src/exceptions.ts, apps/dispatch-console/src/i18n.ts, apps/dispatch-console/src/icons.ts, apps/dispatch-console/src/main.ts, apps/dispatch-console/src/sandbox-board.ts, apps/dispatch-console/src/sandbox-break-glass.ts, apps/dispatch-console/src/sandbox-exceptions.ts, apps/dispatch-console/src/sandbox-followup.ts, apps/dispatch-console/src/sandbox-incident.ts, apps/dispatch-console/src/sandbox-world.ts, apps/dispatch-console/test/board.test.ts, apps/dispatch-console/test/break-glass.test.ts, apps/dispatch-console/test/catalog.test.ts, apps/dispatch-console/test/exceptions.test.ts, apps/dispatch-console/test/icons.test.ts, apps/dispatch-console/test/ready-queue-admission.test.ts, apps/dispatch-console/test/sandbox-incident.test.ts, apps/dispatch-console/tsconfig.json, apps/dispatch-console/vite.config.ts, apps/rider-app/App.tsx, apps/rider-app/WALKTHROUGH.md, apps/rider-app/app.json, apps/rider-app/assets/fonts/BUILD.md, apps/rider-app/assets/fonts/COLD-START.md, apps/rider-app/babel.config.js, apps/rider-app/i18n/catalog.json, apps/rider-app/index.ts, apps/rider-app/package.json, apps/rider-app/run-preview.bat, apps/rider-app/run-preview.sh, apps/rider-app/src/custody-flow.ts, apps/rider-app/src/demo/store.ts, apps/rider-app/src/i18n.ts, apps/rider-app/src/journey.ts, apps/rider-app/src/offline/backlog.ts, apps/rider-app/src/offline/commandId.ts, apps/rider-app/src/offline/connectivity.ts, apps/rider-app/src/offline/documentStore.ts, apps/rider-app/src/offline/ensureCsprng.ts, apps/rider-app/src/offline/evidence.ts, apps/rider-app/src/offline/expoConnectivity.ts, apps/rider-app/src/offline/outbox.ts, apps/rider-app/src/offline/sos.ts, apps/rider-app/src/preview.ts, apps/rider-app/src/safety.ts, apps/rider-app/src/sandbox-assignment.ts, apps/rider-app/src/two-key-return.ts, apps/rider-app/src/ui/fonts.ts, apps/rider-app/src/ui/icons.tsx, apps/rider-app/src/ui/kit.tsx, apps/rider-app/test/connectivity-truthful.test.ts, apps/rider-app/test/connectivity.test.ts, apps/rider-app/test/demo-store.test.ts, apps/rider-app/test/evidence-finality.test.ts, apps/rider-app/test/evidence-outbox.test.ts, apps/rider-app/test/font-embedding.test.ts, apps/rider-app/test/grand-teint.test.ts, apps/rider-app/test/journey-spine.test.ts, apps/rider-app/test/outbox.test.ts, apps/rider-app/test/preview-banner.test.ts, apps/rider-app/test/preview-font-embedding.test.ts, apps/rider-app/test/shell.test.ts, apps/rider-app/test/sos-drill.test.ts, apps/rider-app/test/sos-outbox.test.ts, apps/rider-app/test/ui-kit.test.ts, apps/rider-app/test/wo6-invariants.test.ts, apps/rider-app/tsconfig.json, derivations/door-inspection-fault-mapping.md, design-reference/grand-teint/README.md, design-reference/grand-teint/docs/budget.md, design-reference/grand-teint/docs/components.md, design-reference/grand-teint/docs/copy.md, design-reference/grand-teint/docs/design-system.md, design-reference/grand-teint/docs/flows.md, design-reference/grand-teint/docs/motion.md, design-reference/grand-teint/docs/proposals.md, design-reference/grand-teint/docs/tokens.json, design-reference/grand-teint/icons/README.md, design-reference/grand-teint/share-cards/README.md, design-reference/grand-teint/support.js, docs/Boutik-Plus-Build-Spec.md, docs/Boutik-Plus-Building-Plan.md, docs/DESIGN-LANGUAGE.md, docs/ECOSYSTEM-MASTER-REFERENCE.md, docs/Ecosystem-Engineering-Execution-Contract.md, docs/GRAND-TEINT.md, docs/PERF-BUDGETS.md, docs/Sera-Build-Spec.md, docs/Sera-Building-Plan.md, docs/Shop-Plus-Build-Spec.md, docs/Shop-Plus-Building-Plan.md, docs/runbooks/SOS-DRILL.md, gallery/states.json, package.json, packages/commerce-core/package.json, packages/commerce-core/src/delivery-view.ts, packages/commerce-core/src/fixtures.ts, packages/commerce-core/src/index.ts, packages/commerce-core/test/money-gate.test.ts, packages/commerce-core/tsconfig.json, packages/flags-client/package.json, packages/flags-client/src/index.ts, packages/flags-client/test/flags.test.ts, packages/flags-client/tsconfig.json, packages/observability/package.json, packages/observability/src/health.ts, packages/observability/src/index.ts, packages/observability/src/logger.ts, packages/observability/test/correlation.test.ts, packages/observability/tsconfig.json, pnpm-lock.yaml, pnpm-workspace.yaml, scripts/baseline-check.mjs, scripts/build-gallery.mjs, scripts/certify-mocks.mjs, scripts/check-mint-path-entropy.mjs, scripts/e1-custody-happy-path.mjs, scripts/e1-dispatch-happy-path.mjs, scripts/gates/actor-provenance.mjs, scripts/gates/custody-actor-separation.mjs, scripts/gates/custody-ledger.mjs, scripts/gates/custody-transition.mjs, scripts/gates/door-custody-gate.mjs, scripts/gates/evidence-chain-binding.mjs, scripts/gates/money-reconciliation.mjs, scripts/gates/no-drop-code-in-seller-evidence.mjs, scripts/gates/no-evidence-release.mjs, scripts/gates/no-expo-token-leak.mjs, scripts/gates/no-ml-libs.mjs, scripts/gates/no-rider-asserted-payment.mjs, scripts/gates/no-ssh-lockfile-urls.mjs, scripts/gates/no-street-address-location.mjs, scripts/gates/no-wallet-no-funds.mjs, scripts/gates/off-shift-location.mjs, scripts/gates/offline-flush-binding.mjs, scripts/gates/offline-never-final.mjs, scripts/gates/one-assignment-authority.mjs, scripts/gates/outcome-family.mjs, scripts/gates/package-never-unowned.mjs, scripts/gates/rider-assignability.mjs, scripts/gates/scan.mjs, scripts/gates/single-level.mjs, scripts/gates/two-key-return.mjs, scripts/quote-shape-check.mjs, scripts/run-gates.sh, services/custody-service/mocks/commerce-eligibility-consumer-mock.ts, services/custody-service/mocks/shop-door-payment-emitter-mock.ts, services/custody-service/package.json, services/custody-service/src/actor-provenance.ts, services/custody-service/src/custody-ledger.ts, services/custody-service/src/custody-spine.ts, services/custody-service/src/custody-transition.ts, services/custody-service/src/door-flow.ts, services/custody-service/src/index.ts, services/custody-service/src/ops-monitor.ts, services/custody-service/src/pickup-verification-policy.ts, services/custody-service/src/refusal-ladder.ts, services/custody-service/src/secret-registry.ts, services/custody-service/test/custody-ledger.test.ts, services/custody-service/test/custody-spine.test.ts, services/custody-service/test/custody-transition.test.ts, services/custody-service/test/door-flow.test.ts, services/custody-service/test/eligibility-consumer-certification.test.ts, services/custody-service/test/failure-flows.test.ts, services/custody-service/test/health.test.ts, services/custody-service/test/pickup-verification.test.ts, services/custody-service/test/wo27-hardening.test.ts, services/custody-service/tsconfig.json, services/evidence-service/package.json, services/evidence-service/src/index.ts, services/evidence-service/src/readiness-evidence.ts, services/evidence-service/test/health.test.ts, services/evidence-service/test/readiness-evidence.test.ts, services/evidence-service/tsconfig.json, services/logistics-service/dist-worker/assignment-worker.mjs, services/logistics-service/package.json, services/logistics-service/src/assignment-authority.ts, services/logistics-service/src/assignment-lease.ts, services/logistics-service/src/delivery-location.ts, services/logistics-service/src/index.ts, services/logistics-service/src/leased-assignment.ts, services/logistics-service/src/manual-assignment.ts, services/logistics-service/src/mocks/boutik-readiness-mock.ts, services/logistics-service/src/mocks/shopplus-funding-mock.ts, services/logistics-service/src/ready-queue.ts, services/logistics-service/src/reschedule.ts, services/logistics-service/src/rider-registry.ts, services/logistics-service/src/shift-location.ts, services/logistics-service/test/assignment-authority.test.ts, services/logistics-service/test/assignment-lease-do.e2e.test.ts, services/logistics-service/test/assignment-lease.test.ts, services/logistics-service/test/delivery-location.test.ts, services/logistics-service/test/health.test.ts, services/logistics-service/test/intake-misbehavior.test.ts, services/logistics-service/test/leased-dispatch.e2e.test.ts, services/logistics-service/test/manual-assignment.test.ts, services/logistics-service/test/reschedule.test.ts, services/logistics-service/test/rider-registry.test.ts, services/logistics-service/tsconfig.json, services/logistics-service/worker/assignment-lease-do.ts, services/logistics-service/worker/tsconfig.json, tsconfig.base.json, turbo.json (WO-4.0 credentials never committed)
 (exit code: 0)
 
 === gate: no-expo-token-leak — NEGATIVE FIXTURE (committed token literal, must fail) ===
@@ -727,30 +727,30 @@ drift-check FAILED — consumer /docs diverges from canon:
 
 Running 22 tests using 2 workers
 
-  ✓   2 [chromium] › e2e/shell.spec.ts:12:1 › the console shell boots on the sera theme with catalog strings (384ms)
-  ✓   3 [chromium] › e2e/shell.spec.ts:36:1 › WO-2.7 item 2 (NB⑤): the door line is SIGNAL-DRIVEN — honest pending BEFORE the signal, « Confirmé par le réseau » only AFTER it (218ms)
-  ✓   4 [chromium] › e2e/shell.spec.ts:52:1 › WO-1.2 manual assignment: landmark-first task card → « Donner la course » → honest waiting state (239ms)
-  ✓   1 [chromium] › e2e/gallery.spec.ts:25:5 › gallery: console-file-prete (918ms)
-  ✓   5 [chromium] › e2e/shell.spec.ts:72:1 › WO-4.3 lease: the PROPOSED assignment states its deadline — « Course proposée — répondez avant HH:MM » from the lease expiresAt (291ms)
-  ✓   7 [chromium] › e2e/shell.spec.ts:86:1 › WO-6.1 (ruling ⑤) the « done » lever marks the proposed course delivered — releaseOnCompletion, honest state (284ms)
-  ✓   6 [chromium] › e2e/gallery.spec.ts:25:5 › gallery: console-course-donnee (801ms)
-  ✓   8 [chromium] › e2e/shell.spec.ts:102:1 › WO-4.3 lease expiry: past the 5-min window the honest expired state shows and the task is BACK in the queue (270ms)
-  ✓  10 [chromium] › e2e/shell.spec.ts:120:1 › WO-6.3 SOS: a raised incident lands at the TOP, states custody + coarse location, and the dispatcher acknowledges (308ms)
-  ✓  11 [chromium] › e2e/shell.spec.ts:147:1 › WO-6.3 SOS: a queued (offline) incident shows « En attente du réseau » and the ack lever is DISABLED (233ms)
-  ✓   9 [chromium] › e2e/gallery.spec.ts:25:5 › gallery: console-course-livree (767ms)
-  ✓  12 [chromium] › e2e/gallery.spec.ts:25:5 › gallery: console-porte-confirmee (770ms)
-  ✓  13 [chromium] › e2e/gallery.spec.ts:25:5 › gallery: console-course-remise (744ms)
-  ✓  14 [chromium] › e2e/gallery.spec.ts:25:5 › gallery: console-sos-raised (767ms)
-  ✓  15 [chromium] › e2e/gallery.spec.ts:25:5 › gallery: console-sos-acknowledged (751ms)
-  ✓  16 [chromium] › e2e/gallery.spec.ts:25:5 › gallery: console-sos-queued (746ms)
-  ✓  17 [chromium] › e2e/gallery.spec.ts:25:5 › gallery: console-board (791ms)
-  ✓  18 [chromium] › e2e/gallery.spec.ts:25:5 › gallery: console-board-incident (747ms)
-  ✓  19 [chromium] › e2e/gallery.spec.ts:25:5 › gallery: console-desk (740ms)
-  ✓  20 [chromium] › e2e/gallery.spec.ts:25:5 › gallery: console-desk-incident (742ms)
-  ✓  21 [chromium] › e2e/gallery.spec.ts:25:5 › gallery: console-breakglass (753ms)
-  ✓  22 [chromium] › e2e/gallery.spec.ts:25:5 › gallery: console-breakglass-ground (755ms)
+  ✓   1 [chromium] › e2e/shell.spec.ts:12:1 › the console shell boots on the sera theme with catalog strings (399ms)
+  ✓   3 [chromium] › e2e/shell.spec.ts:36:1 › WO-2.7 item 2 (NB⑤): the door line is SIGNAL-DRIVEN — honest pending BEFORE the signal, « Confirmé par le réseau » only AFTER it (240ms)
+  ✓   2 [chromium] › e2e/gallery.spec.ts:25:5 › gallery: console-file-prete (907ms)
+  ✓   4 [chromium] › e2e/shell.spec.ts:52:1 › WO-1.2 manual assignment: landmark-first task card → « Donner la course » → honest waiting state (282ms)
+  ✓   6 [chromium] › e2e/shell.spec.ts:72:1 › WO-4.3 lease: the PROPOSED assignment states its deadline — « Course proposée — répondez avant HH:MM » from the lease expiresAt (274ms)
+  ✓   7 [chromium] › e2e/shell.spec.ts:86:1 › WO-6.1 (ruling ⑤) the « done » lever marks the proposed course delivered — releaseOnCompletion, honest state (279ms)
+  ✓   5 [chromium] › e2e/gallery.spec.ts:25:5 › gallery: console-course-donnee (803ms)
+  ✓   8 [chromium] › e2e/shell.spec.ts:102:1 › WO-4.3 lease expiry: past the 5-min window the honest expired state shows and the task is BACK in the queue (309ms)
+  ✓  10 [chromium] › e2e/shell.spec.ts:120:1 › WO-6.3 SOS: a raised incident lands at the TOP, states custody + coarse location, and the dispatcher acknowledges (302ms)
+  ✓  11 [chromium] › e2e/shell.spec.ts:147:1 › WO-6.3 SOS: a queued (offline) incident shows « En attente du réseau » and the ack lever is DISABLED (234ms)
+  ✓   9 [chromium] › e2e/gallery.spec.ts:25:5 › gallery: console-course-livree (773ms)
+  ✓  12 [chromium] › e2e/gallery.spec.ts:25:5 › gallery: console-porte-confirmee (742ms)
+  ✓  13 [chromium] › e2e/gallery.spec.ts:25:5 › gallery: console-course-remise (739ms)
+  ✓  14 [chromium] › e2e/gallery.spec.ts:25:5 › gallery: console-sos-raised (743ms)
+  ✓  15 [chromium] › e2e/gallery.spec.ts:25:5 › gallery: console-sos-acknowledged (755ms)
+  ✓  16 [chromium] › e2e/gallery.spec.ts:25:5 › gallery: console-sos-queued (745ms)
+  ✓  17 [chromium] › e2e/gallery.spec.ts:25:5 › gallery: console-board (744ms)
+  ✓  18 [chromium] › e2e/gallery.spec.ts:25:5 › gallery: console-board-incident (741ms)
+  ✓  19 [chromium] › e2e/gallery.spec.ts:25:5 › gallery: console-desk (772ms)
+  ✓  20 [chromium] › e2e/gallery.spec.ts:25:5 › gallery: console-desk-incident (722ms)
+  ✓  21 [chromium] › e2e/gallery.spec.ts:25:5 › gallery: console-breakglass (751ms)
+  ✓  22 [chromium] › e2e/gallery.spec.ts:25:5 › gallery: console-breakglass-ground (734ms)
 
-  22 passed (12.9s)
+  22 passed (12.8s)
 (exit code: 0)
 
 ALL GATES GREEN (positives passed; every negative fixture failed as required)

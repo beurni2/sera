@@ -10,7 +10,7 @@ CERTIFIED — eligibility — 8/8 §3 behaviors
   ✓ simulates_partial_failures: clean sequence 3 events; partial delivered 1 then failed: commerce-eligibility-consumer: mid-sequence failure
   ✓ rejects_invalid_state_transitions: Paid -> Eligible: accepted=false (a paid settlement obligation can never regress to eligible)
   ✓ generated_from_producer_contract_schema: producerSchema identical to domain registry: true; envelopes conformant: true; payload parse failures: 0/3
- ✓ test/eligibility-consumer-certification.test.ts (4 tests) 63ms
+ ✓ test/eligibility-consumer-certification.test.ts (4 tests) 60ms
 stdout | test/door-flow.test.ts > WO-2.4 item 6 — the shop door-paid emitter as a §3-misbehaving mock > scores 8/8 — CERTIFIED
 CERTIFIED — payment-provider — 8/8 §3 behaviors
   ✓ emits_duplicates: duplicated command_ids under control: 1; without control: 0
@@ -21,9 +21,9 @@ CERTIFIED — payment-provider — 8/8 §3 behaviors
   ✓ simulates_partial_failures: clean sequence 2 events; partial delivered 1 then failed: shop-door-payment-emitter: mid-sequence failure
   ✓ rejects_invalid_state_transitions: captured -> held: accepted=false (a captured door leg can never regress to held)
   ✓ generated_from_producer_contract_schema: producerSchema identical to domain registry: true; envelopes conformant: true; payload parse failures: 0/2
- ✓ test/door-flow.test.ts (18 tests) 75ms
+ ✓ test/door-flow.test.ts (18 tests) 76ms
  Test Files  2 passed (2)
       Tests  22 passed (22)
-   Start at  03:37:39
-   Duration  604ms (transform 211ms, setup 0ms, collect 466ms, tests 138ms, environment 0ms, prepare 134ms)
+   Start at  03:48:32
+   Duration  640ms (transform 199ms, setup 0ms, collect 510ms, tests 136ms, environment 0ms, prepare 146ms)
 (exit code: 0)
