@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@platform/contracts": "git+https://github.com/beurni2/platform-contracts.git#67bda02646019cb4ab28a16fadf388b522da2799&path:packages/contracts",
     "@platform/ui-tokens": "git+https://github.com/beurni2/platform-contracts.git#67bda02646019cb4ab28a16fadf388b522da2799&path:packages/ui-tokens",
     "expo": "~54.0.35",
     "expo-crypto": "~15.0.9",

@@ -211,6 +211,12 @@ capture no-ssh-lockfile-urls-positive pass node scripts/gates/no-ssh-lockfile-ur
 log "gate: no-ssh-lockfile-urls — NEGATIVE FIXTURE (ssh/scp git URL in a lockfile, must fail)"
 capture no-ssh-lockfile-urls-negative fail node scripts/gates/no-ssh-lockfile-urls.mjs gates/fixtures/negative/lockfile-ssh-url
 
+log "gate: mint-path-entropy — INHERITED (WO-5.9): no command_id mint path draws from Math.random (must pass)"
+capture mint-path-entropy-positive pass node scripts/check-mint-path-entropy.mjs
+
+log "gate: mint-path-entropy — NEGATIVE FIXTURE (planted Math.random mint path, must fail)"
+capture mint-path-entropy-negative fail node scripts/check-mint-path-entropy.mjs gates/fixtures/negative/mint-path
+
 log "gate: single-level — repo source (must pass)"
 capture single-level-positive pass node scripts/gates/single-level.mjs
 
