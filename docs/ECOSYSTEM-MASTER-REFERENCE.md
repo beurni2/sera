@@ -305,6 +305,7 @@ Her orders, their real state (funded → ready → picked up → in transit → 
 
 ### SP8 — Earnings & reputation
 **Net-first, always** (SP-I04, SP-I12). States: Projected → Locked → Eligible → Payable → Processing → Paid (plus Held / Adjusted).
+**Réputation = le nombre de ventes livrées** (founder ruling 2026-07-15): an **exact count**, never a rank/score/comparison — sourced from `delivery.validated.v1` attributed via the locked `Order.resellerId` (SP-I01), rendered **« N ventes livrées »**, shown from the first delivered sale (floor 1, founder-overridable), deterministic and explainable. See `docs/derivations/REPUTATION-LAW.md`.
 **SP-I06:** earnings are **single-level**. No recruitment, no downline, no team bonus, no "build your network". Not a feature we lack — a feature we refuse.
 
 ### SP9 — Cercle *(BUILD-GATED — Part 12)*

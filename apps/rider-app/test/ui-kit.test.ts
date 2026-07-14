@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { landmark, motion, celebration } from '@platform/ui-tokens';
+import { landmark, motion, celebration } from '@platform/ui-tokens/legacy';
 
 /**
  * WO-6.1 — the visual layer obeys Grand Teint (ui-tokens v0.9.0, sera theme).

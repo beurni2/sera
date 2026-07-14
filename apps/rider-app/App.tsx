@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { FlatList, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
-import { seraTheme, spacing, radius, touch, type as typo, interaction, money } from '@platform/ui-tokens';
+import { seraTheme, spacing, radius, touch, type as typo, interaction, money } from '@platform/ui-tokens/legacy';
 import {
   FAILURE_REASON_IDS,
   POLICY_CHECK_IDS,

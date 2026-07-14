@@ -73,7 +73,7 @@ Every mock (Boutik+ projection, Séra delivery/handoff, provider) passes the **m
 
 ### M6 — Revenus, reputation, Clients + buyer/related-party risk
 | **SP6.1 Earnings read model (net)** | M | Projected/Locked/Eligible/Payable/Processing/Paid/Held/Adjusted (**net**, traced); **20% real from launch**; no withdrawal. |
-| **SP6.2 Reputation (sampled)** | M | Sample size + plain drivers; related-party exclusion; no black-box score. |
+| **SP6.2 Reputation (delivered-sales count)** | M | **Réputation = the exact count of delivered sales** (« N ventes livrées »), sourced from `delivery.validated.v1` attributed via the locked `Order.resellerId` (SP-I01); never a rank/score/comparison; shown from the first delivered sale (floor 1, founder-overridable); deterministic + explainable — the ultimate plain driver, no black-box score. See `docs/derivations/REPUTATION-LAW.md`. |
 | **SP6.3 Clients + buyer-refusal ladder + related-party tiers** ⚠ | M | Consent-scoped customers; **progressive refusal ladder (`PayAtDoorEligibility`)**; **tiered related-party** (auto-void on identity/phone/wallet; device/household = review, not auto-void). |
 
 ---

@@ -54,7 +54,10 @@ describe('rider-app catalog discipline', () => {
   });
 
   it('app.json static backgroundColor stays equal to the Grand Teint paper (drift guard)', async () => {
-    const { seraTheme } = await import('@platform/ui-tokens');
+    // WO-FP-SERA transition shim: the rider still renders Grand Teint until the
+    // per-view restyle moves it to the fasoPremium v2 root; the paper drift guard
+    // rides /legacy through the window (repointed to the fasoPremium paper per view).
+    const { seraTheme } = await import('@platform/ui-tokens/legacy');
     const appConfig = JSON.parse(readFileSync(join(appDir, 'app.json'), 'utf8'));
     expect(appConfig.expo.backgroundColor).toBe(seraTheme.colours.paper);
   });

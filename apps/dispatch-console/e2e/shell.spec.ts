@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { seraTheme as theme } from '@platform/ui-tokens';
+import { seraTheme as theme } from '@platform/ui-tokens/legacy';
 
 // DoD: "rider shell + console shell boot with ui-tokens theme sera".
 // This drives the real built console in a real Chromium.
