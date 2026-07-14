@@ -132,13 +132,14 @@ describe('WO-6.1 Grand Teint visual layer (rider-app)', () => {
     for (const f of FILES) expect(read(f)).not.toMatch(/ActivityIndicator/);
   });
 
-  it('the theme strip is the ONE permanent brand mark (band.themeStripPx · sera amber)', () => {
+  it('the permanent brand strip — WO-FP-SERA: the Faso woven band replaces the Grand Teint theme strip in the App shell', () => {
     const kit = read('src/ui/kit.tsx');
+    // the Grand Teint ThemeStrip stays defined in the /legacy kit (the un-migrated
+    // views + the frozen console pattern); the App shell now renders the Faso <WovenBand/>.
     expect(kit).toMatch(/export function ThemeStrip/);
     expect(kit).toMatch(/band\.themeStripPx/);
-    expect(kit).toMatch(/C\.themeStrip/);
     const app = read('App.tsx');
-    expect(app).toMatch(/<ThemeStrip \/>/);
+    expect(app).toMatch(/<WovenBand \/>/);
   });
 
   it('navigation chrome: header everywhere, hubs = Service·Courses, tabs are waypoint RESETS (never edges, never go())', () => {
@@ -161,7 +162,8 @@ describe('WO-6.1 Grand Teint visual layer (rider-app)', () => {
     const app = read('App.tsx');
     expect(app).toMatch(/muted=\{item\.closed\}/);
     expect(app).toMatch(/onPress=\{item\.closed \? undefined : \(\) => openCourse\(item\)\}/);
-    expect(app).toMatch(/item\.attempt === 2 && <StatusChip tone="info" label=\{t\('courses\.lineage_2e'\)\}/);
+    // WO-FP-SERA proof view 2/3: the R2 course list restyled to the Faso chip.
+    expect(app).toMatch(/item\.attempt === 2 && <FasoStatusChip tone="info" label=\{t\('courses\.lineage_2e'\)\}/);
   });
 
   it('the kit imports stay inside the RN + tokens world (banned-import law extended to the kit)', () => {

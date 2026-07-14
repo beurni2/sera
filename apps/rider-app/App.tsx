@@ -74,10 +74,22 @@ import {
   SecondaryButton,
   StatusChip,
   TabBar,
-  ThemeStrip,
   type ChipTone,
 } from './src/ui/kit';
 import { SosButton, SosSheet, type SosState } from './src/ui/faso-sos';
+import { WovenBand } from './src/ui/signature';
+import { C as FASO } from './src/ui/faso';
+import {
+  ListRow as FasoListRow,
+  StatusChip as FasoStatusChip,
+  Overline as FasoOverline,
+  EmptyState as FasoEmptyState,
+  Body as FasoBody,
+  PrimaryButton as FasoPrimaryButton,
+  GhostButton as FasoGhostButton,
+  CodeCells as FasoCodeCells,
+  Keypad as FasoKeypad,
+} from './src/ui/faso-kit';
 import {
   IconColis,
   IconReprendre,
@@ -433,7 +445,7 @@ export default function App() {
     <SafeAreaView style={styles.screen}>
       {/* Grand Teint status bar ink over warm paper (statusbar token). */}
       <StatusBar style="dark" backgroundColor={C.paper} />
-      <ThemeStrip />
+      <WovenBand />
       <AppHeader
         title={headerTitle}
         subtitle={screen === 'service' ? t('service.tagline') : undefined}
@@ -521,19 +533,23 @@ export default function App() {
             </View>
           )}
 
+          {/* R2 « Mes courses » — Faso Premium (WO-FP-SERA proof view 2/3): the
+              woven-band header, white course cards on the deeper Séra paper, the
+              honest status-chip register. Content restyled to faso-kit; the custody
+              semantics + honest statuses (toneFor/statusKeyFor) are untouched. */}
           {screen === 'courses' && (
             <View style={styles.listWrap}>
-              <Overline>{t('courses.overline')}</Overline>
+              <FasoOverline>{t('courses.overline')}</FasoOverline>
               <FlatList
                 data={world.courses}
                 keyExtractor={(c) => c.id}
                 initialNumToRender={6}
                 windowSize={5}
                 contentContainerStyle={styles.listContent}
-                ListEmptyComponent={<EmptyState Icon={IconMoto} title={t('shell.no_task')} hint={t('courses.empty_hint')} />}
+                ListEmptyComponent={<FasoEmptyState Icon={IconMoto} title={t('shell.no_task')} hint={t('courses.empty_hint')} />}
                 ListFooterComponent={<Text style={styles.listFoot}>{t('courses.one_guardian')}</Text>}
                 renderItem={({ item }) => (
-                  <ListRow
+                  <FasoListRow
                     Icon={KIND_ICON[item.kind]}
                     code={item.id.toUpperCase()}
                     title={item.locationLines[0]}
@@ -541,8 +557,8 @@ export default function App() {
                     muted={item.closed}
                     chip={
                       <>
-                        <StatusChip tone={toneFor(item)} label={t(statusKeyFor(item))} />
-                        {item.attempt === 2 && <StatusChip tone="info" label={t('courses.lineage_2e')} />}
+                        <FasoStatusChip tone={toneFor(item)} label={t(statusKeyFor(item))} />
+                        {item.attempt === 2 && <FasoStatusChip tone="info" label={t('courses.lineage_2e')} />}
                       </>
                     }
                     onPress={item.closed ? undefined : () => openCourse(item)}
@@ -775,27 +791,29 @@ export default function App() {
             </Card>
           )}
 
+          {/* R10 « le code de remise » — Faso Premium (WO-FP-SERA proof view 3/3):
+              the buyer's code is the LAST key. The gold-cursor cells + white keypad
+              on the Séra paper; the honesty (drop.title/hint) renders verbatim. This
+              entry exists ONLY here; the spine makes 'drop' reachable only after the
+              provider-confirmed payment (custody semantics untouched). */}
           {screen === 'drop' && active !== null && (
-            <Card style={styles.flexCard}>
-              {/* R10 « le code de remise » — the buyer's code is the LAST key.
-                  This entry exists ONLY here; the spine makes 'drop' reachable
-                  only after the provider-confirmed payment. */}
-              <Overline>{t('drop.title')}</Overline>
-              <Body>{t('drop.hint')}</Body>
-              <CodeCells value={codeStr} length={DROP_CODE_LEN} />
-              <Keypad
+            <View style={styles.dropWrap}>
+              <FasoOverline>{t('drop.title')}</FasoOverline>
+              <FasoBody>{t('drop.hint')}</FasoBody>
+              <FasoCodeCells value={codeStr} length={DROP_CODE_LEN} />
+              <FasoKeypad
                 onKey={(d) => setCodeStr((c) => (c.length < DROP_CODE_LEN ? c + d : c))}
                 onBack={() => setCodeStr((c) => c.slice(0, -1))}
               />
-              <PrimaryButton
+              <FasoPrimaryButton
                 label={t('drop.action')}
                 disabled={codeStr.length !== DROP_CODE_LEN}
                 onPress={() => walk((w) => validateDropCode(w, active.id))}
               />
               {/* WO-2.2 refusal ladder entry — as dignified as the purchase
                   path; it whispers, never shouts. */}
-              <GhostButton label={t('problem.action')} onPress={() => walk((w) => reportProblem(w, active.id))} />
-            </Card>
+              <FasoGhostButton label={t('problem.action')} onPress={() => walk((w) => reportProblem(w, active.id))} />
+            </View>
           )}
 
           {screen === 'refusal_reason' && active !== null && (
@@ -994,7 +1012,7 @@ function ProofLine({ label }: { label: string }) {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: C.paper },
+  screen: { flex: 1, backgroundColor: FASO.paper },
   content: {
     flex: 1,
     paddingHorizontal: spacing.lg,
@@ -1004,6 +1022,7 @@ const styles = StyleSheet.create({
   flexCard: { flex: 0 },
   stackGap: { gap: spacing.md, paddingTop: spacing.sm },
   listWrap: { flex: 1, gap: spacing.sm },
+  dropWrap: { flex: 1, gap: spacing.lg, justifyContent: 'center', paddingHorizontal: spacing.md },
   listContent: { gap: spacing.sm, paddingBottom: spacing.sm },
   listFoot: { color: C.muted, fontSize: T.caption.size, lineHeight: T.caption.size * T.caption.lh, textAlign: 'center', paddingVertical: spacing.md },
   checkList: { gap: spacing.sm },

@@ -85,11 +85,13 @@ describe('R9 — the rider CANNOT assert payment (SE-I11, unrepresentable)', () 
 describe('R10 — the drop code cannot render before provider confirmation', () => {
   it('the code entry (cells + keypad) exists ONLY on the drop screen', () => {
     const drop = app.slice(app.indexOf("screen === 'drop'"), app.indexOf("screen === 'refusal_reason'"));
-    expect(drop).toMatch(/<CodeCells value=\{codeStr\}/);
-    expect(drop).toMatch(/<Keypad/);
+    // WO-FP-SERA proof view 3/3: the R10 code entry restyled to the Faso components;
+    // the invariant is unchanged — the code surface exists ONLY on the drop screen.
+    expect(drop).toMatch(/<FasoCodeCells value=\{codeStr\}/);
+    expect(drop).toMatch(/<FasoKeypad/);
     // no code surface anywhere else in the app
-    expect(app.match(/<CodeCells\b/g)).toHaveLength(1);
-    expect(app.match(/<Keypad\b/g)).toHaveLength(1);
+    expect(app.match(/<FasoCodeCells\b/g)).toHaveLength(1);
+    expect(app.match(/<FasoKeypad\b/g)).toHaveLength(1);
   });
 
   it('the spine makes the drop screen reachable ONLY after the provider-confirmed signal', () => {
