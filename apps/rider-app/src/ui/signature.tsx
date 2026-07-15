@@ -72,11 +72,13 @@ function useLoop(name: Extract<MotionName, 'fpPulse' | 'fpBar' | 'fpShimmer'>): 
   return v;
 }
 
-/** fpIn — screen entry: opacity + 14px rise. Wrap a screen's content. */
+/** fpIn — screen entry: opacity + 14px rise. Wraps a screen's content and SIZES
+ * TO CONTENT (no flex:1) so it composes inside the app's full-bleed ScrollView —
+ * the screen is the scroll surface; a flex:1 wrapper would collapse in a scroll. */
 export function FpIn({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
   const p = useEntry('fpIn');
   const translateY = p.interpolate({ inputRange: [0, 1], outputRange: [14, 0] });
-  return <Animated.View style={[{ flex: 1 }, style, { opacity: p, transform: [{ translateY }] }]}>{children}</Animated.View>;
+  return <Animated.View style={[style, { opacity: p, transform: [{ translateY }] }]}>{children}</Animated.View>;
 }
 
 /** fpPop — a badge popping in (§ Motion: fpPop .3–.45s). Wrap the celebration seal. */

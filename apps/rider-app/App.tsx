@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { FlatList, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { seraTheme, spacing, radius, touch, type as typo, interaction, money } from '@platform/ui-tokens/legacy';
 import {
   FAILURE_REASON_IDS,
@@ -67,7 +67,6 @@ import {
   PosterTitle,
   PrimaryButton,
   QuoteRule,
-  ScreenTransition,
   SealMark,
   SecondaryButton,
   StatusChip,
@@ -455,10 +454,19 @@ export default function App() {
   return (
     <SafeAreaView style={styles.screen}>
       <StatusBar style="dark" backgroundColor={C.paper} />
-      {/* R1's chrome retired: the Faso monogram header (planche l.32–42) — the woven
-          strip, the « S » monogram, the « Séra » identity + the rider certification,
-          the right state chip. The screen NAME lives in each view's body title. */}
-      <FasoHeader
+      {/* Full-bleed scroll: the SCREEN is the scroll surface. The chrome (header +
+          banners) scrolls WITH the content — NO nested scroll containers, no fixed-
+          region-under-fixed-chrome. The tab dock + the SOS disc stay fixed below. */}
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* R1's chrome retired: the Faso monogram header (planche l.32–42) — the woven
+            strip, the « S » monogram, the « Séra » identity + the rider certification,
+            the right state chip. The screen NAME lives in each view's body title. */}
+        <FasoHeader
         title={t('app.title')}
         subtitle={t('service.certified_name')}
         backLabel={`‹ ${t('nav.retour')}`}
@@ -483,7 +491,9 @@ export default function App() {
         </View>
       )}
 
-      <ScreenTransition screenKey={screen}>
+        {/* Each screen block is FpIn-wrapped (the planche fpIn entry), which
+            re-animates on screen change — the per-screen entry replaces the old
+            cross-screen ScreenTransition (redundant + flex:1 broke the scroll). */}
         <View style={styles.content}>
           {/* R1 « Service » — Faso Premium (planche l.55–94): the old skeleton
               retired. shiftOff = a white cert card + « Prendre mon service »;
@@ -559,21 +569,19 @@ export default function App() {
           {screen === 'courses' && (
             <FpIn style={styles.listWrap}>
               <FasoScreenTitle>{t('courses.overline')}</FasoScreenTitle>
-              <FlatList
-                data={world.courses}
-                keyExtractor={(c) => c.id}
-                initialNumToRender={6}
-                windowSize={5}
-                contentContainerStyle={styles.listContent}
-                ListEmptyComponent={<FasoEmptyState Icon={IconMoto} title={t('shell.no_task')} hint={t('courses.empty_hint')} />}
-                ListFooterComponent={<Text style={styles.listFoot}>{t('courses.one_guardian')}</Text>}
-                renderItem={({ item }) => {
+              {/* A MAP, not a FlatList — no nested scroll container; the whole
+                  screen is the single scroll surface (full-bleed). */}
+              {world.courses.length === 0 ? (
+                <FasoEmptyState Icon={IconMoto} title={t('shell.no_task')} hint={t('courses.empty_hint')} />
+              ) : (
+                world.courses.map((item) => {
                   // The offer window (affectation, not yet acted, not closed) shows
                   // « Proposée » + the response deadline — the REAL ack/decline
                   // window; every other course shows its honest status + tone.
                   const proposed = item.step === 'affectation' && item.ack === 'none' && !item.closed;
                   return (
                     <FasoCourseCard
+                      key={item.id}
                       variant={variantFor(item)}
                       code={item.id.toUpperCase()}
                       status={proposed ? { label: t('courses.statut_proposee'), tone: 'accent' } : { label: t(statusKeyFor(item)), tone: toneFor(item) }}
@@ -584,8 +592,9 @@ export default function App() {
                       onPress={item.closed ? undefined : () => openCourse(item)}
                     />
                   );
-                }}
-              />
+                })
+              )}
+              <Text style={styles.listFoot}>{t('courses.one_guardian')}</Text>
             </FpIn>
           )}
 
@@ -979,18 +988,17 @@ export default function App() {
               </FasoCard>
               <FasoQuoteRule>{t('delivered.no_money')}</FasoQuoteRule>
               <FasoSecondaryButton label={t('nav.retour_courses')} onPress={toCourses} />
-              {celebrate && <FasoCelebration label={t('delivered.next')} sublabel={t('delivered.proof_complete')} onDone={() => setCelebrate(false)} />}
             </FpIn>
           )}
         </View>
-      </ScreenTransition>
 
-      <View style={styles.footer}>
-        <Text style={styles.footerHint}>{t('demo.donnees')}</Text>
-        <Pressable style={styles.resetAction} onPress={reset}>
-          <Text style={styles.resetActionText}>{t('nav.recommencer')}</Text>
-        </Pressable>
-      </View>
+        <View style={styles.footer}>
+          <Text style={styles.footerHint}>{t('demo.donnees')}</Text>
+          <Pressable style={styles.resetAction} onPress={reset}>
+            <Text style={styles.resetActionText}>{t('nav.recommencer')}</Text>
+          </Pressable>
+        </View>
+      </ScrollView>
 
       {HUBS.includes(screen) && (
         <FasoTabBar
@@ -999,6 +1007,13 @@ export default function App() {
             { key: 'courses', Icon: IconColis, label: t('nav.tab_courses'), active: screen === 'courses', onPress: () => toCourses() },
           ]}
         />
+      )}
+
+      {/* R11 « Course validée » peak — a top-level full-screen overlay (outside the
+          ScrollView) so the scrim covers the whole screen, never the scroll content.
+          Rendered UNDER the SOS so the safety gesture stays reachable in the moment. */}
+      {celebrate && screen === 'delivered' && (
+        <FasoCelebration label={t('delivered.next')} sublabel={t('delivered.proof_complete')} onDone={() => setCelebrate(false)} />
       )}
 
       {/* R14 « SOS » — mounted UNCONDITIONALLY, outside every screen branch: one
@@ -1050,16 +1065,19 @@ function ProofLine({ label }: { label: string }) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: FASO.paper },
+  // The full-bleed scroll surface (the whole screen). The tab dock + SOS float
+  // below, so the content clears them with a generous bottom pad.
+  scroll: { flex: 1 },
+  scrollContent: { paddingBottom: spacing.xxl * 3, flexGrow: 1 },
   content: {
-    flex: 1,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
     gap: spacing.md,
   },
   flexCard: { flex: 0 },
   stackGap: { gap: spacing.md, paddingTop: spacing.sm },
-  listWrap: { flex: 1, gap: spacing.sm },
-  dropWrap: { flex: 1, gap: spacing.lg, justifyContent: 'center', paddingHorizontal: spacing.md },
+  listWrap: { gap: spacing.sm },
+  dropWrap: { gap: spacing.lg, paddingHorizontal: spacing.md, paddingTop: spacing.xl },
   dropHint: { textAlign: 'center' },
   listContent: { gap: spacing.sm, paddingBottom: spacing.sm },
   listFoot: { color: C.muted, fontSize: T.caption.size, lineHeight: T.caption.size * T.caption.lh, textAlign: 'center', paddingVertical: spacing.md },

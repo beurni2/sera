@@ -29,7 +29,7 @@ describe('R14 — SOS is reachable in one gesture from every screen', () => {
   it('the SOS button + sheet are mounted UNCONDITIONALLY, outside every screen branch', () => {
     // exactly one SOS button, rendered after the whole screen stack closes
     expect(app.match(/<SosButton /g)).toHaveLength(1);
-    expect(app.indexOf('<SosButton')).toBeGreaterThan(app.indexOf('</ScreenTransition>'));
+    expect(app.indexOf('<SosButton')).toBeGreaterThan(app.indexOf('</ScrollView>'));
     expect(app.indexOf('<SosButton')).toBeGreaterThan(app.lastIndexOf('{HUBS.includes(screen)'));
     // from the SOS render to the end of the tree there is NO per-screen gate:
     // the SOS is a top-level child of the app, not inside any `screen === …`.

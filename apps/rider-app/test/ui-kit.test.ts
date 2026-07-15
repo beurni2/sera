@@ -119,18 +119,20 @@ describe('WO-6.1 Grand Teint visual layer (rider-app)', () => {
   });
 
   it('the screen change eases in on the ONE soft spring — token duration + curve, static under reduced motion', () => {
+    // WO-FP-SERA full-bleed: the redundant cross-screen ScreenTransition (flex:1,
+    // which broke the scroll surface) is retired from the app; the per-screen FpIn
+    // (the planche fpIn — a soft cubic-bezier(.2,.8,.2,1) entry, reduced-motion safe
+    // in useEntry) re-animates on each screen change. ScreenTransition stays defined
+    // in the /legacy kit for the frozen console.
     const kit = read('src/ui/kit.tsx');
     expect(kit).toMatch(/export function ScreenTransition/);
-    const transition = kit.slice(
-      kit.indexOf('export function ScreenTransition'),
-      kit.indexOf('export function CourseValideeCelebration'),
-    );
-    expect(transition).toMatch(/motion\.standardMs/);
-    expect(transition).toMatch(/SPRING_SOFT/);
-    expect(transition).toMatch(/useNativeDriver: true/);
-    expect(transition).toMatch(/if \(reduced\) \{/);
+    const sig = read('src/ui/signature.tsx');
+    const fpin = sig.slice(sig.indexOf('export function FpIn'), sig.indexOf('export function FpPop'));
+    expect(fpin).toMatch(/useEntry\('fpIn'\)/);
+    expect(fpin).toMatch(/translateY/);
     const app = read('App.tsx');
-    expect(app).toMatch(/<ScreenTransition screenKey=\{screen\}>/);
+    expect(app).not.toMatch(/<ScreenTransition/);
+    expect(app).toMatch(/<FpIn style=/);
     // the movement law's duration band holds at the token level (150–250 ms)
     expect(motion.quickMs).toBeGreaterThanOrEqual(150);
     expect(motion.standardMs).toBeLessThanOrEqual(250);

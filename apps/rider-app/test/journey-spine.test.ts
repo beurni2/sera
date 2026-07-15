@@ -52,12 +52,16 @@ describe('rider journey spine', () => {
     }
   });
 
-  it('the App navigates only along journey edges and always offers retour + reset + a FlatList', () => {
+  it('the App navigates only along journey edges and always offers retour + reset + the course list', () => {
     const source = readFileSync(join(import.meta.dirname, '..', 'App.tsx'), 'utf8');
     expect(source).toMatch(/JOURNEY\[stack\[stack\.length - 1\] \?\? START\]\.includes\(next\)/);
     expect(source).toMatch(/t\('nav\.retour'\)/);
     expect(source).toMatch(/t\('nav\.recommencer'\)/);
-    expect(source).toMatch(/<FlatList/);
+    // WO-FP-SERA full-bleed: the course list is a MAP inside the single scroll
+    // surface — NO nested FlatList (no nested scroll container).
+    expect(source).not.toMatch(/<FlatList/);
+    expect(source).toMatch(/world\.courses\.map\(\(item\) =>/);
+    expect(source).toMatch(/<ScrollView/);
   });
 
   it('rule-owned edges are exactly what custody-flow produces — both branches, never re-encoded', () => {
