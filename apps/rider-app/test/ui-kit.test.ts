@@ -71,21 +71,26 @@ describe('WO-6.1 Grand Teint visual layer (rider-app)', () => {
   });
 
   it('the refusal arm is a first-class DangerButton — bordered danger, as polished as acceptance', () => {
-    const kit = read('src/ui/kit.tsx');
+    // WO-FP-SERA: the Faso refusal arm — a 2px bordered danger button, Bricolage 800,
+    // never a grey whisper of shame (charter: refusal as dignified as the purchase).
+    const kit = read('src/ui/faso-kit.tsx');
     expect(kit).toMatch(/export function DangerButton/);
-    expect(kit).toMatch(/buttonDanger: \{[^}]*borderColor: C\.danger/);
-    expect(kit).toMatch(/buttonDangerText: \{[^}]*color: C\.danger/);
+    expect(kit).toMatch(/danger: \{[^}]*borderColor: C\.dangerBorder/s);
+    expect(kit).toMatch(/dangerText: \{[^}]*color: C\.dangerFg/s);
     const app = read('App.tsx');
     const verify = app.slice(app.indexOf("screen === 'verify'"), app.indexOf("screen === 'refused'"));
-    expect(verify).toMatch(/<DangerButton label=\{t\('verify\.refuse_action'\)\}/);
+    expect(verify).toMatch(/<FasoDangerButton label=\{t\('verify\.refuse_action'\)\}/);
   });
 
-  it('the checklist renders as CheckRow — ink box + label, ≥48px targets via the touch token', () => {
-    const kit = read('src/ui/kit.tsx');
+  it('the checklist renders as CheckRow — label + conformity toggle, ≥44px targets', () => {
+    // WO-FP-SERA: the Faso check row — a green « conforme » toggle (okBg/okFg), the
+    // whole row a ≥44px target. The gate lives in custody-flow, never in the skin.
+    const kit = read('src/ui/faso-kit.tsx');
     expect(kit).toMatch(/export function CheckRow/);
-    expect(kit).toMatch(/checkRow: \{[^}]*minHeight: touch\.minTargetPx/s);
+    expect(kit).toMatch(/checkRow: \{[^}]*minHeight: 44/s);
+    expect(kit).toMatch(/checkBtnOn: \{[^}]*backgroundColor: C\.okBg/s);
     const app = read('App.tsx');
-    expect(app).toMatch(/<CheckRow key=\{id\} label=\{t\(`check\.\$\{id\}`\)\}/);
+    expect(app).toMatch(/<FasoCheckRow key=\{id\} label=\{t\(`check\.\$\{id\}`\)\}/);
   });
 
   it('pending states are PendingNotice rows — queued = pending, honest, never done', () => {

@@ -2,7 +2,7 @@ import { Pressable, StyleSheet, Text, View, type StyleProp, type TextStyle, type
 import { alpha, C, DARK, GEO, rad, ty } from './faso';
 import { displayFace, textFace } from './faso-fonts';
 import { WovenBand, FpBar } from './signature';
-import { IconRepere, IconEcouter, type IconProps } from './icons';
+import { IconRepere, IconEcouter, IconScelle, IconCoche, type IconProps } from './icons';
 
 /**
  * WO-FP-SERA · the Faso Premium chrome + list components (README § shared system;
@@ -137,6 +137,35 @@ export function LandmarkCard({
         <Text style={styles.landmarkIndications}>{lines[1]}</Text>
         {voice !== undefined && <VoicePlayRow label={voice.label} time={voice.time} playing={voice.playing} onPress={voice.onPress} />}
       </View>
+    </View>
+  );
+}
+
+/** R5 check row (planche l.235–241): the label + a « conforme » toggle that fills
+ * GREEN when set (okBg/okFg — conformity, never a shame red). The gate itself lives
+ * in custody-flow (bounded objective conformity — never quality/authenticity). The
+ * app models a single checkbox; the planche's per-row bad-button is a demo affordance
+ * the app does not have (the mismatch arm is the screen's one DangerButton). */
+export function CheckRow({ label, checked, onPress }: { label: string; checked: boolean; onPress: () => void }) {
+  return (
+    <Pressable style={({ pressed }) => [styles.checkRow, pressed && styles.pressed]} onPress={onPress} accessibilityRole="checkbox" accessibilityState={{ checked }}>
+      <Text style={[styles.checkLabel, checked && styles.checkLabelOn]}>{label}</Text>
+      <View style={[styles.checkBtn, checked ? styles.checkBtnOn : styles.checkBtnOff]}>
+        {checked && <IconCoche size={ty('body').fontSize} color={C.okFg} />}
+      </View>
+    </Pressable>
+  );
+}
+
+/** R7 « le scellé » (planche l.298–303): the seal card — a white accent-bordered
+ * head with the seal glyph, the tnum SC code (Bricolage 800, tracked), « usage
+ * unique ». Custody begins at the seal, never a second before. */
+export function SealMark({ code, label }: { code: string; label: string }) {
+  return (
+    <View style={styles.sealCard}>
+      <IconScelle size={ty('view').fontSize} color={C.accent} />
+      <Text style={styles.sealCode} numberOfLines={1}>{code}</Text>
+      <Text style={styles.sealLabel}>{label}</Text>
     </View>
   );
 }
@@ -454,6 +483,17 @@ const styles = StyleSheet.create({
   voiceGlyph: { width: 38, height: 38, borderRadius: 11, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center' },
   voiceLabel: { fontFamily: textFace(700), fontSize: 10.5, fontWeight: '700', letterSpacing: 10.5 * 0.1, textTransform: 'uppercase', color: C.ink, flex: 1 },
   voiceTime: { fontFamily: textFace(700), fontSize: 12, fontWeight: '700', color: C.ink, fontVariant: ['tabular-nums'] },
+
+  // ── R5 check row · R7 seal card ──
+  checkRow: { flexDirection: 'row', alignItems: 'center', gap: 9, minHeight: 44, paddingVertical: 9 },
+  checkLabel: { ...ty('row'), color: C.ink, flex: 1 },
+  checkLabelOn: { color: C.okFg },
+  checkBtn: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  checkBtnOff: { borderWidth: 1, borderColor: C.hairlineInput, backgroundColor: C.card },
+  checkBtnOn: { borderWidth: 2, borderColor: C.okFg, backgroundColor: C.okBg },
+  sealCard: { flexDirection: 'row', alignItems: 'center', gap: 11, backgroundColor: C.card, borderRadius: rad('card'), borderWidth: 1.5, borderColor: C.accent, paddingVertical: 14, paddingHorizontal: 16 },
+  sealCode: { fontFamily: displayFace(800), fontSize: 21, fontWeight: '800', letterSpacing: 21 * 0.1, color: C.ink, fontVariant: ['tabular-nums'], flex: 1 },
+  sealLabel: { ...ty('caps'), color: C.sub, textTransform: 'none' },
 
   chip: { alignSelf: 'flex-start', paddingVertical: 4, paddingHorizontal: 9, borderRadius: rad('pill') },
   chipText: { ...ty('pill'), textTransform: 'uppercase' },

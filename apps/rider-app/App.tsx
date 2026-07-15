@@ -85,6 +85,8 @@ import {
   PosterTitle as FasoPosterTitle,
   Card as FasoCard,
   LandmarkCard as FasoLandmarkCard,
+  CheckRow as FasoCheckRow,
+  SealMark as FasoSealMark,
   StatusChip as FasoStatusChip,
   FontProofStrip,
   Overline as FasoOverline,
@@ -660,48 +662,54 @@ export default function App() {
           {/* The custody walk — every transition below goes through the demo
               store, which calls custody-flow.ts (the rule source) and throws
               on any out-of-order move. */}
+          {/* R5 « Vérification » (planche l.225–253) — objective conformity only,
+              never quality/authenticity. The checks fill green; the refusal arm is
+              the screen's one DangerButton (the app models a single checkbox, not
+              the planche's per-row bad-button). */}
           {screen === 'verify' && active !== null && (
-            <Card style={styles.flexCard}>
-              <PosterTitle>{t('verify.title')}</PosterTitle>
-              <Body>{t('verify.body')}</Body>
-              <View style={styles.checkList}>
+            <FpIn style={styles.stackGap}>
+              <FasoPosterTitle>{t('verify.title')}</FasoPosterTitle>
+              <FasoBody>{t('verify.body')}</FasoBody>
+              <FasoCard>
                 {POLICY_CHECK_IDS.map((id) => (
-                  <CheckRow key={id} label={t(`check.${id}`)} checked={checks[id] === true} onPress={() => setChecks({ ...checks, [id]: !checks[id] })} />
+                  <FasoCheckRow key={id} label={t(`check.${id}`)} checked={checks[id] === true} onPress={() => setChecks({ ...checks, [id]: !checks[id] })} />
                 ))}
-              </View>
-              <PrimaryButton
+              </FasoCard>
+              <FasoPrimaryButton
                 label={t('verify.accept_action')}
                 disabled={!allChecked}
                 onPress={() => walk((w) => passVerification(w, active.id, checks))}
               />
               {/* The refusal arm is as dignified as acceptance — its own
                   polished danger style, never a shame path. */}
-              <DangerButton label={t('verify.refuse_action')} onPress={() => walk((w) => refusePickup(w, active.id))} />
-            </Card>
+              <FasoDangerButton label={t('verify.refuse_action')} onPress={() => walk((w) => refusePickup(w, active.id))} />
+            </FpIn>
           )}
 
+          {/* R6 « Le refus digne » (planche l.256–291, r6Done) — money-register calm:
+              what happened, what happens next; the course closes with dignity. */}
           {screen === 'refused' && (
-            <Card>
-              {/* The refusal path, money-register calm — what happened, what
-                  happens next; the course closes with dignity. */}
-              <PosterTitle>{t('refuse.status')}</PosterTitle>
-              <Body>{t('refuse.next')}</Body>
-              <SecondaryButton label={t('nav.retour_courses')} onPress={toCourses} />
-            </Card>
+            <FpIn style={styles.stackGap}>
+              <FasoPosterTitle>{t('refuse.status')}</FasoPosterTitle>
+              <FasoBody>{t('refuse.next')}</FasoBody>
+              <FasoSecondaryButton label={t('nav.retour_courses')} onPress={toCourses} />
+            </FpIn>
           )}
 
+          {/* R7 « Le scellé » (planche l.293–334) — custody begins HERE, not a second
+              before. Offline: the seal is queued = PENDING; the garde does not begin
+              offline (seal.offline honesty verbatim). */}
           {screen === 'seal' && active !== null && (
-            <Card ink>
-              {/* R7 « le scellé » — custody begins HERE, not a second before. */}
-              <PosterTitle>{t('seal.title')}</PosterTitle>
-              <Body>{t('seal.body')}</Body>
-              <SealMark code={SEAL_ID} label={t('seal.single_use')} />
+            <FpIn style={styles.stackGap}>
+              <FasoPosterTitle>{t('seal.title')}</FasoPosterTitle>
+              <FasoBody>{t('seal.body')}</FasoBody>
+              <FasoSealMark code={SEAL_ID} label={t('seal.single_use')} />
               {offline ? (
-                <PendingNotice lines={[t('seal.offline')]} />
+                <FasoPendingNotice lines={[t('seal.offline')]} />
               ) : (
-                <PrimaryButton label={t('seal.action')} onPress={() => walk((w) => registerSeal(w, active.id))} />
+                <FasoPrimaryButton label={t('seal.action')} onPress={() => walk((w) => registerSeal(w, active.id))} />
               )}
-            </Card>
+            </FpIn>
           )}
 
           {screen === 'evidence' && active !== null && (
