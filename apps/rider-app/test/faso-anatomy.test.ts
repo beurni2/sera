@@ -64,6 +64,28 @@ describe('WO-FP-SERA — R2 course card carries the planche anatomy', () => {
   });
 });
 
+describe('WO-FP-SERA — R1\'s old skeleton is dead (views 4–13 pass)', () => {
+  it('no un-prefixed Grand Teint view component is rendered in the app (all views are Faso)', () => {
+    const app = read('App.tsx');
+    // Every screen body composes the Faso kit. The Grand Teint components stay
+    // DEFINED in src/ui/kit.tsx (the /legacy layer + the frozen console) but the
+    // rider app renders NONE of them.
+    const RETIRED = [
+      '<AppHeader', '<Card', '<PosterTitle', '<Body', '<Overline', '<PrimaryButton',
+      '<SecondaryButton', '<DangerButton', '<GhostButton', '<StatusChip', '<ListRow',
+      '<LandmarkCard', '<QuoteRule', '<CheckRow', '<SealMark', '<PendingNotice',
+      '<OfflineBanner', '<EmptyState', '<TabBar', '<CourseValideeCelebration', '<WovenBand',
+    ];
+    for (const c of RETIRED) {
+      expect(app.includes(c), `retired Grand Teint component ${c} still rendered in App.tsx`).toBe(false);
+    }
+    // and the app composes the Faso chrome + views
+    expect(app).toContain('<FasoHeader');
+    expect(app).toContain('<FasoTabBar');
+    expect(app).toContain('<FasoCelebration');
+  });
+});
+
 describe('WO-FP-SERA — R10 code entry matches the planche', () => {
   it('the keypad backspace is the planche ⌫ (not an ambiguous chevron)', () => {
     const kit = read('src/ui/faso-kit.tsx');

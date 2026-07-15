@@ -130,6 +130,85 @@ Implementation: `App.tsx` `screen === 'service'` block.
 | shiftPending « DÉMARRAGE EN ATTENTE… » caps + fpBar + « un départ hors ligne ne confère **rien** » (l.74–79) | `FasoPendingNotice` (title + FpBar + honest line) | honesty verbatim: queued = pending, confers NOTHING (R1 law). |
 | shiftOn `border:1.5px #D9A441;background:#FBF3DF;glow`; pulse dot `#14603A` + `Bricolage 800 20` « En service » + note; « Voir mes courses » + « Terminer mon service » (l.81–92) | `FasoCard accent` + `FpPulseDot color={C.okFg}` + `FasoPosterTitle` + `FasoBody`; `FasoPrimaryButton` + `FasoSecondaryButton` | the arriving course is shown as a `CourseCard` (proposed) — the app previews the incoming course here; consistent grammar. |
 
+## R3 « Course proposée » + R4 « Le repère »  (planche l.143–223)
+
+`App.tsx` `affectation` block + `faso-kit` `LandmarkCard` / `VoicePlayRow`. The app's
+affectation screen carries BOTH planche frames. Key elements → impl:
+- deadline overline (l.152) → `FasoOverline` = `assignment.deadline + proposalUntil` (the REAL ack window).
+- repère card `border:1.5 #D9A441;white` head [flag + zone + « ILLUSTRATION — SPÉCIMEN »] · « LE REPÈRE » + repère · « LES INDICATIONS » + indications (l.184–197) → `LandmarkCard` (accent-bordered white; `IconRepere`; SPÉCIMEN honesty badge).
+- voice play `[gold 38 play tile] + caps label + timer` (l.198–208) → `VoicePlayRow` (gold glyph tile, caps label, tnum time). **Divergence:** no live progress bar — the app's `voiceFor()` exposes no progress fraction (real-data honesty; recorded audio only, Ten Laws #5).
+- « Je suis arrivé »/accept + decline (l.157–158) → `FasoPrimaryButton` (ack) + `FasoDangerButton` (decline); the `no_gps` quote (`FasoQuoteRule`). Offline `ack_pending`/`decline_pending` → `FasoPendingNotice` (queued confers nothing; SERA-S4 connectivity decides).
+
+## R5 « Vérification »  (planche l.225–253)
+
+`verify` block + `faso-kit CheckRow`. Title + body (objective conformity only, never
+quality/authenticity, l.228–229) → `FasoPosterTitle`+`FasoBody`. The 7 checks (l.235–241)
+→ `FasoCheckRow` (label + a GREEN « conforme » toggle — okBg/okFg). Accept (l.251) →
+`FasoPrimaryButton` (disabled until all). **Divergence:** the app models a single checkbox
+per row; the planche's per-row **bad**-button is a demo affordance the app does not have —
+the mismatch arm is the screen's one `FasoDangerButton` (l.248). *States law: a planche state
+the app lacks is not invented.*
+
+## R6 « Le refus digne »  (planche l.256–291)
+
+`refused` block. The app refuses at verify WITHOUT a reason picker, so `refused` ≈ the
+planche's `r6Done` (l.275–289): « Refus enregistré » + what-happens-next → `FasoPosterTitle`
+(`refuse.status`, money-register) + `FasoBody` (`refuse.next`) + `FasoSecondaryButton` (retour).
+**Divergence:** the planche `r6Picking` reason list + photo is not the app's verify-refusal
+flow (the app has no reason at verify) — not invented.
+
+## R7 « Le scellé »  (planche l.293–334)
+
+`seal` block + `faso-kit SealMark`. Title/body « la garde exige… » (l.296–297) → Faso; the seal
+card `border:1.5 #D9A441` [seal glyph + « SC-77 412 » Bricolage 800 tracked tnum + « usage unique »]
+(l.298–303) → `SealMark`. Offline → `FasoPendingNotice` (`seal.offline`: **la garde ne commence
+pas hors ligne** — verbatim); online → `FasoPrimaryButton` (`seal.action`). **Divergence:** the
+planche's photo-proof-first + sealing/sealed intermediate states are richer than the app's model
+(seal → evidence); the app's simpler flow is restyled as-is (custody spine unchanged).
+
+## R8 « En route » (proof)  (planche l.336–364 + the seal-photo l.304–308)
+
+`evidence` block. The app's proof-photo moment (SE-I06): the documentary frame with corner
+ticks (signature 5) → `FasoCornerTicks` over the photo frame; `FasoPrimaryButton` capture. The
+capture lands `evidence_pending` INSTANTLY then persists in the background (mint command_id
+once; drop stays LOCKED until the authoritative ack). **Divergence:** the planche R8 is a
+navigation card; the app folds navigation into the repère (R4) and makes R8 the proof capture
+(the SE-I06 step the planche shows as the seal photo).
+
+## R9 « À la porte »  (planche l.366–410)
+
+`door_inspection` + `payment_wait`. door_inspection: title/body « Elle ouvre. Elle vérifie. »
+→ Faso + `LandmarkCard` (not illustrated) + `FasoPrimaryButton` (accept) + `FasoDangerButton`
+(problem) + `FasoGhostButton` (cantpay). payment_wait (l.383–392): **SE-I11** — the rider CANNOT
+assert payment; ONLY the provider signal advances → `FasoPendingNotice` (`pay_wait.hint` +
+`operator`), NO rider-actionable field (guarded by `wo6-invariants`). Confirmed branch →
+`FasoPrimaryButton`.
+
+## R11 « Course validée » + celebration  (planche l.442–458, 582–590)
+
+`delivered` block. The gold `ProofSeal` (l.446) + `FasoPosterTitle` (`delivered.status`) + a
+`FasoCard` of three green `ProofLine`s (l.450–453) + the no-money `FasoQuoteRule` (l.455) +
+retour. The peak overlay → `Celebration` (planche l.582–590): dark scrim (`DARK.celebrationScrim`)
++ the gold seal on `FpPop` + « La vente est validée » between two dashed gold rules + « LA PREUVE
+EST COMPLÈTE » (new string `delivered.proof_complete`, copy-lint clean). ≤ 800 ms (fpPop max 450),
+reduced-motion safe, tap-to-dismiss. No confetti-spam, no fake urgency.
+
+## R12 « L'échelle des échecs »  (planche l.460–502)
+
+`refusal_reason` (family picker → `FasoGhostButton`s), `retry_window` (honest countdown chip +
+retry/expired), `refused_final` (buyer-fault, money-register calm), `reschedule_planned` (2ᵉ
+passage lineage). No generic « échec »; a colis never has zero guardian; the drop code stays
+LAST. **Divergence:** the planche shows the 4 families inline with sub-panels; the app splits
+them across screens (same custody logic).
+
+## R13 « Le retour à deux clés »  (planche l.504–541)
+
+`retour_colis`. Custodian quote (`FasoQuoteRule accent`) + `FasoOverline` + a `FasoCard` with
+two key rows [`IconCle` + label + (set → green `IconCoche` / else `FasoGhostButton`)]; a single
+key REFUSES (`attemptReturnHandover` pure gate; `retour.one_key_refused` danger note). Both keys
+→ `FasoPrimaryButton`. **Divergence:** the planche's « CLÉ 1/CLÉ 2 » text badges → the app's key
+icon (both signal the key); the custody two-key gate is byte-identical.
+
 ## Fonts (STEP 0 — the type question, standing independently)
 
 The planche loads Bricolage Grotesque (500/600/700/800) + Instrument Sans (400/500/600/700)
