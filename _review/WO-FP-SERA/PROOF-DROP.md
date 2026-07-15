@@ -1,9 +1,26 @@
-# WO-FP-SERA · FASO PREMIUM — 3-VIEW STYLE PROOF (drop v2 · TRUE ANATOMY)
+# WO-FP-SERA · FASO PREMIUM — ALL 13 VIEWS STAND (drop v3 · TRUE ANATOMY)
 
 Branch `e6/wo-fp-sera` · **DO NOT MERGE**.
 RN aesthetic evidence = the expo-preview build on the founder's device (program convention).
 
-## What changed since drop v1 (the CTO correction, 2026-07-15)
+## Drop v3 — the founder-released views 4–13 pass (2026-07-15)
+
+The founder TAPPED the 3-view proof (R2/R10/R14 accepted) with one law-fix (long status never
+clips — done, `faso-long-status.test.ts`), then RELEASED views 4–13. **All 13 rider views + R14
+SOS + the chrome + the celebration are now Faso**, built in five verified stages from the planche
+(`Sera - Redesign.dc.html`) with the derivation method (planche lines → impl → lawful divergence,
+`anatomy-derivation.md`). **R1's old skeleton is dead** — `faso-anatomy.test.ts` asserts NO
+un-prefixed Grand Teint view component renders in the app.
+
+- **Chrome:** the Faso monogram header (woven strip · S · Séra + rider cert · state chip · slim
+  back), the warn OfflineBanner, the fpBar PendingNotice, the soft-accent TabBar.
+- **R1 service · R3/R4 repère · R5 verify · R6 refus · R7 scellé · R8 proof · R9 door/payment ·
+  R11 validée + celebration · R12 échelle · R13 deux clés** — each faithful to its planche frame,
+  honesty contracts verbatim, custody + offline + SE-I06/SE-I11 semantics untouched.
+- **Guards riding:** contrast (AAA), anatomy + skeleton-dead, long-status-never-clips, states-law,
+  font name-table + cmap. **112/112**, tsc clean, copy-lint 152/0.
+
+## What changed in drop v2 (the CTO correction, 2026-07-15)
 
 The prior drop reskinned the **paper** but kept the **old anatomy** — R2 still rendered the
 glyph-tile + chevron list row under new colour. **The planche (`Sera - Redesign.dc.html`) is
