@@ -673,6 +673,12 @@ export default function App() {
               <FasoPosterTitle>{t('verify.title')}</FasoPosterTitle>
               <FasoBody>{t('verify.body')}</FasoBody>
               <FasoCard>
+                {/* Ecrans R5: the card leads with the colis identity — the order ref
+                    chip + what's being verified — before the 7 checks. */}
+                <View style={styles.verifyHead}>
+                  <FasoStatusChip tone="muted" label={active.id.toUpperCase()} />
+                  <FasoBody style={styles.verifyHeadName}>{active.name}</FasoBody>
+                </View>
                 {POLICY_CHECK_IDS.map((id) => (
                   <FasoCheckRow key={id} label={t(`check.${id}`)} checked={checks[id] === true} onPress={() => setChecks({ ...checks, [id]: !checks[id] })} />
                 ))}
@@ -1085,6 +1091,8 @@ const styles = StyleSheet.create({
   refuseNoteText: { color: FASO.dangerFg, fontSize: T.body.size, lineHeight: T.body.size * T.body.lh, fontWeight: '600' },
   validRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   validHead: { alignItems: 'center', gap: spacing.sm, paddingTop: spacing.md },
+  verifyHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingBottom: spacing.sm, borderBottomWidth: interaction.hairline.thin, borderBottomColor: FASO.hairline },
+  verifyHeadName: { flex: 1, fontWeight: '700' },
   proofList: { gap: spacing.sm },
   proofRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   proofText: { color: C.onInk, fontSize: T.body.size, lineHeight: T.body.size * T.body.lh, flex: 1 },
