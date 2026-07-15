@@ -634,4 +634,5 @@ Format per entry:
 - **Font-proof strip** ships: `faso-kit FontProofStrip` (preview-only), the six built faces on-device — the type question, standing independently.
 - **Guard added:** `test/faso-anatomy.test.ts` (7) — R2 is the CourseCard (bar/eyebrow/pill/deadline), NO glyphTile/chevron; PROPOSÉE filled + lineage outlined; keypad « ⌫ »; R10 centered. `ui-kit.test.ts` updated to the new anatomy while keeping the same invariant (closed → done/never-pressable; 2ᵉ passage keeps its lineage).
 - **Gates green:** typecheck 0 · rider **107/107** (sos-drill 9/9, evidence-finality 5/5, wo6-invariants 11/11, contrast AAA, states-law, anatomy 7/7) · copy-lint 151/0.
+- **Preview republished green:** `expo-preview.yml` run #47 (id 29381084535), head `79d2c26`, conclusion **success** (~2 min; Metro bundle + `eas update --channel preview` clean). The founder's Séra preview app auto-updates to it.
 - **HOLD** for the founder's aesthetic re-tap on R2/R10/R14. On the tap: views 4–13 per the states inventory + the anatomy method, then the full packet. **DO NOT MERGE.** Guard ①: the preview channel reverts on the next main publish.

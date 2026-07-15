@@ -24,8 +24,10 @@ elements grepped + quoted → the implementation → each divergence with its la
 ## The preview
 
 - **Open the Séra preview app** — it auto-updates on the `preview` channel (android + iOS).
-- Published by `expo-preview.yml` `workflow_dispatch` on the branch. (Exact group/run recorded
-  in the JOURNAL entry for this drop.)
+- Published green by `expo-preview.yml` `workflow_dispatch` on the branch — **run #47**
+  (id 29381084535), head `79d2c26`, conclusion **success** (~2 min; Metro bundle + `eas update`
+  clean, so the CourseCard, the react-native-svg signatures and the six embedded faces all
+  bundled with zero errors). Run: <https://github.com/beurni2/sera/actions/runs/29381084535>.
 
 ## The three views — hold each against its planche frame
 
