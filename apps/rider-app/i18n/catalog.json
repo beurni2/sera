@@ -462,6 +462,18 @@
     "screenClass": "general"
   },
   {
+    "key": "courses.statut_proposee",
+    "fr": "Proposée",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "courses.before",
+    "fr": "avant",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
     "key": "courses.statut_a_ramasser",
     "fr": "À ramasser",
     "register": "neutral",

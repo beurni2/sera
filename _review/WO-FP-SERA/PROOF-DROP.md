@@ -1,47 +1,65 @@
-# WO-FP-SERA · FASO PREMIUM — 3-VIEW STYLE PROOF (drop)
+# WO-FP-SERA · FASO PREMIUM — 3-VIEW STYLE PROOF (drop v2 · TRUE ANATOMY)
 
-Branch `e6/wo-fp-sera` · proof commit `0c989ae` · **DO NOT MERGE**.
+Branch `e6/wo-fp-sera` · **DO NOT MERGE**.
 RN aesthetic evidence = the expo-preview build on the founder's device (program convention).
 
-## The preview (live on the `preview` channel)
+## What changed since drop v1 (the CTO correction, 2026-07-15)
 
-- **Open the Séra preview app** — it auto-updates to group `c01955a7-8651-4046-8356-43e38c8e196e`, message `main@0c989ae`, runtime `exposdk:54.0.0`, android + ios.
-- **EAS Dashboard:** https://expo.dev/accounts/beurniboss/projects/sera-rider/updates/c01955a7-8651-4046-8356-43e38c8e196e
-- Published by `expo-preview.yml` `workflow_dispatch` on the branch (run #46). The Metro bundle compiled clean — the react-native-svg signatures, the new Faso modules, and the embedded Bricolage/Instrument fonts all bundled with zero errors (the build is itself proof the restyle is device-real).
+The prior drop reskinned the **paper** but kept the **old anatomy** — R2 still rendered the
+glyph-tile + chevron list row under new colour. **The planche (`Sera - Redesign.dc.html`) is
+the only bar.** This drop rebuilds the three proof views to the planche's **true frame
+anatomy**, with a new mandatory artifact: **`anatomy-derivation.md`** — per view, the planche
+elements grepped + quoted → the implementation → each divergence with its lawful reason.
 
-## The three views — hold each against its « Sera - Ecrans » frame
+- **R2 « Mes courses »** — rebuilt from a glyph-tile list to the editorial **CourseCard**: a
+  Bricolage-800 « Mes courses » title over cards whose proposed variant is the gold-glow card
+  (left gold bar · `CRS-0891` eyebrow · **filled** PROPOSÉE pill · « avant HH:MM » deadline) —
+  no icon tile, no chevron. Active = hairline card + honest status pill; done = receded tint.
+- **R10 « Le code »** — the codeEntry overline + honesty centered over the gold-cursor cells;
+  keypad backspace is the planche « ⌫ ».
+- **R14 « SOS »** — verified against the planche (already faithful); the one lawful divergence
+  is the legible SOS glyph (the planche prints it `#1C1710`-on-`#1C1710`, invisible).
+- **Font-proof strip** ships (preview-only `FontProofStrip`) — the type question, on device.
 
-| Frame | Register | What to look at |
+## The preview
+
+- **Open the Séra preview app** — it auto-updates on the `preview` channel (android + iOS).
+- Published by `expo-preview.yml` `workflow_dispatch` on the branch. (Exact group/run recorded
+  in the JOURNAL entry for this drop.)
+
+## The three views — hold each against its planche frame
+
+| Frame | planche lines | What to look at |
 |---|---|---|
-| **R2 — Mes courses** | list / home | woven-band strip, Séra paper `#EFE8DA`, white course cards, the honest status-chip register (à ramasser / en route / rendue / expirée) |
-| **R10 — Le code** | money / evidence + honesty | gold-cursor code cells + white keypad; « le code vient **après** la confirmation de l'opérateur — jamais avant. C'est sa preuve, pas la vôtre. » verbatim |
-| **R14 — SOS** | safety / honesty | dark sheet `#14100B` + 3px red edge, fpUp rise; raised→ack→enroute→clos chain + the dashed « (aperçu) » stand-in intact |
-
-## Judgment calls (prototype → RN)
-
-1. **R2 header** uses the woven band as the header strip (the Faso upgrade of the Grand Teint theme mark). The full « S » monogram header lands with the complete chrome restyle.
-2. **Tab dock** has no `backdrop-filter` blur (RN can't) — rendered as paper + top hairline + a soft-accent active pill (the README's active treatment).
-3. **Séra paper** `#EFE8DA` is shell-wide; the 10 un-restyled views ride it on the `/legacy` shim (warm, not broken) until their own restyle.
-4. **Hero-ledger radius** normalizes to the card token (20) — the README « 22 » is a straggler the hierarchy law resolves to the token. (Séra doesn't use the hero ledger band anyway — 0 prototype hits; it ships as shared vocabulary.)
+| **R2 — Mes courses** | 96–141 | the gold-glow proposed card: left bar · CRS eyebrow · filled PROPOSÉE pill · « avant 14:32 » · title · pickup subtitle. NO glyph tile, NO chevron. |
+| **R10 — Le code** | 412–440 | gold-cursor cells + white keypad (« ⌫ »); centered « Code du client » honesty verbatim |
+| **R14 — SOS** | 545–579 | dark disc + red ring; sheet `#14100B` + 3px red top, fpUp; confirm→raised→ack→enroute→clos + the offline `queued`/« (aperçu) » honesty |
 
 ## Verified, not claimed
 
-- **Contrast gate:** `#241A05` on `#D9A441` = **7.62:1 (AAA)**; every gold-ground / paper pairing clears WCAG AA (deepAlt-on-soft 7.52 · deep-on-white 5.05 · ink-on-paper 14.6 · chips 6.3–7.3). Computed from canon tokens; a failing pair is now a permanent gate (`test/faso-contrast.test.ts`).
-- **Honesty contracts intact** through the reskin: `sos-drill` 9/9, `sos-outbox` 3/3, `evidence-finality` 5/5, `wo6-invariants` 11/11 (incl. code-entry-only-on-drop).
-- **Token fidelity:** signature.tsx + faso-sos.tsx + faso-kit.tsx are hex-free (colour resolves through the bridge); planted-hex negative.
-- Typecheck clean, **rider 99/99**.
+- **Anatomy guard:** `test/faso-anatomy.test.ts` (7) — R2 is the CourseCard (bar/eyebrow/pill/
+  deadline), NO glyphTile/chevron; PROPOSÉE filled, lineage outlined; keypad « ⌫ »; R10 centered.
+- **States law:** `test/faso-states-law.test.ts` — every absent-from-prototype honest state survives.
+- **Honesty contracts intact:** `sos-drill` 9/9, `evidence-finality` 5/5, `wo6-invariants` 11/11, `ui-kit` updated.
+- **Contrast gate:** `#241A05` on `#D9A441` = 7.62:1 (AAA); every pairing ≥ AA (permanent gate).
+- **Token fidelity:** signature.tsx + faso-sos.tsx + faso-kit.tsx hex-free (colour via the bridge).
+- **French copy-lint:** OK, 151 entries, 0 violations (incl. new `courses.statut_proposee`, `courses.before`).
+- Typecheck clean · **rider 107/107**.
 
 ## Guards
 
-- **① The preview channel reverts on the next `main` publish** (this is an un-merged-branch preview; the founder is its only consumer).
+- **① The preview channel reverts on the next `main` publish** (un-merged-branch preview; the founder is its only consumer).
 - **② If the SOS drill fires during the review window, it runs against a `main` build, never this branch.**
 
 ## What's in this drop
 
 - `PROOF-DROP.md` — this file.
-- `states-law-inventory.md` — the founder-veto-① checklist: 14 framed states + **12 absent-from-prototype states** (each with its Faso-grammar treatment) so the full restyle drops none.
-- `build-faso-fonts.py` — the STEP 0 font-build provenance (google/fonts OFL → 6 subset, distinct-name-table static faces).
+- `anatomy-derivation.md` — **the mandatory artifact**: planche → implementation → lawful divergence, per view.
+- `states-law-inventory.md` — the founder-veto-① checklist (14 framed + 12 absent-from-prototype states).
+- `build-faso-fonts.py` — the STEP 0 font-build provenance.
 
 ## Next (on the founder's aesthetic tap)
 
-Views 4–13 straight through per the states-law inventory, then the full packet (galleries where web harnesses exist · warm+cold · fresh verifier · honesty contracts · contrast gate · the preview build + the device review as the RN evidence). No further view restyles until the tap.
+Views 4–13 straight through per the states inventory + the anatomy method (grep the planche →
+implement → derive divergences), then the full packet. No further view restyles until the tap.
+DO NOT MERGE.

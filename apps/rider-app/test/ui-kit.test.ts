@@ -158,12 +158,18 @@ describe('WO-6.1 Grand Teint visual layer (rider-app)', () => {
     expect(app).toMatch(/JOURNEY\[stack\[stack\.length - 1\] \?\? START\]\.includes\(next\)/);
   });
 
-  it('closed courses are muted, never pressable; the 2e passage carries its lineage chip', () => {
+  it('closed courses are the receded done card, never pressable; the 2e passage carries its lineage', () => {
     const app = read('App.tsx');
-    expect(app).toMatch(/muted=\{item\.closed\}/);
+    // WO-FP-SERA proof view 2/3, TRUE planche anatomy: R2 is the editorial
+    // CourseCard (left bar · eyebrow · pill · deadline), NOT the glyph-tile row.
+    expect(app).toContain('<FasoCourseCard');
+    expect(app).not.toContain('<FasoListRow');
+    // closed → the done (receded) variant, and never pressable (unchanged custody law)
+    expect(app).toMatch(/variant=\{variantFor\(item\)\}/);
+    expect(app).toMatch(/course\.closed \? 'done'/); // variantFor maps closed → done
     expect(app).toMatch(/onPress=\{item\.closed \? undefined : \(\) => openCourse\(item\)\}/);
-    // WO-FP-SERA proof view 2/3: the R2 course list restyled to the Faso chip.
-    expect(app).toMatch(/item\.attempt === 2 && <FasoStatusChip tone="info" label=\{t\('courses\.lineage_2e'\)\}/);
+    // the 2e passage carries its lineage into the card
+    expect(app).toMatch(/lineage=\{item\.attempt === 2 \? t\('courses\.lineage_2e'\) : undefined\}/);
   });
 
   it('the kit imports stay inside the RN + tokens world (banned-import law extended to the kit)', () => {

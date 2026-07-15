@@ -77,11 +77,12 @@ import {
   type ChipTone,
 } from './src/ui/kit';
 import { SosButton, SosSheet, type SosState } from './src/ui/faso-sos';
-import { WovenBand } from './src/ui/signature';
+import { WovenBand, FpIn } from './src/ui/signature';
 import { C as FASO } from './src/ui/faso';
 import {
-  ListRow as FasoListRow,
-  StatusChip as FasoStatusChip,
+  CourseCard as FasoCourseCard,
+  ScreenTitle as FasoScreenTitle,
+  FontProofStrip,
   Overline as FasoOverline,
   EmptyState as FasoEmptyState,
   Body as FasoBody,
@@ -177,6 +178,12 @@ const toneFor = (course: DemoCourse): ChipTone =>
       : course.step === 'retour_colis' && course.closed
         ? 'ok'
         : STATUS_TONE[course.step];
+
+/** R2 card register (planche R2): the offer window (affectation, not closed) is the
+ * gold proposed card; a closed course is the receded done card; the accepted walk
+ * is the hairline active card. The honest status/tone still ride the states law. */
+const variantFor = (course: DemoCourse): 'proposed' | 'active' | 'done' =>
+  course.closed ? 'done' : course.step === 'affectation' ? 'proposed' : 'active';
 
 /** Course glyphs by kind — icons always paired with text (the chip + title). */
 const KIND_ICON: Record<CourseKind, (p: IconProps) => React.JSX.Element> = {
@@ -475,6 +482,9 @@ export default function App() {
         <View style={styles.content}>
           {screen === 'service' && (
             <View style={styles.stackGap}>
+              {/* The font-proof strip (STEP 0, the type question) — preview-only,
+                  so the founder judges the two faces on the device. */}
+              {IS_PREVIEW && <FontProofStrip />}
               {shift === 'off' && (
                 <>
                   <PosterTitle>{t('service.off_title')}</PosterTitle>
@@ -533,13 +543,15 @@ export default function App() {
             </View>
           )}
 
-          {/* R2 « Mes courses » — Faso Premium (WO-FP-SERA proof view 2/3): the
-              woven-band header, white course cards on the deeper Séra paper, the
-              honest status-chip register. Content restyled to faso-kit; the custody
-              semantics + honest statuses (toneFor/statusKeyFor) are untouched. */}
+          {/* R2 « Mes courses » — Faso Premium (WO-FP-SERA proof view 2/3), TRUE
+              planche anatomy (« Sera - Redesign » R2, lines 96–141): a Bricolage-800
+              screen title over editorial CourseCards — the proposed course is the
+              gold-glow card (left bar · CRS eyebrow · filled PROPOSÉE pill · « avant
+              HH:MM » deadline), NOT a glyph-tile row. The custody semantics + the
+              honest status vocabulary (statusKeyFor/toneFor) ride the states law. */}
           {screen === 'courses' && (
-            <View style={styles.listWrap}>
-              <FasoOverline>{t('courses.overline')}</FasoOverline>
+            <FpIn style={styles.listWrap}>
+              <FasoScreenTitle>{t('courses.overline')}</FasoScreenTitle>
               <FlatList
                 data={world.courses}
                 keyExtractor={(c) => c.id}
@@ -548,24 +560,26 @@ export default function App() {
                 contentContainerStyle={styles.listContent}
                 ListEmptyComponent={<FasoEmptyState Icon={IconMoto} title={t('shell.no_task')} hint={t('courses.empty_hint')} />}
                 ListFooterComponent={<Text style={styles.listFoot}>{t('courses.one_guardian')}</Text>}
-                renderItem={({ item }) => (
-                  <FasoListRow
-                    Icon={KIND_ICON[item.kind]}
-                    code={item.id.toUpperCase()}
-                    title={item.locationLines[0]}
-                    meta={`${item.locationLines[2]} · ${item.name}`}
-                    muted={item.closed}
-                    chip={
-                      <>
-                        <FasoStatusChip tone={toneFor(item)} label={t(statusKeyFor(item))} />
-                        {item.attempt === 2 && <FasoStatusChip tone="info" label={t('courses.lineage_2e')} />}
-                      </>
-                    }
-                    onPress={item.closed ? undefined : () => openCourse(item)}
-                  />
-                )}
+                renderItem={({ item }) => {
+                  // The offer window (affectation, not yet acted, not closed) shows
+                  // « Proposée » + the response deadline — the REAL ack/decline
+                  // window; every other course shows its honest status + tone.
+                  const proposed = item.step === 'affectation' && item.ack === 'none' && !item.closed;
+                  return (
+                    <FasoCourseCard
+                      variant={variantFor(item)}
+                      code={item.id.toUpperCase()}
+                      status={proposed ? { label: t('courses.statut_proposee'), tone: 'accent' } : { label: t(statusKeyFor(item)), tone: toneFor(item) }}
+                      deadline={proposed ? `${t('courses.before')} ${proposalUntil}` : undefined}
+                      lineage={item.attempt === 2 ? t('courses.lineage_2e') : undefined}
+                      title={item.locationLines[0]}
+                      subtitle={`${item.locationLines[2]} · ${item.name}`}
+                      onPress={item.closed ? undefined : () => openCourse(item)}
+                    />
+                  );
+                }}
               />
-            </View>
+            </FpIn>
           )}
 
           {screen === 'affectation' && (
@@ -797,9 +811,11 @@ export default function App() {
               entry exists ONLY here; the spine makes 'drop' reachable only after the
               provider-confirmed payment (custody semantics untouched). */}
           {screen === 'drop' && active !== null && (
-            <View style={styles.dropWrap}>
-              <FasoOverline>{t('drop.title')}</FasoOverline>
-              <FasoBody>{t('drop.hint')}</FasoBody>
+            <FpIn style={styles.dropWrap}>
+              {/* planche R10 codeEntry: the overline + honesty are CENTERED over the
+                  gold-cursor cells + white keypad. drop.title/hint render verbatim. */}
+              <FasoOverline center>{t('drop.title')}</FasoOverline>
+              <FasoBody style={styles.dropHint}>{t('drop.hint')}</FasoBody>
               <FasoCodeCells value={codeStr} length={DROP_CODE_LEN} />
               <FasoKeypad
                 onKey={(d) => setCodeStr((c) => (c.length < DROP_CODE_LEN ? c + d : c))}
@@ -813,7 +829,7 @@ export default function App() {
               {/* WO-2.2 refusal ladder entry — as dignified as the purchase
                   path; it whispers, never shouts. */}
               <FasoGhostButton label={t('problem.action')} onPress={() => walk((w) => reportProblem(w, active.id))} />
-            </View>
+            </FpIn>
           )}
 
           {screen === 'refusal_reason' && active !== null && (
@@ -1023,6 +1039,7 @@ const styles = StyleSheet.create({
   stackGap: { gap: spacing.md, paddingTop: spacing.sm },
   listWrap: { flex: 1, gap: spacing.sm },
   dropWrap: { flex: 1, gap: spacing.lg, justifyContent: 'center', paddingHorizontal: spacing.md },
+  dropHint: { textAlign: 'center' },
   listContent: { gap: spacing.sm, paddingBottom: spacing.sm },
   listFoot: { color: C.muted, fontSize: T.caption.size, lineHeight: T.caption.size * T.caption.lh, textAlign: 'center', paddingVertical: spacing.md },
   checkList: { gap: spacing.sm },
