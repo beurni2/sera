@@ -636,3 +636,20 @@ Format per entry:
 - **Gates green:** typecheck 0 · rider **107/107** (sos-drill 9/9, evidence-finality 5/5, wo6-invariants 11/11, contrast AAA, states-law, anatomy 7/7) · copy-lint 151/0.
 - **Preview republished green:** `expo-preview.yml` run #47 (id 29381084535), head `79d2c26`, conclusion **success** (~2 min; Metro bundle + `eas update --channel preview` clean). The founder's Séra preview app auto-updates to it.
 - **HOLD** for the founder's aesthetic re-tap on R2/R10/R14. On the tap: views 4–13 per the states inventory + the anatomy method, then the full packet. **DO NOT MERGE.** Guard ①: the preview channel reverts on the next main publish.
+
+## 2026-07-15 · WO-FP-SERA · FOUNDER TAP → views 4–13 pass (ALL 13 VIEWS STAND)
+- **The founder TAPPED** the 3-view proof (R2/R10/R14 accepted on device) with ONE law-fix, then RELEASED views 4–13.
+- **The fix — a status chip NEVER clips / ellipsizes** (safety-copy law). The planche assumes short caps chips; the app's statuses are sentences. Derived the in-grammar adaptation from the planche's own sentence treatment (R12 `l.desc`): short « PROPOSÉE » stays inline; sentence statuses + lineage drop to a **full-width, sentence-case, WRAPPING** status line below the reference; card grows (no fixed height → no neighbour overlap, the DF-1 lesson). Fixture `test/faso-long-status.test.ts` (longest real status; no numberOfLines/ellipsize; stretch; no fixed card height). Listed in `anatomy-derivation.md`.
+- **Views 4–13 built in five verified stages** (each: planche read → Faso components → restyle → green gates → commit), the derivation method throughout (planche lines cited → impl → lawful divergences):
+  - **Chrome** (planche l.32–42): Faso monogram header (woven strip · S · « Séra » + rider cert · state chip · slim back row for the deep stack), warn `OfflineBanner`, fpBar `PendingNotice`, soft-accent `TabBar`.
+  - **R1 service** — skeleton retired: white cert card, fpBar pending (queued confers nothing), accent « En service » + live `FpPulseDot`, arriving course as a `CourseCard`.
+  - **R3/R4 repère** — `LandmarkCard` + `VoicePlayRow` (SPÉCIMEN honesty; no live progress — real-data honesty); ack/decline + offline `ack_pending`/`decline_pending` intact.
+  - **R5 verify** — green `CheckRow` conformity; the mismatch arm is the one `DangerButton` (app models one checkbox, not the planche per-row bad — states law).
+  - **R6 refus** — dignified refusal-done (money-register). **R7 scellé** — the seal card; offline = queued PENDING, la garde ne commence pas hors ligne (verbatim).
+  - **R8 proof** — documentary `CornerTicks` frame (SE-I06 capture intact). **R9 door/payment** — repère + accept/problem/cantpay; `payment_wait` SE-I11 unskippable (only the provider signal advances; guard updated).
+  - **R11 validée** — gold `ProofSeal` + 3-line proof + no-money quote; the **Faso `Celebration`** (planche l.582–590: dark scrim + gold seal on `FpPop` + dashed rules, ≤ 800 ms fpPop-bounded, reduced-motion safe); new string `delivered.proof_complete` (copy-lint clean).
+  - **R12 échelle** (refusal_reason/retry/refused_final/reschedule) + **R13 deux clés** (both keys or neither; `attemptReturnHandover` gate byte-identical).
+- **New Faso kit components** (design-system-as-code, all hex-free via the bridge): `FasoHeader` back row · `Card` · `PosterTitle` · `Secondary`/`Danger` buttons · `PendingNotice` · `OfflineBanner` · `LandmarkCard` · `VoicePlayRow` · `CheckRow` · `SealMark` · `ProofSeal` · `Celebration` · `TabBar` (+ `FpPop` in the signature module).
+- **Guards added:** `faso-anatomy` extended with the **skeleton-dead** assertion (NO un-prefixed Grand Teint view component renders in App.tsx) + `faso-long-status`. All riding: contrast AAA, states-law, font name-table/cmap.
+- **Gates:** typecheck 0 · rider **112/112** · copy-lint 152/0. Preview republished (expo-preview `workflow_dispatch`, head `7c6e539`).
+- **HELD for the CTO's derivation-vs-planche verification, then the founder's device pass.** DO NOT MERGE. Guard ①: the preview channel reverts on the next main publish.
