@@ -87,24 +87,34 @@ export function ScreenTitle({ children }: { children: React.ReactNode }) {
   return <Text style={styles.screenTitle}>{children}</Text>;
 }
 
-/** A planche status pill (9.5px caps, .08em) — filled by tone. Instrument at the
- * pixel-source size; the planche's weight-800 falls to Instrument's 700 (no 800
- * face), so the faithful RN weight is 700. */
-function Pill({ tone, label }: { tone: ChipTone; label: string }) {
+/**
+ * A status pill — filled by tone. Two registers, both keeping the pill's tint +
+ * rounding grammar:
+ *  · SHORT (planche default): 9.5px caps, .08em, nowrap — the inline word pill
+ *    (« PROPOSÉE »). Instrument at the pixel-source size; the planche's weight-800
+ *    falls to Instrument's 700 (no 800 face), so 700 is the faithful RN weight.
+ *  · `full` (the long-status adaptation, CTO law: a status NEVER clips / ellipsizes
+ *    — truncating an honest status weakens it). A status that exceeds the eyebrow
+ *    row becomes a **full-width, sentence-case, body-size line** that WRAPS (the
+ *    planche's own treatment for a sentence — R12 `l.desc`, l.468 — not a caps
+ *    pill). The card grows; nothing overlaps the neighbor.
+ */
+function Pill({ tone, label, full }: { tone: ChipTone; label: string; full?: boolean }) {
   const c = TONE[tone];
   return (
-    <View style={[styles.pill, { backgroundColor: c.bg }]}>
-      <Text style={[styles.pillText, { color: c.fg }]}>{label}</Text>
+    <View style={[full === true ? styles.pillFull : styles.pill, { backgroundColor: c.bg }]}>
+      <Text style={[full === true ? styles.pillTextFull : styles.pillText, { color: c.fg }]}>{label}</Text>
     </View>
   );
 }
 
 /** The 2ᵉ-passage lineage pill (planche: OUTLINED — border #8F6812, text #5F4403,
- * transparent). The lineage « suit le colis », never a filled state. */
-function LineagePill({ label }: { label: string }) {
+ * transparent). The lineage « suit le colis », never a filled state. `full` gives
+ * it the same never-clip full-width sentence treatment. */
+function LineagePill({ label, full }: { label: string; full?: boolean }) {
   return (
-    <View style={styles.lineagePill}>
-      <Text style={styles.lineagePillText}>{label}</Text>
+    <View style={[full === true ? styles.lineagePillFull : styles.lineagePill]}>
+      <Text style={[full === true ? styles.lineagePillTextFull : styles.lineagePillText]}>{label}</Text>
     </View>
   );
 }
@@ -138,15 +148,26 @@ export function CourseCard({
     variant === 'active' && styles.courseActive,
     variant === 'done' && styles.courseDone,
   ];
+  // The offer window keeps the accepted inline look: the SHORT « PROPOSÉE » pill
+  // rides the eyebrow row with the deadline. Every other (sentence) status — and
+  // the lineage — drops to a full-width status line below the reference, wrapping,
+  // so an honest status is NEVER clipped or ellipsized (CTO law).
+  const inlinePill = variant === 'proposed';
+  const showStatusLine = !inlinePill || lineage !== undefined;
   const inner = (
     <>
       {variant === 'proposed' && <View style={styles.courseBar} accessibilityElementsHidden />}
       <View style={styles.courseTop}>
         <Text style={styles.courseCode}>{code}</Text>
-        <Pill tone={status.tone} label={status.label} />
-        {lineage !== undefined && <LineagePill label={lineage} />}
+        {inlinePill && <Pill tone={status.tone} label={status.label} />}
         {deadline !== undefined && <Text style={styles.courseDeadline}>{deadline}</Text>}
       </View>
+      {showStatusLine && (
+        <View style={styles.statusLine}>
+          {!inlinePill && <Pill tone={status.tone} label={status.label} full />}
+          {lineage !== undefined && <LineagePill label={lineage} full />}
+        </View>
+      )}
       <Text style={[styles.courseTitle, variant === 'done' && styles.courseTitleDone]} numberOfLines={1}>{title}</Text>
       <Text style={styles.courseSub} numberOfLines={1}>{subtitle}</Text>
     </>
@@ -306,6 +327,12 @@ const styles = StyleSheet.create({
   pillText: { fontFamily: textFace(700), fontSize: 9.5, fontWeight: '700', letterSpacing: 9.5 * 0.08, textTransform: 'uppercase' },
   lineagePill: { alignSelf: 'flex-start', paddingVertical: 3, paddingHorizontal: 7, borderRadius: rad('pill'), borderWidth: CARD_HAIR, borderColor: C.accentDeep },
   lineagePillText: { fontFamily: textFace(700), fontSize: 9, fontWeight: '700', letterSpacing: 9 * 0.08, textTransform: 'uppercase', color: C.accentDeepAlt },
+  // ── long-status adaptation: full-width, sentence-case, WRAPPING (never clips) ──
+  statusLine: { marginTop: 8, gap: 6 }, // column: alignSelf 'stretch' children fill the card width
+  pillFull: { alignSelf: 'stretch', paddingVertical: 6, paddingHorizontal: 10, borderRadius: rad('tile') },
+  pillTextFull: { fontFamily: textFace(700), fontSize: 12, fontWeight: '700', lineHeight: 12 * 1.4 },
+  lineagePillFull: { alignSelf: 'stretch', paddingVertical: 6, paddingHorizontal: 10, borderRadius: rad('tile'), borderWidth: CARD_HAIR, borderColor: C.accentDeep },
+  lineagePillTextFull: { fontFamily: textFace(700), fontSize: 12, fontWeight: '700', color: C.accentDeepAlt, lineHeight: 12 * 1.4 },
 
   fontProof: { backgroundColor: C.card, borderRadius: rad('tile'), borderWidth: CARD_HAIR, borderColor: C.hairline, padding: 14, gap: 7, marginBottom: 12 },
   fontProofCaption: { ...ty('caps'), color: C.sub },

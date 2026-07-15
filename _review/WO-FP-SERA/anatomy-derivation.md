@@ -38,6 +38,21 @@ Implementation: `App.tsx` R2 block (`screen === 'courses'`) + `src/ui/faso-kit.t
 | `animation:fpIn .32s cubic-bezier(.2,.8,.2,1)` (l.98) | R2 wrapped in `<FpIn>` (signature module; reduced-motion safe) | none |
 | **Retired**: the icon glyph-tile + the `›` chevron (the OLD list-row anatomy) | absent from `CourseCard` (asserted by `faso-anatomy.test.ts`) | — |
 
+**Adaptation — long status never clips (founder tap, 2026-07-15).** The planche's R2 chips are
+all short caps with `white-space:nowrap` (l.112/123/124/134) — it assumes single-word statuses
+and never wraps a chip. The app's real statuses are full **sentences** (« Temps passé. Course
+rendue à la liste. », « 2e passage — le client était absent. »), which clipped at the card edge.
+CTO law: a status NEVER clips / ellipsizes (truncating an honest status weakens it — safety-copy
+law). The planche has no long-status chip to copy; its own treatment for a **sentence** is a
+full-width, sentence-case, body-size line (R12 `l.desc`, l.468 — `font-size:12.5;line-height:1.45`,
+not a caps pill). So the in-grammar adaptation: the short « PROPOSÉE » keeps its inline caps pill
+in the eyebrow (the accepted look); every **sentence** status + the lineage drops to a
+**full-width status line below the reference** — the chip's tint/rounding kept, text at body size,
+**wrapping** (multi-line permitted). The card has no fixed height → it grows; nothing overlaps the
+neighbour (the DF-1 minHeight lesson). Guard: `test/faso-long-status.test.ts` (renders the longest
+real status; asserts no `numberOfLines`/ellipsize on the status text, full-width stretch, no fixed
+card height). `faso-kit` `Pill`/`LineagePill` `full` prop → `pillFull`/`pillTextFull`.
+
 **State mapping (R2).** The planche shows 3 demo registers (proposed/active/done). The app's
 real states are richer and all survive (`states-law-inventory.md`): the offer window
 (`step affectation, ack none, !closed`) → the gold **proposed** card with « Proposée » + the
