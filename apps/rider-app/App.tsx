@@ -76,7 +76,7 @@ import {
   type ChipTone,
 } from './src/ui/kit';
 import { SosButton, SosSheet, type SosState } from './src/ui/faso-sos';
-import { FpIn, FpPulseDot } from './src/ui/signature';
+import { FpIn, FpPulseDot, QuoteRule as FasoQuoteRule } from './src/ui/signature';
 import { C as FASO } from './src/ui/faso';
 import {
   FasoHeader,
@@ -84,6 +84,7 @@ import {
   ScreenTitle as FasoScreenTitle,
   PosterTitle as FasoPosterTitle,
   Card as FasoCard,
+  LandmarkCard as FasoLandmarkCard,
   StatusChip as FasoStatusChip,
   FontProofStrip,
   Overline as FasoOverline,
@@ -91,6 +92,7 @@ import {
   Body as FasoBody,
   PrimaryButton as FasoPrimaryButton,
   SecondaryButton as FasoSecondaryButton,
+  DangerButton as FasoDangerButton,
   GhostButton as FasoGhostButton,
   PendingNotice as FasoPendingNotice,
   OfflineBanner as FasoOfflineBanner,
@@ -583,79 +585,76 @@ export default function App() {
             </FpIn>
           )}
 
+          {/* R3 « Course proposée » + R4 « Le repère » (planche l.143–223) — the
+              app's affectation screen carries both: the response deadline, the
+              illustrated repère card (voice playable), then the ack/decline arms.
+              Offline law + SERA-S4 connectivity semantics untouched. */}
           {screen === 'affectation' && (
-            <Card style={styles.flexCard}>
-              {active === null ? (
-                <EmptyState Icon={IconMoto} title={t('shell.no_task')} />
-              ) : (
-                <>
-                  <Overline>{`${t('assignment.deadline')} ${proposalUntil}`}</Overline>
-                  {/* R4 « le repère » — the illustrated signature card (SE0.3,
-                      the D18 label class), voice directions playable. */}
-                  <LandmarkCard
-                    zone={active.locationLines[2]}
-                    lines={active.locationLines}
-                    repereLabel={t('assignment.landmark_label')}
-                    indicationsLabel={t('repere.indications')}
-                    illustrated
-                    voice={voiceFor()}
-                  />
-                  <QuoteRule>{t('repere.no_gps')}</QuoteRule>
-                  {active.ack === 'decline_pending' ? (
-                    /* The refusal went out WITHOUT the network: queued =
-                       PENDING, it confers nothing — only a server-confirmed
-                       decline releases; the window still runs. */
-                    <PendingNotice lines={[t('assignment.decline_pending')]} />
-                  ) : active.ack === 'ack_pending' ? (
-                    <>
-                      {/* Queued = PENDING; walking to the pickup is navigation. */}
-                      <PendingNotice lines={[t('assignment.ack_pending')]} />
-                      <PrimaryButton label={t('assignment.pickup_action')} onPress={() => walk((w) => beginPickup(w, active.id))} />
-                      <DangerButton
-                        label={t('assignment.decline_action')}
-                        onPress={() => {
-                          // SERA-S4: the REAL connectivity decides queued-vs-sent —
-                          // offline = decline_pending (confers nothing), online =
-                          // server-confirmed decline. The retired constant lied here.
-                          declineCourse(world, active.id, connectivity);
-                          setWorld({ ...world });
-                          toCourses();
-                        }}
-                      />
-                    </>
-                  ) : (
-                    <>
-                      <PrimaryButton
-                        label={t('assignment.ack_action')}
-                        onPress={() => {
-                          acknowledgeCourse(world, active.id);
-                          setWorld({ ...world });
-                        }}
-                      />
-                      <DangerButton
-                        label={t('assignment.decline_action')}
-                        onPress={() => {
-                          // SERA-S4: the REAL connectivity decides queued-vs-sent —
-                          // offline = decline_pending (confers nothing), online =
-                          // server-confirmed decline. The retired constant lied here.
-                          declineCourse(world, active.id, connectivity);
-                          setWorld({ ...world });
-                          toCourses();
-                        }}
-                      />
-                    </>
-                  )}
-                  <GhostButton
-                    label={t('assignment.expired_action')}
-                    onPress={() => {
-                      expireProposal(world, active.id);
-                      setWorld({ ...world });
-                      toCourses();
-                    }}
-                  />
-                </>
-              )}
-            </Card>
+            active === null ? (
+              <FasoCard style={styles.flexCard}><FasoEmptyState Icon={IconMoto} title={t('shell.no_task')} /></FasoCard>
+            ) : (
+              <FpIn style={styles.stackGap}>
+                <FasoOverline>{`${t('assignment.deadline')} ${proposalUntil}`}</FasoOverline>
+                <FasoLandmarkCard
+                  zone={active.locationLines[2]}
+                  lines={active.locationLines}
+                  repereLabel={t('assignment.landmark_label')}
+                  indicationsLabel={t('repere.indications')}
+                  illustrated
+                  voice={voiceFor()}
+                />
+                <FasoQuoteRule>{t('repere.no_gps')}</FasoQuoteRule>
+                {active.ack === 'decline_pending' ? (
+                  /* The refusal went out WITHOUT the network: queued = PENDING, it
+                     confers nothing — only a server-confirmed decline releases; the
+                     window still runs. */
+                  <FasoPendingNotice lines={[t('assignment.decline_pending')]} />
+                ) : active.ack === 'ack_pending' ? (
+                  <>
+                    {/* Queued = PENDING; walking to the pickup is navigation. */}
+                    <FasoPendingNotice lines={[t('assignment.ack_pending')]} />
+                    <FasoPrimaryButton label={t('assignment.pickup_action')} onPress={() => walk((w) => beginPickup(w, active.id))} />
+                    <FasoDangerButton
+                      label={t('assignment.decline_action')}
+                      onPress={() => {
+                        // SERA-S4: the REAL connectivity decides queued-vs-sent —
+                        // offline = decline_pending (confers nothing), online =
+                        // server-confirmed decline. The retired constant lied here.
+                        declineCourse(world, active.id, connectivity);
+                        setWorld({ ...world });
+                        toCourses();
+                      }}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <FasoPrimaryButton
+                      label={t('assignment.ack_action')}
+                      onPress={() => {
+                        acknowledgeCourse(world, active.id);
+                        setWorld({ ...world });
+                      }}
+                    />
+                    <FasoDangerButton
+                      label={t('assignment.decline_action')}
+                      onPress={() => {
+                        declineCourse(world, active.id, connectivity);
+                        setWorld({ ...world });
+                        toCourses();
+                      }}
+                    />
+                  </>
+                )}
+                <FasoGhostButton
+                  label={t('assignment.expired_action')}
+                  onPress={() => {
+                    expireProposal(world, active.id);
+                    setWorld({ ...world });
+                    toCourses();
+                  }}
+                />
+              </FpIn>
+            )
           )}
 
           {/* The custody walk — every transition below goes through the demo

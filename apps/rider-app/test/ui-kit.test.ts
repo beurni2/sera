@@ -63,9 +63,11 @@ describe('WO-6.1 Grand Teint visual layer (rider-app)', () => {
     // the App renders the signature card on the assignment AND at the door
     const app = read('App.tsx');
     const affectation = app.slice(app.indexOf("screen === 'affectation'"), app.indexOf("screen === 'verify'"));
-    expect(affectation).toMatch(/<LandmarkCard[\s\S]*lines=\{active\.locationLines\}[\s\S]*illustrated/);
+    // WO-FP-SERA: affectation now renders the Faso repère (planche R4); the door
+    // signature card is restyled in its own stage.
+    expect(affectation).toMatch(/<FasoLandmarkCard[\s\S]*lines=\{active\.locationLines\}[\s\S]*illustrated/);
     const door = app.slice(app.indexOf("screen === 'door_inspection'"), app.indexOf("screen === 'payment_wait'"));
-    expect(door).toMatch(/<LandmarkCard[\s\S]*lines=\{active\.locationLines\}/);
+    expect(door).toMatch(/LandmarkCard[\s\S]*lines=\{active\.locationLines\}/);
   });
 
   it('the refusal arm is a first-class DangerButton — bordered danger, as polished as acceptance', () => {
@@ -88,7 +90,9 @@ describe('WO-6.1 Grand Teint visual layer (rider-app)', () => {
 
   it('pending states are PendingNotice rows — queued = pending, honest, never done', () => {
     const app = read('App.tsx');
-    expect(app).toMatch(/<PendingNotice lines=\{\[t\('assignment\.ack_pending'\)\]\}/);
+    // affectation is restyled (Faso); evidence + door-wait keep the honest pending
+    // notice until their own stage. Queued = pending, honest, never done — either kit.
+    expect(app).toMatch(/<FasoPendingNotice lines=\{\[t\('assignment\.ack_pending'\)\]\}/);
     expect(app).toMatch(/<PendingNotice lines=\{\[t\('evidence\.pending'\)\]\}/);
     // the door-payment wait is a PendingNotice, never a rider-actionable field
     expect(app).toMatch(/<PendingNotice lines=\{\[t\('pay_wait\.hint'\)/);

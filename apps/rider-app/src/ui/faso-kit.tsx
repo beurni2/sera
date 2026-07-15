@@ -2,7 +2,7 @@ import { Pressable, StyleSheet, Text, View, type StyleProp, type TextStyle, type
 import { alpha, C, DARK, GEO, rad, ty } from './faso';
 import { displayFace, textFace } from './faso-fonts';
 import { WovenBand, FpBar } from './signature';
-import type { IconProps } from './icons';
+import { IconRepere, IconEcouter, type IconProps } from './icons';
 
 /**
  * WO-FP-SERA · the Faso Premium chrome + list components (README § shared system;
@@ -94,6 +94,49 @@ export function PendingNotice({ title, lines }: { title?: string | undefined; li
       {title !== undefined && <Text style={styles.pendingTitle}>{title}</Text>}
       <FpBar />
       {lines.map((line) => <Text key={line} style={styles.pendingText}>{line}</Text>)}
+    </View>
+  );
+}
+
+/** « La voix » — the listen affordance (planche R4 l.198–208): a gold play tile +
+ * a caps label + a tnum timer. Recorded audio only (Ten Laws #5 — never generative). */
+export function VoicePlayRow({ label, time, playing, onPress }: { label: string; time: string; playing: boolean; onPress: () => void }) {
+  return (
+    <Pressable style={({ pressed }) => [styles.voiceRow, pressed && styles.pressed]} onPress={onPress} accessibilityRole="button" accessibilityState={{ selected: playing }}>
+      <View style={styles.voiceGlyph}>
+        <IconEcouter size={ty('row').fontSize} color={C.onAccent} />
+      </View>
+      <Text style={styles.voiceLabel} numberOfLines={1}>{label}</Text>
+      <Text style={styles.voiceTime}>{time}</Text>
+    </Pressable>
+  );
+}
+
+/** R4 « le repère » — the illustrated signature card (planche l.182–223). A white,
+ * accent-bordered card: head [repère flag + zone + « SPÉCIMEN » honesty badge] ·
+ * « LE REPÈRE » + the repère · « LES INDICATIONS » + the indications · the voice row.
+ * No street address, ever — the repère IS the navigation (planche footer). */
+export function LandmarkCard({
+  zone, lines, repereLabel, indicationsLabel, illustrated, voice,
+}: {
+  zone: string; lines: readonly [string, string, string];
+  repereLabel: string; indicationsLabel: string; illustrated?: boolean | undefined;
+  voice?: { label: string; time: string; playing: boolean; onPress: () => void } | undefined;
+}) {
+  return (
+    <View style={styles.landmark}>
+      <View style={styles.landmarkHead}>
+        <IconRepere size={ty('body').fontSize} color={C.accent} />
+        <Text style={styles.landmarkZone}>{lines[2] || zone}</Text>
+        {illustrated === true && <View style={styles.specimenBadge}><Text style={styles.specimenText}>SPÉCIMEN</Text></View>}
+      </View>
+      <View style={styles.landmarkBody}>
+        <Text style={styles.landmarkLabel}>{repereLabel}</Text>
+        <Text style={styles.landmarkRepere}>{lines[0]}</Text>
+        <Text style={styles.landmarkLabel}>{indicationsLabel}</Text>
+        <Text style={styles.landmarkIndications}>{lines[1]}</Text>
+        {voice !== undefined && <VoicePlayRow label={voice.label} time={voice.time} playing={voice.playing} onPress={voice.onPress} />}
+      </View>
     </View>
   );
 }
@@ -396,6 +439,21 @@ const styles = StyleSheet.create({
   offlineBanner: { flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: C.warnBg, paddingVertical: 9, paddingHorizontal: GEO.paddingPx },
   offlineDot: { width: 8, height: 8, borderRadius: rad('pill'), backgroundColor: C.warnFgAlt },
   offlineBannerText: { ...ty('body', 'min'), color: C.warnFg, flex: 1, fontWeight: '600' },
+
+  // ── R4 le repère + la voix ──
+  landmark: { backgroundColor: C.card, borderRadius: rad('card'), borderWidth: 1.5, borderColor: C.accent, overflow: 'hidden', shadowColor: C.accent, shadowOpacity: 0.3, shadowRadius: 18, shadowOffset: { width: 0, height: 12 }, elevation: 5 },
+  landmarkHead: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 11, borderBottomWidth: CARD_HAIR, borderBottomColor: C.hairline },
+  landmarkZone: { fontFamily: textFace(700), fontSize: 11, fontWeight: '700', letterSpacing: 11 * 0.14, color: C.ink, flex: 1 },
+  specimenBadge: { backgroundColor: C.paper, borderRadius: 7, paddingVertical: 4, paddingHorizontal: 8 },
+  specimenText: { fontFamily: textFace(700), fontSize: 9.5, fontWeight: '700', letterSpacing: 9.5 * 0.06, color: C.sub },
+  landmarkBody: { padding: 16, gap: 4 },
+  landmarkLabel: { fontFamily: textFace(700), fontSize: 10, fontWeight: '700', letterSpacing: 10 * 0.14, color: C.sub, marginTop: 7 },
+  landmarkRepere: { fontFamily: displayFace(800), fontSize: 22, fontWeight: '800', lineHeight: 22 * 1.15, color: C.ink },
+  landmarkIndications: { ...ty('body', 'max'), color: C.body, fontSize: 15 },
+  voiceRow: { flexDirection: 'row', alignItems: 'center', gap: 11, marginTop: 13, padding: 9, borderRadius: rad('button'), borderWidth: CARD_HAIR, borderColor: C.hairlineInput, backgroundColor: C.tintCard },
+  voiceGlyph: { width: 38, height: 38, borderRadius: 11, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center' },
+  voiceLabel: { fontFamily: textFace(700), fontSize: 10.5, fontWeight: '700', letterSpacing: 10.5 * 0.1, textTransform: 'uppercase', color: C.ink, flex: 1 },
+  voiceTime: { fontFamily: textFace(700), fontSize: 12, fontWeight: '700', color: C.ink, fontVariant: ['tabular-nums'] },
 
   chip: { alignSelf: 'flex-start', paddingVertical: 4, paddingHorizontal: 9, borderRadius: rad('pill') },
   chipText: { ...ty('pill'), textTransform: 'uppercase' },
