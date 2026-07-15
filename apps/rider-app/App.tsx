@@ -55,7 +55,6 @@ import {
   Card,
   CheckRow,
   CodeCells,
-  CourseValideeCelebration,
   DangerButton,
   EmptyState,
   GhostButton,
@@ -88,6 +87,8 @@ import {
   CheckRow as FasoCheckRow,
   SealMark as FasoSealMark,
   ProofSeal as FasoProofSeal,
+  Celebration as FasoCelebration,
+  TabBar as FasoTabBar,
   StatusChip as FasoStatusChip,
   FontProofStrip,
   Overline as FasoOverline,
@@ -840,11 +841,14 @@ export default function App() {
             </FpIn>
           )}
 
+          {/* R12 « L'échelle des échecs » (planche l.460–502) — no generic « échec »
+              exists; a colis never has zero guardian. The family picker → retry /
+              refused_final / reschedule; the drop code stays LAST, behind payment. */}
           {screen === 'refusal_reason' && active !== null && (
-            <Card style={styles.flexCard}>
-              <PosterTitle>{t('reason.title')}</PosterTitle>
+            <FpIn style={styles.stackGap}>
+              <FasoPosterTitle>{t('reason.title')}</FasoPosterTitle>
               {FAILURE_REASON_IDS.map((id) => (
-                <GhostButton
+                <FasoGhostButton
                   key={id}
                   label={t(`reason.${id}`)}
                   onPress={() => {
@@ -857,89 +861,91 @@ export default function App() {
                   }}
                 />
               ))}
-            </Card>
+            </FpIn>
           )}
 
           {screen === 'retry_window' && active !== null && (
-            <Card>
-              {/* R12 « l'échelle des échecs » — retry arm. No generic « échec »
-                  exists; the drop code stays LAST, behind the payment leg. */}
-              <PosterTitle>{t('retry.status')}</PosterTitle>
-              <StatusChip tone="warn" label={`${t('retry.until')} ${windowUntil}`} />
-              <PrimaryButton label={t('retry.retry_action')} onPress={() => walk((w) => retryDelivery(w, active.id))} />
-              <GhostButton label={t('retry.expired_action')} onPress={() => walk((w) => expireRetryWindow(w, active.id))} />
-            </Card>
+            <FpIn style={styles.stackGap}>
+              {/* R12 retry arm — the honest countdown window, shown never hidden. */}
+              <FasoPosterTitle>{t('retry.status')}</FasoPosterTitle>
+              <FasoStatusChip tone="warn" label={`${t('retry.until')} ${windowUntil}`} />
+              <FasoPrimaryButton label={t('retry.retry_action')} onPress={() => walk((w) => retryDelivery(w, active.id))} />
+              <FasoGhostButton label={t('retry.expired_action')} onPress={() => walk((w) => expireRetryWindow(w, active.id))} />
+            </FpIn>
           )}
 
           {screen === 'refused_final' && active !== null && (
-            <Card>
+            <FpIn style={styles.stackGap}>
               {/* Buyer-fault refusal, register:money — calm, cause and
                   what-happens-next stated; no shame, no jargon. */}
-              <PosterTitle>{t('refused_final.status')}</PosterTitle>
-              <Body>{t('refused_final.fee')}</Body>
-              <Body>{t('refused_final.next')}</Body>
-              <PrimaryButton label={t('refused_final.retour_action')} onPress={() => walk((w) => prepareReturn(w, active.id))} />
-            </Card>
+              <FasoPosterTitle>{t('refused_final.status')}</FasoPosterTitle>
+              <FasoBody>{t('refused_final.fee')}</FasoBody>
+              <FasoBody>{t('refused_final.next')}</FasoBody>
+              <FasoPrimaryButton label={t('refused_final.retour_action')} onPress={() => walk((w) => prepareReturn(w, active.id))} />
+            </FpIn>
           )}
 
           {screen === 'reschedule_planned' && (
-            <Card>
+            <FpIn style={styles.stackGap}>
               {/* The non-escalating arm: honest absence / provider failure —
                   nothing is lost, the order stays whole; the 2e passage appears
                   on the course list with its lineage. */}
-              <PosterTitle>{t('reschedule.status')}</PosterTitle>
-              <Body>{t('reschedule.next')}</Body>
-              <StatusChip tone="info" label={t('reschedule.lineage')} />
-              <SecondaryButton label={t('nav.retour_courses')} onPress={toCourses} />
-            </Card>
+              <FasoPosterTitle>{t('reschedule.status')}</FasoPosterTitle>
+              <FasoBody>{t('reschedule.next')}</FasoBody>
+              <FasoStatusChip tone="info" label={t('reschedule.lineage')} />
+              <FasoSecondaryButton label={t('nav.retour_courses')} onPress={toCourses} />
+            </FpIn>
           )}
 
+          {/* R13 « Le retour à deux clés » (planche l.504–541, SE6.2): the seller's
+              key and the rider's key, both or neither. A single key REFUSES — the
+              garde does not move on one hand (attemptReturnHandover is the pure gate). */}
           {screen === 'retour_colis' && active !== null && (
-            <Card style={styles.flexCard}>
-              {/* R13 « le retour à deux clés » (SE6.2): the seller's key and the
-                  rider's key, both or neither. A single key REFUSES. */}
-              <PosterTitle>{t('retour.title')}</PosterTitle>
-              <QuoteRule tone="accent">{t('retour.custodian')}</QuoteRule>
-              <Overline>{t('retour.two_keys')}</Overline>
-              <View style={styles.keyRow}>
-                <View style={styles.keyLabel}>
-                  <IconCle size={T.body.size} color={C.ink} />
-                  <Body style={styles.keyText}>{t('retour.key_seller')}</Body>
+            <FpIn style={styles.stackGap}>
+              <FasoPosterTitle>{t('retour.title')}</FasoPosterTitle>
+              <FasoQuoteRule accent>{t('retour.custodian')}</FasoQuoteRule>
+              <FasoOverline>{t('retour.two_keys')}</FasoOverline>
+              <FasoCard>
+                <View style={styles.keyRow}>
+                  <View style={styles.keyLabel}>
+                    <IconCle size={T.body.size} color={FASO.accentDeepAlt} />
+                    <FasoBody style={styles.keyText}>{t('retour.key_seller')}</FasoBody>
+                  </View>
+                  {key1 ? (
+                    <IconCoche size={T.title.size} color={FASO.okFg} />
+                  ) : (
+                    <FasoGhostButton label={t('retour.key_seller_action')} onPress={() => setKey1(true)} />
+                  )}
                 </View>
-                {key1 ? (
-                  <IconCoche size={T.title.size} color={C.success} />
-                ) : (
-                  <GhostButton label={t('retour.key_seller_action')} onPress={() => setKey1(true)} />
-                )}
-              </View>
-              <View style={styles.keyRow}>
-                <View style={styles.keyLabel}>
-                  <IconCle size={T.body.size} color={C.ink} />
-                  <Body style={styles.keyText}>{t('retour.key_rider')}</Body>
+                <View style={styles.keyRow}>
+                  <View style={styles.keyLabel}>
+                    <IconCle size={T.body.size} color={FASO.accentDeepAlt} />
+                    <FasoBody style={styles.keyText}>{t('retour.key_rider')}</FasoBody>
+                  </View>
+                  {key2 ? (
+                    <IconCoche size={T.title.size} color={FASO.okFg} />
+                  ) : (
+                    <FasoGhostButton
+                      label={t('retour.key_rider_action')}
+                      onPress={() => {
+                        // A single-key attempt REFUSES: both hands, or the custody
+                        // does not move (attemptReturnHandover is the pure gate).
+                        if (attemptReturnHandover({ seller: key1, rider: true }) === 'refused') {
+                          setOneKeyMsg(true);
+                          return;
+                        }
+                        setKey2(true);
+                      }}
+                    />
+                  )}
                 </View>
-                {key2 ? (
-                  <IconCoche size={T.title.size} color={C.success} />
-                ) : (
-                  <GhostButton
-                    label={t('retour.key_rider_action')}
-                    onPress={() => {
-                      // A single-key attempt REFUSES: both hands, or the custody
-                      // does not move (attemptReturnHandover is the pure gate).
-                      if (attemptReturnHandover({ seller: key1, rider: true }) === 'refused') {
-                        setOneKeyMsg(true);
-                        return;
-                      }
-                      setKey2(true);
-                    }}
-                  />
-                )}
-              </View>
+              </FasoCard>
               {oneKeyMsg && !key2 && (
                 <View style={styles.refuseNote}>
-                  <Body style={styles.refuseNoteText}>{t('retour.one_key_refused')}</Body>
+                  <Text style={styles.refuseNoteText}>{t('retour.one_key_refused')}</Text>
                 </View>
               )}
-              <PrimaryButton
+              <FasoPrimaryButton
                 label={t('retour.action')}
                 disabled={attemptReturnHandover({ seller: key1, rider: key2 }) === 'refused'}
                 onPress={() => {
@@ -948,7 +954,7 @@ export default function App() {
                   toCourses();
                 }}
               />
-            </Card>
+            </FpIn>
           )}
 
           {/* R11 « Course validée » (planche l.442–458) — the proof is complete;
@@ -967,7 +973,7 @@ export default function App() {
               </FasoCard>
               <FasoQuoteRule>{t('delivered.no_money')}</FasoQuoteRule>
               <FasoSecondaryButton label={t('nav.retour_courses')} onPress={toCourses} />
-              {celebrate && <CourseValideeCelebration onDone={() => setCelebrate(false)} />}
+              {celebrate && <FasoCelebration label={t('delivered.next')} sublabel={t('delivered.proof_complete')} onDone={() => setCelebrate(false)} />}
             </FpIn>
           )}
         </View>
@@ -981,7 +987,7 @@ export default function App() {
       </View>
 
       {HUBS.includes(screen) && (
-        <TabBar
+        <FasoTabBar
           items={[
             { key: 'service', Icon: IconMoto, label: t('nav.tab_service'), active: screen === 'service', onPress: () => setStack([START]) },
             { key: 'courses', Icon: IconColis, label: t('nav.tab_courses'), active: screen === 'courses', onPress: () => toCourses() },
@@ -1072,11 +1078,11 @@ const styles = StyleSheet.create({
   tickBR: { bottom: spacing.sm, right: spacing.sm, borderBottomWidth: interaction.cornerTick.strokePx, borderRightWidth: interaction.cornerTick.strokePx },
   linkRow: { alignItems: 'center', paddingVertical: spacing.sm, minHeight: touch.minTargetPx, justifyContent: 'center' },
   linkText: { color: C.accentStrong, fontSize: T.label.size, lineHeight: T.label.size * T.label.lh, fontWeight: '800', letterSpacing: T.label.ls, textTransform: 'uppercase', textDecorationLine: 'underline' },
-  keyRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, borderWidth: interaction.hairline.strong, borderColor: C.ink, padding: spacing.md, minHeight: touch.minTargetPx },
+  keyRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: touch.minTargetPx },
   keyLabel: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   keyText: { flex: 1 },
-  refuseNote: { borderLeftWidth: interaction.accentEdgePx - 1, borderLeftColor: C.danger, backgroundColor: C.dangerTint, padding: spacing.md },
-  refuseNoteText: { color: C.dangerDeep },
+  refuseNote: { borderRadius: spacing.lg, backgroundColor: FASO.dangerBg, padding: spacing.md },
+  refuseNoteText: { color: FASO.dangerFg, fontSize: T.body.size, lineHeight: T.body.size * T.body.lh, fontWeight: '600' },
   validRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   validHead: { alignItems: 'center', gap: spacing.sm, paddingTop: spacing.md },
   proofList: { gap: spacing.sm },

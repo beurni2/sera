@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, Text, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 import { alpha, C, DARK, GEO, rad, ty } from './faso';
 import { displayFace, textFace } from './faso-fonts';
-import { WovenBand, FpBar } from './signature';
+import { WovenBand, FpBar, FpPop } from './signature';
 import { IconRepere, IconEcouter, IconScelle, IconCoche, type IconProps } from './icons';
 
 /**
@@ -164,6 +164,22 @@ export function ProofSeal() {
     <View style={styles.proofSeal}>
       <IconCoche size={34} color={C.onAccent} />
     </View>
+  );
+}
+
+/** The rider's ONE named moment — « Course validée » (planche l.582–590). A dark
+ * scrim, the gold proof seal popping in (fpPop, ≤ celebrateMax), the title between
+ * two dashed gold rules, an engineered emotional peak with dignity: no confetti-
+ * spam, no fake urgency. Tap to dismiss. Reduced-motion safe (FpPop is static). */
+export function Celebration({ label, sublabel, onDone }: { label: string; sublabel: string; onDone: () => void }) {
+  return (
+    <Pressable style={styles.celScrim} onPress={onDone} accessibilityRole="button">
+      <View style={styles.celRule} />
+      <FpPop style={styles.celSealWrap}><ProofSeal /></FpPop>
+      <Text style={styles.celTitle}>{label}</Text>
+      <Text style={styles.celSub}>{sublabel}</Text>
+      <View style={styles.celRule} />
+    </Pressable>
   );
 }
 
@@ -505,6 +521,11 @@ const styles = StyleSheet.create({
   sealCode: { fontFamily: displayFace(800), fontSize: 21, fontWeight: '800', letterSpacing: 21 * 0.1, color: C.ink, fontVariant: ['tabular-nums'], flex: 1 },
   sealLabel: { ...ty('caps'), color: C.sub, textTransform: 'none' },
   proofSeal: { width: 78, height: 78, borderRadius: rad('pill'), backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center', shadowColor: C.accent, shadowOpacity: 0.5, shadowRadius: 20, shadowOffset: { width: 0, height: 14 }, elevation: 6 },
+  celScrim: { ...StyleSheet.absoluteFillObject, backgroundColor: DARK.celebrationScrim, alignItems: 'center', justifyContent: 'center', gap: 20, paddingHorizontal: 32 },
+  celRule: { width: 132, height: 0, borderTopWidth: 3, borderStyle: 'dashed', borderColor: C.accent },
+  celSealWrap: { alignItems: 'center' },
+  celTitle: { fontFamily: displayFace(800), fontSize: 30, fontWeight: '800', letterSpacing: 30 * 0.02, color: DARK.bandText, textAlign: 'center' },
+  celSub: { fontFamily: textFace(700), fontSize: 11, fontWeight: '700', letterSpacing: 11 * 0.12, textTransform: 'uppercase', color: C.accent, textAlign: 'center' },
 
   chip: { alignSelf: 'flex-start', paddingVertical: 4, paddingHorizontal: 9, borderRadius: rad('pill') },
   chipText: { ...ty('pill'), textTransform: 'uppercase' },

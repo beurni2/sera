@@ -79,6 +79,13 @@ export function FpIn({ children, style }: { children: React.ReactNode; style?: S
   return <Animated.View style={[{ flex: 1 }, style, { opacity: p, transform: [{ translateY }] }]}>{children}</Animated.View>;
 }
 
+/** fpPop — a badge popping in (§ Motion: fpPop .3–.45s). Wrap the celebration seal. */
+export function FpPop({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
+  const p = useEntry('fpPop');
+  const scale = p.interpolate({ inputRange: [0, 0.6, 1], outputRange: [0.6, 1.06, 1] });
+  return <Animated.View style={[style, { opacity: p, transform: [{ scale }] }]}>{children}</Animated.View>;
+}
+
 /** fpBar — the server-wait bar (§ Motion: fpBar 1.3s ease-in-out). A calm sweeping
  * track, never a spinner-apology; static bar under reduced motion. */
 export function FpBar() {

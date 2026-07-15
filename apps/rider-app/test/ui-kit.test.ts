@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { landmark, motion, celebration } from '@platform/ui-tokens/legacy';
+import { landmark, motion } from '@platform/ui-tokens/legacy';
+import { motion as fpMotion } from '@platform/ui-tokens';
 
 /**
  * WO-6.1 — the visual layer obeys Grand Teint (ui-tokens v0.9.0, sera theme).
@@ -103,14 +104,18 @@ describe('WO-6.1 Grand Teint visual layer (rider-app)', () => {
     expect(app).toMatch(/<FasoPendingNotice lines=\{\[t\('pay_wait\.hint'\)/);
   });
 
-  it('the rider’s ONE named moment is the course_validee celebration — token-driven, ≤ 800 ms', () => {
-    const kit = read('src/ui/kit.tsx');
-    expect(kit).toMatch(/export function CourseValideeCelebration/);
-    expect(kit).toMatch(/celebration\.courseValidee/);
-    expect(celebration.courseValidee.app).toBe('sera');
-    expect(celebration.haloMs).toBeLessThanOrEqual(motion.celebrateMaxMs);
+  it('the rider’s ONE named moment is the « Course validée » celebration — fpPop-bounded, ≤ 800 ms', () => {
+    // WO-FP-SERA: the Faso peak (planche l.582–590) — the gold proof seal pops in on
+    // fpPop over the dark scrim; token-driven, dignified, no confetti-spam. The Grand
+    // Teint CourseValideeCelebration stays in the /legacy kit (unused by the app).
+    const faso = read('src/ui/faso-kit.tsx');
+    expect(faso).toMatch(/export function Celebration/);
+    expect(faso).toMatch(/<FpPop[\s\S]*<ProofSeal \/>/);
+    expect(faso).toMatch(/celScrim: \{[\s\S]*DARK\.celebrationScrim/);
+    // fpPop is bounded well under the celebration ceiling (≤ 800 ms), reduced-motion safe
+    expect(fpMotion.fpPop.durationMs.max).toBeLessThanOrEqual(motion.celebrateMaxMs);
     const app = read('App.tsx');
-    expect(app).toMatch(/<CourseValideeCelebration onDone=/);
+    expect(app).toMatch(/<FasoCelebration label=/);
   });
 
   it('the screen change eases in on the ONE soft spring — token duration + curve, static under reduced motion', () => {
@@ -162,8 +167,8 @@ describe('WO-6.1 Grand Teint visual layer (rider-app)', () => {
     for (const key of ['nav.tab_service', 'nav.tab_courses']) {
       expect(app).toContain(`t('${key}')`);
     }
-    expect(app).toMatch(/\{HUBS\.includes\(screen\) && \(\s*<TabBar/);
-    const tabBlock = app.slice(app.indexOf('<TabBar'), app.indexOf('{/* R14'));
+    expect(app).toMatch(/\{HUBS\.includes\(screen\) && \(\s*<FasoTabBar/);
+    const tabBlock = app.slice(app.indexOf('<FasoTabBar'), app.indexOf('{/* R14'));
     expect(tabBlock).toMatch(/key: 'service'[^\n]*setStack\(\[START\]\)/);
     expect(tabBlock).toMatch(/key: 'courses'[^\n]*toCourses\(\)/);
     expect(tabBlock).not.toMatch(/go\(/);

@@ -744,6 +744,12 @@
     "screenClass": "status"
   },
   {
+    "key": "delivered.proof_complete",
+    "fr": "La preuve est complète",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
     "key": "retour.custodian",
     "fr": "Vous restez le gardien jusqu'au bout du retour. Le scellé reste intact.",
     "register": "neutral",
