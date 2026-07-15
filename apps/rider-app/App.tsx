@@ -76,7 +76,7 @@ import {
   type ChipTone,
 } from './src/ui/kit';
 import { SosButton, SosSheet, type SosState } from './src/ui/faso-sos';
-import { FpIn, FpPulseDot, QuoteRule as FasoQuoteRule } from './src/ui/signature';
+import { FpIn, FpPulseDot, QuoteRule as FasoQuoteRule, CornerTicks as FasoCornerTicks } from './src/ui/signature';
 import { C as FASO } from './src/ui/faso';
 import {
   FasoHeader,
@@ -87,6 +87,7 @@ import {
   LandmarkCard as FasoLandmarkCard,
   CheckRow as FasoCheckRow,
   SealMark as FasoSealMark,
+  ProofSeal as FasoProofSeal,
   StatusChip as FasoStatusChip,
   FontProofStrip,
   Overline as FasoOverline,
@@ -712,17 +713,17 @@ export default function App() {
             </FpIn>
           )}
 
+          {/* R8 « En route » — the proof-photo moment (SE-I06). The documentary
+              frame with corner ticks (signature element 5); the capture lands
+              evidence_pending INSTANTLY, then persists in the background. */}
           {screen === 'evidence' && active !== null && (
-            <Card>
-              <PosterTitle>{t('evidence.title')}</PosterTitle>
+            <FpIn style={styles.stackGap}>
+              <FasoPosterTitle>{t('evidence.title')}</FasoPosterTitle>
               <View style={styles.photoFrame}>
-                <IconCamera size={T.display.size} color={C.soft} />
-                <View style={[styles.cornerTick, styles.tickTL]} />
-                <View style={[styles.cornerTick, styles.tickTR]} />
-                <View style={[styles.cornerTick, styles.tickBL]} />
-                <View style={[styles.cornerTick, styles.tickBR]} />
+                <IconCamera size={T.display.size} color={FASO.accentSoft} />
+                <FasoCornerTicks />
               </View>
-              <PrimaryButton
+              <FasoPrimaryButton
                 label={t('evidence.action')}
                 onPress={() => {
                   // SERA-S2 · SE-I06: mint the command_id ONCE at the gesture (the
@@ -741,11 +742,11 @@ export default function App() {
                   }).then(refreshBacklog, () => setPersistFailed(true));
                 }}
               />
-            </Card>
+            </FpIn>
           )}
 
           {screen === 'evidence_pending' && active !== null && (
-            <Card>
+            <FpIn style={styles.stackGap}>
               {/* SE-I06: capturing queued the photo = PENDING and the drop is
                   LOCKED. The rider CANNOT unlock it — ONLY the authoritative
                   server ack (the outbox flush outcome) advances this screen. Being
@@ -753,64 +754,63 @@ export default function App() {
                   sandbox constant stands in for the live flush outcome at assembly. */}
               {!offline && SANDBOX_EVIDENCE_ACK === 'applied' ? (
                 <>
-                  <PosterTitle>{t('evidence.confirmed_status')}</PosterTitle>
-                  <PrimaryButton
+                  <FasoPosterTitle>{t('evidence.confirmed_status')}</FasoPosterTitle>
+                  <FasoPrimaryButton
                     label={t('evidence.continue_action')}
                     onPress={() => walk((w) => applyEvidenceServerAck(w, active.id, SANDBOX_EVIDENCE_ACK))}
                   />
                 </>
               ) : (
                 <>
-                  <PendingNotice lines={[t('evidence.pending')]} />
-                  <SecondaryButton label={t('nav.retour_courses')} onPress={toCourses} />
+                  <FasoPendingNotice lines={[t('evidence.pending')]} />
+                  <FasoSecondaryButton label={t('nav.retour_courses')} onPress={toCourses} />
                 </>
               )}
-            </Card>
+            </FpIn>
           )}
 
+          {/* R9 « À la porte » — door inspection. The buyer opens, verifies; the
+              rider waits (2–4 min, noted, never imposed). The rider stands at the
+              repère, never a street address. */}
           {screen === 'door_inspection' && active !== null && (
-            <Card style={styles.flexCard}>
-              <PosterTitle>{t('inspect.title')}</PosterTitle>
-              <Body>{t('inspect.body')}</Body>
-              {active.attempt === 2 && <StatusChip tone="info" label={t('courses.lineage_2e')} />}
-              {/* The signature card again at the door — the rider stands at the
-                  repère, never at a street address. */}
-              <LandmarkCard
+            <FpIn style={styles.stackGap}>
+              <FasoPosterTitle>{t('inspect.title')}</FasoPosterTitle>
+              <FasoBody>{t('inspect.body')}</FasoBody>
+              {active.attempt === 2 && <FasoStatusChip tone="info" label={t('courses.lineage_2e')} />}
+              <FasoLandmarkCard
                 zone={active.locationLines[2]}
                 lines={active.locationLines}
                 repereLabel={t('assignment.landmark_label')}
                 indicationsLabel={t('repere.indications')}
               />
-              <PrimaryButton label={t('inspect.accept_action')} onPress={() => walk((w) => acceptInspection(w, active.id))} />
-              <GhostButton label={t('problem.action')} onPress={() => walk((w) => reportProblem(w, active.id))} />
-              <Pressable style={styles.linkRow} onPress={() => walk((w) => reportProblem(w, active.id))} accessibilityRole="button">
-                <Text style={styles.linkText}>{t('inspect.cantpay')}</Text>
-              </Pressable>
-            </Card>
+              <FasoPrimaryButton label={t('inspect.accept_action')} onPress={() => walk((w) => acceptInspection(w, active.id))} />
+              <FasoDangerButton label={t('problem.action')} onPress={() => walk((w) => reportProblem(w, active.id))} />
+              <FasoGhostButton label={t('inspect.cantpay')} onPress={() => walk((w) => reportProblem(w, active.id))} />
+            </FpIn>
           )}
 
           {screen === 'payment_wait' && active !== null && (
-            <Card>
+            <FpIn style={styles.stackGap}>
               {/* R9 « à la porte » — SE-I11: the rider CANNOT assert payment.
                   No button, no field, no gesture advances this screen; ONLY the
                   provider signal does. The waiting screen is UNSKIPPABLE. The
                   sandbox constant stands in for the live signal at assembly. */}
               {SANDBOX_DOOR_SIGNAL === 'confirmed' ? (
                 <>
-                  <PosterTitle>{t('pay_ok.status')}</PosterTitle>
-                  <Body>{t('pay_ok.body')}</Body>
-                  <PrimaryButton
+                  <FasoPosterTitle>{t('pay_ok.status')}</FasoPosterTitle>
+                  <FasoBody>{t('pay_ok.body')}</FasoBody>
+                  <FasoPrimaryButton
                     label={t('pay_ok.continue_action')}
                     onPress={() => walk((w) => applyProviderDoorSignal(w, active.id, SANDBOX_DOOR_SIGNAL))}
                   />
                 </>
               ) : (
                 <>
-                  <PosterTitle>{t('pay_wait.status')}</PosterTitle>
-                  <PendingNotice lines={[t('pay_wait.hint'), t('pay_wait.operator')]} />
+                  <FasoPosterTitle>{t('pay_wait.status')}</FasoPosterTitle>
+                  <FasoPendingNotice lines={[t('pay_wait.hint'), t('pay_wait.operator')]} />
                 </>
               )}
-            </Card>
+            </FpIn>
           )}
 
           {/* R10 « le code de remise » — Faso Premium (WO-FP-SERA proof view 3/3):
@@ -951,23 +951,24 @@ export default function App() {
             </Card>
           )}
 
+          {/* R11 « Course validée » (planche l.442–458) — the proof is complete;
+              Séra emits a SIGNAL, never money. A gold proof seal, the three-line
+              proof, the no-money quote; the celebration overlays it on entry. */}
           {screen === 'delivered' && (
-            <Card ink style={styles.flexCard}>
-              {/* R11 « course validée » — the proof is complete; Séra emits a
-                  SIGNAL, never money. The celebration overlays this card. */}
-              <View style={styles.validRow}>
-                <IconCoche size={T.title.size} color={C.success} />
-                <PosterTitle>{t('delivered.status')}</PosterTitle>
+            <FpIn style={styles.stackGap}>
+              <View style={styles.validHead}>
+                <FasoProofSeal />
+                <FasoPosterTitle>{t('delivered.status')}</FasoPosterTitle>
               </View>
-              <View style={styles.proofList}>
+              <FasoCard>
                 <ProofLine label={t('delivered.proof_package')} />
                 <ProofLine label={t('delivered.proof_seal')} />
                 <ProofLine label={t('delivered.proof_code')} />
-              </View>
-              <QuoteRule>{t('delivered.no_money')}</QuoteRule>
-              <SecondaryButton label={t('nav.retour_courses')} onPress={toCourses} />
+              </FasoCard>
+              <FasoQuoteRule>{t('delivered.no_money')}</FasoQuoteRule>
+              <FasoSecondaryButton label={t('nav.retour_courses')} onPress={toCourses} />
               {celebrate && <CourseValideeCelebration onDone={() => setCelebrate(false)} />}
-            </Card>
+            </FpIn>
           )}
         </View>
       </ScreenTransition>
@@ -1029,7 +1030,7 @@ export default function App() {
 function ProofLine({ label }: { label: string }) {
   return (
     <View style={styles.proofRow}>
-      <IconCoche size={T.body.size} color={C.success} />
+      <IconCoche size={T.body.size} color={FASO.okFg} />
       <Text style={styles.proofText}>{label}</Text>
     </View>
   );
@@ -1077,6 +1078,7 @@ const styles = StyleSheet.create({
   refuseNote: { borderLeftWidth: interaction.accentEdgePx - 1, borderLeftColor: C.danger, backgroundColor: C.dangerTint, padding: spacing.md },
   refuseNoteText: { color: C.dangerDeep },
   validRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  validHead: { alignItems: 'center', gap: spacing.sm, paddingTop: spacing.md },
   proofList: { gap: spacing.sm },
   proofRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   proofText: { color: C.onInk, fontSize: T.body.size, lineHeight: T.body.size * T.body.lh, flex: 1 },

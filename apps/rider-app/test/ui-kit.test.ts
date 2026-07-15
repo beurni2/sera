@@ -95,12 +95,12 @@ describe('WO-6.1 Grand Teint visual layer (rider-app)', () => {
 
   it('pending states are PendingNotice rows — queued = pending, honest, never done', () => {
     const app = read('App.tsx');
-    // affectation is restyled (Faso); evidence + door-wait keep the honest pending
-    // notice until their own stage. Queued = pending, honest, never done — either kit.
+    // WO-FP-SERA: the pending surfaces are the Faso fpBar notice. Queued = pending,
+    // honest, never done — the drop stays locked until the authoritative server ack.
     expect(app).toMatch(/<FasoPendingNotice lines=\{\[t\('assignment\.ack_pending'\)\]\}/);
-    expect(app).toMatch(/<PendingNotice lines=\{\[t\('evidence\.pending'\)\]\}/);
+    expect(app).toMatch(/<FasoPendingNotice lines=\{\[t\('evidence\.pending'\)\]\}/);
     // the door-payment wait is a PendingNotice, never a rider-actionable field
-    expect(app).toMatch(/<PendingNotice lines=\{\[t\('pay_wait\.hint'\)/);
+    expect(app).toMatch(/<FasoPendingNotice lines=\{\[t\('pay_wait\.hint'\)/);
   });
 
   it('the rider’s ONE named moment is the course_validee celebration — token-driven, ≤ 800 ms', () => {

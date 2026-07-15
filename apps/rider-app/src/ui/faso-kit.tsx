@@ -157,6 +157,16 @@ export function CheckRow({ label, checked, onPress }: { label: string; checked: 
   );
 }
 
+/** R11 « validée » proof seal (planche l.446): the 78px gold disc + a dark check —
+ * the completed-proof moment (Séra emits a signal, never money). */
+export function ProofSeal() {
+  return (
+    <View style={styles.proofSeal}>
+      <IconCoche size={34} color={C.onAccent} />
+    </View>
+  );
+}
+
 /** R7 « le scellé » (planche l.298–303): the seal card — a white accent-bordered
  * head with the seal glyph, the tnum SC code (Bricolage 800, tracked), « usage
  * unique ». Custody begins at the seal, never a second before. */
@@ -494,6 +504,7 @@ const styles = StyleSheet.create({
   sealCard: { flexDirection: 'row', alignItems: 'center', gap: 11, backgroundColor: C.card, borderRadius: rad('card'), borderWidth: 1.5, borderColor: C.accent, paddingVertical: 14, paddingHorizontal: 16 },
   sealCode: { fontFamily: displayFace(800), fontSize: 21, fontWeight: '800', letterSpacing: 21 * 0.1, color: C.ink, fontVariant: ['tabular-nums'], flex: 1 },
   sealLabel: { ...ty('caps'), color: C.sub, textTransform: 'none' },
+  proofSeal: { width: 78, height: 78, borderRadius: rad('pill'), backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center', shadowColor: C.accent, shadowOpacity: 0.5, shadowRadius: 20, shadowOffset: { width: 0, height: 14 }, elevation: 6 },
 
   chip: { alignSelf: 'flex-start', paddingVertical: 4, paddingHorizontal: 9, borderRadius: rad('pill') },
   chipText: { ...ty('pill'), textTransform: 'uppercase' },

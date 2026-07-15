@@ -59,8 +59,8 @@ describe('R9 — the rider CANNOT assert payment (SE-I11, unrepresentable)', () 
     // constant — never a rider-chosen value
     expect(wait).toMatch(/applyProviderDoorSignal\(w, active\.id, SANDBOX_DOOR_SIGNAL\)/);
     expect(wait).toMatch(/SANDBOX_DOOR_SIGNAL === 'confirmed'/);
-    // the pending arm offers a PendingNotice, never an action
-    expect(wait).toMatch(/<PendingNotice/);
+    // the pending arm offers a PendingNotice, never an action (Faso fpBar notice)
+    expect(wait).toMatch(/<FasoPendingNotice/);
     // and App never calls applyProviderDoorSignal with a literal rider value
     expect(app).not.toMatch(/applyProviderDoorSignal\([^)]*,\s*'(?!.*SANDBOX)/);
   });
