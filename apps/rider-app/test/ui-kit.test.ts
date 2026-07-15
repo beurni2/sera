@@ -135,16 +135,20 @@ describe('WO-6.1 Grand Teint visual layer (rider-app)', () => {
   it('the permanent brand strip — WO-FP-SERA: the Faso woven band replaces the Grand Teint theme strip in the App shell', () => {
     const kit = read('src/ui/kit.tsx');
     // the Grand Teint ThemeStrip stays defined in the /legacy kit (the un-migrated
-    // views + the frozen console pattern); the App shell now renders the Faso <WovenBand/>.
+    // views + the frozen console pattern); the App shell now renders the Faso monogram
+    // header, which carries the woven band at its top (planche l.33).
     expect(kit).toMatch(/export function ThemeStrip/);
     expect(kit).toMatch(/band\.themeStripPx/);
     const app = read('App.tsx');
-    expect(app).toMatch(/<WovenBand \/>/);
+    expect(app).toMatch(/<FasoHeader/);
+    const fasoKit = read('src/ui/faso-kit.tsx');
+    expect(fasoKit).toMatch(/export function FasoHeader/);
+    expect(fasoKit).toMatch(/<WovenBand \/>/); // the band rides at the top of the header
   });
 
   it('navigation chrome: header everywhere, hubs = Service·Courses, tabs are waypoint RESETS (never edges, never go())', () => {
     const app = read('App.tsx');
-    expect(app).toMatch(/<AppHeader/);
+    expect(app).toMatch(/<FasoHeader/);
     expect(app).toMatch(/HUBS: readonly Screen\[\] = \['service', 'courses'\]/);
     for (const key of ['nav.tab_service', 'nav.tab_courses']) {
       expect(app).toContain(`t('${key}')`);

@@ -98,6 +98,38 @@ Implementation: `src/ui/faso-sos.tsx` `SosButton` / `SosSheet` (mounted uncondit
 
 ---
 
+---
+
+# VIEWS 4–13 PASS (founder release, 2026-07-15) — R1's old skeleton dies
+
+Same method: planche lines cited → implementation → lawful divergences. Built in verified
+stages; the states inventory (14 framed + 12 absent) is the checklist; honesty contracts
+verbatim; the contrast + anatomy + long-status + font guards ride every stage.
+
+## Chrome — the header + banners  (planche l.32–42)
+
+Implementation: `faso-kit` `FasoHeader` / `OfflineBanner` / `PendingNotice`, wired in `App.tsx`.
+
+| Planche element (quoted · line) | Implementation | Divergence · lawful reason |
+|---|---|---|
+| Woven strip `height:6;repeating-linear-gradient(...D9A441...C2571B...)` ABOVE the header (l.33) | `FasoHeader` renders `<WovenBand />` first (signature module, svg pattern) | none |
+| Monogram `38×38;border-radius:13;background:#D9A441;color:#241A05;Bricolage 800 16` « S » (l.36) | `styles.monogram` + `monogramText` (displayFace(800) 16, C.accent/onAccent) | none |
+| Identity `Bricolage 800 18;-.01em` « Séra » + `11.5;#6F6355` « Moussa K. · certifié SÉRA-2026 » (l.38–39) | `wordmark` (displayFace(800) 18) = `t('app.title')`; `headerSub` = `t('service.certified_name')` | screen NAME moves to each view's body title (planche two-title structure); a slim Faso back row rides above the monogram when the stack is deep (the app's stack > the planche demo) — lawful. |
+| Right state chip `10.5;700;.08em;radius 99;{{headBg/headFg}}` (l.41) | `right` = `FasoStatusChip` (shift on/off tone) | chip point-size resolves to the token pill role (hierarchy law). |
+| Offline (states-law #5, no planche frame) | `OfflineBanner` — warm warn strip (C.warnBg/warnFg), the REAL backlog count | in-grammar adaptation (planche shows offline per-screen, not a top banner). |
+
+## R1 « Service »  (planche l.55–94)
+
+Implementation: `App.tsx` `screen === 'service'` block.
+
+| Planche element (quoted · line) | Implementation | Divergence · lawful reason |
+|---|---|---|
+| shiftOff title `Bricolage 800 27;-.02em` « Hors service. » + body (l.59–60) | `FasoPosterTitle` (displayFace(800) 23) + `FasoBody` | title 23 vs 27 — the token poster role (one screen-title size; hierarchy law). |
+| Cert card — WHITE `border-radius:20;border:1px #EDE4D3;background:#FFFFFF`; row [lock icon + « position suivie qu'en service »] · row [CERTIFIÉ badge + « Moussa K. » ] (l.61–71) | `FasoCard` (default white) — IconScelle (C.accent) + `FasoBody`; `FasoStatusChip tone="accent"` + `FasoBody` | the card is WHITE (was Grand Teint `ink`/dark — corrected to the planche white). NOTICE·V3 link omitted (a planche demo affordance the app has no target for). |
+| « Prendre mon service » CTA `h56;background:#D9A441;Bricolage 800 16;glow` (l.72) | `FasoPrimaryButton` | none |
+| shiftPending « DÉMARRAGE EN ATTENTE… » caps + fpBar + « un départ hors ligne ne confère **rien** » (l.74–79) | `FasoPendingNotice` (title + FpBar + honest line) | honesty verbatim: queued = pending, confers NOTHING (R1 law). |
+| shiftOn `border:1.5px #D9A441;background:#FBF3DF;glow`; pulse dot `#14603A` + `Bricolage 800 20` « En service » + note; « Voir mes courses » + « Terminer mon service » (l.81–92) | `FasoCard accent` + `FpPulseDot color={C.okFg}` + `FasoPosterTitle` + `FasoBody`; `FasoPrimaryButton` + `FasoSecondaryButton` | the arriving course is shown as a `CourseCard` (proposed) — the app previews the incoming course here; consistent grammar. |
+
 ## Fonts (STEP 0 — the type question, standing independently)
 
 The planche loads Bricolage Grotesque (500/600/700/800) + Instrument Sans (400/500/600/700)

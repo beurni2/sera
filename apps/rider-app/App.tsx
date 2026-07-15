@@ -51,7 +51,6 @@ import {
   type DemoWorld,
 } from './src/demo/store';
 import {
-  AppHeader,
   Body,
   Card,
   CheckRow,
@@ -77,17 +76,24 @@ import {
   type ChipTone,
 } from './src/ui/kit';
 import { SosButton, SosSheet, type SosState } from './src/ui/faso-sos';
-import { WovenBand, FpIn } from './src/ui/signature';
+import { FpIn, FpPulseDot } from './src/ui/signature';
 import { C as FASO } from './src/ui/faso';
 import {
+  FasoHeader,
   CourseCard as FasoCourseCard,
   ScreenTitle as FasoScreenTitle,
+  PosterTitle as FasoPosterTitle,
+  Card as FasoCard,
+  StatusChip as FasoStatusChip,
   FontProofStrip,
   Overline as FasoOverline,
   EmptyState as FasoEmptyState,
   Body as FasoBody,
   PrimaryButton as FasoPrimaryButton,
+  SecondaryButton as FasoSecondaryButton,
   GhostButton as FasoGhostButton,
+  PendingNotice as FasoPendingNotice,
+  OfflineBanner as FasoOfflineBanner,
   CodeCells as FasoCodeCells,
   Keypad as FasoKeypad,
 } from './src/ui/faso-kit';
@@ -426,14 +432,6 @@ export default function App() {
   const arriving = world.courses.find((c) => !c.closed && c.step === 'affectation') ?? null;
   const shiftAction = shift === 'off' ? t('shift.start_action') : t('shift.end_action');
 
-  const headerTitle =
-    screen === 'service'
-      ? t('app.title')
-      : screen === 'courses'
-        ? t('courses.title')
-        : active !== null
-          ? active.name
-          : t('app.title');
   const headerChip = screen === 'service' ? (shift === 'on' ? t('shift.on') : t('shift.off')) : t('assignment.title');
 
   const voiceFor = () => ({
@@ -450,18 +448,19 @@ export default function App() {
 
   return (
     <SafeAreaView style={styles.screen}>
-      {/* Grand Teint status bar ink over warm paper (statusbar token). */}
       <StatusBar style="dark" backgroundColor={C.paper} />
-      <WovenBand />
-      <AppHeader
-        title={headerTitle}
-        subtitle={screen === 'service' ? t('service.tagline') : undefined}
-        backLabel={`← ${t('nav.retour')}`}
+      {/* R1's chrome retired: the Faso monogram header (planche l.32–42) — the woven
+          strip, the « S » monogram, the « Séra » identity + the rider certification,
+          the right state chip. The screen NAME lives in each view's body title. */}
+      <FasoHeader
+        title={t('app.title')}
+        subtitle={t('service.certified_name')}
+        backLabel={`‹ ${t('nav.retour')}`}
         onBack={stack.length > 1 ? back : undefined}
-        right={<StatusChip tone={shift === 'on' ? 'ok' : 'muted'} label={headerChip} />}
+        right={<FasoStatusChip tone={shift === 'on' ? 'ok' : 'muted'} label={headerChip} />}
       />
       {offline && (
-        <OfflineBanner
+        <FasoOfflineBanner
           label={
             backlog === 0
               ? t('offline.banner')
@@ -471,7 +470,7 @@ export default function App() {
       )}
       {/* SERA-S4: a background-persist failure surfaces HERE (the CTO's banner
           surface) — honest « à réessayer », never a lost-in-silence write. */}
-      {persistFailed && <PendingNotice lines={[t('offline.persist_failed')]} />}
+      {persistFailed && <FasoPendingNotice lines={[t('offline.persist_failed')]} />}
       {IS_PREVIEW && (
         <View style={styles.previewBanner}>
           <Text style={styles.previewBannerText}>{t('preview.banner')}</Text>
@@ -480,26 +479,30 @@ export default function App() {
 
       <ScreenTransition screenKey={screen}>
         <View style={styles.content}>
+          {/* R1 « Service » — Faso Premium (planche l.55–94): the old skeleton
+              retired. shiftOff = a white cert card + « Prendre mon service »;
+              shiftPending = the honest fpBar pending (queued confers NOTHING — R1
+              law); shiftOn = the warm accent « En service » card w/ a live pulse. */}
           {screen === 'service' && (
-            <View style={styles.stackGap}>
+            <FpIn style={styles.stackGap}>
               {/* The font-proof strip (STEP 0, the type question) — preview-only,
                   so the founder judges the two faces on the device. */}
               {IS_PREVIEW && <FontProofStrip />}
               {shift === 'off' && (
                 <>
-                  <PosterTitle>{t('service.off_title')}</PosterTitle>
-                  <Body>{t('service.off_body')}</Body>
-                  <Card ink>
+                  <FasoPosterTitle>{t('service.off_title')}</FasoPosterTitle>
+                  <FasoBody>{t('service.off_body')}</FasoBody>
+                  <FasoCard>
                     <View style={styles.certRow}>
-                      <IconScelle size={T.body.size} color={C.ink} />
-                      <Body style={styles.certText}>{t('service.location_note')}</Body>
+                      <IconScelle size={T.body.size} color={FASO.accent} />
+                      <FasoBody style={styles.certText}>{t('service.location_note')}</FasoBody>
                     </View>
                     <View style={styles.certRow}>
-                      <StatusChip tone="info" label={t('service.certified')} />
-                      <Body style={styles.certText}>{t('service.certified_name')}</Body>
+                      <FasoStatusChip tone="accent" label={t('service.certified')} />
+                      <FasoBody style={styles.certText}>{t('service.certified_name')}</FasoBody>
                     </View>
-                  </Card>
-                  <PrimaryButton
+                  </FasoCard>
+                  <FasoPrimaryButton
                     label={shiftAction}
                     onPress={() => {
                       // No server in the sandbox: a start stays queued = PENDING —
@@ -510,37 +513,35 @@ export default function App() {
                 </>
               )}
               {shift === 'pending' && (
-                <Card ink>
-                  <Overline>{t('shift.pending_title')}</Overline>
-                  {/* Queued = pending, never done — never a fake « En service ». */}
-                  <PendingNotice lines={[t('service.pending_note')]} />
-                </Card>
+                // Queued = pending, never done — never a fake « En service ».
+                <FasoPendingNotice title={t('shift.pending_title')} lines={[t('service.pending_note')]} />
               )}
               {shift === 'on' && (
                 <>
-                  <Card accent>
+                  <FasoCard accent>
                     <View style={styles.onRow}>
-                      <View style={styles.onDot} />
-                      <PosterTitle>{t('shift.on')}</PosterTitle>
+                      <FpPulseDot color={FASO.okFg} />
+                      <FasoPosterTitle>{t('shift.on')}</FasoPosterTitle>
                     </View>
-                    <Body>{t('service.on_note')}</Body>
-                  </Card>
+                    <FasoBody>{t('service.on_note')}</FasoBody>
+                  </FasoCard>
                   {arriving !== null && (
-                    <ListRow
-                      Icon={KIND_ICON[arriving.kind]}
-                      code={t('assignment.title')}
+                    <FasoCourseCard
+                      variant="proposed"
+                      code={arriving.id.toUpperCase()}
+                      status={{ label: t('courses.statut_proposee'), tone: 'accent' }}
+                      deadline={`${t('courses.before')} ${proposalUntil}`}
                       title={arriving.locationLines[0]}
-                      meta={`${arriving.locationLines[2]} · ${t('assignment.landmark_label')}`}
-                      chip={<StatusChip tone="info" label={t(statusKeyFor(arriving))} />}
+                      subtitle={`${arriving.locationLines[2]} · ${t('assignment.landmark_label')}`}
                       onPress={() => openCourse(arriving)}
                     />
                   )}
-                  <PrimaryButton label={t('courses.title')} onPress={() => go('courses')} />
-                  <GhostButton label={t('shift.end_action')} onPress={() => setShift('off')} />
+                  <FasoPrimaryButton label={t('courses.title')} onPress={() => go('courses')} />
+                  <FasoSecondaryButton label={t('shift.end_action')} onPress={() => setShift('off')} />
                 </>
               )}
-              <SecondaryButton label={t('offline.toggle')} onPress={() => net.set(offline ? 'online' : 'offline')} />
-            </View>
+              <FasoSecondaryButton label={t('offline.toggle')} onPress={() => net.set(offline ? 'online' : 'offline')} />
+            </FpIn>
           )}
 
           {/* R2 « Mes courses » — Faso Premium (WO-FP-SERA proof view 2/3), TRUE

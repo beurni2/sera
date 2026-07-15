@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, Text, View, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
-import { alpha, C, GEO, rad, ty } from './faso';
+import { alpha, C, DARK, GEO, rad, ty } from './faso';
 import { displayFace, textFace } from './faso-fonts';
-import { WovenBand } from './signature';
+import { WovenBand, FpBar } from './signature';
 import type { IconProps } from './icons';
 
 /**
@@ -14,9 +14,24 @@ import type { IconProps } from './icons';
 
 /** The permanent header: « S » monogram + « Séra » wordmark + context sub + a
  * right state chip, over the woven band (HANDOFF: monogram 38 or · « Séra » 18/800). */
-export function FasoHeader({ title, subtitle, right }: { title: string; subtitle?: string; right?: React.ReactNode }) {
+export function FasoHeader({
+  title, subtitle, right, backLabel, onBack,
+}: {
+  title: string; subtitle?: string | undefined; right?: React.ReactNode;
+  backLabel?: string | undefined; onBack?: (() => void) | undefined;
+}) {
   return (
-    <View>
+    <View style={styles.headerWrap}>
+      {/* planche l.33: the woven strip sits ABOVE the monogram header row. */}
+      <WovenBand />
+      {/* The app's stack runs deeper than the planche demo; a Faso-warm back row
+          rides above the monogram identity when a back exists (the planche keeps
+          the monogram fixed left, so back is its own slim row — lawful divergence). */}
+      {onBack !== undefined && (
+        <Pressable style={({ pressed }) => [styles.backChip, pressed && styles.pressed]} onPress={onBack} accessibilityRole="button">
+          <Text style={styles.backChipText}>{backLabel}</Text>
+        </Pressable>
+      )}
       <View style={styles.header}>
         <View style={styles.monogram}>
           <Text style={styles.monogramText}>S</Text>
@@ -27,7 +42,70 @@ export function FasoHeader({ title, subtitle, right }: { title: string; subtitle
         </View>
         {right}
       </View>
-      <WovenBand />
+    </View>
+  );
+}
+
+/* ── screen surfaces (planche cards + titles + buttons + pending) ─────────────── */
+
+/** The screen poster title — Bricolage 800, 23px, -.02em (planche R5/R6 l.228/260). */
+export function PosterTitle({ children }: { children: React.ReactNode }) {
+  return <Text style={styles.posterTitle}>{children}</Text>;
+}
+
+/** A card surface. default = white, hairline, r card (planche R3/R5 cards). `accent`
+ * = the warm gold-tint card w/ 1.5 accent border + gold glow (planche R1 shiftOn,
+ * R7 sealed). `ink` = the dark relay/ladder band (planche R12 header, DARK.band). */
+export function Card({
+  children, accent, ink, style,
+}: {
+  children: React.ReactNode; accent?: boolean; ink?: boolean; style?: StyleProp<ViewStyle>;
+}) {
+  return <View style={[styles.surface, accent === true && styles.surfaceAccent, ink === true && styles.surfaceInk, style]}>{children}</View>;
+}
+
+/** Secondary — the quiet outline arm (planche « Terminer mon service » / « Retour à
+ * la file » : 48–50 h, 1.5 hairline border, transparent, sub text). */
+export function SecondaryButton({ label, onPress }: { label: string; onPress: () => void }) {
+  return (
+    <Pressable style={({ pressed }) => [styles.secondary, pressed && styles.pressed]} onPress={onPress} accessibilityRole="button">
+      <Text style={styles.secondaryText}>{label}</Text>
+    </Pressable>
+  );
+}
+
+/** Danger — the refusal arm, as dignified as acceptance (planche R5 « Le colis ne
+ * part pas » : 2px danger border, transparent, Bricolage-800 danger text). Never a
+ * grey whisper of shame (charter: the refusal path as dignified as the purchase). */
+export function DangerButton({ label, onPress }: { label: string; onPress: () => void }) {
+  return (
+    <Pressable style={({ pressed }) => [styles.danger, pressed && styles.pressed]} onPress={onPress} accessibilityRole="button">
+      <Text style={styles.dangerText}>{label}</Text>
+    </Pressable>
+  );
+}
+
+/** The pending surface (planche « … EN ATTENTE » : white card, caps title, fpBar
+ * sweep, honest sub lines). Offline law: queued = pending, confers NOTHING — the
+ * copy here may only promise what the code can keep (the safety-copy doctrine). */
+export function PendingNotice({ title, lines }: { title?: string | undefined; lines: readonly string[] }) {
+  return (
+    <View style={styles.pending}>
+      {title !== undefined && <Text style={styles.pendingTitle}>{title}</Text>}
+      <FpBar />
+      {lines.map((line) => <Text key={line} style={styles.pendingText}>{line}</Text>)}
+    </View>
+  );
+}
+
+/** The offline banner — a warm warn-register strip (states-law #5: « Hors ligne :
+ * N actions en attente », N = the REAL outbox count). Offline is a designed state,
+ * never an alert wall; queued = pending, reconnect clears it. */
+export function OfflineBanner({ label }: { label: string }) {
+  return (
+    <View style={styles.offlineBanner}>
+      <View style={styles.offlineDot} />
+      <Text style={styles.offlineBannerText}>{label}</Text>
     </View>
   );
 }
@@ -292,12 +370,32 @@ export function FontProofStrip() {
 
 const CARD_HAIR = 1;
 const styles = StyleSheet.create({
-  header: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: GEO.paddingPx, paddingTop: 10, paddingBottom: 12, backgroundColor: C.paper },
+  headerWrap: { backgroundColor: C.paper },
+  header: { flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: GEO.paddingPx, paddingTop: 10, paddingBottom: 11, backgroundColor: C.paper },
   monogram: { width: 38, height: 38, borderRadius: 13, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center' },
-  monogramText: { fontFamily: displayFace(800), fontSize: 22, fontWeight: '800', color: C.onAccent },
+  monogramText: { fontFamily: displayFace(800), fontSize: 16, fontWeight: '800', color: C.onAccent },
   headerTitles: { flex: 1 },
-  wordmark: { ...ty('view'), color: C.ink },
-  headerSub: { ...ty('caps'), color: C.sub },
+  wordmark: { fontFamily: displayFace(800), fontSize: 18, fontWeight: '800', letterSpacing: 18 * -0.01, color: C.ink },
+  headerSub: { fontFamily: textFace(400), fontSize: 11.5, fontWeight: '400', color: C.sub },
+  backChip: { alignSelf: 'flex-start', paddingHorizontal: GEO.paddingPx, paddingTop: 8, minHeight: 32, justifyContent: 'center' },
+  backChipText: { ...ty('caps'), color: C.accentDeepAlt },
+
+  posterTitle: { fontFamily: displayFace(800), fontSize: 23, fontWeight: '800', letterSpacing: 23 * -0.02, color: C.ink },
+  surface: { backgroundColor: C.card, borderRadius: rad('card'), borderWidth: CARD_HAIR, borderColor: C.hairline, padding: 17, gap: 10 },
+  surfaceAccent: { backgroundColor: C.tintCard, borderWidth: 1.5, borderColor: C.accent, shadowColor: C.accent, shadowOpacity: 0.3, shadowRadius: 18, shadowOffset: { width: 0, height: 12 }, elevation: 5 },
+  surfaceInk: { backgroundColor: DARK.band, borderWidth: 0 },
+
+  secondary: { minHeight: 50, borderRadius: rad('buttonSecondary'), borderWidth: 1.5, borderColor: C.hairlineInput, backgroundColor: 'transparent', alignItems: 'center', justifyContent: 'center', paddingHorizontal: GEO.paddingPx },
+  secondaryText: { fontFamily: textFace(700), fontSize: 13.5, fontWeight: '700', color: C.sub },
+  danger: { minHeight: 54, borderRadius: rad('button'), borderWidth: 2, borderColor: C.dangerBorder, backgroundColor: 'transparent', alignItems: 'center', justifyContent: 'center', paddingHorizontal: GEO.paddingPx },
+  dangerText: { fontFamily: displayFace(800), fontSize: 14.5, fontWeight: '800', color: C.dangerFg },
+
+  pending: { backgroundColor: C.card, borderRadius: rad('card'), borderWidth: CARD_HAIR, borderColor: C.hairline, padding: 16, gap: 11 },
+  pendingTitle: { ...ty('caps'), color: C.ink },
+  pendingText: { ...ty('body', 'max'), color: C.sub },
+  offlineBanner: { flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: C.warnBg, paddingVertical: 9, paddingHorizontal: GEO.paddingPx },
+  offlineDot: { width: 8, height: 8, borderRadius: rad('pill'), backgroundColor: C.warnFgAlt },
+  offlineBannerText: { ...ty('body', 'min'), color: C.warnFg, flex: 1, fontWeight: '600' },
 
   chip: { alignSelf: 'flex-start', paddingVertical: 4, paddingHorizontal: 9, borderRadius: rad('pill') },
   chipText: { ...ty('pill'), textTransform: 'uppercase' },
