@@ -89,7 +89,6 @@ import {
   Celebration as FasoCelebration,
   TabBar as FasoTabBar,
   StatusChip as FasoStatusChip,
-  FontProofStrip,
   Overline as FasoOverline,
   EmptyState as FasoEmptyState,
   Body as FasoBody,
@@ -501,9 +500,6 @@ export default function App() {
               law); shiftOn = the warm accent « En service » card w/ a live pulse. */}
           {screen === 'service' && (
             <FpIn style={styles.stackGap}>
-              {/* The font-proof strip (STEP 0, the type question) — preview-only,
-                  so the founder judges the two faces on the device. */}
-              {IS_PREVIEW && <FontProofStrip />}
               {shift === 'off' && (
                 <>
                   <FasoPosterTitle>{t('service.off_title')}</FasoPosterTitle>

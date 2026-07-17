@@ -441,31 +441,6 @@ export function Keypad({ onKey, onBack }: { onKey: (d: string) => void; onBack: 
   );
 }
 
-/**
- * The FONT-PROOF STRIP (WO-FP-SERA STEP 0 · the type question, standing
- * independently of the layout). A specimen the founder eyeballs ON DEVICE in the
- * preview: the two built faces at their real weights, so « is this the type? » is
- * answerable from the phone, not from a name-table test. Preview-only (mounted
- * behind IS_PREVIEW); zero custody/money surface. */
-const FONT_SPECIMEN: ReadonlyArray<readonly [string, string, number]> = [
-  ['Bricolage 800 — titres', displayFace(800), 22],
-  ['Bricolage 700 — chiffres 734921', displayFace(700), 20],
-  ['Instrument 700 — statuts', textFace(700), 15],
-  ['Instrument 600 — accents', textFace(600), 15],
-  ['Instrument 500 — libellés', textFace(500), 15],
-  ['Instrument 400 — le corps du texte', textFace(400), 14],
-];
-export function FontProofStrip() {
-  return (
-    <View style={styles.fontProof}>
-      <Text style={styles.fontProofCaption}>ÉPREUVE TYPO — BRICOLAGE · INSTRUMENT</Text>
-      {FONT_SPECIMEN.map(([label, face, size]) => (
-        <Text key={label} style={{ fontFamily: face, fontSize: size, color: C.ink }} numberOfLines={1}>{label}</Text>
-      ))}
-    </View>
-  );
-}
-
 const CARD_HAIR = 1;
 const styles = StyleSheet.create({
   headerWrap: { backgroundColor: C.paper },
@@ -562,8 +537,6 @@ const styles = StyleSheet.create({
   lineagePillFull: { alignSelf: 'stretch', paddingVertical: 6, paddingHorizontal: 10, borderRadius: rad('tile'), borderWidth: CARD_HAIR, borderColor: C.accentDeep },
   lineagePillTextFull: { fontFamily: textFace(700), fontSize: 12, fontWeight: '700', color: C.accentDeepAlt, lineHeight: 12 * 1.4 },
 
-  fontProof: { backgroundColor: C.card, borderRadius: rad('tile'), borderWidth: CARD_HAIR, borderColor: C.hairline, padding: 14, gap: 7, marginBottom: 12 },
-  fontProofCaption: { ...ty('caps'), color: C.sub },
   glyphTile: { width: 44, height: 44, borderRadius: rad('tile'), backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center' },
   glyphTileMuted: { backgroundColor: C.hairlineStrong },
   rowBody: { flex: 1, gap: 2 },
