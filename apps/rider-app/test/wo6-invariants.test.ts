@@ -29,7 +29,7 @@ describe('R14 — SOS is reachable in one gesture from every screen', () => {
   it('the SOS button + sheet are mounted UNCONDITIONALLY, outside every screen branch', () => {
     // exactly one SOS button, rendered after the whole screen stack closes
     expect(app.match(/<SosButton /g)).toHaveLength(1);
-    expect(app.indexOf('<SosButton')).toBeGreaterThan(app.indexOf('</ScreenTransition>'));
+    expect(app.indexOf('<SosButton')).toBeGreaterThan(app.indexOf('</ScrollView>'));
     expect(app.indexOf('<SosButton')).toBeGreaterThan(app.lastIndexOf('{HUBS.includes(screen)'));
     // from the SOS render to the end of the tree there is NO per-screen gate:
     // the SOS is a top-level child of the app, not inside any `screen === …`.
@@ -59,8 +59,8 @@ describe('R9 — the rider CANNOT assert payment (SE-I11, unrepresentable)', () 
     // constant — never a rider-chosen value
     expect(wait).toMatch(/applyProviderDoorSignal\(w, active\.id, SANDBOX_DOOR_SIGNAL\)/);
     expect(wait).toMatch(/SANDBOX_DOOR_SIGNAL === 'confirmed'/);
-    // the pending arm offers a PendingNotice, never an action
-    expect(wait).toMatch(/<PendingNotice/);
+    // the pending arm offers a PendingNotice, never an action (Faso fpBar notice)
+    expect(wait).toMatch(/<FasoPendingNotice/);
     // and App never calls applyProviderDoorSignal with a literal rider value
     expect(app).not.toMatch(/applyProviderDoorSignal\([^)]*,\s*'(?!.*SANDBOX)/);
   });
@@ -85,11 +85,13 @@ describe('R9 — the rider CANNOT assert payment (SE-I11, unrepresentable)', () 
 describe('R10 — the drop code cannot render before provider confirmation', () => {
   it('the code entry (cells + keypad) exists ONLY on the drop screen', () => {
     const drop = app.slice(app.indexOf("screen === 'drop'"), app.indexOf("screen === 'refusal_reason'"));
-    expect(drop).toMatch(/<CodeCells value=\{codeStr\}/);
-    expect(drop).toMatch(/<Keypad/);
+    // WO-FP-SERA proof view 3/3: the R10 code entry restyled to the Faso components;
+    // the invariant is unchanged — the code surface exists ONLY on the drop screen.
+    expect(drop).toMatch(/<FasoCodeCells value=\{codeStr\}/);
+    expect(drop).toMatch(/<FasoKeypad/);
     // no code surface anywhere else in the app
-    expect(app.match(/<CodeCells\b/g)).toHaveLength(1);
-    expect(app.match(/<Keypad\b/g)).toHaveLength(1);
+    expect(app.match(/<FasoCodeCells\b/g)).toHaveLength(1);
+    expect(app.match(/<FasoKeypad\b/g)).toHaveLength(1);
   });
 
   it('the spine makes the drop screen reachable ONLY after the provider-confirmed signal', () => {

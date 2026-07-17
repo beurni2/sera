@@ -25,7 +25,7 @@ import {
   band,
   ribbon,
   celebration,
-} from '@platform/ui-tokens';
+} from '@platform/ui-tokens/legacy';
 import { FONT_WEIGHTS, type FontWeight } from './fonts';
 import {
   IconRepere,

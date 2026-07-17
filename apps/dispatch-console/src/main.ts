@@ -1,4 +1,4 @@
-import { sharedColour, seraColour, spacing, radius, type as typo, interaction, band, touch } from '@platform/ui-tokens';
+import { sharedColour, seraColour, spacing, radius, type as typo, interaction, band, touch } from '@platform/ui-tokens/legacy';
 import { landmarkFirstLines } from '@sera/logistics-service';
 import { buildSandboxWorld } from './sandbox-world';
 import { SANDBOX_DOOR_ORDER, SANDBOX_DOOR_PAID_SIGNAL, SANDBOX_DWELL, SANDBOX_OUTCOMES } from './sandbox-followup';

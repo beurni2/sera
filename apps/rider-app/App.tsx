@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { FlatList, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
-import { seraTheme, spacing, radius, touch, type as typo, interaction, money } from '@platform/ui-tokens';
+import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { seraTheme, spacing, radius, touch, type as typo, interaction, money } from '@platform/ui-tokens/legacy';
 import {
   FAILURE_REASON_IDS,
   POLICY_CHECK_IDS,
@@ -51,12 +51,10 @@ import {
   type DemoWorld,
 } from './src/demo/store';
 import {
-  AppHeader,
   Body,
   Card,
   CheckRow,
   CodeCells,
-  CourseValideeCelebration,
   DangerButton,
   EmptyState,
   GhostButton,
@@ -69,17 +67,40 @@ import {
   PosterTitle,
   PrimaryButton,
   QuoteRule,
-  ScreenTransition,
   SealMark,
   SecondaryButton,
-  SosButton,
-  SosSheet,
   StatusChip,
   TabBar,
-  ThemeStrip,
   type ChipTone,
-  type SosState,
 } from './src/ui/kit';
+import { SosButton, SosSheet, type SosState } from './src/ui/faso-sos';
+import { FpIn, FpPulseDot, QuoteRule as FasoQuoteRule, CornerTicks as FasoCornerTicks } from './src/ui/signature';
+import { C as FASO } from './src/ui/faso';
+import {
+  FasoHeader,
+  CourseCard as FasoCourseCard,
+  ScreenTitle as FasoScreenTitle,
+  PosterTitle as FasoPosterTitle,
+  Card as FasoCard,
+  LandmarkCard as FasoLandmarkCard,
+  CheckRow as FasoCheckRow,
+  SealMark as FasoSealMark,
+  ProofSeal as FasoProofSeal,
+  Celebration as FasoCelebration,
+  TabBar as FasoTabBar,
+  StatusChip as FasoStatusChip,
+  Overline as FasoOverline,
+  EmptyState as FasoEmptyState,
+  Body as FasoBody,
+  PrimaryButton as FasoPrimaryButton,
+  SecondaryButton as FasoSecondaryButton,
+  DangerButton as FasoDangerButton,
+  GhostButton as FasoGhostButton,
+  PendingNotice as FasoPendingNotice,
+  OfflineBanner as FasoOfflineBanner,
+  CodeCells as FasoCodeCells,
+  Keypad as FasoKeypad,
+} from './src/ui/faso-kit';
 import {
   IconColis,
   IconReprendre,
@@ -167,6 +188,12 @@ const toneFor = (course: DemoCourse): ChipTone =>
       : course.step === 'retour_colis' && course.closed
         ? 'ok'
         : STATUS_TONE[course.step];
+
+/** R2 card register (planche R2): the offer window (affectation, not closed) is the
+ * gold proposed card; a closed course is the receded done card; the accepted walk
+ * is the hairline active card. The honest status/tone still ride the states law. */
+const variantFor = (course: DemoCourse): 'proposed' | 'active' | 'done' =>
+  course.closed ? 'done' : course.step === 'affectation' ? 'proposed' : 'active';
 
 /** Course glyphs by kind — icons always paired with text (the chip + title). */
 const KIND_ICON: Record<CourseKind, (p: IconProps) => React.JSX.Element> = {
@@ -409,14 +436,6 @@ export default function App() {
   const arriving = world.courses.find((c) => !c.closed && c.step === 'affectation') ?? null;
   const shiftAction = shift === 'off' ? t('shift.start_action') : t('shift.end_action');
 
-  const headerTitle =
-    screen === 'service'
-      ? t('app.title')
-      : screen === 'courses'
-        ? t('courses.title')
-        : active !== null
-          ? active.name
-          : t('app.title');
   const headerChip = screen === 'service' ? (shift === 'on' ? t('shift.on') : t('shift.off')) : t('assignment.title');
 
   const voiceFor = () => ({
@@ -433,18 +452,28 @@ export default function App() {
 
   return (
     <SafeAreaView style={styles.screen}>
-      {/* Grand Teint status bar ink over warm paper (statusbar token). */}
       <StatusBar style="dark" backgroundColor={C.paper} />
-      <ThemeStrip />
-      <AppHeader
-        title={headerTitle}
-        subtitle={screen === 'service' ? t('service.tagline') : undefined}
-        backLabel={`← ${t('nav.retour')}`}
+      {/* Full-bleed scroll: the SCREEN is the scroll surface. The chrome (header +
+          banners) scrolls WITH the content — NO nested scroll containers, no fixed-
+          region-under-fixed-chrome. The tab dock + the SOS disc stay fixed below. */}
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* R1's chrome retired: the Faso monogram header (planche l.32–42) — the woven
+            strip, the « S » monogram, the « Séra » identity + the rider certification,
+            the right state chip. The screen NAME lives in each view's body title. */}
+        <FasoHeader
+        title={t('app.title')}
+        subtitle={t('service.certified_name')}
+        backLabel={`‹ ${t('nav.retour')}`}
         onBack={stack.length > 1 ? back : undefined}
-        right={<StatusChip tone={shift === 'on' ? 'ok' : 'muted'} label={headerChip} />}
+        right={<FasoStatusChip tone={shift === 'on' ? 'ok' : 'muted'} label={headerChip} />}
       />
       {offline && (
-        <OfflineBanner
+        <FasoOfflineBanner
           label={
             backlog === 0
               ? t('offline.banner')
@@ -454,32 +483,38 @@ export default function App() {
       )}
       {/* SERA-S4: a background-persist failure surfaces HERE (the CTO's banner
           surface) — honest « à réessayer », never a lost-in-silence write. */}
-      {persistFailed && <PendingNotice lines={[t('offline.persist_failed')]} />}
+      {persistFailed && <FasoPendingNotice lines={[t('offline.persist_failed')]} />}
       {IS_PREVIEW && (
         <View style={styles.previewBanner}>
           <Text style={styles.previewBannerText}>{t('preview.banner')}</Text>
         </View>
       )}
 
-      <ScreenTransition screenKey={screen}>
+        {/* Each screen block is FpIn-wrapped (the planche fpIn entry), which
+            re-animates on screen change — the per-screen entry replaces the old
+            cross-screen ScreenTransition (redundant + flex:1 broke the scroll). */}
         <View style={styles.content}>
+          {/* R1 « Service » — Faso Premium (planche l.55–94): the old skeleton
+              retired. shiftOff = a white cert card + « Prendre mon service »;
+              shiftPending = the honest fpBar pending (queued confers NOTHING — R1
+              law); shiftOn = the warm accent « En service » card w/ a live pulse. */}
           {screen === 'service' && (
-            <View style={styles.stackGap}>
+            <FpIn style={styles.stackGap}>
               {shift === 'off' && (
                 <>
-                  <PosterTitle>{t('service.off_title')}</PosterTitle>
-                  <Body>{t('service.off_body')}</Body>
-                  <Card ink>
+                  <FasoPosterTitle>{t('service.off_title')}</FasoPosterTitle>
+                  <FasoBody>{t('service.off_body')}</FasoBody>
+                  <FasoCard>
                     <View style={styles.certRow}>
-                      <IconScelle size={T.body.size} color={C.ink} />
-                      <Body style={styles.certText}>{t('service.location_note')}</Body>
+                      <IconScelle size={T.body.size} color={FASO.accent} />
+                      <FasoBody style={styles.certText}>{t('service.location_note')}</FasoBody>
                     </View>
                     <View style={styles.certRow}>
-                      <StatusChip tone="info" label={t('service.certified')} />
-                      <Body style={styles.certText}>{t('service.certified_name')}</Body>
+                      <FasoStatusChip tone="accent" label={t('service.certified')} />
+                      <FasoBody style={styles.certText}>{t('service.certified_name')}</FasoBody>
                     </View>
-                  </Card>
-                  <PrimaryButton
+                  </FasoCard>
+                  <FasoPrimaryButton
                     label={shiftAction}
                     onPress={() => {
                       // No server in the sandbox: a start stays queued = PENDING —
@@ -490,203 +525,217 @@ export default function App() {
                 </>
               )}
               {shift === 'pending' && (
-                <Card ink>
-                  <Overline>{t('shift.pending_title')}</Overline>
-                  {/* Queued = pending, never done — never a fake « En service ». */}
-                  <PendingNotice lines={[t('service.pending_note')]} />
-                </Card>
+                // Queued = pending, never done — never a fake « En service ».
+                <FasoPendingNotice title={t('shift.pending_title')} lines={[t('service.pending_note')]} />
               )}
               {shift === 'on' && (
                 <>
-                  <Card accent>
+                  <FasoCard accent>
                     <View style={styles.onRow}>
-                      <View style={styles.onDot} />
-                      <PosterTitle>{t('shift.on')}</PosterTitle>
+                      <FpPulseDot color={FASO.okFg} />
+                      <FasoPosterTitle>{t('shift.on')}</FasoPosterTitle>
                     </View>
-                    <Body>{t('service.on_note')}</Body>
-                  </Card>
+                    <FasoBody>{t('service.on_note')}</FasoBody>
+                  </FasoCard>
                   {arriving !== null && (
-                    <ListRow
-                      Icon={KIND_ICON[arriving.kind]}
-                      code={t('assignment.title')}
+                    <FasoCourseCard
+                      variant="proposed"
+                      code={arriving.id.toUpperCase()}
+                      status={{ label: t('courses.statut_proposee'), tone: 'accent' }}
+                      deadline={`${t('courses.before')} ${proposalUntil}`}
                       title={arriving.locationLines[0]}
-                      meta={`${arriving.locationLines[2]} · ${t('assignment.landmark_label')}`}
-                      chip={<StatusChip tone="info" label={t(statusKeyFor(arriving))} />}
+                      subtitle={`${arriving.locationLines[2]} · ${t('assignment.landmark_label')}`}
                       onPress={() => openCourse(arriving)}
                     />
                   )}
-                  <PrimaryButton label={t('courses.title')} onPress={() => go('courses')} />
-                  <GhostButton label={t('shift.end_action')} onPress={() => setShift('off')} />
+                  <FasoPrimaryButton label={t('courses.title')} onPress={() => go('courses')} />
+                  <FasoSecondaryButton label={t('shift.end_action')} onPress={() => setShift('off')} />
                 </>
               )}
-              <SecondaryButton label={t('offline.toggle')} onPress={() => net.set(offline ? 'online' : 'offline')} />
-            </View>
+              <FasoSecondaryButton label={t('offline.toggle')} onPress={() => net.set(offline ? 'online' : 'offline')} />
+            </FpIn>
           )}
 
+          {/* R2 « Mes courses » — Faso Premium (WO-FP-SERA proof view 2/3), TRUE
+              planche anatomy (« Sera - Redesign » R2, lines 96–141): a Bricolage-800
+              screen title over editorial CourseCards — the proposed course is the
+              gold-glow card (left bar · CRS eyebrow · filled PROPOSÉE pill · « avant
+              HH:MM » deadline), NOT a glyph-tile row. The custody semantics + the
+              honest status vocabulary (statusKeyFor/toneFor) ride the states law. */}
           {screen === 'courses' && (
-            <View style={styles.listWrap}>
-              <Overline>{t('courses.overline')}</Overline>
-              <FlatList
-                data={world.courses}
-                keyExtractor={(c) => c.id}
-                initialNumToRender={6}
-                windowSize={5}
-                contentContainerStyle={styles.listContent}
-                ListEmptyComponent={<EmptyState Icon={IconMoto} title={t('shell.no_task')} hint={t('courses.empty_hint')} />}
-                ListFooterComponent={<Text style={styles.listFoot}>{t('courses.one_guardian')}</Text>}
-                renderItem={({ item }) => (
-                  <ListRow
-                    Icon={KIND_ICON[item.kind]}
-                    code={item.id.toUpperCase()}
-                    title={item.locationLines[0]}
-                    meta={`${item.locationLines[2]} · ${item.name}`}
-                    muted={item.closed}
-                    chip={
-                      <>
-                        <StatusChip tone={toneFor(item)} label={t(statusKeyFor(item))} />
-                        {item.attempt === 2 && <StatusChip tone="info" label={t('courses.lineage_2e')} />}
-                      </>
-                    }
-                    onPress={item.closed ? undefined : () => openCourse(item)}
-                  />
-                )}
-              />
-            </View>
+            <FpIn style={styles.listWrap}>
+              <FasoScreenTitle>{t('courses.overline')}</FasoScreenTitle>
+              {/* A MAP, not a FlatList — no nested scroll container; the whole
+                  screen is the single scroll surface (full-bleed). */}
+              {world.courses.length === 0 ? (
+                <FasoEmptyState Icon={IconMoto} title={t('shell.no_task')} hint={t('courses.empty_hint')} />
+              ) : (
+                world.courses.map((item) => {
+                  // The offer window (affectation, not yet acted, not closed) shows
+                  // « Proposée » + the response deadline — the REAL ack/decline
+                  // window; every other course shows its honest status + tone.
+                  const proposed = item.step === 'affectation' && item.ack === 'none' && !item.closed;
+                  return (
+                    <FasoCourseCard
+                      key={item.id}
+                      variant={variantFor(item)}
+                      code={item.id.toUpperCase()}
+                      status={proposed ? { label: t('courses.statut_proposee'), tone: 'accent' } : { label: t(statusKeyFor(item)), tone: toneFor(item) }}
+                      deadline={proposed ? `${t('courses.before')} ${proposalUntil}` : undefined}
+                      lineage={item.attempt === 2 ? t('courses.lineage_2e') : undefined}
+                      title={item.locationLines[0]}
+                      subtitle={`${item.locationLines[2]} · ${item.name}`}
+                      onPress={item.closed ? undefined : () => openCourse(item)}
+                    />
+                  );
+                })
+              )}
+              <Text style={styles.listFoot}>{t('courses.one_guardian')}</Text>
+            </FpIn>
           )}
 
+          {/* R3 « Course proposée » + R4 « Le repère » (planche l.143–223) — the
+              app's affectation screen carries both: the response deadline, the
+              illustrated repère card (voice playable), then the ack/decline arms.
+              Offline law + SERA-S4 connectivity semantics untouched. */}
           {screen === 'affectation' && (
-            <Card style={styles.flexCard}>
-              {active === null ? (
-                <EmptyState Icon={IconMoto} title={t('shell.no_task')} />
-              ) : (
-                <>
-                  <Overline>{`${t('assignment.deadline')} ${proposalUntil}`}</Overline>
-                  {/* R4 « le repère » — the illustrated signature card (SE0.3,
-                      the D18 label class), voice directions playable. */}
-                  <LandmarkCard
-                    zone={active.locationLines[2]}
-                    lines={active.locationLines}
-                    repereLabel={t('assignment.landmark_label')}
-                    indicationsLabel={t('repere.indications')}
-                    illustrated
-                    voice={voiceFor()}
-                  />
-                  <QuoteRule>{t('repere.no_gps')}</QuoteRule>
-                  {active.ack === 'decline_pending' ? (
-                    /* The refusal went out WITHOUT the network: queued =
-                       PENDING, it confers nothing — only a server-confirmed
-                       decline releases; the window still runs. */
-                    <PendingNotice lines={[t('assignment.decline_pending')]} />
-                  ) : active.ack === 'ack_pending' ? (
-                    <>
-                      {/* Queued = PENDING; walking to the pickup is navigation. */}
-                      <PendingNotice lines={[t('assignment.ack_pending')]} />
-                      <PrimaryButton label={t('assignment.pickup_action')} onPress={() => walk((w) => beginPickup(w, active.id))} />
-                      <DangerButton
-                        label={t('assignment.decline_action')}
-                        onPress={() => {
-                          // SERA-S4: the REAL connectivity decides queued-vs-sent —
-                          // offline = decline_pending (confers nothing), online =
-                          // server-confirmed decline. The retired constant lied here.
-                          declineCourse(world, active.id, connectivity);
-                          setWorld({ ...world });
-                          toCourses();
-                        }}
-                      />
-                    </>
-                  ) : (
-                    <>
-                      <PrimaryButton
-                        label={t('assignment.ack_action')}
-                        onPress={() => {
-                          acknowledgeCourse(world, active.id);
-                          setWorld({ ...world });
-                        }}
-                      />
-                      <DangerButton
-                        label={t('assignment.decline_action')}
-                        onPress={() => {
-                          // SERA-S4: the REAL connectivity decides queued-vs-sent —
-                          // offline = decline_pending (confers nothing), online =
-                          // server-confirmed decline. The retired constant lied here.
-                          declineCourse(world, active.id, connectivity);
-                          setWorld({ ...world });
-                          toCourses();
-                        }}
-                      />
-                    </>
-                  )}
-                  <GhostButton
-                    label={t('assignment.expired_action')}
-                    onPress={() => {
-                      expireProposal(world, active.id);
-                      setWorld({ ...world });
-                      toCourses();
-                    }}
-                  />
-                </>
-              )}
-            </Card>
+            active === null ? (
+              <FasoCard style={styles.flexCard}><FasoEmptyState Icon={IconMoto} title={t('shell.no_task')} /></FasoCard>
+            ) : (
+              <FpIn style={styles.stackGap}>
+                <FasoOverline>{`${t('assignment.deadline')} ${proposalUntil}`}</FasoOverline>
+                <FasoLandmarkCard
+                  zone={active.locationLines[2]}
+                  lines={active.locationLines}
+                  repereLabel={t('assignment.landmark_label')}
+                  indicationsLabel={t('repere.indications')}
+                  illustrated
+                  voice={voiceFor()}
+                />
+                <FasoQuoteRule>{t('repere.no_gps')}</FasoQuoteRule>
+                {active.ack === 'decline_pending' ? (
+                  /* The refusal went out WITHOUT the network: queued = PENDING, it
+                     confers nothing — only a server-confirmed decline releases; the
+                     window still runs. */
+                  <FasoPendingNotice lines={[t('assignment.decline_pending')]} />
+                ) : active.ack === 'ack_pending' ? (
+                  <>
+                    {/* Queued = PENDING; walking to the pickup is navigation. */}
+                    <FasoPendingNotice lines={[t('assignment.ack_pending')]} />
+                    <FasoPrimaryButton label={t('assignment.pickup_action')} onPress={() => walk((w) => beginPickup(w, active.id))} />
+                    <FasoDangerButton
+                      label={t('assignment.decline_action')}
+                      onPress={() => {
+                        // SERA-S4: the REAL connectivity decides queued-vs-sent —
+                        // offline = decline_pending (confers nothing), online =
+                        // server-confirmed decline. The retired constant lied here.
+                        declineCourse(world, active.id, connectivity);
+                        setWorld({ ...world });
+                        toCourses();
+                      }}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <FasoPrimaryButton
+                      label={t('assignment.ack_action')}
+                      onPress={() => {
+                        acknowledgeCourse(world, active.id);
+                        setWorld({ ...world });
+                      }}
+                    />
+                    <FasoDangerButton
+                      label={t('assignment.decline_action')}
+                      onPress={() => {
+                        declineCourse(world, active.id, connectivity);
+                        setWorld({ ...world });
+                        toCourses();
+                      }}
+                    />
+                  </>
+                )}
+                <FasoGhostButton
+                  label={t('assignment.expired_action')}
+                  onPress={() => {
+                    expireProposal(world, active.id);
+                    setWorld({ ...world });
+                    toCourses();
+                  }}
+                />
+              </FpIn>
+            )
           )}
 
           {/* The custody walk — every transition below goes through the demo
               store, which calls custody-flow.ts (the rule source) and throws
               on any out-of-order move. */}
+          {/* R5 « Vérification » (planche l.225–253) — objective conformity only,
+              never quality/authenticity. The checks fill green; the refusal arm is
+              the screen's one DangerButton (the app models a single checkbox, not
+              the planche's per-row bad-button). */}
           {screen === 'verify' && active !== null && (
-            <Card style={styles.flexCard}>
-              <PosterTitle>{t('verify.title')}</PosterTitle>
-              <Body>{t('verify.body')}</Body>
-              <View style={styles.checkList}>
+            <FpIn style={styles.stackGap}>
+              <FasoPosterTitle>{t('verify.title')}</FasoPosterTitle>
+              <FasoBody>{t('verify.body')}</FasoBody>
+              <FasoCard>
+                {/* Ecrans R5: the card leads with the colis identity — the order ref
+                    chip + what's being verified — before the 7 checks. */}
+                <View style={styles.verifyHead}>
+                  <FasoStatusChip tone="muted" label={active.id.toUpperCase()} />
+                  <FasoBody style={styles.verifyHeadName}>{active.name}</FasoBody>
+                </View>
                 {POLICY_CHECK_IDS.map((id) => (
-                  <CheckRow key={id} label={t(`check.${id}`)} checked={checks[id] === true} onPress={() => setChecks({ ...checks, [id]: !checks[id] })} />
+                  <FasoCheckRow key={id} label={t(`check.${id}`)} checked={checks[id] === true} onPress={() => setChecks({ ...checks, [id]: !checks[id] })} />
                 ))}
-              </View>
-              <PrimaryButton
+              </FasoCard>
+              <FasoPrimaryButton
                 label={t('verify.accept_action')}
                 disabled={!allChecked}
                 onPress={() => walk((w) => passVerification(w, active.id, checks))}
               />
               {/* The refusal arm is as dignified as acceptance — its own
                   polished danger style, never a shame path. */}
-              <DangerButton label={t('verify.refuse_action')} onPress={() => walk((w) => refusePickup(w, active.id))} />
-            </Card>
+              <FasoDangerButton label={t('verify.refuse_action')} onPress={() => walk((w) => refusePickup(w, active.id))} />
+            </FpIn>
           )}
 
+          {/* R6 « Le refus digne » (planche l.256–291, r6Done) — money-register calm:
+              what happened, what happens next; the course closes with dignity. */}
           {screen === 'refused' && (
-            <Card>
-              {/* The refusal path, money-register calm — what happened, what
-                  happens next; the course closes with dignity. */}
-              <PosterTitle>{t('refuse.status')}</PosterTitle>
-              <Body>{t('refuse.next')}</Body>
-              <SecondaryButton label={t('nav.retour_courses')} onPress={toCourses} />
-            </Card>
+            <FpIn style={styles.stackGap}>
+              <FasoPosterTitle>{t('refuse.status')}</FasoPosterTitle>
+              <FasoBody>{t('refuse.next')}</FasoBody>
+              <FasoSecondaryButton label={t('nav.retour_courses')} onPress={toCourses} />
+            </FpIn>
           )}
 
+          {/* R7 « Le scellé » (planche l.293–334) — custody begins HERE, not a second
+              before. Offline: the seal is queued = PENDING; the garde does not begin
+              offline (seal.offline honesty verbatim). */}
           {screen === 'seal' && active !== null && (
-            <Card ink>
-              {/* R7 « le scellé » — custody begins HERE, not a second before. */}
-              <PosterTitle>{t('seal.title')}</PosterTitle>
-              <Body>{t('seal.body')}</Body>
-              <SealMark code={SEAL_ID} label={t('seal.single_use')} />
+            <FpIn style={styles.stackGap}>
+              <FasoPosterTitle>{t('seal.title')}</FasoPosterTitle>
+              <FasoBody>{t('seal.body')}</FasoBody>
+              <FasoSealMark code={SEAL_ID} label={t('seal.single_use')} />
               {offline ? (
-                <PendingNotice lines={[t('seal.offline')]} />
+                <FasoPendingNotice lines={[t('seal.offline')]} />
               ) : (
-                <PrimaryButton label={t('seal.action')} onPress={() => walk((w) => registerSeal(w, active.id))} />
+                <FasoPrimaryButton label={t('seal.action')} onPress={() => walk((w) => registerSeal(w, active.id))} />
               )}
-            </Card>
+            </FpIn>
           )}
 
+          {/* R8 « En route » — the proof-photo moment (SE-I06). The documentary
+              frame with corner ticks (signature element 5); the capture lands
+              evidence_pending INSTANTLY, then persists in the background. */}
           {screen === 'evidence' && active !== null && (
-            <Card>
-              <PosterTitle>{t('evidence.title')}</PosterTitle>
+            <FpIn style={styles.stackGap}>
+              <FasoPosterTitle>{t('evidence.title')}</FasoPosterTitle>
               <View style={styles.photoFrame}>
-                <IconCamera size={T.display.size} color={C.soft} />
-                <View style={[styles.cornerTick, styles.tickTL]} />
-                <View style={[styles.cornerTick, styles.tickTR]} />
-                <View style={[styles.cornerTick, styles.tickBL]} />
-                <View style={[styles.cornerTick, styles.tickBR]} />
+                <IconCamera size={T.display.size} color={FASO.accentSoft} />
+                <FasoCornerTicks />
               </View>
-              <PrimaryButton
+              <FasoPrimaryButton
                 label={t('evidence.action')}
                 onPress={() => {
                   // SERA-S2 · SE-I06: mint the command_id ONCE at the gesture (the
@@ -705,11 +754,11 @@ export default function App() {
                   }).then(refreshBacklog, () => setPersistFailed(true));
                 }}
               />
-            </Card>
+            </FpIn>
           )}
 
           {screen === 'evidence_pending' && active !== null && (
-            <Card>
+            <FpIn style={styles.stackGap}>
               {/* SE-I06: capturing queued the photo = PENDING and the drop is
                   LOCKED. The rider CANNOT unlock it — ONLY the authoritative
                   server ack (the outbox flush outcome) advances this screen. Being
@@ -717,94 +766,100 @@ export default function App() {
                   sandbox constant stands in for the live flush outcome at assembly. */}
               {!offline && SANDBOX_EVIDENCE_ACK === 'applied' ? (
                 <>
-                  <PosterTitle>{t('evidence.confirmed_status')}</PosterTitle>
-                  <PrimaryButton
+                  <FasoPosterTitle>{t('evidence.confirmed_status')}</FasoPosterTitle>
+                  <FasoPrimaryButton
                     label={t('evidence.continue_action')}
                     onPress={() => walk((w) => applyEvidenceServerAck(w, active.id, SANDBOX_EVIDENCE_ACK))}
                   />
                 </>
               ) : (
                 <>
-                  <PendingNotice lines={[t('evidence.pending')]} />
-                  <SecondaryButton label={t('nav.retour_courses')} onPress={toCourses} />
+                  <FasoPendingNotice lines={[t('evidence.pending')]} />
+                  <FasoSecondaryButton label={t('nav.retour_courses')} onPress={toCourses} />
                 </>
               )}
-            </Card>
+            </FpIn>
           )}
 
+          {/* R9 « À la porte » — door inspection. The buyer opens, verifies; the
+              rider waits (2–4 min, noted, never imposed). The rider stands at the
+              repère, never a street address. */}
           {screen === 'door_inspection' && active !== null && (
-            <Card style={styles.flexCard}>
-              <PosterTitle>{t('inspect.title')}</PosterTitle>
-              <Body>{t('inspect.body')}</Body>
-              {active.attempt === 2 && <StatusChip tone="info" label={t('courses.lineage_2e')} />}
-              {/* The signature card again at the door — the rider stands at the
-                  repère, never at a street address. */}
-              <LandmarkCard
+            <FpIn style={styles.stackGap}>
+              <FasoPosterTitle>{t('inspect.title')}</FasoPosterTitle>
+              <FasoBody>{t('inspect.body')}</FasoBody>
+              {active.attempt === 2 && <FasoStatusChip tone="info" label={t('courses.lineage_2e')} />}
+              <FasoLandmarkCard
                 zone={active.locationLines[2]}
                 lines={active.locationLines}
                 repereLabel={t('assignment.landmark_label')}
                 indicationsLabel={t('repere.indications')}
               />
-              <PrimaryButton label={t('inspect.accept_action')} onPress={() => walk((w) => acceptInspection(w, active.id))} />
-              <GhostButton label={t('problem.action')} onPress={() => walk((w) => reportProblem(w, active.id))} />
-              <Pressable style={styles.linkRow} onPress={() => walk((w) => reportProblem(w, active.id))} accessibilityRole="button">
-                <Text style={styles.linkText}>{t('inspect.cantpay')}</Text>
-              </Pressable>
-            </Card>
+              <FasoPrimaryButton label={t('inspect.accept_action')} onPress={() => walk((w) => acceptInspection(w, active.id))} />
+              <FasoDangerButton label={t('problem.action')} onPress={() => walk((w) => reportProblem(w, active.id))} />
+              <FasoGhostButton label={t('inspect.cantpay')} onPress={() => walk((w) => reportProblem(w, active.id))} />
+            </FpIn>
           )}
 
           {screen === 'payment_wait' && active !== null && (
-            <Card>
+            <FpIn style={styles.stackGap}>
               {/* R9 « à la porte » — SE-I11: the rider CANNOT assert payment.
                   No button, no field, no gesture advances this screen; ONLY the
                   provider signal does. The waiting screen is UNSKIPPABLE. The
                   sandbox constant stands in for the live signal at assembly. */}
               {SANDBOX_DOOR_SIGNAL === 'confirmed' ? (
                 <>
-                  <PosterTitle>{t('pay_ok.status')}</PosterTitle>
-                  <Body>{t('pay_ok.body')}</Body>
-                  <PrimaryButton
+                  <FasoPosterTitle>{t('pay_ok.status')}</FasoPosterTitle>
+                  <FasoBody>{t('pay_ok.body')}</FasoBody>
+                  <FasoPrimaryButton
                     label={t('pay_ok.continue_action')}
                     onPress={() => walk((w) => applyProviderDoorSignal(w, active.id, SANDBOX_DOOR_SIGNAL))}
                   />
                 </>
               ) : (
                 <>
-                  <PosterTitle>{t('pay_wait.status')}</PosterTitle>
-                  <PendingNotice lines={[t('pay_wait.hint'), t('pay_wait.operator')]} />
+                  <FasoPosterTitle>{t('pay_wait.status')}</FasoPosterTitle>
+                  <FasoPendingNotice lines={[t('pay_wait.hint'), t('pay_wait.operator')]} />
                 </>
               )}
-            </Card>
+            </FpIn>
           )}
 
+          {/* R10 « le code de remise » — Faso Premium (WO-FP-SERA proof view 3/3):
+              the buyer's code is the LAST key. The gold-cursor cells + white keypad
+              on the Séra paper; the honesty (drop.title/hint) renders verbatim. This
+              entry exists ONLY here; the spine makes 'drop' reachable only after the
+              provider-confirmed payment (custody semantics untouched). */}
           {screen === 'drop' && active !== null && (
-            <Card style={styles.flexCard}>
-              {/* R10 « le code de remise » — the buyer's code is the LAST key.
-                  This entry exists ONLY here; the spine makes 'drop' reachable
-                  only after the provider-confirmed payment. */}
-              <Overline>{t('drop.title')}</Overline>
-              <Body>{t('drop.hint')}</Body>
-              <CodeCells value={codeStr} length={DROP_CODE_LEN} />
-              <Keypad
+            <FpIn style={styles.dropWrap}>
+              {/* planche R10 codeEntry: the overline + honesty are CENTERED over the
+                  gold-cursor cells + white keypad. drop.title/hint render verbatim. */}
+              <FasoOverline center>{t('drop.title')}</FasoOverline>
+              <FasoBody style={styles.dropHint}>{t('drop.hint')}</FasoBody>
+              <FasoCodeCells value={codeStr} length={DROP_CODE_LEN} />
+              <FasoKeypad
                 onKey={(d) => setCodeStr((c) => (c.length < DROP_CODE_LEN ? c + d : c))}
                 onBack={() => setCodeStr((c) => c.slice(0, -1))}
               />
-              <PrimaryButton
+              <FasoPrimaryButton
                 label={t('drop.action')}
                 disabled={codeStr.length !== DROP_CODE_LEN}
                 onPress={() => walk((w) => validateDropCode(w, active.id))}
               />
               {/* WO-2.2 refusal ladder entry — as dignified as the purchase
                   path; it whispers, never shouts. */}
-              <GhostButton label={t('problem.action')} onPress={() => walk((w) => reportProblem(w, active.id))} />
-            </Card>
+              <FasoGhostButton label={t('problem.action')} onPress={() => walk((w) => reportProblem(w, active.id))} />
+            </FpIn>
           )}
 
+          {/* R12 « L'échelle des échecs » (planche l.460–502) — no generic « échec »
+              exists; a colis never has zero guardian. The family picker → retry /
+              refused_final / reschedule; the drop code stays LAST, behind payment. */}
           {screen === 'refusal_reason' && active !== null && (
-            <Card style={styles.flexCard}>
-              <PosterTitle>{t('reason.title')}</PosterTitle>
+            <FpIn style={styles.stackGap}>
+              <FasoPosterTitle>{t('reason.title')}</FasoPosterTitle>
               {FAILURE_REASON_IDS.map((id) => (
-                <GhostButton
+                <FasoGhostButton
                   key={id}
                   label={t(`reason.${id}`)}
                   onPress={() => {
@@ -817,89 +872,91 @@ export default function App() {
                   }}
                 />
               ))}
-            </Card>
+            </FpIn>
           )}
 
           {screen === 'retry_window' && active !== null && (
-            <Card>
-              {/* R12 « l'échelle des échecs » — retry arm. No generic « échec »
-                  exists; the drop code stays LAST, behind the payment leg. */}
-              <PosterTitle>{t('retry.status')}</PosterTitle>
-              <StatusChip tone="warn" label={`${t('retry.until')} ${windowUntil}`} />
-              <PrimaryButton label={t('retry.retry_action')} onPress={() => walk((w) => retryDelivery(w, active.id))} />
-              <GhostButton label={t('retry.expired_action')} onPress={() => walk((w) => expireRetryWindow(w, active.id))} />
-            </Card>
+            <FpIn style={styles.stackGap}>
+              {/* R12 retry arm — the honest countdown window, shown never hidden. */}
+              <FasoPosterTitle>{t('retry.status')}</FasoPosterTitle>
+              <FasoStatusChip tone="warn" label={`${t('retry.until')} ${windowUntil}`} />
+              <FasoPrimaryButton label={t('retry.retry_action')} onPress={() => walk((w) => retryDelivery(w, active.id))} />
+              <FasoGhostButton label={t('retry.expired_action')} onPress={() => walk((w) => expireRetryWindow(w, active.id))} />
+            </FpIn>
           )}
 
           {screen === 'refused_final' && active !== null && (
-            <Card>
+            <FpIn style={styles.stackGap}>
               {/* Buyer-fault refusal, register:money — calm, cause and
                   what-happens-next stated; no shame, no jargon. */}
-              <PosterTitle>{t('refused_final.status')}</PosterTitle>
-              <Body>{t('refused_final.fee')}</Body>
-              <Body>{t('refused_final.next')}</Body>
-              <PrimaryButton label={t('refused_final.retour_action')} onPress={() => walk((w) => prepareReturn(w, active.id))} />
-            </Card>
+              <FasoPosterTitle>{t('refused_final.status')}</FasoPosterTitle>
+              <FasoBody>{t('refused_final.fee')}</FasoBody>
+              <FasoBody>{t('refused_final.next')}</FasoBody>
+              <FasoPrimaryButton label={t('refused_final.retour_action')} onPress={() => walk((w) => prepareReturn(w, active.id))} />
+            </FpIn>
           )}
 
           {screen === 'reschedule_planned' && (
-            <Card>
+            <FpIn style={styles.stackGap}>
               {/* The non-escalating arm: honest absence / provider failure —
                   nothing is lost, the order stays whole; the 2e passage appears
                   on the course list with its lineage. */}
-              <PosterTitle>{t('reschedule.status')}</PosterTitle>
-              <Body>{t('reschedule.next')}</Body>
-              <StatusChip tone="info" label={t('reschedule.lineage')} />
-              <SecondaryButton label={t('nav.retour_courses')} onPress={toCourses} />
-            </Card>
+              <FasoPosterTitle>{t('reschedule.status')}</FasoPosterTitle>
+              <FasoBody>{t('reschedule.next')}</FasoBody>
+              <FasoStatusChip tone="info" label={t('reschedule.lineage')} />
+              <FasoSecondaryButton label={t('nav.retour_courses')} onPress={toCourses} />
+            </FpIn>
           )}
 
+          {/* R13 « Le retour à deux clés » (planche l.504–541, SE6.2): the seller's
+              key and the rider's key, both or neither. A single key REFUSES — the
+              garde does not move on one hand (attemptReturnHandover is the pure gate). */}
           {screen === 'retour_colis' && active !== null && (
-            <Card style={styles.flexCard}>
-              {/* R13 « le retour à deux clés » (SE6.2): the seller's key and the
-                  rider's key, both or neither. A single key REFUSES. */}
-              <PosterTitle>{t('retour.title')}</PosterTitle>
-              <QuoteRule tone="accent">{t('retour.custodian')}</QuoteRule>
-              <Overline>{t('retour.two_keys')}</Overline>
-              <View style={styles.keyRow}>
-                <View style={styles.keyLabel}>
-                  <IconCle size={T.body.size} color={C.ink} />
-                  <Body style={styles.keyText}>{t('retour.key_seller')}</Body>
+            <FpIn style={styles.stackGap}>
+              <FasoPosterTitle>{t('retour.title')}</FasoPosterTitle>
+              <FasoQuoteRule accent>{t('retour.custodian')}</FasoQuoteRule>
+              <FasoOverline>{t('retour.two_keys')}</FasoOverline>
+              <FasoCard>
+                <View style={styles.keyRow}>
+                  <View style={styles.keyLabel}>
+                    <IconCle size={T.body.size} color={FASO.accentDeepAlt} />
+                    <FasoBody style={styles.keyText}>{t('retour.key_seller')}</FasoBody>
+                  </View>
+                  {key1 ? (
+                    <IconCoche size={T.title.size} color={FASO.okFg} />
+                  ) : (
+                    <FasoGhostButton label={t('retour.key_seller_action')} onPress={() => setKey1(true)} />
+                  )}
                 </View>
-                {key1 ? (
-                  <IconCoche size={T.title.size} color={C.success} />
-                ) : (
-                  <GhostButton label={t('retour.key_seller_action')} onPress={() => setKey1(true)} />
-                )}
-              </View>
-              <View style={styles.keyRow}>
-                <View style={styles.keyLabel}>
-                  <IconCle size={T.body.size} color={C.ink} />
-                  <Body style={styles.keyText}>{t('retour.key_rider')}</Body>
+                <View style={styles.keyRow}>
+                  <View style={styles.keyLabel}>
+                    <IconCle size={T.body.size} color={FASO.accentDeepAlt} />
+                    <FasoBody style={styles.keyText}>{t('retour.key_rider')}</FasoBody>
+                  </View>
+                  {key2 ? (
+                    <IconCoche size={T.title.size} color={FASO.okFg} />
+                  ) : (
+                    <FasoGhostButton
+                      label={t('retour.key_rider_action')}
+                      onPress={() => {
+                        // A single-key attempt REFUSES: both hands, or the custody
+                        // does not move (attemptReturnHandover is the pure gate).
+                        if (attemptReturnHandover({ seller: key1, rider: true }) === 'refused') {
+                          setOneKeyMsg(true);
+                          return;
+                        }
+                        setKey2(true);
+                      }}
+                    />
+                  )}
                 </View>
-                {key2 ? (
-                  <IconCoche size={T.title.size} color={C.success} />
-                ) : (
-                  <GhostButton
-                    label={t('retour.key_rider_action')}
-                    onPress={() => {
-                      // A single-key attempt REFUSES: both hands, or the custody
-                      // does not move (attemptReturnHandover is the pure gate).
-                      if (attemptReturnHandover({ seller: key1, rider: true }) === 'refused') {
-                        setOneKeyMsg(true);
-                        return;
-                      }
-                      setKey2(true);
-                    }}
-                  />
-                )}
-              </View>
+              </FasoCard>
               {oneKeyMsg && !key2 && (
                 <View style={styles.refuseNote}>
-                  <Body style={styles.refuseNoteText}>{t('retour.one_key_refused')}</Body>
+                  <Text style={styles.refuseNoteText}>{t('retour.one_key_refused')}</Text>
                 </View>
               )}
-              <PrimaryButton
+              <FasoPrimaryButton
                 label={t('retour.action')}
                 disabled={attemptReturnHandover({ seller: key1, rider: key2 }) === 'refused'}
                 onPress={() => {
@@ -908,44 +965,51 @@ export default function App() {
                   toCourses();
                 }}
               />
-            </Card>
+            </FpIn>
           )}
 
+          {/* R11 « Course validée » (planche l.442–458) — the proof is complete;
+              Séra emits a SIGNAL, never money. A gold proof seal, the three-line
+              proof, the no-money quote; the celebration overlays it on entry. */}
           {screen === 'delivered' && (
-            <Card ink style={styles.flexCard}>
-              {/* R11 « course validée » — the proof is complete; Séra emits a
-                  SIGNAL, never money. The celebration overlays this card. */}
-              <View style={styles.validRow}>
-                <IconCoche size={T.title.size} color={C.success} />
-                <PosterTitle>{t('delivered.status')}</PosterTitle>
+            <FpIn style={styles.stackGap}>
+              <View style={styles.validHead}>
+                <FasoProofSeal />
+                <FasoPosterTitle>{t('delivered.status')}</FasoPosterTitle>
               </View>
-              <View style={styles.proofList}>
+              <FasoCard>
                 <ProofLine label={t('delivered.proof_package')} />
                 <ProofLine label={t('delivered.proof_seal')} />
                 <ProofLine label={t('delivered.proof_code')} />
-              </View>
-              <QuoteRule>{t('delivered.no_money')}</QuoteRule>
-              <SecondaryButton label={t('nav.retour_courses')} onPress={toCourses} />
-              {celebrate && <CourseValideeCelebration onDone={() => setCelebrate(false)} />}
-            </Card>
+              </FasoCard>
+              <FasoQuoteRule>{t('delivered.no_money')}</FasoQuoteRule>
+              <FasoSecondaryButton label={t('nav.retour_courses')} onPress={toCourses} />
+            </FpIn>
           )}
         </View>
-      </ScreenTransition>
 
-      <View style={styles.footer}>
-        <Text style={styles.footerHint}>{t('demo.donnees')}</Text>
-        <Pressable style={styles.resetAction} onPress={reset}>
-          <Text style={styles.resetActionText}>{t('nav.recommencer')}</Text>
-        </Pressable>
-      </View>
+        <View style={styles.footer}>
+          <Text style={styles.footerHint}>{t('demo.donnees')}</Text>
+          <Pressable style={styles.resetAction} onPress={reset}>
+            <Text style={styles.resetActionText}>{t('nav.recommencer')}</Text>
+          </Pressable>
+        </View>
+      </ScrollView>
 
       {HUBS.includes(screen) && (
-        <TabBar
+        <FasoTabBar
           items={[
             { key: 'service', Icon: IconMoto, label: t('nav.tab_service'), active: screen === 'service', onPress: () => setStack([START]) },
             { key: 'courses', Icon: IconColis, label: t('nav.tab_courses'), active: screen === 'courses', onPress: () => toCourses() },
           ]}
         />
+      )}
+
+      {/* R11 « Course validée » peak — a top-level full-screen overlay (outside the
+          ScrollView) so the scrim covers the whole screen, never the scroll content.
+          Rendered UNDER the SOS so the safety gesture stays reachable in the moment. */}
+      {celebrate && screen === 'delivered' && (
+        <FasoCelebration label={t('delivered.next')} sublabel={t('delivered.proof_complete')} onDone={() => setCelebrate(false)} />
       )}
 
       {/* R14 « SOS » — mounted UNCONDITIONALLY, outside every screen branch: one
@@ -989,23 +1053,28 @@ export default function App() {
 function ProofLine({ label }: { label: string }) {
   return (
     <View style={styles.proofRow}>
-      <IconCoche size={T.body.size} color={C.success} />
+      <IconCoche size={T.body.size} color={FASO.okFg} />
       <Text style={styles.proofText}>{label}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: C.paper },
+  screen: { flex: 1, backgroundColor: FASO.paper },
+  // The full-bleed scroll surface (the whole screen). The tab dock + SOS float
+  // below, so the content clears them with a generous bottom pad.
+  scroll: { flex: 1 },
+  scrollContent: { paddingBottom: spacing.xxl * 3, flexGrow: 1 },
   content: {
-    flex: 1,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
     gap: spacing.md,
   },
   flexCard: { flex: 0 },
   stackGap: { gap: spacing.md, paddingTop: spacing.sm },
-  listWrap: { flex: 1, gap: spacing.sm },
+  listWrap: { gap: spacing.sm },
+  dropWrap: { gap: spacing.lg, paddingHorizontal: spacing.md, paddingTop: spacing.xl },
+  dropHint: { textAlign: 'center' },
   listContent: { gap: spacing.sm, paddingBottom: spacing.sm },
   listFoot: { color: C.muted, fontSize: T.caption.size, lineHeight: T.caption.size * T.caption.lh, textAlign: 'center', paddingVertical: spacing.md },
   checkList: { gap: spacing.sm },
@@ -1029,12 +1098,15 @@ const styles = StyleSheet.create({
   tickBR: { bottom: spacing.sm, right: spacing.sm, borderBottomWidth: interaction.cornerTick.strokePx, borderRightWidth: interaction.cornerTick.strokePx },
   linkRow: { alignItems: 'center', paddingVertical: spacing.sm, minHeight: touch.minTargetPx, justifyContent: 'center' },
   linkText: { color: C.accentStrong, fontSize: T.label.size, lineHeight: T.label.size * T.label.lh, fontWeight: '800', letterSpacing: T.label.ls, textTransform: 'uppercase', textDecorationLine: 'underline' },
-  keyRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, borderWidth: interaction.hairline.strong, borderColor: C.ink, padding: spacing.md, minHeight: touch.minTargetPx },
+  keyRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, minHeight: touch.minTargetPx },
   keyLabel: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   keyText: { flex: 1 },
-  refuseNote: { borderLeftWidth: interaction.accentEdgePx - 1, borderLeftColor: C.danger, backgroundColor: C.dangerTint, padding: spacing.md },
-  refuseNoteText: { color: C.dangerDeep },
+  refuseNote: { borderRadius: spacing.lg, backgroundColor: FASO.dangerBg, padding: spacing.md },
+  refuseNoteText: { color: FASO.dangerFg, fontSize: T.body.size, lineHeight: T.body.size * T.body.lh, fontWeight: '600' },
   validRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  validHead: { alignItems: 'center', gap: spacing.sm, paddingTop: spacing.md },
+  verifyHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingBottom: spacing.sm, borderBottomWidth: interaction.hairline.thin, borderBottomColor: FASO.hairline },
+  verifyHeadName: { flex: 1, fontWeight: '700' },
   proofList: { gap: spacing.sm },
   proofRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   proofText: { color: C.onInk, fontSize: T.body.size, lineHeight: T.body.size * T.body.lh, flex: 1 },

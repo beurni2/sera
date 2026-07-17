@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { landmark, motion, celebration } from '@platform/ui-tokens';
+import { landmark, motion } from '@platform/ui-tokens/legacy';
+import { motion as fpMotion } from '@platform/ui-tokens';
 
 /**
  * WO-6.1 — the visual layer obeys Grand Teint (ui-tokens v0.9.0, sera theme).
@@ -63,60 +64,75 @@ describe('WO-6.1 Grand Teint visual layer (rider-app)', () => {
     // the App renders the signature card on the assignment AND at the door
     const app = read('App.tsx');
     const affectation = app.slice(app.indexOf("screen === 'affectation'"), app.indexOf("screen === 'verify'"));
-    expect(affectation).toMatch(/<LandmarkCard[\s\S]*lines=\{active\.locationLines\}[\s\S]*illustrated/);
+    // WO-FP-SERA: affectation now renders the Faso repère (planche R4); the door
+    // signature card is restyled in its own stage.
+    expect(affectation).toMatch(/<FasoLandmarkCard[\s\S]*lines=\{active\.locationLines\}[\s\S]*illustrated/);
     const door = app.slice(app.indexOf("screen === 'door_inspection'"), app.indexOf("screen === 'payment_wait'"));
-    expect(door).toMatch(/<LandmarkCard[\s\S]*lines=\{active\.locationLines\}/);
+    expect(door).toMatch(/LandmarkCard[\s\S]*lines=\{active\.locationLines\}/);
   });
 
   it('the refusal arm is a first-class DangerButton — bordered danger, as polished as acceptance', () => {
-    const kit = read('src/ui/kit.tsx');
+    // WO-FP-SERA: the Faso refusal arm — a 2px bordered danger button, Bricolage 800,
+    // never a grey whisper of shame (charter: refusal as dignified as the purchase).
+    const kit = read('src/ui/faso-kit.tsx');
     expect(kit).toMatch(/export function DangerButton/);
-    expect(kit).toMatch(/buttonDanger: \{[^}]*borderColor: C\.danger/);
-    expect(kit).toMatch(/buttonDangerText: \{[^}]*color: C\.danger/);
+    expect(kit).toMatch(/danger: \{[^}]*borderColor: C\.dangerBorder/s);
+    expect(kit).toMatch(/dangerText: \{[^}]*color: C\.dangerFg/s);
     const app = read('App.tsx');
     const verify = app.slice(app.indexOf("screen === 'verify'"), app.indexOf("screen === 'refused'"));
-    expect(verify).toMatch(/<DangerButton label=\{t\('verify\.refuse_action'\)\}/);
+    expect(verify).toMatch(/<FasoDangerButton label=\{t\('verify\.refuse_action'\)\}/);
   });
 
-  it('the checklist renders as CheckRow — ink box + label, ≥48px targets via the touch token', () => {
-    const kit = read('src/ui/kit.tsx');
+  it('the checklist renders as CheckRow — label + conformity toggle, ≥44px targets', () => {
+    // WO-FP-SERA: the Faso check row — a green « conforme » toggle (okBg/okFg), the
+    // whole row a ≥44px target. The gate lives in custody-flow, never in the skin.
+    const kit = read('src/ui/faso-kit.tsx');
     expect(kit).toMatch(/export function CheckRow/);
-    expect(kit).toMatch(/checkRow: \{[^}]*minHeight: touch\.minTargetPx/s);
+    expect(kit).toMatch(/checkRow: \{[^}]*minHeight: 44/s);
+    expect(kit).toMatch(/checkBtnOn: \{[^}]*backgroundColor: C\.okBg/s);
     const app = read('App.tsx');
-    expect(app).toMatch(/<CheckRow key=\{id\} label=\{t\(`check\.\$\{id\}`\)\}/);
+    expect(app).toMatch(/<FasoCheckRow key=\{id\} label=\{t\(`check\.\$\{id\}`\)\}/);
   });
 
   it('pending states are PendingNotice rows — queued = pending, honest, never done', () => {
     const app = read('App.tsx');
-    expect(app).toMatch(/<PendingNotice lines=\{\[t\('assignment\.ack_pending'\)\]\}/);
-    expect(app).toMatch(/<PendingNotice lines=\{\[t\('evidence\.pending'\)\]\}/);
+    // WO-FP-SERA: the pending surfaces are the Faso fpBar notice. Queued = pending,
+    // honest, never done — the drop stays locked until the authoritative server ack.
+    expect(app).toMatch(/<FasoPendingNotice lines=\{\[t\('assignment\.ack_pending'\)\]\}/);
+    expect(app).toMatch(/<FasoPendingNotice lines=\{\[t\('evidence\.pending'\)\]\}/);
     // the door-payment wait is a PendingNotice, never a rider-actionable field
-    expect(app).toMatch(/<PendingNotice lines=\{\[t\('pay_wait\.hint'\)/);
+    expect(app).toMatch(/<FasoPendingNotice lines=\{\[t\('pay_wait\.hint'\)/);
   });
 
-  it('the rider’s ONE named moment is the course_validee celebration — token-driven, ≤ 800 ms', () => {
-    const kit = read('src/ui/kit.tsx');
-    expect(kit).toMatch(/export function CourseValideeCelebration/);
-    expect(kit).toMatch(/celebration\.courseValidee/);
-    expect(celebration.courseValidee.app).toBe('sera');
-    expect(celebration.haloMs).toBeLessThanOrEqual(motion.celebrateMaxMs);
+  it('the rider’s ONE named moment is the « Course validée » celebration — fpPop-bounded, ≤ 800 ms', () => {
+    // WO-FP-SERA: the Faso peak (planche l.582–590) — the gold proof seal pops in on
+    // fpPop over the dark scrim; token-driven, dignified, no confetti-spam. The Grand
+    // Teint CourseValideeCelebration stays in the /legacy kit (unused by the app).
+    const faso = read('src/ui/faso-kit.tsx');
+    expect(faso).toMatch(/export function Celebration/);
+    expect(faso).toMatch(/<FpPop[\s\S]*<ProofSeal \/>/);
+    expect(faso).toMatch(/celScrim: \{[\s\S]*DARK\.celebrationScrim/);
+    // fpPop is bounded well under the celebration ceiling (≤ 800 ms), reduced-motion safe
+    expect(fpMotion.fpPop.durationMs.max).toBeLessThanOrEqual(motion.celebrateMaxMs);
     const app = read('App.tsx');
-    expect(app).toMatch(/<CourseValideeCelebration onDone=/);
+    expect(app).toMatch(/<FasoCelebration label=/);
   });
 
   it('the screen change eases in on the ONE soft spring — token duration + curve, static under reduced motion', () => {
+    // WO-FP-SERA full-bleed: the redundant cross-screen ScreenTransition (flex:1,
+    // which broke the scroll surface) is retired from the app; the per-screen FpIn
+    // (the planche fpIn — a soft cubic-bezier(.2,.8,.2,1) entry, reduced-motion safe
+    // in useEntry) re-animates on each screen change. ScreenTransition stays defined
+    // in the /legacy kit for the frozen console.
     const kit = read('src/ui/kit.tsx');
     expect(kit).toMatch(/export function ScreenTransition/);
-    const transition = kit.slice(
-      kit.indexOf('export function ScreenTransition'),
-      kit.indexOf('export function CourseValideeCelebration'),
-    );
-    expect(transition).toMatch(/motion\.standardMs/);
-    expect(transition).toMatch(/SPRING_SOFT/);
-    expect(transition).toMatch(/useNativeDriver: true/);
-    expect(transition).toMatch(/if \(reduced\) \{/);
+    const sig = read('src/ui/signature.tsx');
+    const fpin = sig.slice(sig.indexOf('export function FpIn'), sig.indexOf('export function FpPop'));
+    expect(fpin).toMatch(/useEntry\('fpIn'\)/);
+    expect(fpin).toMatch(/translateY/);
     const app = read('App.tsx');
-    expect(app).toMatch(/<ScreenTransition screenKey=\{screen\}>/);
+    expect(app).not.toMatch(/<ScreenTransition/);
+    expect(app).toMatch(/<FpIn style=/);
     // the movement law's duration band holds at the token level (150–250 ms)
     expect(motion.quickMs).toBeGreaterThanOrEqual(150);
     expect(motion.standardMs).toBeLessThanOrEqual(250);
@@ -132,24 +148,29 @@ describe('WO-6.1 Grand Teint visual layer (rider-app)', () => {
     for (const f of FILES) expect(read(f)).not.toMatch(/ActivityIndicator/);
   });
 
-  it('the theme strip is the ONE permanent brand mark (band.themeStripPx · sera amber)', () => {
+  it('the permanent brand strip — WO-FP-SERA: the Faso woven band replaces the Grand Teint theme strip in the App shell', () => {
     const kit = read('src/ui/kit.tsx');
+    // the Grand Teint ThemeStrip stays defined in the /legacy kit (the un-migrated
+    // views + the frozen console pattern); the App shell now renders the Faso monogram
+    // header, which carries the woven band at its top (planche l.33).
     expect(kit).toMatch(/export function ThemeStrip/);
     expect(kit).toMatch(/band\.themeStripPx/);
-    expect(kit).toMatch(/C\.themeStrip/);
     const app = read('App.tsx');
-    expect(app).toMatch(/<ThemeStrip \/>/);
+    expect(app).toMatch(/<FasoHeader/);
+    const fasoKit = read('src/ui/faso-kit.tsx');
+    expect(fasoKit).toMatch(/export function FasoHeader/);
+    expect(fasoKit).toMatch(/<WovenBand \/>/); // the band rides at the top of the header
   });
 
   it('navigation chrome: header everywhere, hubs = Service·Courses, tabs are waypoint RESETS (never edges, never go())', () => {
     const app = read('App.tsx');
-    expect(app).toMatch(/<AppHeader/);
+    expect(app).toMatch(/<FasoHeader/);
     expect(app).toMatch(/HUBS: readonly Screen\[\] = \['service', 'courses'\]/);
     for (const key of ['nav.tab_service', 'nav.tab_courses']) {
       expect(app).toContain(`t('${key}')`);
     }
-    expect(app).toMatch(/\{HUBS\.includes\(screen\) && \(\s*<TabBar/);
-    const tabBlock = app.slice(app.indexOf('<TabBar'), app.indexOf('{/* R14'));
+    expect(app).toMatch(/\{HUBS\.includes\(screen\) && \(\s*<FasoTabBar/);
+    const tabBlock = app.slice(app.indexOf('<FasoTabBar'), app.indexOf('{/* R14'));
     expect(tabBlock).toMatch(/key: 'service'[^\n]*setStack\(\[START\]\)/);
     expect(tabBlock).toMatch(/key: 'courses'[^\n]*toCourses\(\)/);
     expect(tabBlock).not.toMatch(/go\(/);
@@ -157,11 +178,18 @@ describe('WO-6.1 Grand Teint visual layer (rider-app)', () => {
     expect(app).toMatch(/JOURNEY\[stack\[stack\.length - 1\] \?\? START\]\.includes\(next\)/);
   });
 
-  it('closed courses are muted, never pressable; the 2e passage carries its lineage chip', () => {
+  it('closed courses are the receded done card, never pressable; the 2e passage carries its lineage', () => {
     const app = read('App.tsx');
-    expect(app).toMatch(/muted=\{item\.closed\}/);
+    // WO-FP-SERA proof view 2/3, TRUE planche anatomy: R2 is the editorial
+    // CourseCard (left bar · eyebrow · pill · deadline), NOT the glyph-tile row.
+    expect(app).toContain('<FasoCourseCard');
+    expect(app).not.toContain('<FasoListRow');
+    // closed → the done (receded) variant, and never pressable (unchanged custody law)
+    expect(app).toMatch(/variant=\{variantFor\(item\)\}/);
+    expect(app).toMatch(/course\.closed \? 'done'/); // variantFor maps closed → done
     expect(app).toMatch(/onPress=\{item\.closed \? undefined : \(\) => openCourse\(item\)\}/);
-    expect(app).toMatch(/item\.attempt === 2 && <StatusChip tone="info" label=\{t\('courses\.lineage_2e'\)\}/);
+    // the 2e passage carries its lineage into the card
+    expect(app).toMatch(/lineage=\{item\.attempt === 2 \? t\('courses\.lineage_2e'\) : undefined\}/);
   });
 
   it('the kit imports stay inside the RN + tokens world (banned-import law extended to the kit)', () => {
