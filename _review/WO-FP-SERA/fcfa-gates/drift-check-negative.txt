@@ -1,0 +1,4 @@
+$ pnpm exec drift-check /tmp/tmp.fZcVfxdDlt/docs --pinned-version 1.0.0
+drift-check FAILED — consumer /docs diverges from canon:
+  - doc drifted from canon: Sera-Build-Spec.md (expected sha256 d46c229184dbe86e49295aee8a1d4dfdb4f1b2f45171fc959dcb5424a66aff23, got 475ae6332c30ce0373207de4ce521310a6a28759f172bd9ed02c4cc6f3082b2f)
+(exit code: 1)

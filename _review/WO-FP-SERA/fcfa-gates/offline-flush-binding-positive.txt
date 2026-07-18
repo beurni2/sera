@@ -1,0 +1,3 @@
+$ node scripts/gates/offline-flush-binding.mjs
+OK: queued foreign evidence refused AT FLUSH (evidence_chain_mismatch), bound evidence validated; no queue access exists outside the binding path
+(exit code: 0)

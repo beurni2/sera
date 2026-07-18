@@ -1,0 +1,3 @@
+$ node scripts/gates/door-custody-gate.mjs gates/fixtures/negative/door.custody-without-payment.json
+VIOLATION (caught, refused closed): door_payment_not_confirmed — custody stays with the courier until the provider speaks
+(exit code: 1)

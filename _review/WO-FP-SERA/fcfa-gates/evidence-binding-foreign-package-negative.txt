@@ -1,0 +1,3 @@
+$ node scripts/gates/evidence-chain-binding.mjs gates/fixtures/negative/evidence.foreign-package.json
+VIOLATION (caught, refused closed): evidence_chain_mismatch — no event, no ledger entry, decision refused (validation_before_evidence)
+(exit code: 1)

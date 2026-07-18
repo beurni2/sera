@@ -1,0 +1,3 @@
+$ node scripts/gates/rider-assignability.mjs gates/fixtures/negative/assignment.uncertified-rider.json
+VIOLATION: shift start refused closed (not_certified) — the fixture claims an active shift it cannot have
+(exit code: 1)
