@@ -1,0 +1,3 @@
+$ node scripts/gates/no-wallet-no-funds.mjs
+no-wallet-no-funds OK — no banned pattern in apps, services, packages (Ten Laws #2 — no app holds funds; no wallet/balance module)
+(exit code: 0)

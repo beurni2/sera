@@ -1,0 +1,3 @@
+$ pnpm exec copy-lint apps/rider-app/i18n/catalog.json
+copy-lint OK: 154 entries, 0 violations
+(exit code: 0)

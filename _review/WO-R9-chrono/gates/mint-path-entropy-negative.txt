@@ -1,0 +1,5 @@
+$ node scripts/check-mint-path-entropy.mjs gates/fixtures/negative/mint-path
+mint-path-entropy FAILED:
+  - gates/fixtures/negative/mint-path/commandId.mjs: calls Math.random( — FORBIDDEN as an idempotency-key source (mint from the OS CSPRNG)
+  - gates/fixtures/negative/mint-path/commandId.mjs: no OS CSPRNG draw (randomUUID/getRandomValues) and no adoption of the canon mintCommandId helper — a mint path must not pass vacuously
+(exit code: 1)
