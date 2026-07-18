@@ -1,0 +1,5 @@
+$ node scripts/gates/money-reconciliation.mjs gates/fixtures/negative/quote.independent-multiplication.json
+money-reconciliation FAILED on gates/fixtures/negative/quote.independent-multiplication.json:
+Quote does not reconcile to the franc:
+  - productSubtotal (10779) != sellerNet + resellerNet + platformProductFeeRevenue (9167 + 889 + 722 = 10778)
+(exit code: 1)

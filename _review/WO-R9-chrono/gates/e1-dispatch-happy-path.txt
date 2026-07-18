@@ -1,0 +1,17 @@
+$ node scripts/e1-dispatch-happy-path.mjs
+=== E1 MANUAL ASSIGNMENT — happy path ===
+delivery_task_id  = task-e1-0001
+order_id          = order-e1-0001
+assignment_id     = as-e1-0001
+rider_id          = rider-issa
+correlation_id    = corr-e1-0001
+
+=== enveloped event ===
+pickup.assigned.v1 @ aggregateVersion 1 (command cmd-assign-1, actor dispatcher:dispatcher-awa)
+payload: {"delivery_task_id":"task-e1-0001","order_id":"order-e1-0001","assignment_id":"as-e1-0001","rider_id":"rider-issa"}
+
+=== offline law (queued = pending, never done) ===
+offline shift start   → status shift_start_pending (pending=true); assignable while pending: false
+offline rider ack     → status ack_pending_offline (pending=true); lease anchored: false
+server-confirmed ack  → status acknowledged (pending=false); lease anchored: true
+(exit code: 0)

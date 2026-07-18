@@ -1,0 +1,3 @@
+$ node scripts/gates/custody-transition.mjs gates/fixtures/custody.verified-and-sealed.json
+custody-transition OK — verification accepted + seal seal_001 registered; custody may begin (SE-I05)
+(exit code: 0)

@@ -98,6 +98,7 @@ import {
   GhostButton as FasoGhostButton,
   PendingNotice as FasoPendingNotice,
   OfflineBanner as FasoOfflineBanner,
+  InspectionChrono as FasoInspectionChrono,
   CodeCells as FasoCodeCells,
   Keypad as FasoKeypad,
 } from './src/ui/faso-kit';
@@ -130,6 +131,34 @@ const C = seraTheme.colours;
 const T = typo.scale;
 
 type ShiftView = 'off' | 'pending' | 'on';
+
+/**
+ * R9 « à la porte » inspection chrono — the buyer's inspection time, shown to the
+ * rider with dignity (« Le temps est noté, jamais imposé »). EPHEMERAL + DISPLAY
+ * ONLY: a local count-up from door-arrival (this component mounts with the
+ * door_inspection screen), ticking each second, torn down on unmount. It records
+ * NOTHING and enforces NOTHING — no store write, no event, no custody field
+ * (D20, founder ruling 2026-07-10: dwell is console-only in canon). Deterministic:
+ * elapsed = now − start, no ETA and no model (Law #5). mm:ss is tabular so the
+ * width never jitters as it ticks; the « : » is a clock separator, never a franc.
+ */
+function DoorChrono() {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    const start = Date.now();
+    const id = setInterval(() => setElapsed(Math.floor((Date.now() - start) / 1000)), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const mm = String(Math.floor(elapsed / 60)).padStart(2, '0');
+  const ss = String(elapsed % 60).padStart(2, '0');
+  return (
+    <FasoInspectionChrono
+      label={t('inspect.chrono_label')}
+      time={`${mm}:${ss}`}
+      note={t('inspect.chrono_note')}
+    />
+  );
+}
 
 /** Course-list badges: honest status per step (keys live in the catalog). */
 const STATUS_KEY: Record<CourseStep, string> = {
@@ -789,6 +818,9 @@ export default function App() {
               <FasoPosterTitle>{t('inspect.title')}</FasoPosterTitle>
               <FasoBody>{t('inspect.body')}</FasoBody>
               {active.attempt === 2 && <FasoStatusChip tone="info" label={t('courses.lineage_2e')} />}
+              {/* R9 `inspecting` — the live inspection chrono (display only; D20:
+                  records nothing, enforces nothing). Sits above the door repère. */}
+              <DoorChrono />
               <FasoLandmarkCard
                 zone={active.locationLines[2]}
                 lines={active.locationLines}

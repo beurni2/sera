@@ -1,0 +1,3 @@
+$ node scripts/gates/one-assignment-authority.mjs gates/fixtures/leases.single-authority.json
+one-assignment-authority OK — 4 lease(s), at most one active per task (SE-I01)
+(exit code: 0)

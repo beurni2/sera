@@ -702,6 +702,18 @@
     "screenClass": "instruction"
   },
   {
+    "key": "inspect.chrono_label",
+    "fr": "Inspection en cours",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "inspect.chrono_note",
+    "fr": "Le temps est noté, jamais imposé.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
     "key": "inspect.cantpay",
     "fr": "Le client ne peut pas payer",
     "register": "money",

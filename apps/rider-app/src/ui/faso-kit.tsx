@@ -196,6 +196,26 @@ export function SealMark({ code, label }: { code: string; label: string }) {
   );
 }
 
+/** R9 « à la porte » — the inspection chrono (HANDOFF §4 R9 `inspecting` :
+ * « carte chrono · Inspection en cours · mm:ss 18/800 live »). The buyer inspects;
+ * the rider waits, with dignity. DISPLAY ONLY: the caller supplies the live
+ * mm:ss — the skin holds no timer and no state; the time is SHOWN, never recorded
+ * here and never enforced (D20, founder ruling 2026-07-10: dwell is console-only
+ * in canon — this is an ephemeral comfort clock, no field, no gate). No clock
+ * glyph in the icon set; the gold-tinted card + « Inspection en cours » carry the
+ * clock role (lawful divergence from the planche's « horloge or »). */
+export function InspectionChrono({ label, time, note }: { label: string; time: string; note: string }) {
+  return (
+    <View style={styles.chronoCard}>
+      <View style={styles.chronoRow}>
+        <Text style={styles.chronoLabel}>{label}</Text>
+        <Text style={styles.chronoTime}>{time}</Text>
+      </View>
+      <Text style={styles.chronoNote}>{note}</Text>
+    </View>
+  );
+}
+
 /** The offline banner — a warm warn-register strip (states-law #5: « Hors ligne :
  * N actions en attente », N = the REAL outbox count). Offline is a designed state,
  * never an alert wall; queued = pending, reconnect clears it. */
@@ -495,6 +515,13 @@ const styles = StyleSheet.create({
   sealCard: { flexDirection: 'row', alignItems: 'center', gap: 11, backgroundColor: C.card, borderRadius: rad('card'), borderWidth: 1.5, borderColor: C.accent, paddingVertical: 14, paddingHorizontal: 16 },
   sealCode: { fontFamily: displayFace(800), fontSize: 21, fontWeight: '800', letterSpacing: 21 * 0.1, color: C.ink, fontVariant: ['tabular-nums'], flex: 1 },
   sealLabel: { ...ty('caps'), color: C.sub, textTransform: 'none' },
+  // R9 inspection chrono — a gold-tinted card; the mm:ss reads as the clock (18/800
+  // tabular, so the width never jitters as it ticks). Display only; no franc, no seal.
+  chronoCard: { backgroundColor: C.tintCard, borderRadius: rad('card'), borderWidth: 1.5, borderColor: C.accent, paddingVertical: 14, paddingHorizontal: 16, gap: 8 },
+  chronoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 11 },
+  chronoLabel: { ...ty('caps'), color: C.accentDeepAlt },
+  chronoTime: { fontFamily: displayFace(800), fontSize: 18, fontWeight: '800', color: C.ink, fontVariant: ['tabular-nums'] },
+  chronoNote: { ...ty('body', 'max'), color: C.body },
   proofSeal: { width: 78, height: 78, borderRadius: rad('pill'), backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center', shadowColor: C.accent, shadowOpacity: 0.5, shadowRadius: 20, shadowOffset: { width: 0, height: 14 }, elevation: 6 },
   celScrim: { ...StyleSheet.absoluteFillObject, backgroundColor: DARK.celebrationScrim, alignItems: 'center', justifyContent: 'center', gap: 20, paddingHorizontal: 32 },
   celRule: { width: 132, height: 0, borderTopWidth: 3, borderStyle: 'dashed', borderColor: C.accent },

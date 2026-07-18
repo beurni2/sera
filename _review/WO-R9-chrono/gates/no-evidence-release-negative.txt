@@ -1,0 +1,5 @@
+$ node scripts/gates/no-evidence-release.mjs gates/fixtures/negative/evidence-release
+no-evidence-release FAILED (§5.5 evidence supports, never releases — no EvidenceBundle→settlement path) — 2 hit(s):
+  gates/fixtures/negative/evidence-release/release-on-evidence.ts:2 [releaseOnEvidence] // the no-evidence-release gate MUST fail on this file. Never import this.
+  gates/fixtures/negative/evidence-release/release-on-evidence.ts:4 [releaseSettlement] export function releaseSettlementOnEvidence(bundle: EvidenceBundle): Partial<SettlementObligation> {
+(exit code: 1)

@@ -1,0 +1,4 @@
+$ node scripts/gates/one-assignment-authority.mjs gates/fixtures/negative/leases.double-assignment.json
+one-assignment-authority FAILED (SE-I01 — exactly one assignment authority):
+  - task task_1: 2 ACTIVE leases held by [dispatch_console_1, rider_self_assign]
+(exit code: 1)

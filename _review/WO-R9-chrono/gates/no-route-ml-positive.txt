@@ -1,0 +1,3 @@
+$ node scripts/gates/no-ml-libs.mjs
+no-ml-libs OK — no ML/generative/inference dependency or import in apps, services, packages (SE §5.3 deterministic only — no ML, no route-optimization/ETA model)
+(exit code: 0)
