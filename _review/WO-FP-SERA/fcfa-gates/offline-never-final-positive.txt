@@ -1,0 +1,3 @@
+$ node scripts/gates/offline-never-final.mjs gates/fixtures/evidence.server-confirmed.json
+OK: server-confirmed evidence validated (validated); offline finality is unrepresentable here
+(exit code: 0)

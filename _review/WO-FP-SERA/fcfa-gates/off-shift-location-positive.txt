@@ -1,0 +1,3 @@
+$ node scripts/gates/off-shift-location.mjs
+off-shift-location OK — geolocation APIs only in services/logistics-service/src/shift-location.ts (shift-scoped, SE-I08)
+(exit code: 0)

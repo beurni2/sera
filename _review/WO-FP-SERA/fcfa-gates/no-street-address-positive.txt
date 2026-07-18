@@ -1,0 +1,3 @@
+$ node scripts/gates/no-street-address-location.mjs gates/fixtures/location.kernel-canonical.json
+OK: canonical kernel Location — landmark-first fields only, no street address anywhere
+(exit code: 0)
