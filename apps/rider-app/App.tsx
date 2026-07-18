@@ -168,6 +168,9 @@ const STATUS_KEY: Record<CourseStep, string> = {
   refused: 'refuse.status',
   evidence: 'courses.statut_en_route',
   evidence_pending: 'evidence.pending',
+  // en_route is a display waypoint, never a stored course.step — this entry is
+  // type-completeness only (CourseStep = Exclude<Screen,…>); it is never read.
+  en_route: 'courses.statut_en_route',
   door_inspection: 'courses.statut_en_route',
   payment_wait: 'courses.statut_en_route',
   drop: 'courses.statut_en_route',
@@ -198,6 +201,7 @@ const STATUS_TONE: Record<CourseStep, ChipTone> = {
   refused: 'muted',
   evidence: 'info',
   evidence_pending: 'warn',
+  en_route: 'info', // type-completeness only — en_route is never a stored course.step
   door_inspection: 'info',
   payment_wait: 'warn',
   drop: 'info',
@@ -798,7 +802,15 @@ export default function App() {
                   <FasoPosterTitle>{t('evidence.confirmed_status')}</FasoPosterTitle>
                   <FasoPrimaryButton
                     label={t('evidence.continue_action')}
-                    onPress={() => walk((w) => applyEvidenceServerAck(w, active.id, SANDBOX_EVIDENCE_ACK))}
+                    onPress={() => {
+                      // R8: the ack is the custody move — the store advances the
+                      // course to the door (custody target UNCHANGED). We do NOT
+                      // walk() straight there: the rider steps through « En route »
+                      // (a display waypoint) first, then taps « Je suis à la porte ».
+                      applyEvidenceServerAck(world, active.id, SANDBOX_EVIDENCE_ACK);
+                      setWorld({ ...world });
+                      go('en_route');
+                    }}
                   />
                 </>
               ) : (
@@ -807,6 +819,26 @@ export default function App() {
                   <FasoSecondaryButton label={t('nav.retour_courses')} onPress={toCourses} />
                 </>
               )}
+            </FpIn>
+          )}
+
+          {/* R8 « En route » (planche HANDOFF §4 R8) — a DISPLAY waypoint between
+              the acked proof and the door: « un seul arrêt », the repère IS the
+              navigation (Law #5 — no GPS point, no route model). No custody move
+              here — the store already set the door; « Je suis à la porte » walks
+              to the door_inspection the rule produced (custody target unchanged).
+              RELAIS (masked call) is not wired — same as R4/affectation. */}
+          {screen === 'en_route' && active !== null && (
+            <FpIn style={styles.stackGap}>
+              <FasoPosterTitle>{t('enroute.title')}</FasoPosterTitle>
+              <FasoLandmarkCard
+                zone={active.locationLines[2]}
+                lines={active.locationLines}
+                repereLabel={t('assignment.landmark_label')}
+                indicationsLabel={t('repere.indications')}
+              />
+              <FasoQuoteRule>{t('repere.no_gps')}</FasoQuoteRule>
+              <FasoPrimaryButton label={t('enroute.arrived_action')} onPress={() => go('door_inspection')} />
             </FpIn>
           )}
 

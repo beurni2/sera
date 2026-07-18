@@ -1,0 +1,3 @@
+$ node scripts/gates/no-rider-asserted-payment.mjs
+OK: no rider-asserted payment surface exists; only the provider signal writes the door state (SE-I11)
+(exit code: 0)

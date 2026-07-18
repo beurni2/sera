@@ -1,0 +1,3 @@
+$ node scripts/gates/actor-provenance.mjs gates/fixtures/signal.provider-actor.json
+OK: door-paid signal from 'shop:commerce-core' (payment-provider class) consumed lawfully
+(exit code: 0)

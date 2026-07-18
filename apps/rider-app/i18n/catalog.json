@@ -234,6 +234,18 @@
     "screenClass": "general"
   },
   {
+    "key": "enroute.title",
+    "fr": "Un seul arrêt. Rien d'autre en tête.",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "enroute.arrived_action",
+    "fr": "Je suis à la porte",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
     "key": "drop.title",
     "fr": "Code du client",
     "register": "neutral",
