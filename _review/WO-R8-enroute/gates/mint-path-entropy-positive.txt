@@ -1,0 +1,3 @@
+$ node scripts/check-mint-path-entropy.mjs
+mint-path-entropy OK: 1 mint path(s) draw from the OS CSPRNG (direct or via canon mintCommandId); zero Math.random
+(exit code: 0)

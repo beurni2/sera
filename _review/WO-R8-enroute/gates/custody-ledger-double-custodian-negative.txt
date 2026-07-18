@@ -1,0 +1,3 @@
+$ node scripts/gates/custody-ledger.mjs gates/fixtures/negative/ledger.double-custodian.json
+VIOLATION (caught, refused closed): concurrent custodian write for r-IMPOSTOR → custodian_conflict; custodian stays courier:r-1
+(exit code: 1)

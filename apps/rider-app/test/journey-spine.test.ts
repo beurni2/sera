@@ -73,9 +73,13 @@ describe('rider journey spine', () => {
       const n = stepAfterEvidenceAck(o);
       return n === 'drop' ? 'door_inspection' : n;
     };
-    expect(JOURNEY.evidence_pending).toContain(afterAck('applied')); // door_inspection unlocks
-    expect(afterAck('collision-refused')).toBe('evidence_pending'); // refused → no forward edge
-    expect([...JOURNEY.evidence_pending].sort()).toEqual(['courses', 'door_inspection'].sort());
+    // R8 « En route » is a DISPLAY waypoint on the applied-ack path: evidence_pending
+    // advances to en_route (not the door directly), and en_route's SOLE edge is the
+    // rule's output — so the custody target (door_inspection) is UNCHANGED, reached
+    // one display hop later. The map still never re-encodes the custody transition.
+    expect([...JOURNEY.evidence_pending].sort()).toEqual(['courses', 'en_route'].sort());
+    expect([...JOURNEY.en_route]).toEqual([afterAck('applied')]); // → door_inspection, unchanged
+    expect(afterAck('collision-refused')).toBe('evidence_pending'); // refused → still no forward edge
     // SE-I11: the ONLY edge out of the payment wait is the provider-confirmed
     // outcome; the pending signal is a state, not an edge.
     expect([...JOURNEY.payment_wait]).toEqual([stepAfterDoorSignal('confirmed')]);

@@ -21,7 +21,11 @@ import type { FlushOutcome } from './offline/outbox';
  * re-encodes a transition, it enumerates what the rules produce.
  */
 
-export type Screen = 'service' | 'courses' | 'affectation' | 'retour_colis' | CustodyStep;
+// 'en_route' (R8 « En route ») is a DISPLAY waypoint, not a custody step — it
+// joins 'affectation'/'retour_colis' as a non-custody screen, so custody-flow.ts
+// stays untouched. A course's step is never 'en_route' (the store advances
+// straight to the door); the rider only passes through it on the forward walk.
+export type Screen = 'service' | 'courses' | 'affectation' | 'retour_colis' | 'en_route' | CustodyStep;
 
 export const START: Screen = 'service';
 
@@ -72,14 +76,16 @@ export const JOURNEY: Record<Screen, readonly Screen[]> = {
   // SE-I06: capturing ALWAYS lands evidence_pending (online or offline); the
   // drop stays locked until the server ack. Never an edge straight to the door.
   evidence: ['evidence_pending'],
-  // The ONLY forward edge is the authoritative server ack, produced by
-  // stepAfterEvidenceAck: applied/idempotentReplay → door_inspection;
-  // collision-refused maps to itself (waiting is a state, not an edge). « Retour »
-  // to the course list is the quiet arm.
-  evidence_pending: [
-    ...uniq([afterAck('applied'), afterAck('collision-refused')]).filter((s) => s !== 'evidence_pending'),
-    'courses',
-  ],
+  // The authoritative server ack (stepAfterEvidenceAck) is what advances:
+  // applied/idempotentReplay lands the custody target (door_inspection);
+  // collision-refused maps to itself (waiting is a state, not an edge). R8
+  // « En route » is a DISPLAY waypoint inserted before that target — the rider
+  // taps through it (« Je suis à la porte ») to reach the door the rule already
+  // set. The map never re-encodes the custody transition: en_route's SOLE edge
+  // is the rule's output (afterAck('applied') = door_inspection), so the custody
+  // target is unchanged. « Retour » to the course list is the quiet arm.
+  evidence_pending: ['en_route', 'courses'],
+  en_route: [afterAck('applied')],
   // Both payment modes, produced by stepAfterInspection; the problem path
   // (refusal ladder entry) is the documented quiet arm.
   door_inspection: [

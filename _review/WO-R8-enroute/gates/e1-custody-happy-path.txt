@@ -1,0 +1,20 @@
+$ node scripts/e1-custody-happy-path.mjs
+=== E1 CUSTODY SPINE — steps 11–13 happy path ===
+order_id       = order-e1-0001
+task_id        = task-e1-0001
+package_id     = pkg-e1-0001
+validation_id  = val-order-e1-0001
+correlation_id = corr-e1-0001 (constant across every event)
+current custodian = customer
+ledger: 7 entries, chain VERIFIES
+
+=== events (name @ aggregateVersion) ===
+1. pickup.verification_recorded.v1 (command verify-order-e1-0001-a1)
+2. pickup.custody_seal_registered.v1 (command seal-order-e1-0001)
+3. custody.transferred_to_courier.v1 (command custody-courier-order-e1-0001)
+4. delivery.evidence_submitted.v1 (command evidence-order-e1-0001)
+5. custody.transferred_to_customer.v1 (command custody-customer-order-e1-0001)
+6. delivery.validated.v1 (command eligibility-order-e1-0001)
+
+eligibility signals for the order: 1 (replay absorbed: duplicate=true)
+(exit code: 0)

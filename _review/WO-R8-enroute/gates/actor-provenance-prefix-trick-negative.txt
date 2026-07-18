@@ -1,0 +1,3 @@
+$ node scripts/gates/actor-provenance.mjs gates/fixtures/negative/signal.prefix-trick-actor.json
+VIOLATION (caught, refused closed + alert): actor 'shop:commerce-core-evil' is not in the payment-provider class
+(exit code: 1)

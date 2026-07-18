@@ -1,0 +1,11 @@
+$ node scripts/gates/no-wallet-no-funds.mjs gates/fixtures/negative/no-wallet-no-funds
+no-wallet-no-funds FAILED (Ten Laws #2 — no app holds funds; no wallet/balance module) — 8 hit(s):
+  gates/fixtures/negative/no-wallet-no-funds/wallet.ts:1 [wallet] // NEGATIVE FIXTURE: a wallet/balance module — the no-wallet-no-funds gate
+  gates/fixtures/negative/no-wallet-no-funds/wallet.ts:1 [balance] // NEGATIVE FIXTURE: a wallet/balance module — the no-wallet-no-funds gate
+  gates/fixtures/negative/no-wallet-no-funds/wallet.ts:3 [wallet] export interface SupplierWallet {
+  gates/fixtures/negative/no-wallet-no-funds/wallet.ts:5 [balance] balance: number; // banned: no app computes an independent balance
+  gates/fixtures/negative/no-wallet-no-funds/wallet.ts:7 [wallet] export function holdFunds(wallet: SupplierWallet, amount: number): void {
+  gates/fixtures/negative/no-wallet-no-funds/wallet.ts:7 [holdFunds/captureFunds/releaseFunds] export function holdFunds(wallet: SupplierWallet, amount: number): void {
+  gates/fixtures/negative/no-wallet-no-funds/wallet.ts:8 [wallet] wallet.balance -= amount;
+  gates/fixtures/negative/no-wallet-no-funds/wallet.ts:8 [balance] wallet.balance -= amount;
+(exit code: 1)
