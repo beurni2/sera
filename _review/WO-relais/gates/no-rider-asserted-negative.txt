@@ -1,0 +1,7 @@
+$ node scripts/gates/no-rider-asserted-payment.mjs gates/fixtures/negative/rider-asserted-payment
+VIOLATION (caught): 4 rider-asserted payment surface(s):
+  gates/fixtures/negative/rider-asserted-payment/rider-marks-paid.ts:4 [rider-asserted payment] export function riderMarksPaid(spine: Record<string, unknown>): void {
+  gates/fixtures/negative/rider-asserted-payment/rider-marks-paid.ts:5 [rider-asserted payment] const riderSaysBuyerPaid = true; // screenshot shown at the door
+  gates/fixtures/negative/rider-asserted-payment/rider-marks-paid.ts:6 [rider-asserted payment] if (riderSaysBuyerPaid) {
+  gates/fixtures/negative/rider-asserted-payment/rider-marks-paid.ts:7 [door state write] (spine as { doorPaymentConfirmed: boolean }).doorPaymentConfirmed = true;
+(exit code: 1)

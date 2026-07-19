@@ -141,6 +141,34 @@ export function LandmarkCard({
   );
 }
 
+/** R4/R8 « le relais » — the masked-call affordance (planche HANDOFF §4 R4:57):
+ * `notCalling` → a ghost « Appeler — numéro masqué »; `calling` → the ink bar
+ * (3 gold dots + « RELAIS — LES DEUX NUMÉROS RESTENT PRIVÉS » + a « Raccrocher »
+ * button). The relay is the point — the two numbers never meet. SKIN ONLY: the
+ * caller owns the `calling` state (a local toggle). At the walking-skeleton stage
+ * NO telephony backend is wired, so no real number is ever dialed or exposed —
+ * the « masqué » promise is kept by construction (there is no number to leak). */
+export function RelaisRow({
+  calling, callLabel, privacyLabel, hangUpLabel, onToggle,
+}: {
+  calling: boolean; callLabel: string; privacyLabel: string; hangUpLabel: string; onToggle: () => void;
+}) {
+  if (!calling) return <GhostButton label={callLabel} onPress={onToggle} />;
+  return (
+    <View style={styles.relaisBar}>
+      <View style={styles.relaisDots}>
+        <View style={styles.relaisDot} />
+        <View style={styles.relaisDot} />
+        <View style={styles.relaisDot} />
+      </View>
+      <Text style={styles.relaisPrivacy}>{privacyLabel}</Text>
+      <Pressable style={({ pressed }) => [styles.relaisHangUp, pressed && styles.pressed]} onPress={onToggle} accessibilityRole="button">
+        <Text style={styles.relaisHangUpText}>{hangUpLabel}</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 /** R5 check row (planche l.235–241): the label + a « conforme » toggle that fills
  * GREEN when set (okBg/okFg — conformity, never a shame red). The gate itself lives
  * in custody-flow (bounded objective conformity — never quality/authenticity). The
@@ -522,6 +550,15 @@ const styles = StyleSheet.create({
   chronoLabel: { ...ty('caps'), color: C.accentDeepAlt },
   chronoTime: { fontFamily: displayFace(800), fontSize: 18, fontWeight: '800', color: C.ink, fontVariant: ['tabular-nums'] },
   chronoNote: { ...ty('body', 'max'), color: C.body },
+  // R4/R8 relais « barre encre » — the active masked-call bar: dark ink surface
+  // (DARK.band, the same ink as the SOS/relay family), gold dots, light caps
+  // privacy line, a warm-surface « Raccrocher » pill. All tokens, no hex.
+  relaisBar: { alignSelf: 'stretch', flexDirection: 'row', alignItems: 'center', gap: 11, backgroundColor: DARK.band, borderRadius: rad('card'), paddingVertical: 12, paddingHorizontal: 16 },
+  relaisDots: { flexDirection: 'row', gap: 5 },
+  relaisDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: C.accent },
+  relaisPrivacy: { ...ty('caps'), color: DARK.bandText, flex: 1 },
+  relaisHangUp: { backgroundColor: C.card, borderRadius: rad('pill'), paddingVertical: 8, paddingHorizontal: 14 },
+  relaisHangUpText: { ...ty('pill'), color: C.ink, textTransform: 'uppercase' },
   proofSeal: { width: 78, height: 78, borderRadius: rad('pill'), backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center', shadowColor: C.accent, shadowOpacity: 0.5, shadowRadius: 20, shadowOffset: { width: 0, height: 14 }, elevation: 6 },
   celScrim: { ...StyleSheet.absoluteFillObject, backgroundColor: DARK.celebrationScrim, alignItems: 'center', justifyContent: 'center', gap: 20, paddingHorizontal: 32 },
   celRule: { width: 132, height: 0, borderTopWidth: 3, borderStyle: 'dashed', borderColor: C.accent },

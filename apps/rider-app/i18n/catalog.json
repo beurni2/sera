@@ -672,6 +672,24 @@
     "screenClass": "status"
   },
   {
+    "key": "relais.call",
+    "fr": "Appeler — numéro masqué",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "relais.privacy",
+    "fr": "Relais — les deux numéros restent privés",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "relais.hang_up",
+    "fr": "Raccrocher",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
     "key": "repere.voice",
     "fr": "Écouter les indications",
     "register": "neutral",

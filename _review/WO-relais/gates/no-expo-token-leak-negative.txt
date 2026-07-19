@@ -1,0 +1,11 @@
+$ node scripts/gates/no-expo-token-leak.mjs gates/fixtures/negative/no-expo-token-leak
+no-expo-token-leak FAILED (WO-4.0 credentials never committed) — 8 hit(s):
+  gates/fixtures/negative/no-expo-token-leak/leak-config.json:1 [EXPO_TOKEN literal assignment] { "EXPO_TOKEN": "jsonLeak0987654321" }
+  gates/fixtures/negative/no-expo-token-leak/leaked-token.yml:3 [EXPO_TOKEN literal assignment] EXPO_TOKEN: "abcdef1234567890abcdef"
+  gates/fixtures/negative/no-expo-token-leak/leaked-token.yml:4 [expo token shape] other: expo_pat_AbCdEf123456_planted
+  gates/fixtures/negative/no-expo-token-leak/leaked-token.yml:6 [EXPO_TOKEN literal assignment] "EXPO_TOKEN": plantedYamlQuoted123
+  gates/fixtures/negative/no-expo-token-leak/leaky-run.sh:3 [EXPO_TOKEN literal assignment] EXPO_TOKEN=shellScriptLeak12345 npx eas update
+  gates/fixtures/negative/no-expo-token-leak/planted.env:1 [EXPO_TOKEN literal assignment] EXPO_TOKEN=dotenvLeak0192837465
+  gates/fixtures/negative/no-expo-token-leak/planted.env.local:2 [EXPO_TOKEN literal assignment] EXPO_TOKEN=dotenvLocalLeak123456
+  gates/fixtures/negative/no-expo-token-leak/secrets.env.production:2 [EXPO_TOKEN literal assignment] "EXPO_TOKEN": "dotenvProdLeak654321"
+(exit code: 1)

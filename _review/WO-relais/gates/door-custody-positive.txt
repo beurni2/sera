@@ -1,0 +1,3 @@
+$ node scripts/gates/door-custody-gate.mjs gates/fixtures/door.lawful-path.json
+OK: inspect → provider-confirmed door payment → drop code LAST → custody customer (SE-I11 held)
+(exit code: 0)

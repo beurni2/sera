@@ -1,0 +1,3 @@
+$ node scripts/gates/package-never-unowned.mjs gates/fixtures/negative/shift.orphaned-custody.json
+VIOLATION (caught, refused closed): custody_would_be_orphaned — the shift stays on; the package is never unowned
+(exit code: 1)
