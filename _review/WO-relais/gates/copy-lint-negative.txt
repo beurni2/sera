@@ -1,0 +1,7 @@
+$ pnpm exec copy-lint gates/fixtures/negative/catalog.negative.json
+copy-lint FAILED: 4 violation(s) across 3 entries
+  [banned_register_token] negative.administrative_register: banned-register token « séquestre » in fr: "Veuillez patienter pendant la vérification du séquestre susmentionné, conformément à la procédure ci-après."
+  [reading_level] negative.administrative_register: average 2.62 syllables/word exceeds the checkout budget of 2.6: "Veuillez patienter pendant la vérification du séquestre susmentionné, conformément à la procédure ci-après"
+  [register_mismatch] negative.marketing_in_money_moment: marketing/urgency token « profitez » in a register:money string (fr): "Profitez vite de cette offre limitée : payez maintenant !"
+  [local_language_in_money_or_instruction] negative.local_language_in_instruction: Mooré/Dioula token « barka » in a neutral/instruction string: "Barka ! Entrez le code de retrait pour continuer."
+(exit code: 1)

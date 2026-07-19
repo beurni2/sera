@@ -99,6 +99,7 @@ import {
   PendingNotice as FasoPendingNotice,
   OfflineBanner as FasoOfflineBanner,
   InspectionChrono as FasoInspectionChrono,
+  RelaisRow as FasoRelaisRow,
   CodeCells as FasoCodeCells,
   Keypad as FasoKeypad,
 } from './src/ui/faso-kit';
@@ -277,6 +278,9 @@ export default function App() {
   const [windowUntil, setWindowUntil] = useState('');
   const [proposalUntil, setProposalUntil] = useState(proposalDeadlineHhmm);
   const [playing, setPlaying] = useState(false);
+  // R4/R8 relais masked-call: a local calling toggle (no telephony backend at the
+  // walking-skeleton stage — no number is ever dialed, so « masqué » holds).
+  const [calling, setCalling] = useState(false);
   const [codeStr, setCodeStr] = useState('');
   const [celebrate, setCelebrate] = useState(false);
   const [sos, setSos] = useState<SosState>('closed');
@@ -368,6 +372,7 @@ export default function App() {
     setWindowUntil('');
     setProposalUntil(proposalDeadlineHhmm());
     setPlaying(false);
+    setCalling(false);
     setCodeStr('');
     setCelebrate(false);
     setSos('closed');
@@ -389,6 +394,7 @@ export default function App() {
     setChecks({});
     setCodeStr('');
     setPlaying(false);
+    setCalling(false);
     setKey1(false);
     setKey2(false);
     setOneKeyMsg(false);
@@ -476,6 +482,15 @@ export default function App() {
     time: '0:11',
     playing,
     onPress: () => setPlaying((p) => !p),
+  });
+  // R4/R8 relais props — the masked-call affordance, shared across the repère
+  // screens (affectation · en_route · door). A local toggle; no number dialed.
+  const relaisFor = () => ({
+    calling,
+    callLabel: t('relais.call'),
+    privacyLabel: t('relais.privacy'),
+    hangUpLabel: t('relais.hang_up'),
+    onToggle: () => setCalling((c) => !c),
   });
   // The seal ID's digit grouping uses the canon narrow-no-break-space (U+202F,
   // money.groupSeparator) — the one place any grouping surfaces in Séra, which
@@ -645,6 +660,7 @@ export default function App() {
                   illustrated
                   voice={voiceFor()}
                 />
+                <FasoRelaisRow {...relaisFor()} />
                 <FasoQuoteRule>{t('repere.no_gps')}</FasoQuoteRule>
                 {active.ack === 'decline_pending' ? (
                   /* The refusal went out WITHOUT the network: queued = PENDING, it
@@ -837,6 +853,7 @@ export default function App() {
                 repereLabel={t('assignment.landmark_label')}
                 indicationsLabel={t('repere.indications')}
               />
+              <FasoRelaisRow {...relaisFor()} />
               <FasoQuoteRule>{t('repere.no_gps')}</FasoQuoteRule>
               <FasoPrimaryButton label={t('enroute.arrived_action')} onPress={() => go('door_inspection')} />
             </FpIn>
@@ -859,6 +876,7 @@ export default function App() {
                 repereLabel={t('assignment.landmark_label')}
                 indicationsLabel={t('repere.indications')}
               />
+              <FasoRelaisRow {...relaisFor()} />
               <FasoPrimaryButton label={t('inspect.accept_action')} onPress={() => walk((w) => acceptInspection(w, active.id))} />
               <FasoDangerButton label={t('problem.action')} onPress={() => walk((w) => reportProblem(w, active.id))} />
               <FasoGhostButton label={t('inspect.cantpay')} onPress={() => walk((w) => reportProblem(w, active.id))} />

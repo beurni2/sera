@@ -1,0 +1,3 @@
+$ node scripts/gates/outcome-family.mjs gates/fixtures/negative/outcome.generic-failed.json
+VIOLATION (caught, refused at parse): family — Invalid option: expected one of "retry"|"reschedule"|"return"|"incident"
+(exit code: 1)

@@ -1,0 +1,9 @@
+$ node scripts/gates/single-level.mjs gates/fixtures/negative/single-level
+single-level FAILED (single-level only — no recruitment/downline mechanics) — 6 hit(s):
+  gates/fixtures/negative/single-level/downline.ts:1 [downline] // NEGATIVE FIXTURE: recruitment/downline mechanics — the single-level gate
+  gates/fixtures/negative/single-level/downline.ts:1 [recruit] // NEGATIVE FIXTURE: recruitment/downline mechanics — the single-level gate
+  gates/fixtures/negative/single-level/downline.ts:5 [downline] downline: string[]; // banned: B+I-10 single-level only
+  gates/fixtures/negative/single-level/downline.ts:6 [upline] uplineId?: string;
+  gates/fixtures/negative/single-level/downline.ts:8 [recruit] export function recruitReseller(network: ResellerNetwork, newId: string): void {
+  gates/fixtures/negative/single-level/downline.ts:9 [downline] network.downline.push(newId);
+(exit code: 1)

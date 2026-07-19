@@ -1,0 +1,3 @@
+$ node scripts/quote-shape-check.mjs
+quote-shape-check OK — 23 Quote keys; supplyMode/handlingClass/kittingSealId absent and strict-refused (§5.6 L69)
+(exit code: 0)

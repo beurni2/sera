@@ -1,0 +1,5 @@
+$ node scripts/gates/no-ssh-lockfile-urls.mjs gates/fixtures/negative/lockfile-ssh-url
+no-ssh-lockfile-urls FAILED (the lockfile carries only https git URLs — an ssh/scp form breaks the frozen CI install) — 2 hit(s):
+  gates/fixtures/negative/lockfile-ssh-url/pnpm-lock.yaml:13 [scp-form ssh git remote] specifier: 'git@github.com:beurni2/platform-contracts.git#fa2ff246dc747a6d28f319278ecf85d54ca067dd&path:packages/contracts'
+  gates/fixtures/negative/lockfile-ssh-url/pnpm-lock.yaml:14 [scp-form ssh git remote] version: 'git@github.com:beurni2/platform-contracts.git#fa2ff246dc747a6d28f319278ecf85d54ca067dd&path:packages/contracts'
+(exit code: 1)
