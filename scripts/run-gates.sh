@@ -24,6 +24,14 @@ capture() {
   printf '%s\n(exit code: %d)\n' "$out" "$rc"
   if [ "$expected" = pass ] && [ $rc -ne 0 ]; then echo "GATE FAILED (expected pass): $name"; FAILED=1; fi
   if [ "$expected" = fail ] && [ $rc -ne 1 ]; then echo "GATE FAILED (expected the negative fixture to fail with exit 1, got $rc): $name"; FAILED=1; fi
+  # An explicit NUMBER pins a specific non-zero code — used for the exit-2
+  # "gate could not run" contract (empty scan, unclassified directory), which is
+  # a different outcome from "gate ran and found a violation" and must not be
+  # provable by the same expectation (AUDIT-B+1 F2).
+  case "$expected" in
+    ''|*[!0-9]*) ;;
+    *) if [ $rc -ne "$expected" ]; then echo "GATE FAILED (expected exit $expected, got $rc): $name"; FAILED=1; fi ;;
+  esac
 }
 
 cd "$ROOT"
@@ -193,6 +201,21 @@ capture no-funds-positive pass node scripts/gates/no-wallet-no-funds.mjs
 log "gate: no-funds — NEGATIVE FIXTURE (wallet/balance module, must fail)"
 capture no-funds-negative fail node scripts/gates/no-wallet-no-funds.mjs gates/fixtures/negative/no-wallet-no-funds
 
+# AUDIT-B+1 F2 / M-GATE-03 — THE SCAN-COVERAGE PROOF.
+# Every law gate scans an ALLOWLIST of roots, so a top-level directory nobody
+# added was scanned by nothing and reported by nothing. This plants a directory
+# with a live violation in it and requires exit 2 ("gate could not run") — not
+# exit 0. Without this, the coverage fix would be a claim, not a fact.
+log "gate: scan coverage — an UNCLASSIFIED top-level directory must break the build (exit 2)"
+UNCLASSIFIED_DIR="$ROOT/zz-unclassified-coverage-probe"
+cleanup_probe() { rm -rf "$UNCLASSIFIED_DIR"; }
+trap cleanup_probe EXIT
+rm -rf "$UNCLASSIFIED_DIR"; mkdir -p "$UNCLASSIFIED_DIR"
+printf 'export const soldeVendeur = 0;\n' > "$UNCLASSIFIED_DIR/probe.ts"
+capture scan-coverage-unclassified-dir 2 node scripts/gates/no-wallet-no-funds.mjs
+cleanup_probe
+trap - EXIT
+
 log "gate: four-secrets separation — readiness evidence payload (must pass)"
 capture four-secrets-positive pass node scripts/gates/no-drop-code-in-seller-evidence.mjs gates/fixtures/readiness-evidence.json
 
@@ -222,6 +245,13 @@ capture single-level-positive pass node scripts/gates/single-level.mjs
 
 log "gate: single-level — NEGATIVE FIXTURE (downline/recruit, must fail)"
 capture single-level-negative fail node scripts/gates/single-level.mjs gates/fixtures/negative/single-level
+
+# AUDIT-B+1 F2: the gate learned French, and the FIRST risk of teaching a gate
+# French is that it starts failing an approved capability. Single-level
+# parrainage is shipped and founder-designed; this asserts the gate still lets
+# it through. A pattern that makes this fixture fail is a WRONG pattern.
+log "gate: single-level — POSITIVE FIXTURE (single-level parrainage is legal, must pass)"
+capture single-level-legal-parrainage pass node scripts/gates/single-level.mjs gates/fixtures/single-level-legal
 
 log "gate: French Voice copy-lint — rider-app catalog (must pass)"
 capture copy-lint-rider-positive pass pnpm exec copy-lint apps/rider-app/i18n/catalog.json

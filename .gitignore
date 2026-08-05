@@ -17,3 +17,6 @@ test-results/
 # byte-equality is a property nothing relies on — the WO-4.1 hazard (a *tracked*
 # PNG re-encoding and dirtying the tree) is gone because the COMPARISON is gone.
 gallery/img/
+
+# Gate-board scan-coverage probe (created and removed by scripts/run-gates.sh)
+zz-unclassified-coverage-probe/
