@@ -74,7 +74,17 @@ let checkedPatterns = 0;
 
 for (const { gate, fixtures } of GATES) {
   const gatePath = `scripts/gates/${gate}.mjs`;
-  if (!existsSync(gatePath)) continue;
+  /* A DELETED law gate used to be skipped silently — `continue` ran BEFORE the
+     roster was consulted, so removing the file left the roster listing patterns
+     nothing enforced, and this gate still printed OK. */
+  if (!existsSync(gatePath)) {
+    if (Object.prototype.hasOwnProperty.call(roster, gate)) {
+      console.error(`fr-pattern-coverage FAILED — ${gatePath} is GONE but the roster still declares ${roster[gate].length} pattern(s) for it.`);
+      console.error('  A law gate cannot be deleted quietly. Remove its roster entry in the same commit and say why.');
+      failed = true;
+    }
+    continue;
+  }
 
   /* Every gate that EXISTS must be in the roster. Without this, emptying the
      roster (or dropping one key) silently disables deletion detection while the
@@ -97,6 +107,30 @@ for (const { gate, fixtures } of GATES) {
      scanned, while coverage, the roster and both fixtures stay green. A
      verifier did exactly that. These gates must scan the canonical roots. */
   const gateSrc = readFileSync(gatePath, 'utf8');
+
+  /* THE ARRAY CAN BE INTACT AND UNUSED. A verifier passed
+     `patterns: PATTERNS.slice(0, 1)` — roster green, coverage green, fixtures
+     green, and the gate enforced one pattern. That is this file's own defect #3
+     ("gutted while its name, its fixture and the board stay green") one level
+     up. So the wiring itself is pinned: the whole array, unmodified, reaches
+     runScanGate. */
+  if (!/patterns:\s*PATTERNS\s*,/.test(gateSrc)) {
+    console.error(`fr-pattern-coverage FAILED — ${gate} does not pass PATTERNS to runScanGate verbatim.`);
+    console.error('  An intact array that is sliced, filtered or replaced at the call site enforces nothing.');
+    failed = true;
+  }
+  /* ...and the roots must not be narrowed by ANY route: a computed key or an
+     argv push reaches the same end as a literal `defaultRoots:`. */
+  if (/process\.argv\s*\.\s*(push|unshift|splice)/.test(gateSrc)) {
+    console.error(`fr-pattern-coverage FAILED — ${gate} mutates process.argv, which silently re-roots the scan.`);
+    failed = true;
+  }
+  if (/\[\s*['"`]?default\s*\+|\[\s*[A-Za-z_$][\w$]*\s*\]\s*:/.test(gateSrc)) {
+    console.error(`fr-pattern-coverage FAILED — ${gate} uses a COMPUTED option key in its runScanGate call.`);
+    console.error('  A computed key hides defaultRoots/scanExtensions from review. Spell options literally.');
+    failed = true;
+  }
+
   for (const narrowing of ['defaultRoots', 'scanExtensions']) {
     if (new RegExp(`\\b${narrowing}\\s*:`).test(gateSrc)) {
       console.error(`fr-pattern-coverage FAILED — ${gate} passes \`${narrowing}\` to runScanGate.`);

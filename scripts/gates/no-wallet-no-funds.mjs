@@ -41,7 +41,7 @@ const isMainModule = import.meta.url === pathToFileURL(process.argv[1] ?? '').hr
 export const PATTERNS = [
     /* UNAMBIGUOUS — no innocent reading in this product. */
     { name: 'wallet', regex: /wallet/i },
-    { name: 'balance (english money sense)', regex: /(?<!text-?wrap:\s*)(?<!text-)(?<!insufficient_)(?<![a-zA-ZÀ-ÿ])(?<!la\s)(?<!une\s)(?<!ma\s)(?<!sa\s)balances?\b/i },
+    { name: 'balance (english money sense)', regex: /(?<!insufficient_)(?<![a-zA-ZÀ-ÿ])balances?\s*[:=][^=]|\.\s*balances?\b|(seller|user|account|client|vendeur|compte|wallet|cash|credit|fund|payout|ledger|running)Balances?\b|\b(seller|user|account|client|vendeur|compte)_balances?\b/i },
     { name: 'holdFunds/captureFunds/releaseFunds', regex: /(hold|capture|release)[_-]?funds/i },
     { name: 'escrowAccount', regex: /escrow[_-]?account/i },
     { name: 'topUp', regex: /top[_-]?up\b/i },

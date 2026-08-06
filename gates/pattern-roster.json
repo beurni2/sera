@@ -6,7 +6,7 @@
     },
     {
       "name": "balance (english money sense)",
-      "regex": "/(?<!text-?wrap:\\s*)(?<!text-)(?<!insufficient_)(?<![a-zA-ZÀ-ÿ])(?<!la\\s)(?<!une\\s)(?<!ma\\s)(?<!sa\\s)balances?\\b/i"
+      "regex": "/(?<!insufficient_)(?<![a-zA-ZÀ-ÿ])balances?\\s*[:=][^=]|\\.\\s*balances?\\b|(seller|user|account|client|vendeur|compte|wallet|cash|credit|fund|payout|ledger|running)Balances?\\b|\\b(seller|user|account|client|vendeur|compte)_balances?\\b/i"
     },
     {
       "name": "holdFunds/captureFunds/releaseFunds",
