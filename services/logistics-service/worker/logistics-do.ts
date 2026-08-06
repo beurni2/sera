@@ -1,3 +1,4 @@
+import { DeliveryTaskSchema, PlatformEventSchema } from '@platform/contracts';
 import {
   decideLease,
   emptyLeaseState,
@@ -63,6 +64,9 @@ import {
  */
 
 export const LOGISTICS_BOOK_NAME = 'logistique';
+
+/** SE-LIVE-2c — the founder composing a task acts as himself, on the record. */
+const OPS_ACTOR = 'ops:sera:fondateur';
 
 const SNAP_QUEUE = 'snap:queue:v1';
 const SNAP_REGISTRY = 'snap:registry:v1';
@@ -424,6 +428,119 @@ export class LogisticsDO {
       if (!outcome.ok) return Response.json(outcome, { status: 409 });
       return Response.json({ ok: true, assignment: outcome.assignment, lease: outcome.lease, duplicate: outcome.duplicate });
     }
+    /**
+     * ═══ SE-LIVE-2c — THE FOUNDER COMPOSES THE DELIVERY TASK ═══
+     *
+     * FOUNDER RULING (2026-08-06, option 1): the canonical DeliveryTask
+     * REQUIRES a GPS pin, `directions` and a `maskedRelay`, and the buyer
+     * gives Shop+ only phone + quartier + repère (BC-1a). No producer can
+     * compose a canonical task without INVENTING coordinates and a relay id,
+     * so no producer composes one: the founder does, here, from what he can
+     * actually see. Nothing is fabricated and no canon shape was weakened.
+     *
+     * WHAT HE SUPPLIES: the address only. WHAT HE CANNOT DO: skip the gate.
+     * The composed task goes through the SAME `onTaskReady` admission the
+     * producers' events go through, so SE-I02 (funded per mode + readiness
+     * confirmed + non-cancelled + not stale) holds against the founder's own
+     * hand exactly as it holds against a wire. A refusal answers 422 with the
+     * gate's own reason, so he sees WHY rather than a silent nothing.
+     */
+    if (request.method === 'POST' && pathname === '/ops/task') {
+      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      if (body === null || !isStr(body['command_id']) || !isStr(body['orderId'])) return malformed();
+      const orderId = (body['orderId'] as string).trim();
+      const loc = body['location'] as Record<string, unknown> | undefined;
+      const win = body['window'] as Record<string, unknown> | undefined;
+      const pin = loc?.['pin'] as Record<string, unknown> | undefined;
+      if (
+        loc == null ||
+        pin == null ||
+        typeof pin['lat'] !== 'number' ||
+        typeof pin['lng'] !== 'number' ||
+        !Number.isFinite(pin['lat']) ||
+        !Number.isFinite(pin['lng']) ||
+        !isStr(loc['zone']) ||
+        !isStr(loc['landmark']) ||
+        !isStr(loc['directions']) ||
+        !isStr(loc['maskedRelay']) ||
+        win == null ||
+        !isIso(win['start']) ||
+        !isIso(win['end'])
+      ) {
+        return malformed();
+      }
+      // Composed THROUGH the pinned canon: a task this platform cannot parse
+      // never reaches the queue (the strict schema owns the shape, not this
+      // route). The id is minted here — CSPRNG, never a caller's claim.
+      const task = {
+        type: 'delivery' as const,
+        id: (isStr(body['taskId']) ? (body['taskId'] as string).trim() : `task-${crypto.randomUUID()}`),
+        orderId,
+        location: {
+          pin: { lat: pin['lat'] as number, lng: pin['lng'] as number },
+          zone: (loc['zone'] as string).trim(),
+          landmark: (loc['landmark'] as string).trim(),
+          directions: (loc['directions'] as string).trim(),
+          maskedRelay: (loc['maskedRelay'] as string).trim(),
+        },
+        window: { start: win['start'] as string, end: win['end'] as string },
+        status: 'ready',
+      };
+      let event: unknown;
+      try {
+        event = PlatformEventSchema.parse({
+          name: 'logistics.task_ready.v1',
+          envelope: {
+            command_id: (body['command_id'] as string).trim(),
+            correlation_id: `corr-${orderId}`,
+            aggregateVersion: 1,
+            actor: OPS_ACTOR,
+            serverTime: now,
+            version: '1',
+          },
+          payload: { task: DeliveryTaskSchema.parse(task) },
+        });
+      } catch {
+        return malformed();
+      }
+      const outcome = this.queue.onTaskReady(event, now);
+      if (!outcome.admitted) {
+        // The gate refused the FOUNDER, and says why — an unfunded or
+        // unprepared order cannot be dispatched by hand any more than by wire.
+        return Response.json({ ok: false, admitted: false, reason: outcome.reason }, { status: 422 });
+      }
+      return Response.json({ ok: true, admitted: true, duplicate: outcome.duplicate, taskId: outcome.task.id });
+    }
+
+    /**
+     * SE-LIVE-2c — WHAT IS WAITING FOR HIM. Orders both producers have
+     * vouched for (funded per mode + ready) that carry no task yet. Derived
+     * from the stored facts and the queue — never a guess, never a count that
+     * outlives its evidence.
+     */
+    if (request.method === 'GET' && pathname === '/ops/a-preparer') {
+      const withTask = new Set(
+        this.queue
+          .snapshot()
+          .tasks.map(([, queued]) => queued.orderId),
+      );
+      const attente = Object.entries(this.fundingFacts)
+        .filter(([orderId, fact]) => {
+          if (withTask.has(orderId)) return false;
+          if (fact.status !== 'funded' || fact.stale || fact.paymentMode !== 'FULL_PREPAY') return false;
+          const readiness = this.readinessFacts[orderId];
+          return readiness !== undefined && readiness.ready && !readiness.stale;
+        })
+        .map(([orderId, fact]) => ({
+          orderId,
+          paymentMode: fact.paymentMode,
+          fundedAsOf: fact.asOf,
+          readyAsOf: this.readinessFacts[orderId]?.asOf ?? null,
+        }))
+        .sort((a, b) => (a.orderId < b.orderId ? -1 : 1));
+      return Response.json({ ok: true, attente });
+    }
+
     if (request.method === 'POST' && pathname === '/ops/expire-due') {
       const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
       if (body !== null && body['nowIso'] !== undefined && !isIso(body['nowIso'])) return malformed();

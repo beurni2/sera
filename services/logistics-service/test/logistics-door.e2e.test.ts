@@ -526,3 +526,145 @@ describe('DURABILITY — the book survives a restart (the whole point of the DO)
     }
   }, 60_000);
 });
+
+/**
+ * ═══ SE-LIVE-2c — THE FOUNDER COMPOSES THE TASK (founder ruling, option 1) ═══
+ *
+ * The canonical DeliveryTask demands a GPS pin, `directions` and a
+ * `maskedRelay`; the buyer gives Shop+ only phone + quartier + repère. Rather
+ * than let a producer invent coordinates, the FOUNDER supplies the address by
+ * hand. What this suite pins is the line between « he supplies the address »
+ * and « he overrides the law »: the composed task goes through the SAME SE-I02
+ * admission gate as any wire, so an unfunded or unprepared order refuses
+ * closed against his own hand, with the gate's own reason.
+ */
+describe('SE-LIVE-2c — the founder composes the task, and the gate still governs', () => {
+  const ORDER = 'order-compose-1';
+  const LOCATION = {
+    pin: { lat: 12.3714, lng: -1.5197 },
+    zone: 'Gounghin',
+    landmark: 'Face à la pharmacie du marché',
+    directions: 'Deuxième porte bleue après le kiosque',
+    maskedRelay: 'relay-compose-1',
+  };
+  const WINDOW = { start: T, end: '2026-08-06T14:00:00.000Z' };
+
+  it('AN UNFUNDED ORDER REFUSES CLOSED AGAINST THE FOUNDER — SE-I02 is not his to skip', async () => {
+    const res = await call(mf, 'POST', '/ops/task', opsAuth, {
+      command_id: 'cmd-compose-unfunded',
+      orderId: 'order-compose-unfunded',
+      location: LOCATION,
+      window: WINDOW,
+    });
+    expect(res.status).toBe(422);
+    expect(res.json).toMatchObject({ ok: false, admitted: false, reason: 'funding_projection_stale' });
+  });
+
+  it('FUNDED BUT NOT YET PREPARED also refuses — readiness is the supplier’s word, not the dispatcher’s', async () => {
+    await fundOrder(mf, ORDER);
+    const res = await call(mf, 'POST', '/ops/task', opsAuth, {
+      command_id: 'cmd-compose-unready',
+      orderId: ORDER,
+      location: LOCATION,
+      window: WINDOW,
+    });
+    expect(res.status).toBe(422);
+    expect(res.json).toMatchObject({ reason: 'readiness_projection_stale' });
+  });
+
+  it('BOTH FACTS IN: the composed task is admitted, canon-shaped, and lands on the board', async () => {
+    await readyOrder(mf, ORDER);
+    const res = await call(mf, 'POST', '/ops/task', opsAuth, {
+      command_id: 'cmd-compose-ok',
+      orderId: ORDER,
+      location: LOCATION,
+      window: WINDOW,
+    });
+    expect(res.status).toBe(200);
+    expect(res.json).toMatchObject({ ok: true, admitted: true, duplicate: false });
+    const taskId = res.json['taskId'] as string;
+    expect(taskId.startsWith('task-')).toBe(true);
+
+    const board = await call(mf, 'GET', '/ops/board', opsAuth);
+    const queued = ((board.json['board'] as Json)['queued'] as Json[]).find((q) => q['taskId'] === taskId);
+    expect(queued).toBeDefined();
+    expect(queued?.['orderId']).toBe(ORDER);
+    // The founder's own address survives verbatim — this is what the rider reads.
+    expect(queued?.['location']).toMatchObject({
+      zone: 'Gounghin',
+      landmark: 'Face à la pharmacie du marché',
+      maskedRelay: 'relay-compose-1',
+    });
+  });
+
+  it('REPLAY of the same command composes NO second task — one order, one attempt', async () => {
+    const again = await call(mf, 'POST', '/ops/task', opsAuth, {
+      command_id: 'cmd-compose-ok',
+      orderId: ORDER,
+      location: LOCATION,
+      window: WINDOW,
+    });
+    expect(again.status).toBe(200);
+    expect(again.json).toMatchObject({ ok: true, duplicate: true });
+    const board = await call(mf, 'GET', '/ops/board', opsAuth);
+    const forOrder = ((board.json['board'] as Json)['queued'] as Json[]).filter((q) => q['orderId'] === ORDER);
+    expect(forOrder).toHaveLength(1);
+  });
+
+  it('A HALF-GIVEN ADDRESS IS REFUSED 400 — never a task with a guessed pin or an empty relay', async () => {
+    const cases: Json[] = [
+      { ...LOCATION, pin: undefined },
+      { ...LOCATION, pin: { lat: 'douze', lng: -1.5 } },
+      { ...LOCATION, maskedRelay: '' },
+      { ...LOCATION, directions: '   ' },
+    ];
+    for (const location of cases) {
+      const res = await call(mf, 'POST', '/ops/task', opsAuth, {
+        command_id: `cmd-compose-bad-${JSON.stringify(location).length}`,
+        orderId: ORDER,
+        location,
+        window: WINDOW,
+      });
+      expect(res.status, JSON.stringify(location)).toBe(400);
+    }
+    // …and a malformed window is refused the same way.
+    expect(
+      (await call(mf, 'POST', '/ops/task', opsAuth, {
+        command_id: 'cmd-compose-badwin',
+        orderId: ORDER,
+        location: LOCATION,
+        window: { start: 'demain', end: WINDOW.end },
+      })).status,
+    ).toBe(400);
+  });
+
+  it('the ops door gates it: composing without the founder’s key is the uniform 401', async () => {
+    const res = await call(mf, 'POST', '/ops/task', intakeAuth, {
+      command_id: 'cmd-compose-crossed',
+      orderId: ORDER,
+      location: LOCATION,
+      window: WINDOW,
+    });
+    expect(res.status).toBe(401);
+    expect(res.json).toEqual({ error: 'unauthorized' });
+  });
+
+  it('/ops/a-preparer lists what is waiting for him — funded AND ready AND task-less, nothing else', async () => {
+    const waiting = 'order-compose-waiting';
+    await fundOrder(mf, waiting);
+    await readyOrder(mf, waiting);
+    // a funded-but-unprepared order must NOT appear
+    await fundOrder(mf, 'order-compose-halfway');
+
+    const res = await call(mf, 'GET', '/ops/a-preparer', opsAuth);
+    expect(res.status).toBe(200);
+    const rows = res.json['attente'] as Json[];
+    const ids = rows.map((r) => r['orderId']);
+    expect(ids).toContain(waiting);
+    // ORDER already has its task, so it has left the list…
+    expect(ids).not.toContain(ORDER);
+    // …and the half-vouched order never entered it.
+    expect(ids).not.toContain('order-compose-halfway');
+    expect(rows.find((r) => r['orderId'] === waiting)).toMatchObject({ paymentMode: 'FULL_PREPAY' });
+  });
+});
