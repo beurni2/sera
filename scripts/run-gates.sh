@@ -318,6 +318,14 @@ capture copy-lint-rider-positive pass pnpm exec copy-lint apps/rider-app/i18n/ca
 log "gate: French Voice copy-lint — dispatch-console catalog (must pass)"
 capture copy-lint-console-positive pass pnpm exec copy-lint apps/dispatch-console/i18n/catalog.json
 
+# AUDIT-B+1 F12, verifier round 3 — THE GATE THAT MAKES THE PIN LIVE.
+# Without a fixture whose ONLY violation is a stem F12 added, reverting the
+# @platform/i18n pin to the pre-F12 package leaves this board GREEN while the
+# audit's bureaucratic escape passes again — proven by execution. Enforced by
+# construction, not by discipline (§4).
+log "gate: French Voice copy-lint — NEGATIVE FIXTURE (administrative register, F12 — must fail)"
+capture copy-lint-administrative fail pnpm exec copy-lint gates/fixtures/negative/catalog.administrative-register.json
+
 log "gate: French Voice copy-lint — NEGATIVE FIXTURE (veuillez/séquestre + marketing-in-money + Mooré-in-instruction, must fail)"
 capture copy-lint-negative fail pnpm exec copy-lint gates/fixtures/negative/catalog.negative.json
 

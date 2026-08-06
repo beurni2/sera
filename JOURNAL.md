@@ -9,6 +9,14 @@ Format per entry:
 
 ---
 
+## 2026-08-06 · AUDIT-B+1 F12 — the copy-lint learns administrative register, and the pin is GATED · DONE (branch)
+- **What changed here:** `@platform/i18n` re-pinned to `199bc2ab` (canon), plus a new negative fixture `catalog.administrative-register.json` wired into the gate board.
+- **Why the pin alone was not enough (verifier round 2 blocker).** Canon carried the new word list while every app still resolved the OLD package, so the lint was unchanged for users and the journal said DONE. The pin lives in **two places per repo** — the root `package.json` AND each workspace package's own; moving only the root reports success and changes nothing.
+- **Why the fixture (verifier round 3 blocker).** The existing negative fixture violates « Veuillez » and « séquestre », which are in BOTH the old and new lists — so it discriminates nothing, and a pin regression left the board GREEN while the bureaucratic escape passed again. **Proven by execution.** The new fixture violates ONLY a token F12 added, so reverting the pin makes it stop failing and turns the board RED. §4: enforced by construction, not by discipline.
+- **The list RETREATED on evidence before shipping.** A verifier found honest sentences the first list refused — « Pas de formalité compliquée. », « Sans formalités : votre boutique est prête. », « Suivez l'instruction du livreur. » Negation copy is the promise this platform makes to an informal-sector seller. `formalité(s)`, `procédure(s)` and bare `instruction` were REMOVED; the escape is caught by the phrase « cours d'instruction » instead. Those four sentences are now CONTROLS in the canon tests.
+- **Evidence:** every catalog in this repo lints clean through the newly installed package; gate board green with the new negative fixture failing for the right reason (« cours d'instruction »).
+- **⚠ MERGE ORDER:** the pin references a `platform-contracts` commit that is on the branch only. **platform-contracts merges to main BEFORE this repo does**, or the pin dangles.
+
 ## 2026-08-06 · LAW-2-STRUCTURAL REVERTED in this repo too · DONE (branch)
 - **Commit:** sera `aa9324e` (boutik-plus `c016734` · shop-plus `4878773` — same revert, same day). Gate board green after the revert (`ALL GATES GREEN`, exit 0, including the 22 Playwright gallery specs). Pushed to `claude/buyer-pwa-standing-laws-nerljz`; CI dispatched.
 - **Removed:** `scripts/gates/persisted-state-declared.mjs` (273 lines) + `gates/persisted-state.json` (12 lines — Séra has one declared key) + four board entries in `run-gates.sh` + the probe-fixture `.gitignore` line. Diffstat −315 / +15. **No product code touched** — `git show --stat aa9324e` lists only `.gitignore`, `gates/`, `scripts/`.

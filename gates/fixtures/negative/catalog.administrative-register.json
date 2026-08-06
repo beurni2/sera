@@ -1,0 +1,8 @@
+[
+  {
+    "key": "negative.f12.instruction",
+    "fr": "Dossier en cours d’instruction.",
+    "register": "neutral",
+    "screenClass": "status"
+  }
+]
