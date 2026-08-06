@@ -15,11 +15,28 @@
  * you have to store an amount against a person and read it back. That surface
  * is small, so it is declared rather than guessed at.
  *
- * WHAT IT GUARANTEES: that no write call reaches durable storage unexamined,
- * and that changing a declared write CHANGES ITS FINGERPRINT so the declaration
- * must be renewed. It does not read minds — someone can still write
- * `"balance": false` next to a field holding money. That is a lie someone
- * signed, not an accident nobody saw.
+ * WHAT IT GUARANTEES — narrowed after verifier round 4 reproduced far more
+ * than the previous note admitted. It makes the COMMON, ACCIDENTAL case loud.
+ * It is NOT a proof, and these holes are open, measured, on the record:
+ *
+ *   · THE FINGERPRINT COVERS 15 OF 68 DECLARATIONS. `payloadIsVariable` is
+ *     computed from the KEY, not the payload, so `put(NAMED_KEY, { ... })` —
+ *     the dominant form — has its record outside the hashed region entirely.
+ *     A per-seller running total added to a `receipt` object 21 lines above a
+ *     declared write passed. And extracting a payload into a helper function
+ *     retires the protection for the 15 that are covered.
+ *   · EIGHT PERSISTENCE ROUTES ESCAPE, including the textbook Cloudflare DO
+ *     idiom `private st = this.state.storage` as a class field — no site, no
+ *     warning, exit 0. Also `storage.transaction()`, storage passed as a
+ *     function parameter, D1 `prepare/bind/run`, a `sql` template tag, and a
+ *     destructured `put`.
+ *   · `localStorage` IS OUT OF SCOPE and is shipped in this product. A
+ *     per-seller total there passes every gate.
+ *
+ * Closing these means resolving payload bindings and receiver identity through
+ * the TypeScript compiler API instead of by regex. That is a real slice. Until
+ * it is done, do not cite this gate as establishing Ten Laws #2 — cite it as
+ * the thing that catches the obvious, and cite the CODE REVIEW for the rest.
  */
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
