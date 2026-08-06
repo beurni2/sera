@@ -501,16 +501,32 @@ export class LogisticsDO {
        * does NOT block — that is the lawful replacement path (WO-2.7), and it
        * runs through `openFollowUpTask`, never through this route.
        */
-      const snapshot = this.queue.snapshot();
-      // A REPLAY of this very command is not a duplicate task — it is the
-      // same attempt arriving twice, and `onTaskReady` answers it `duplicate`.
-      // Only a DIFFERENT command meeting an existing open task is the
-      // accident this rule exists to stop.
-      const isReplay = snapshot.processedCommandIds.includes((body['command_id'] as string).trim());
-      const openForOrder = isReplay
-        ? undefined
-        : snapshot.tasks.find(([, queued]) => queued.orderId === orderId && queued.status !== 'closed_rescheduled');
+      const commandId = (body['command_id'] as string).trim();
+      /**
+       * ⚠ VERIFIER ROUND 2 — THE EXEMPTION IS PER TASK, NEVER GLOBAL. Round 1
+       * exempted any command_id already in `processedCommandIds`, and the
+       * verifier smuggled past it: a command admitted through the INTAKE door
+       * with a foreign correlation_id made this route skip the check
+       * entirely, while `onTaskReady`'s replay lookup (which matches on
+       * correlation) found nothing and admitted a fresh task — two open tasks
+       * for one order, the exact accident the rule exists to stop. The
+       * exemption now asks the only question that is safe: was the open task
+       * for THIS order put there by THIS command?
+       */
+      const openForOrder = this.queue
+        .snapshot()
+        .tasks.find(([, queued]) => queued.orderId === orderId && queued.status !== 'closed_rescheduled');
       if (openForOrder !== undefined) {
+        // AN OPEN TASK FOR THIS ORDER ENDS THE ROUTE, both ways. Either this
+        // very command composed it — answer duplicate from the task itself,
+        // never by falling through to a fresh admission — or it did not, and
+        // a second task is exactly the accident this refuses. Round 2's cut
+        // exempted the command and fell through; `onTaskReady`'s replay
+        // lookup matches on CORRELATION, so a task admitted under a foreign
+        // correlation was not recognised and a second one was created.
+        if (openForOrder[1].admittedByCommandId === commandId) {
+          return Response.json({ ok: true, admitted: true, duplicate: true, taskId: openForOrder[0] });
+        }
         return Response.json(
           { ok: false, reason: 'order_already_has_task', taskId: openForOrder[0], status: openForOrder[1].status },
           { status: 409 },

@@ -55,6 +55,11 @@ export interface QueuedTask {
   orderId: string;
   correlationId: string;
   admittedAt: string;
+  /** SE-LIVE-2c verifier round 2 — WHICH COMMAND PUT THIS TASK HERE. The ops
+   * door's « one open task per order » rule must exempt a replay of the SAME
+   * compose without exempting any command that merely exists somewhere in the
+   * processed set; only per-task provenance can tell those apart. */
+  admittedByCommandId: string;
   /** `closed_rescheduled` (WO-2.7): the attempt ended in a reschedule and a
    * follow-up task replaced this one — closed lawfully, never assignable
    * again, custody untouched by the closure. */
@@ -107,6 +112,7 @@ export class ReadyQueue {
       orderId: task.orderId,
       correlationId: event.envelope.correlation_id,
       admittedAt: nowIso,
+      admittedByCommandId: event.envelope.command_id,
       status: 'queued',
     });
     return { admitted: true, duplicate: false, task };

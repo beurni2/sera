@@ -775,3 +775,72 @@ describe('SE-LIVE-2c verifier round — no id hijack, no second task for one ord
     }
   });
 });
+
+/**
+ * ═══ SE-LIVE-2c VERIFIER ROUND 2 — THE SMUGGLED REPLAY ═══
+ *
+ * Round 1's « one open task per order » rule exempted any command_id already
+ * in the processed set. The verifier walked through it: a command admitted at
+ * the INTAKE door under a FOREIGN correlation id made the ops route skip the
+ * check, while `onTaskReady`'s replay lookup (which matches on correlation)
+ * found nothing and admitted a second task — two open tasks for one order,
+ * two riders reachable for one delivery. The exemption is now per-task
+ * provenance, and this is that exact attack.
+ */
+describe('SE-LIVE-2c verifier round 2 — a foreign-correlation command cannot smuggle a second task', () => {
+  const ORDER = 'order-smuggle';
+  const SHARED_CMD = 'cmd-smuggle-shared';
+  const LOC = {
+    pin: { lat: 12.37, lng: -1.52 },
+    zone: 'Gounghin',
+    landmark: 'Repère',
+    directions: 'Porte',
+    maskedRelay: 'relay-smuggle',
+  };
+  const WIN = { start: T, end: '2026-08-06T14:00:00.000Z' };
+
+  it('the attack: a task admitted at the intake door under a FOREIGN correlation, then that command replayed at /ops/task', async () => {
+    await fundOrder(mf, ORDER);
+    await readyOrder(mf, ORDER);
+    // ① the intake door admits a task for this order, correlation NOT corr-{orderId}
+    const smuggled = {
+      ...readyEvent(SHARED_CMD, 'task-smuggle-1', ORDER),
+      envelope: { ...readyEvent(SHARED_CMD, 'task-smuggle-1', ORDER).envelope, correlation_id: 'corr-SOMETHING-ELSE' },
+    };
+    expect((await call(mf, 'POST', '/intake/task-ready', intakeAuth, smuggled)).status).toBe(200);
+
+    // ② the SAME command id at the ops door. Round 1 exempted the command and
+    //    fell through to a FRESH admission — two open tasks. The invariant
+    //    under test is not a status code, it is that NO SECOND TASK EXISTS:
+    //    the route answers duplicate and names the task that already exists.
+    const second = await call(mf, 'POST', '/ops/task', opsAuth, {
+      command_id: SHARED_CMD, orderId: ORDER, location: LOC, window: WIN,
+    });
+    expect(second.status).toBe(200);
+    expect(second.json).toMatchObject({ ok: true, duplicate: true });
+    expect(second.json['taskId'], 'it must name the EXISTING task, never a new one').toBe('task-smuggle-1');
+
+    // and the order still has exactly ONE open task
+    const board = await call(mf, 'GET', '/ops/board', opsAuth);
+    const b = board.json['board'] as Json;
+    const open = [...(b['queued'] as Json[]), ...(b['assignments'] as Json[])].filter((r) => r['orderId'] === ORDER);
+    expect(open, 'one order, one open task').toHaveLength(1);
+  });
+
+  it('AND THE HONEST REPLAY STILL WORKS: the ops route’s own command answers duplicate, never 409', async () => {
+    const order = 'order-honest-replay';
+    await fundOrder(mf, order);
+    await readyOrder(mf, order);
+    const cmd = 'cmd-honest-replay';
+    const first = await call(mf, 'POST', '/ops/task', opsAuth, {
+      command_id: cmd, orderId: order, location: LOC, window: WIN,
+    });
+    expect(first.status).toBe(200);
+    const replay = await call(mf, 'POST', '/ops/task', opsAuth, {
+      command_id: cmd, orderId: order, location: LOC, window: WIN,
+    });
+    expect(replay.status, 'idempotency must survive the per-task exemption').toBe(200);
+    expect(replay.json).toMatchObject({ ok: true, duplicate: true });
+    expect(replay.json['taskId']).toBe(first.json['taskId']);
+  });
+});
