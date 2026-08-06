@@ -202,4 +202,35 @@ export class RiderRegistry {
     if (!rider || !rider.certified) return false;
     return this.shift(riderId).status === 'on_shift';
   }
+
+  /** SE-LIVE-1 — durable composition, ADDITIVE ONLY: full-store snapshot for
+   * the LogisticsDO; every rule above is untouched. */
+  snapshot(): RiderRegistrySnapshot {
+    return {
+      riders: [...this.riders.entries()],
+      shifts: [...this.shifts.entries()],
+      custodyExceptions: this.custodyExceptionLog().map((entry) => ({ ...entry, nextOwner: { ...entry.nextOwner } })),
+    };
+  }
+
+  restore(snap: RiderRegistrySnapshot): void {
+    this.riders.clear();
+    for (const [id, record] of snap.riders) this.riders.set(id, record);
+    this.shifts.clear();
+    for (const [id, state] of snap.shifts) this.shifts.set(id, state);
+    this.custodyExceptions.length = 0;
+    for (const entry of snap.custodyExceptions) this.custodyExceptions.push(entry);
+  }
+}
+
+export interface RiderRegistrySnapshot {
+  riders: [string, RiderRecord][];
+  shifts: [string, ShiftState][];
+  custodyExceptions: {
+    riderId: string;
+    at: string;
+    packageIds: string[];
+    dispatcherAckId: string;
+    nextOwner: { kind: 'return_to_hub_task' | 'reassignment'; ref: string };
+  }[];
 }

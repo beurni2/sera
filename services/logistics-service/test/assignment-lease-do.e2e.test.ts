@@ -5,19 +5,25 @@ import type { LeaseRecord } from '../src/assignment-lease.js';
 /**
  * ADVERSARIAL assignment-lease tests on the REAL Workers runtime (workerd
  * via Miniflare) — SE2.1 acceptance: "concurrency never double-books". ONE
- * DO instance (idFromName('dispatch')) is THE dispatch authority; workerd's
+ * DO instance (idFromName('logistique')) is THE dispatch authority; workerd's
  * per-object input gate serializes every acquire — the atomicity mechanism
  * under test is the runtime's, not a shim (the stock-reservation-do
- * pattern).
+ * pattern). SE-LIVE-1: the route moved onto the composed LogisticsDO and
+ * BEHIND the ops door (Bearer SERA_OPS_SECRET) — every behavioral assertion
+ * below is unchanged; the suite now also proves the door itself.
  */
+
+const OPS_SECRET = 'test-ops-secret-lease-e2e';
+const AUTH = { Authorization: `Bearer ${OPS_SECRET}`, 'Content-Type': 'application/json' };
 
 let mf: Miniflare;
 
 beforeAll(() => {
   mf = new Miniflare({
     modules: true,
-    scriptPath: 'dist-worker/assignment-worker.mjs',
-    durableObjects: { ASSIGNMENT_LEASE: 'AssignmentLeaseDO' },
+    scriptPath: 'dist-worker/worker.mjs',
+    durableObjects: { LOGISTICS: 'LogisticsDO' },
+    bindings: { SERA_OPS_SECRET: OPS_SECRET },
   });
 });
 afterAll(() => mf.dispose());
@@ -36,6 +42,7 @@ type Decision = {
 async function send(body: Record<string, unknown>): Promise<Decision> {
   const res = await mf.dispatchFetch('http://logistics/authority/dispatch', {
     method: 'POST',
+    headers: AUTH,
     body: JSON.stringify(body),
   });
   return (await res.json()) as Decision;
@@ -87,6 +94,7 @@ describe('AssignmentLeaseDO on workerd — THE singular dispatch authority', () 
   it('④ the OFF-SHIFT TAMPER SURFACE: acquire with eligibility { riderAssignable: false } → refused eligibility_not_attested (409)', async () => {
     const res = await mf.dispatchFetch('http://logistics/authority/dispatch', {
       method: 'POST',
+      headers: AUTH,
       body: JSON.stringify(
         acquire('cmd-tamper', 'task-tamper', 'rider-tamper', {
           eligibility: { riderAssignable: false, taskAssignable: true, checkedAt: T },
@@ -118,12 +126,31 @@ describe('AssignmentLeaseDO on workerd — THE singular dispatch authority', () 
     expect(fresh.lease).toMatchObject({ taskId: 'task-exp', version: 2, status: 'active' });
   });
 
-  it('router refuses closed: wrong path 404, non-POST 405-class, malformed body 400 — the authority answers ONLY /authority/dispatch', async () => {
-    const lost = await mf.dispatchFetch('http://logistics/authority/other', { method: 'POST', body: '{}' });
+  it('router refuses closed: wrong path 404, non-POST 404, malformed body 400 — the authority answers ONLY /authority/dispatch', async () => {
+    const lost = await mf.dispatchFetch('http://logistics/authority/other', { method: 'POST', headers: AUTH, body: '{}' });
     expect(lost.status).toBe(404);
-    const got = await mf.dispatchFetch('http://logistics/authority/dispatch', { method: 'GET' });
+    const got = await mf.dispatchFetch('http://logistics/authority/dispatch', { method: 'GET', headers: AUTH });
     expect(got.status).toBe(404); // non-POST never reaches the object
-    const malformed = await mf.dispatchFetch('http://logistics/authority/dispatch', { method: 'POST', body: 'pas-du-json' });
+    const malformed = await mf.dispatchFetch('http://logistics/authority/dispatch', { method: 'POST', headers: AUTH, body: 'pas-du-json' });
     expect(malformed.status).toBe(400);
+  });
+
+  it('SE-LIVE-1 — THE DOOR ITSELF: no bearer and a wrong bearer are the SAME uniform 401; no lease command is decided', async () => {
+    const naked = await mf.dispatchFetch('http://logistics/authority/dispatch', {
+      method: 'POST',
+      body: JSON.stringify(acquire('cmd-naked', 'task-naked', 'rider-naked')),
+    });
+    expect(naked.status).toBe(401);
+    const nakedBody = await naked.json();
+    const wrong = await mf.dispatchFetch('http://logistics/authority/dispatch', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer wrong-secret', 'Content-Type': 'application/json' },
+      body: JSON.stringify(acquire('cmd-naked', 'task-naked', 'rider-naked')),
+    });
+    expect(wrong.status).toBe(401);
+    expect(await wrong.json()).toEqual(nakedBody); // one identical 401, never an oracle
+    // the refused command decided NOTHING: the same ids acquire freshly with auth
+    const fresh = await send(acquire('cmd-naked', 'task-naked', 'rider-naked'));
+    expect(fresh).toMatchObject({ ok: true, idempotentReplay: false });
   });
 });

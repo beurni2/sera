@@ -32,24 +32,29 @@ const SHA = 'a3f5c9d21e8b47061234567890abcdef1234567890abcdef1234567890abcdef';
 const ORDER = 'order-e4-43';
 const CORR = 'corr-e4-43';
 
+const OPS_SECRET = 'test-ops-secret-leased-dispatch';
+
 let mf: Miniflare;
 
 beforeAll(() => {
   mf = new Miniflare({
     modules: true,
-    scriptPath: 'dist-worker/assignment-worker.mjs',
-    durableObjects: { ASSIGNMENT_LEASE: 'AssignmentLeaseDO' },
+    scriptPath: 'dist-worker/worker.mjs',
+    durableObjects: { LOGISTICS: 'LogisticsDO' },
+    bindings: { SERA_OPS_SECRET: OPS_SECRET },
   });
 });
 afterAll(() => mf.dispose());
 
-/** The production client shape: one POST to THE authority's single route.
- * Each world salts its command ids instead of assuming a fresh DO. */
+/** The production client shape: one POST to THE authority's single route —
+ * behind the ops door since SE-LIVE-1. Each world salts its command ids
+ * instead of assuming a fresh DO. */
 function miniflareAuthority(): LeaseAuthority {
   return {
     async send(cmd: LeaseCommand): Promise<LeaseDecision> {
       const res = await mf.dispatchFetch('http://logistics/authority/dispatch', {
         method: 'POST',
+        headers: { Authorization: `Bearer ${OPS_SECRET}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(cmd),
       });
       return (await res.json()) as LeaseDecision;

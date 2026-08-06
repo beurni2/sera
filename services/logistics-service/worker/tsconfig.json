@@ -7,5 +7,5 @@
     "module": "ESNext",
     "moduleResolution": "Bundler"
   },
-  "include": ["./**/*.ts", "../src/assignment-lease.ts"]
+  "include": ["./**/*.ts", "../src/**/*.ts"]
 }

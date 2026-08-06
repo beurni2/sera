@@ -67,7 +67,12 @@ export const DOT_DIRS_OK = new Set([
   '.next', '.cache', '.venv', '.gradle', '.devcontainer',
 ]);
 
-const EXCLUDED_DIRS = new Set(['node_modules', 'dist', '.turbo', '.expo', '.git', 'coverage']);
+/* `dist-worker` joined at SE-LIVE-1: the esbuild worker bundle inlines the
+   PINNED @platform/contracts at runtime (Zod schemas), so scanning it re-scans
+   canon vocabulary that is vetted at source in platform-contracts — the same
+   reason node_modules is excluded. The bundle's only other input is repo
+   source under services/, which IS scanned. */
+const EXCLUDED_DIRS = new Set(['node_modules', 'dist', 'dist-worker', '.turbo', '.expo', '.git', 'coverage']);
 const SCANNED_EXTENSIONS = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs|json|sql|ya?ml)$/;
 
 export function* walkFiles(root, extensions = SCANNED_EXTENSIONS, seen = new Set()) {

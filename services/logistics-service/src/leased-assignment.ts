@@ -73,6 +73,18 @@ export class GrantedLeaseWitness {
   isGranted(lease: LeaseRef): boolean {
     return this.granted.has(this.key(lease));
   }
+
+  /** SE-LIVE-1 — durable composition, ADDITIVE ONLY: the provenance set as a
+   * plain snapshot so the LogisticsDO restores it exactly (never rebuilt by
+   * inference from lease state — provenance stays explicit). */
+  snapshot(): string[] {
+    return [...this.granted];
+  }
+
+  restore(keys: readonly string[]): void {
+    this.granted.clear();
+    for (const key of keys) this.granted.add(key);
+  }
 }
 
 const refOf = (lease: LeaseRecord): LeaseRef => ({

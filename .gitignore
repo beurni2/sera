@@ -1,5 +1,9 @@
 node_modules/
 dist/
+# SE-LIVE-1: the esbuild worker bundle is BUILD OUTPUT (pretest and the
+# deploy workflow both regenerate it) — the committed assignment-worker.mjs
+# of WO-4.3 was a wart, untracked in this slice.
+dist-worker/
 .turbo/
 _evidence/
 *.tsbuildinfo

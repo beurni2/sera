@@ -156,4 +156,23 @@ export class ReadyQueue {
   queuedTasks(): readonly QueuedTask[] {
     return [...this.tasks.values()].filter((q) => q.status === 'queued');
   }
+
+  /** SE-LIVE-1 — durable composition, ADDITIVE ONLY: the LogisticsDO persists
+   * this store as a plain snapshot and rebuilds it on wake. The snapshot is
+   * the WHOLE truth of this store; no admission behavior changes. */
+  snapshot(): ReadyQueueSnapshot {
+    return { tasks: [...this.tasks.entries()], processedCommandIds: [...this.processedCommandIds] };
+  }
+
+  restore(snap: ReadyQueueSnapshot): void {
+    this.tasks.clear();
+    for (const [id, queued] of snap.tasks) this.tasks.set(id, queued);
+    this.processedCommandIds.clear();
+    for (const id of snap.processedCommandIds) this.processedCommandIds.add(id);
+  }
+}
+
+export interface ReadyQueueSnapshot {
+  tasks: [string, QueuedTask][];
+  processedCommandIds: string[];
 }

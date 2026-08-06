@@ -76,6 +76,12 @@ export type DeclineOutcome =
 
 const ACTIVE_STATUSES: readonly AssignmentStatus[] = ['active_unacknowledged', 'ack_pending_offline', 'acknowledged'];
 
+export interface AssignmentBookSnapshot {
+  assignments: [string, AssignmentRecord][];
+  appliedCommandIds: [string, AssignOutcome][];
+  aggregateVersion: number;
+}
+
 export class AssignmentBook {
   private readonly assignments = new Map<string, AssignmentRecord>();
   /** Only SUCCESSES are remembered (idempotency = never double-apply).
@@ -319,6 +325,25 @@ export class AssignmentBook {
 
   get(assignmentId: string): AssignmentRecord | undefined {
     return this.assignments.get(assignmentId);
+  }
+
+  /** SE-LIVE-1 — durable composition, ADDITIVE ONLY: full-store snapshot for
+   * the LogisticsDO (AssignOutcome carries only JSON-plain data, including
+   * the canonical event). No assignment rule above changes. */
+  snapshot(): AssignmentBookSnapshot {
+    return {
+      assignments: [...this.assignments.entries()],
+      appliedCommandIds: [...this.appliedCommandIds.entries()],
+      aggregateVersion: this.aggregateVersion,
+    };
+  }
+
+  restore(snap: AssignmentBookSnapshot): void {
+    this.assignments.clear();
+    for (const [id, record] of snap.assignments) this.assignments.set(id, record);
+    this.appliedCommandIds.clear();
+    for (const [id, outcome] of snap.appliedCommandIds) this.appliedCommandIds.set(id, outcome);
+    this.aggregateVersion = snap.aggregateVersion;
   }
 
   /** One-active-per-rider AND per-task — exposed for tests and scripts. */

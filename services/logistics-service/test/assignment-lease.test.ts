@@ -250,12 +250,23 @@ describe('toCanonicalLease — the STRICT §5.6 projection', () => {
 });
 
 describe('determinism (Ten Laws #5 — deterministic only)', () => {
-  it('neither the pure core nor the DO wrapper reads a wall clock: no Date.now, no Math.random', () => {
-    for (const rel of ['../src/assignment-lease.ts', '../worker/assignment-lease-do.ts']) {
-      const source = readFileSync(join(import.meta.dirname, rel), 'utf8');
-      expect(source, `${rel} reads the wall clock`).not.toMatch(/Date\.now\(/);
-      expect(source, `${rel} uses randomness`).not.toMatch(/Math\.random/);
-      expect(source, `${rel} constructs an argument-less Date`).not.toMatch(/new Date\(\)/);
-    }
+  it('the pure core reads no wall clock and no randomness — every instant arrives inside a command', () => {
+    const source = readFileSync(join(import.meta.dirname, '../src/assignment-lease.ts'), 'utf8');
+    expect(source, 'the core reads the wall clock').not.toMatch(/Date\.now\(/);
+    expect(source, 'the core uses randomness').not.toMatch(/Math\.random/);
+    expect(source, 'the core constructs an argument-less Date').not.toMatch(/new Date\(\)/);
+  });
+
+  /** SE-LIVE-1: the DO wrapper (worker/logistics-do.ts) superseded
+   * worker/assignment-lease-do.ts and IS now the server boundary — it stamps
+   * command instants at the door (new Date(), the fund-do serverTime
+   * pattern), which is boundary DATA, not decision logic: those instants
+   * still travel INSIDE commands to the pure core scanned above.
+   * Math.random stays banned everywhere in the wrapper — ids and codes are
+   * CSPRNG-minted (crypto.randomUUID / getRandomValues), and the mint-path
+   * gate enforces the same law repo-wide. */
+  it('the DO wrapper mints nothing from Math.random', () => {
+    const source = readFileSync(join(import.meta.dirname, '../worker/logistics-do.ts'), 'utf8');
+    expect(source, 'the wrapper uses Math.random').not.toMatch(/Math\.random/);
   });
 });

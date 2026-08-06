@@ -1,0 +1,26 @@
+# SE-LIVE-1 — the logistics Worker: three doors (Bearer SERA_OPS_SECRET,
+# Bearer SERA_INTAKE_SECRET, rider personal codes), one singleton LogisticsDO
+# composing the tested queue/registry/lease/book cores. Secrets are set via
+# `wrangler secret put` in the deploy workflow (piped) — NEVER a [vars] entry:
+# this repo is PUBLIC, a var here would be published. SERA_CONSOLE_ORIGIN (an
+# origin allowlist — public by nature) arrives as --var from the workflow.
+#
+# UNPROVEN UNTIL A REAL `wrangler deploy` RUNS. Miniflare binds the DO by its
+# own test config, never this file — the binding and the [[migrations]] block
+# are validated only by an actual deploy.
+
+name = "logistics-service"
+main = "dist-worker/worker.mjs"
+compatibility_date = "2025-07-05"
+
+[[durable_objects.bindings]]
+name = "LOGISTICS"
+class_name = "LogisticsDO"
+
+# FIRST-DEPLOY MIGRATION — `new_sqlite_classes` is CORRECT AND MANDATORY (the
+# protection-service precedent): Cloudflare stopped issuing key-value-backed
+# DO namespaces (changelog 2026-07-09), and SQLite-backed DOs expose the SAME
+# key-value storage API this DO uses (state.storage.get/put/list).
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["LogisticsDO"]

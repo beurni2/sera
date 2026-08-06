@@ -1,0 +1,160 @@
+name: logistics-deploy
+
+# SE-LIVE-1 — deploy the logistics Worker (services/logistics-service): three
+# doors (SERA_OPS_SECRET / SERA_INTAKE_SECRET / rider personal codes) in
+# front of the one LogisticsDO. Mirrors platform's protection-deploy,
+# including the post-deploy provenance assertion (the AUDIT-B+1 F9 lesson:
+# `wrangler deploy` proves the upload was accepted, not that the running
+# Worker is this bundle).
+#
+# MANUAL ONLY (workflow_dispatch): a deploy is a deliberate act — the
+# standing ruling that governs every deploy workflow in the ecosystem.
+#
+# UNPROVEN UNTIL THIS ACTUALLY RUNS: logistics-service has NEVER been
+# deployed. The DO binding and the [[migrations]] block in wrangler.toml are
+# validated only by a real deploy (miniflare binds by its own test config).
+#
+# SECRETS AND VARIABLES this run needs (repo settings):
+#   · CLOUDFLARE_API_TOKEN (secret) — Workers deploy token.
+#   · PLATFORM_CONTRACTS_READ_TOKEN (secret) — same read token ci.yml uses.
+#   · SERA_OPS_SECRET (secret) — the founder's ONE key to the dispatch board,
+#     rider roster, code mint/revoke and the raw authority route. Set on the
+#     Worker with `wrangler secret put` (value PIPED, never an argument,
+#     never [vars] — this repo is public). THE FOUNDER'S ALONE: never bundled
+#     into any app.
+#   · SERA_INTAKE_SECRET (secret) — the producers' door (task_ready +
+#     funding/readiness facts; SE-LIVE-2 hands it to the Shop+/Boutik+
+#     emitters). Distinct from the ops key on purpose — either opens ONLY its
+#     own door.
+#   · LOGISTICS_BASE (variable, not secret — a public URL) — the deployed
+#     Worker's base URL (e.g. https://logistics-service.<account>.workers.dev),
+#     used by the provenance assertion below. On the FIRST dispatch this may
+#     not exist yet: the deploy still runs, the assertion fails red with
+#     instructions — set the variable and re-dispatch.
+#   · SERA_CONSOLE_ORIGIN (variable — origins are public) — exact-origin CORS
+#     allowlist for the browser surfaces (SE-LIVE-4). Empty ⇒ no CORS.
+#
+# FAIL-CLOSED BY CONSTRUCTION: a Worker deployed before its secrets are set
+# refuses every gated request with the one identical 401. That is correct,
+# not broken — set the secrets (or re-dispatch with them configured) to arm
+# the doors. And with no funding/readiness facts posted, NOTHING is admitted
+# to the ready-queue: the projections refuse closed until SE-LIVE-2 wires the
+# real producers.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: logistics-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Authorize read access to platform-contracts (CI-only)
+        run: git config --global url."https://x-access-token:${{ secrets.PLATFORM_CONTRACTS_READ_TOKEN }}@github.com/beurni2/platform-contracts".insteadOf "https://github.com/beurni2/platform-contracts"
+      # Guard against pnpm re-mangling lockfile git-dep URLs to SSH forms (see ci.yml).
+      - name: Authorize read access to platform-contracts (CI-only, SSH forms)
+        run: |
+          git config --global --add url."https://x-access-token:${{ secrets.PLATFORM_CONTRACTS_READ_TOKEN }}@github.com/beurni2/platform-contracts".insteadOf "git@github.com:beurni2/platform-contracts"
+          git config --global --add url."https://x-access-token:${{ secrets.PLATFORM_CONTRACTS_READ_TOKEN }}@github.com/beurni2/platform-contracts".insteadOf "ssh://git@github.com/beurni2/platform-contracts"
+      - run: pnpm install --frozen-lockfile
+      # Compile workspace packages FIRST (the trap that killed shop-plus's
+      # first deploy: bundling before dist/ exists).
+      - run: pnpm build
+      # Provenance stamp — release is this sha; canon is read from the
+      # INSTALLED package, never hand-typed, so it cannot drift from what was
+      # actually bundled.
+      - name: Resolve the provenance stamp
+        run: |
+          echo "SERA_RELEASE=${{ github.sha }}" >> "$GITHUB_ENV"
+          echo "SERA_CANON=$(node -p "require('./node_modules/@platform/contracts/package.json').version")" >> "$GITHUB_ENV"
+      # Bundled HERE, explicitly, AFTER pnpm build — never trusted to a cached
+      # task output (the platform turbo-cache lesson: a warm replay can hand
+      # back a stale artifact under a green board).
+      - name: Bundle the logistics Worker
+        run: pnpm --filter @sera/logistics-service bundle:worker
+      - name: Deploy to Cloudflare Workers
+        working-directory: services/logistics-service
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CONSOLE_ORIGIN: ${{ vars.SERA_CONSOLE_ORIGIN }}
+        run: |
+          if [ -n "$CONSOLE_ORIGIN" ]; then
+            npx --yes wrangler@4 deploy --var SERA_CONSOLE_ORIGIN:"$CONSOLE_ORIGIN"
+          else
+            npx --yes wrangler@4 deploy
+          fi
+      # Secrets are set AFTER the first deploy (wrangler cannot put a secret
+      # on a Worker that does not exist yet). Values PIPED, never arguments —
+      # arguments land in process lists and logs.
+      - name: Arm SERA_OPS_SECRET (piped — skipped only if the repo secret is absent)
+        working-directory: services/logistics-service
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          OPS_SECRET: ${{ secrets.SERA_OPS_SECRET }}
+        run: |
+          if [ -z "$OPS_SECRET" ]; then
+            echo "::warning title=Porte ops NON armée::SERA_OPS_SECRET absent — the ops door refuses everything (fail-closed) until the repo secret is set and this workflow re-dispatched."
+            exit 0
+          fi
+          printf '%s' "$OPS_SECRET" | npx --yes wrangler@4 secret put SERA_OPS_SECRET
+      - name: Arm SERA_INTAKE_SECRET (piped — skipped only if the repo secret is absent)
+        working-directory: services/logistics-service
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          INTAKE_SECRET: ${{ secrets.SERA_INTAKE_SECRET }}
+        run: |
+          if [ -z "$INTAKE_SECRET" ]; then
+            echo "::warning title=Porte intake NON armée::SERA_INTAKE_SECRET absent — the intake door refuses everything (fail-closed) until the repo secret is set and this workflow re-dispatched."
+            exit 0
+          fi
+          printf '%s' "$INTAKE_SECRET" | npx --yes wrangler@4 secret put SERA_INTAKE_SECRET
+
+      # ═══ The F9 assertion: the live Worker must BE the bundle this job built ═══
+      # A Workers deploy PROPAGATES; it does not switch — poll up to 180s.
+      - name: Assert the live logistics Worker is the bundle this job built
+        env:
+          LOGISTICS_BASE: ${{ vars.LOGISTICS_BASE }}
+        run: |
+          set -uo pipefail
+          if [ -z "${LOGISTICS_BASE}" ]; then
+            echo "::error::LOGISTICS_BASE repo variable is empty — the deploy above ran, but NOTHING verified it."
+            echo "Set the variable to the Worker's URL and re-dispatch so this step can prove the live Worker is this build."
+            exit 1
+          fi
+          BASE="${LOGISTICS_BASE%/}"
+          OUT=$(mktemp)
+          DEADLINE=$(( $(date +%s) + 180 ))
+          LIVE_CANON='?'; LIVE_RELEASE='?'
+          while :; do
+            CODE=$(curl -sS -o "$OUT" -w '%{http_code}' "$BASE/health" || echo 000)
+            if [ "$CODE" = "200" ]; then
+              LIVE_CANON=$(node -p "JSON.parse(require('fs').readFileSync('$OUT','utf8')).canon" 2>/dev/null || echo '?')
+              LIVE_RELEASE=$(node -p "JSON.parse(require('fs').readFileSync('$OUT','utf8')).release" 2>/dev/null || echo '?')
+              echo "health 200 — live canon=$LIVE_CANON release=$LIVE_RELEASE (want $SERA_CANON / $SERA_RELEASE)"
+              if [ "$LIVE_CANON" = "$SERA_CANON" ] && [ "$LIVE_RELEASE" = "$SERA_RELEASE" ]; then
+                echo "PROVENANCE OK — live logistics Worker is $SERA_RELEASE speaking canon $SERA_CANON."
+                exit 0
+              fi
+            else
+              echo "health $CODE — not answering yet"
+            fi
+            if [ "$(date +%s)" -ge "$DEADLINE" ]; then
+              echo "::error::DEPLOY DID NOT TAKE — after 180s the live logistics Worker is still not this job's bundle."
+              echo "  live canon=$LIVE_CANON release=$LIVE_RELEASE"
+              echo "  want canon=$SERA_CANON release=$SERA_RELEASE"
+              exit 1
+            fi
+            sleep 10
+          done
