@@ -668,3 +668,110 @@ describe('SE-LIVE-2c — the founder composes the task, and the gate still gover
     expect(rows.find((r) => r['orderId'] === waiting)).toMatchObject({ paymentMode: 'FULL_PREPAY' });
   });
 });
+
+/**
+ * ═══ SE-LIVE-2c VERIFIER ROUND — THE ID AND THE ORDER ARE CLAIMED ONCE ═══
+ *
+ * A fresh-context verifier drove the first cut on this runtime: pasting the
+ * id of a LIVE, ASSIGNED task into `/ops/task` overwrote that queue row with
+ * another order's address, re-queued the task for a second custodian, and
+ * left the assigned rider's own screen pointing at a stranger's door. These
+ * pin the two fixes — the id is never the caller's, and one order gets one
+ * open task — at BOTH layers (the door, and the shared queue beneath it).
+ */
+describe('SE-LIVE-2c verifier round — no id hijack, no second task for one order', () => {
+  const ORDER = 'order-hijack-victim';
+  const OTHER = 'order-hijack-other';
+  const LOC = {
+    pin: { lat: 12.3714, lng: -1.5197 },
+    zone: 'Gounghin',
+    landmark: 'Face à la pharmacie',
+    directions: 'Porte bleue',
+    maskedRelay: 'relay-victim',
+  };
+  const WIN = { start: T, end: '2026-08-06T14:00:00.000Z' };
+  let victimTaskId = '';
+
+  it('sets the stage: a composed, ASSIGNED task with a rider on it', async () => {
+    await fundOrder(mf, ORDER);
+    await readyOrder(mf, ORDER);
+    const composed = await call(mf, 'POST', '/ops/task', opsAuth, {
+      command_id: 'cmd-hijack-1', orderId: ORDER, location: LOC, window: WIN,
+    });
+    expect(composed.status).toBe(200);
+    victimTaskId = composed.json['taskId'] as string;
+    await prepRider(mf, 'r-hijack');
+    const granted = await call(mf, 'POST', '/ops/assign', opsAuth, {
+      command_id: 'cmd-hijack-assign', taskId: victimTaskId, riderId: 'r-hijack',
+    });
+    expect(granted.status).toBe(200);
+  });
+
+  it('THE HIJACK IS REFUSED: a body carrying ANY taskId is 400 — the id is minted, never chosen', async () => {
+    await fundOrder(mf, OTHER);
+    await readyOrder(mf, OTHER);
+    const hijack = await call(mf, 'POST', '/ops/task', opsAuth, {
+      command_id: 'cmd-hijack-2',
+      orderId: OTHER,
+      taskId: victimTaskId, // the live task's id
+      location: { ...LOC, zone: 'Dassasgho', landmark: 'AUTRE ADRESSE', maskedRelay: 'relay-other' },
+      window: WIN,
+    });
+    expect(hijack.status).toBe(400);
+    expect(hijack.json).toMatchObject({ reason: 'task_id_is_not_yours_to_choose' });
+
+    // The victim is untouched: same order, same address, still assigned.
+    const board = await call(mf, 'GET', '/ops/board', opsAuth);
+    const b = board.json['board'] as Json;
+    expect((b['assignments'] as Json[]).some((a) => a['taskId'] === victimTaskId)).toBe(true);
+    expect((b['queued'] as Json[]).some((q) => q['taskId'] === victimTaskId)).toBe(false);
+  });
+
+  it('AND THE RIDER’S SCREEN STILL SHOWS THEIR OWN COURSE — the redirect the verifier demonstrated is gone', async () => {
+    const codes = await call(mf, 'GET', '/ops/rider-codes', opsAuth);
+    expect((codes.json['codes'] as Json[]).some((c) => c['riderId'] === 'r-hijack')).toBe(true);
+    // Re-mint to read the rider's own view (the first code was consumed by prep).
+    const mint = await call(mf, 'POST', '/ops/rider-code/mint', opsAuth, { riderId: 'r-hijack' });
+    const moi = await call(mf, 'GET', '/rider/moi', codeAuth(mint.json['code'] as string));
+    const assignment = (moi.json['rider'] as Json)['assignment'] as Json;
+    expect(assignment['taskId']).toBe(victimTaskId);
+    expect(assignment['orderId']).toBe(ORDER);
+    expect(assignment['location']).toMatchObject({ zone: 'Gounghin', maskedRelay: 'relay-victim' });
+  });
+
+  it('ONE ORDER, ONE OPEN TASK: a second compose for the same order is 409 and names the task it already has', async () => {
+    const second = await call(mf, 'POST', '/ops/task', opsAuth, {
+      command_id: 'cmd-hijack-3', orderId: ORDER, location: LOC, window: WIN,
+    });
+    expect(second.status).toBe(409);
+    expect(second.json).toMatchObject({ ok: false, reason: 'order_already_has_task', taskId: victimTaskId });
+    // and the board still carries exactly one task for that order
+    const board = await call(mf, 'GET', '/ops/board', opsAuth);
+    const b = board.json['board'] as Json;
+    const all = [...(b['queued'] as Json[]), ...(b['assignments'] as Json[])].filter((r) => r['orderId'] === ORDER);
+    expect(all).toHaveLength(1);
+  });
+
+  it('THE QUEUE ITSELF refuses a colliding id, whatever the source — defense beneath the door', async () => {
+    // Straight through the intake door, a DIFFERENT command naming the live id.
+    const collide = await call(
+      mf, 'POST', '/intake/task-ready', intakeAuth, readyEvent('cmd-collide-1', victimTaskId, OTHER),
+    );
+    expect(collide.status).toBe(422);
+    expect(collide.json).toMatchObject({ reason: 'task_id_already_claimed' });
+  });
+
+  it('A PIN OFF THE GLOBE and a BACKWARDS WINDOW are refused 400', async () => {
+    const bad = [
+      { location: { ...LOC, pin: { lat: 91, lng: 0 } }, window: WIN },
+      { location: { ...LOC, pin: { lat: 0, lng: 181 } }, window: WIN },
+      { location: LOC, window: { start: WIN.end, end: WIN.start } },
+    ];
+    for (const [i, body] of bad.entries()) {
+      const res = await call(mf, 'POST', '/ops/task', opsAuth, {
+        command_id: `cmd-bad-geo-${i}`, orderId: OTHER, ...body,
+      });
+      expect(res.status, JSON.stringify(body)).toBe(400);
+    }
+  });
+});

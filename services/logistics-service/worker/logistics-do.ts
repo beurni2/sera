@@ -459,22 +459,70 @@ export class LogisticsDO {
         typeof pin['lng'] !== 'number' ||
         !Number.isFinite(pin['lat']) ||
         !Number.isFinite(pin['lng']) ||
+        // A pin outside the globe is a slip of the thumb, and it would reach a
+        // rider unchallenged (verifier NOTE 10). Bounds, not geography: Séra
+        // does not decide where Ouagadougou is.
+        (pin['lat'] as number) < -90 ||
+        (pin['lat'] as number) > 90 ||
+        (pin['lng'] as number) < -180 ||
+        (pin['lng'] as number) > 180 ||
         !isStr(loc['zone']) ||
         !isStr(loc['landmark']) ||
         !isStr(loc['directions']) ||
         !isStr(loc['maskedRelay']) ||
         win == null ||
         !isIso(win['start']) ||
-        !isIso(win['end'])
+        !isIso(win['end']) ||
+        // A window that ends before it starts is not a window.
+        Date.parse(win['start'] as string) >= Date.parse(win['end'] as string)
       ) {
         return malformed();
       }
+      /**
+       * ⚠ VERIFIER BLOCKER (SE-LIVE-2c round 1) — THE ID IS NEVER THE
+       * CALLER'S. The first cut accepted `body.taskId`, and the verifier drove
+       * it on the real runtime: pasting the id of a LIVE, ASSIGNED task
+       * overwrote that queue row with another order's address, re-queued the
+       * same task for a second custodian, and left the assigned rider's screen
+       * pointing at a stranger's door — Ten Laws #3 ("exactly one current
+       * custodian") defeated through the very route this slice adds. The id is
+       * now minted here and ONLY here; a body that carries one is refused
+       * outright rather than ignored, so a founder who pastes an id learns it
+       * did nothing instead of assuming it did something.
+       */
+      if (body['taskId'] !== undefined) {
+        return Response.json({ ok: false, reason: 'task_id_is_not_yours_to_choose' }, { status: 400 });
+      }
+      /**
+       * VERIFIER MAJOR 3 — ONE OPEN TASK PER ORDER, at this door. A second
+       * compose for an order that already has a live task is an accident (the
+       * order has already left `/ops/a-preparer`, so nothing shows it to him);
+       * it would put two riders on one delivery. A `closed_rescheduled` task
+       * does NOT block — that is the lawful replacement path (WO-2.7), and it
+       * runs through `openFollowUpTask`, never through this route.
+       */
+      const snapshot = this.queue.snapshot();
+      // A REPLAY of this very command is not a duplicate task — it is the
+      // same attempt arriving twice, and `onTaskReady` answers it `duplicate`.
+      // Only a DIFFERENT command meeting an existing open task is the
+      // accident this rule exists to stop.
+      const isReplay = snapshot.processedCommandIds.includes((body['command_id'] as string).trim());
+      const openForOrder = isReplay
+        ? undefined
+        : snapshot.tasks.find(([, queued]) => queued.orderId === orderId && queued.status !== 'closed_rescheduled');
+      if (openForOrder !== undefined) {
+        return Response.json(
+          { ok: false, reason: 'order_already_has_task', taskId: openForOrder[0], status: openForOrder[1].status },
+          { status: 409 },
+        );
+      }
       // Composed THROUGH the pinned canon: a task this platform cannot parse
       // never reaches the queue (the strict schema owns the shape, not this
-      // route). The id is minted here — CSPRNG, never a caller's claim.
+      // route). The id is CSPRNG-minted HERE, and the refusal above is what
+      // makes that sentence true rather than aspirational.
       const task = {
         type: 'delivery' as const,
-        id: (isStr(body['taskId']) ? (body['taskId'] as string).trim() : `task-${crypto.randomUUID()}`),
+        id: `task-${crypto.randomUUID()}`,
         orderId,
         location: {
           pin: { lat: pin['lat'] as number, lng: pin['lng'] as number },

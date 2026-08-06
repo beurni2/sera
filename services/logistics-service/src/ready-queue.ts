@@ -38,6 +38,7 @@ export type IntakeRefusalReason =
   | 'not_a_platform_event'
   | 'unexpected_event_name'
   | 'task_not_canonical'
+  | 'task_id_already_claimed'
   | 'not_funded_for_mode'
   | 'funding_projection_stale'
   | 'not_readiness_confirmed'
@@ -85,6 +86,17 @@ export class ReadyQueue {
     const taskParse = DeliveryTaskSchema.safeParse(event.payload['task']);
     if (!taskParse.success) return { admitted: false, reason: 'task_not_canonical' };
     const task = taskParse.data;
+
+    /**
+     * SE-LIVE-2c verifier BLOCKER — A TASK ID IS CLAIMED ONCE. `tasks.set` is
+     * an unconditional overwrite, so an event naming an id this queue already
+     * holds silently replaced that row: another order's address on a live
+     * task, a `closed_rescheduled` task resurrected to `queued`, an assigned
+     * task re-queued for a second custodian. A distinct command naming an
+     * existing id is a COLLISION, never an update — refuse closed. (A replay
+     * of the same command_id is handled above and still answers duplicate.)
+     */
+    if (this.tasks.has(task.id)) return { admitted: false, reason: 'task_id_already_claimed' };
 
     const gate = this.admissionGate(task.orderId);
     if (gate !== null) return { admitted: false, reason: gate };
