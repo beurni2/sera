@@ -20,3 +20,4 @@ gallery/img/
 
 # Gate-board scan-coverage probe (created and removed by scripts/run-gates.sh)
 zz-unclassified-coverage-probe/
+services/zz-persist-probe/

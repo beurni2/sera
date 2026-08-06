@@ -1,0 +1,11 @@
+{
+  "_why": "Ten Laws #2 — no app holds funds. A wallet is not a word, it is PERSISTED STATE. Every durable write must be declared here. \"balance\": true means this key accumulates a per-actor amount the app treats as owed or held — which the law forbids, so it requires a quoted founder ruling. A per-ORDER price record is not a balance.",
+  "_verified": "At the time of writing, no Durable Object in this repo accumulates an amount (`+=` over any amount/fcfa/total field): zero matches across all worker sources.",
+  "keys": [
+    {
+      "id": "services/logistics-service/worker/assignment-lease-do.ts::STATE_KEY",
+      "what": "assignment lease: the STATE_KEY record",
+      "balance": false
+    }
+  ]
+}
