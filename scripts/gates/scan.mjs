@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 /**
@@ -29,8 +29,8 @@ export const DEFAULT_ROOTS = ['apps', 'services', 'packages'];
  * decides which it is. The blind spot becomes a build break instead of silence.
  *
  * This list is the UNION across boutik-plus, shop-plus and sera so the three
- * copies stay identical; the audit found identical blindness in all three, and
- * identical hardening is how it stays fixed.
+ * copies stay in step. They are NOT byte-identical — boutik-plus carries an
+ * `allow` carve-out these two lack — so this list is kept equal by review.
  */
 export const NON_PRODUCT_DIRS = new Map([
   ['scripts', 'the gate tooling itself — it necessarily spells every banned pattern'],
@@ -45,12 +45,32 @@ export const NON_PRODUCT_DIRS = new Map([
   ['derivations', 'generated derivation output, reproducible from source'],
   ['test-results', 'Playwright run output, git-ignored'],
   ['node_modules', 'dependencies'],
+  /* Build + run output. These are NOT source, but they must still be named:
+     `run-gates.sh` CREATES `_evidence/` itself (EVIDENCE_DIR), so leaving it
+     unclassified made the board destroy its own run — every gate after the
+     first `capture` exited 2. The check reads the filesystem, not git, so
+     being gitignored protects nothing. */
+  ['_evidence', 'gate-run evidence written by scripts/run-gates.sh'],
+  ['coverage', 'test coverage output'],
+  ['dist', 'build output'],
+  ['build', 'build output'],
+  ['out', 'build output'],
+]);
+
+/* Tooling dot-directories that are legitimately outside the classification.
+   Any OTHER dot-directory is treated like any unclassified directory and fails
+   the gate — skipping every name starting with '.' was a hole a verifier walked
+   straight through (`.zzworkers/` carrying a live violation, exit 0). */
+export const DOT_DIRS_OK = new Set([
+  '.git', '.github', '.husky', '.vscode', '.idea', '.turbo', '.expo',
+  '.artifacts', '.wrangler', '.claude', '.changeset', '.yarn', '.pnpm-store',
+  '.next', '.cache', '.venv', '.gradle', '.devcontainer',
 ]);
 
 const EXCLUDED_DIRS = new Set(['node_modules', 'dist', '.turbo', '.expo', '.git', 'coverage']);
-const SCANNED_EXTENSIONS = /\.(ts|tsx|js|jsx|mjs|cjs|json|sql|ya?ml)$/;
+const SCANNED_EXTENSIONS = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs|json|sql|ya?ml)$/;
 
-export function* walkFiles(root, extensions = SCANNED_EXTENSIONS) {
+export function* walkFiles(root, extensions = SCANNED_EXTENSIONS, seen = new Set()) {
   // WO-4.0: a root may be a single FILE (e.g. the lockfile) — scan it
   // directly; extension-gating still applies below for directory walks,
   // while an explicit file root is always scanned.
@@ -70,9 +90,23 @@ export function* walkFiles(root, extensions = SCANNED_EXTENSIONS) {
   }
   for (const entry of entries) {
     const path = join(root, entry.name);
-    if (entry.isDirectory()) {
-      if (!EXCLUDED_DIRS.has(entry.name)) yield* walkFiles(path, extensions);
-    } else if (entry.isFile() && extensions.test(entry.name)) {
+    /* `entry.isDirectory()`/`isFile()` are BOTH false for a symlink, so the
+       original walk silently skipped symlinked source — a verifier planted a
+       live violation behind a symlink inside `apps/` and every gate passed.
+       statSync follows the link; `seen` stops a symlink cycle from hanging CI. */
+    let st;
+    try {
+      st = statSync(path);
+    } catch {
+      continue;
+    }
+    if (st.isDirectory()) {
+      if (EXCLUDED_DIRS.has(entry.name)) continue;
+      const key = realpathSync.native(path);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      yield* walkFiles(path, extensions, seen);
+    } else if (st.isFile() && extensions.test(entry.name)) {
       yield path;
     }
   }
@@ -131,17 +165,24 @@ export function unclassifiedTopLevelDirs(roots = DEFAULT_ROOTS, cwd = process.cw
     return [];
   }
   return entries
-    .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
+    .filter((e) => e.isDirectory() || e.isSymbolicLink())
     .map((e) => e.name)
+    .filter((name) => !(name.startsWith('.') && DOT_DIRS_OK.has(name)))
     .filter((name) => !roots.includes(name) && !NON_PRODUCT_DIRS.has(name));
 }
 
 export function runScanGate({ gateName, invariant, patterns, defaultRoots = DEFAULT_ROOTS, scanExtensions = SCANNED_EXTENSIONS }) {
   const args = process.argv.slice(2);
   const roots = args.length > 0 ? args : defaultRoots;
-  /* AUDIT-B+1 F2 — only on a full default-roots run: an explicit-args run is a
-     fixture scan or a targeted check, and has no business auditing the layout. */
-  if (args.length === 0) {
+  /* AUDIT-B+1 F2 — the layout audit runs whenever this invocation covers the
+     whole product, whether the roots came from the default or were spelled out
+     on the command line. Keying it on `args.length === 0` alone meant
+     `node gate.mjs apps services packages` skipped it — a bypass a verifier
+     found immediately. A narrower run (one fixture, one directory) still skips
+     it: that run is not claiming to cover the product. */
+  const scanningTheWholeProduct =
+    args.length === 0 || DEFAULT_ROOTS.every((r) => roots.includes(r));
+  if (scanningTheWholeProduct) {
     /* Audited against the CANONICAL product roots, never against `roots`: a gate
        may legitimately scan a narrower slice (`no-consumer-storefront` scans
        services+apps; `no-expo-token-leak` scans a tracked-file list), and asking

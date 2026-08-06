@@ -7,3 +7,10 @@ export interface SupplierWallet {
 export function holdFunds(wallet: SupplierWallet, amount: number): void {
   wallet.balance -= amount;
 }
+
+// Additional English shapes — each exists so its pattern is EXERCISED. A pattern
+// no fixture line matches can be deleted without CI noticing (verifier MAJOR 1);
+// `fr-pattern-coverage` fails if any of these stop being covered.
+export const escrowAccount = 'banned';
+export function topUp(w: SupplierWallet, amount: number): void { w.balance += amount; }
+export function withdrawFunds(w: SupplierWallet, amount: number): void { w.balance -= amount; }

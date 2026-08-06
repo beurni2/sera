@@ -1,5 +1,11 @@
 #!/usr/bin/env node
+import { pathToFileURL } from 'node:url';
 import { runScanGate } from './scan.mjs';
+
+/* Run the gate only when EXECUTED, not when imported. `fr-pattern-coverage`
+   imports PATTERNS to prove every one of them is exercised by a fixture; without
+   this guard that import would run the gate and exit the coverage process. */
+const isMainModule = import.meta.url === pathToFileURL(process.argv[1] ?? '').href;
 
 /**
  * CI gate: no-wallet / no-payment-funds architectural check (Ten Laws #2,
@@ -8,39 +14,46 @@ import { runScanGate } from './scan.mjs';
  * payment truth. Settlement views read SettlementObligation — never a
  * locally computed balance.
  */
-runScanGate({
-  gateName: 'no-wallet-no-funds',
-  invariant: 'Ten Laws #2 — no app holds funds; no wallet/balance module',
-  patterns: [
+export const PATTERNS = [
     { name: 'wallet', regex: /wallet/i },
-    { name: 'balance', regex: /\bbalance\b/i },
+    { name: 'balance', regex: /(?<!text-?wrap:\s{0,2}['"])\bbalance\b/i },
     { name: 'holdFunds/captureFunds/releaseFunds', regex: /(hold|capture|release)[_-]?funds/i },
     { name: 'escrowAccount', regex: /escrow[_-]?account/i },
     { name: 'topUp', regex: /top[_-]?up\b/i },
     { name: 'withdrawal', regex: /withdraw/i },
 
-    /* ── AUDIT-B+1 F2 — THE FRENCH HALF ───────────────────────────────────
-       Found by a harness audit of Boutik+: an auditor planted a working seller
-       wallet — `soldeVendeur` with `crediter`/`retirer` — in the product
-       directory and the FULL gate board printed ALL GATES GREEN. The English
-       control (`Wallet { balance }`) was caught correctly: the gate worked, its
-       vocabulary was monolingual in a product whose entire domain language is
-       French. This repo shipped the identical blindness.
+    /* ── AUDIT-B+1 F2 — THE FRENCH HALF, REDESIGNED AFTER A VERIFIER BROKE IT ──
+       The first version banned French money NOUNS in identifier position. A
+       fresh-context verifier defeated it in one rename — a bare `solde: number`
+       with `c.solde += montant` passed the whole board — and broke honest code
+       at the same time, because « solde » in French commerce ALSO means a
+       clearance sale (`prixSolde`, `enSolde`) and « avoir »/« caisse » are
+       ordinary words. Banning the noun was wrong in both directions at once.
 
-       WHY IDENTIFIER-POSITION AND NOT BARE WORDS. The words that name this
-       violation also name its PROHIBITION: `solde` and `portefeuille` appear
-       today only in comments and copy asserting that we hold nothing. Banning
-       the bare nouns would fail the build on the very code and copy that
-       enforce the law, and would push someone to delete the sentence that tells
-       a seller we hold nothing. So the money forms are banned where a FIELD
-       lives — camelCase, snake_case or SCREAMING_SNAKE — and prose is left able
-       to say what we refuse to build. */
-    { name: 'solde… (fr, identifier)', regex: /(solde|SOLDE)[_A-Z]/ },
-    { name: '…Solde (fr, identifier)', regex: /[a-z0-9]Solde\b/ },
-    { name: 'portefeuille… (fr, identifier)', regex: /(portefeuille|PORTEFEUILLE)[_A-Z]/ },
-    { name: 'créditer/débiter un compte (fr)', regex: /(cr[ée]diter|d[ée]biter)[_-]?(le[_-]?)?(compte|solde|vendeur|client)/i },
-    { name: 'cagnotte (fr)', regex: /cagnotte/i },
-    { name: 'porte-monnaie (fr)', regex: /porte[_-]?monnaie/i },
-    { name: 'approvisionner le compte (fr)', regex: /approvisionn\w*[_-]?(le[_-]?)?compte/i },
-  ],
-});
+       WHAT ACTUALLY MARKS A WALLET is not the noun, it is the noun BOUND TO AN
+       ACTOR (a per-seller, per-client amount) or ACCUMULATED (`+=`/`-=`). A
+       clearance price is bound to a product and is never accumulated. So the
+       patterns below require actor-binding, mutation, or member/key position —
+       and `prixSolde`, `enSolde`, « soldes d'hiver » stay legal, by design.
+       Proven against 24 evasion shapes and 9 honest-code shapes; see
+       gates/fixtures/negative/no-wallet-no-funds/ and the fr-pattern-coverage
+       gate, which fails if ANY pattern here stops being exercised. */
+    { name: 'money noun bound to an actor (fr)', regex: /(solde|portefeuille|cagnotte|avoir|caisse|encours|reliquat|tirelire|bourse)s?\w{0,15}(vendeur|vendeuse|client|cliente|revendeur|revendeuse|fournisseur|utilisateur|marchand|livreur|coursier|compte)/i },
+    { name: 'actor carrying a money noun (fr)', regex: /(vendeur|vendeuse|client|cliente|revendeur|revendeuse|fournisseur|utilisateur|marchand|compte)\w{0,15}(solde|portefeuille|cagnotte|caisse|encours|reliquat|tirelire)/i },
+    { name: 'money noun accumulated (fr)', regex: /(solde|portefeuille|cagnotte|avoir|caisse|encours|reliquat|tirelire)\w*\s*[+-]=/i },
+    { name: 'money noun assigned as a member/key (fr)', regex: /(?:\.|\[\s*["'])(solde|portefeuille|cagnotte|caisse|encours|reliquat)\b["']?\s*\]?\s*[+-]?=/i },
+    { name: 'money noun as a JSON/object key (fr)', regex: /["'](solde|portefeuille|cagnotte|caisse|encours|reliquat)["']\s*:/i },
+    { name: 'money noun declared as an amount (fr)', regex: /(?<![a-zA-ZÀ-ÿ])(solde|portefeuille|cagnotte|caisse|encours|reliquat)\s*:\s*(number|bigint)/i },
+    { name: 'créditer/débiter (fr)', regex: /(?<![a-zA-ZÀ-ÿ])(cr[ée]diter|d[ée]biter)/i },
+    { name: 'retrait/recharge/approvisionnement of an account (fr)', regex: /(retrait|retirer|recharge\w*|approvisionn\w*)[_.-]?(le|la|du|un)?[_.-]?(compte|solde|portefeuille|vendeur|client|revendeur)/i },
+    { name: 'cagnotte / porte-monnaie / tirelire (fr)', regex: /(cagnotte|porte[_-]?monnaie|tirelire)/i },
+];
+
+if (isMainModule) {
+    runScanGate({
+      gateName: 'no-wallet-no-funds',
+    invariant: 'Ten Laws #2 — no app holds funds; no wallet/balance module',
+    patterns: PATTERNS,
+  });
+}
+

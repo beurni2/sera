@@ -253,6 +253,15 @@ capture single-level-negative fail node scripts/gates/single-level.mjs gates/fix
 log "gate: single-level — POSITIVE FIXTURE (single-level parrainage is legal, must pass)"
 capture single-level-legal-parrainage pass node scripts/gates/single-level.mjs gates/fixtures/single-level-legal
 
+# AUDIT-B+1 F2 (verifier MAJOR 1) — EVERY PATTERN INDIVIDUALLY LOAD-BEARING.
+# The fixtures fail on the SET of patterns. Measured: deleting the `solde…`
+# pattern — the exact identifier this whole slice exists for — left every
+# fixture red anyway, because siblings still fired. CI would not have noticed
+# the law being un-enforced. This gate fails if ANY pattern stops being
+# exercised by a fixture line.
+log "gate: fr-pattern-coverage — every banned pattern is exercised by a fixture (must pass)"
+capture fr-pattern-coverage pass node scripts/gates/fr-pattern-coverage.mjs
+
 # AUDIT-B+1 F2 — THE FRENCH FIXTURES, SCANNED ONE FILE AT A TIME.
 # Scanning the whole negative DIRECTORY cannot prove the French half works: the
 # English fixture beside it fails too, so the directory stays red even if every

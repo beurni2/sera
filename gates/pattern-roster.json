@@ -1,0 +1,41 @@
+{
+  "no-wallet-no-funds": [
+    "wallet",
+    "balance",
+    "holdFunds/captureFunds/releaseFunds",
+    "escrowAccount",
+    "topUp",
+    "withdrawal",
+    "money noun bound to an actor (fr)",
+    "actor carrying a money noun (fr)",
+    "money noun accumulated (fr)",
+    "money noun assigned as a member/key (fr)",
+    "money noun as a JSON/object key (fr)",
+    "money noun declared as an amount (fr)",
+    "créditer/débiter (fr)",
+    "retrait/recharge/approvisionnement of an account (fr)",
+    "cagnotte / porte-monnaie / tirelire (fr)"
+  ],
+  "single-level": [
+    "downline",
+    "upline",
+    "recruit",
+    "mlm",
+    "multi-level",
+    "networkDepth",
+    "referral",
+    "sponsorTree",
+    "grand-parrain (fr, 2nd level)",
+    "filleul du filleul (fr, 2nd level)",
+    "deuxième/troisième niveau ou génération (fr)",
+    "niveau deux/trois (fr)",
+    "sous-parrain / sous-réseau (fr)",
+    "arbre de parrainage/revendeuses (fr)",
+    "profondeur de réseau (fr)",
+    "équipe de mon équipe / réseau de réseau (fr)",
+    "chaîne de parrainage (fr)",
+    "commission indirecte / en cascade (fr)",
+    "multi-niveau (fr)",
+    "pyramide (fr)"
+  ]
+}

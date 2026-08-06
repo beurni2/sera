@@ -29,3 +29,9 @@ export function approvisionnerCompte(compte: CompteVendeur, montant: number): vo
 }
 export const cagnotte = 0; // interdit
 export const porteMonnaie = 0; // interdit
+
+// Formes supplémentaires — une par motif français, pour qu'AUCUN motif ne puisse
+// être supprimé sans que la CI le voie (`fr-pattern-coverage`).
+export interface Compte2 { vendeurPortefeuille: number; solde: number }
+export const lu = compte['solde'] = 0;
+export const payloadInterdit = '{"vendeur": {"solde": 125000}}'; // interdit : clé JSON

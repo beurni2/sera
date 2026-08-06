@@ -31,3 +31,10 @@ export function commissionIndirecte(): number {
 }
 export const multiNiveau = true; // interdit
 export const pyramide = true; // interdit
+
+// Formes supplémentaires — une par motif français resté sans ligne de fixture.
+export const grandParrainId = ''; // interdit
+export const deuxiemeNiveau: string[] = []; // interdit
+export const niveauDeux: string[] = []; // interdit
+export const equipeDeMonEquipe: string[] = []; // interdit
+export const chaineDeParrainage: string[] = []; // interdit
