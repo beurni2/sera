@@ -262,7 +262,6 @@ capture single-level-legal-parrainage pass node scripts/gates/single-level.mjs g
 log "gate: fr-pattern-coverage — every banned pattern is exercised by a fixture (must pass)"
 capture fr-pattern-coverage pass node scripts/gates/fr-pattern-coverage.mjs
 
-
 # Law 4 in Shop+ / Séra (founder ruling 2026-08-06). Both specs carry « zero
 # seller deposit » as a CI-enforced cross-cutting invariant, and neither repo had
 # any gate for it — a verifier planted sellerDeposit/cautionVendeurFcfa and NO
