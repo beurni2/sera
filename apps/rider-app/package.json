@@ -31,6 +31,6 @@
     "@types/react": "~19.1.0",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4",
-    "@platform/i18n": "git+https://github.com/beurni2/platform-contracts.git#f23407ce51e074f7afead5c8e475a692056498e8&path:packages/i18n"
+    "@platform/i18n": "git+https://github.com/beurni2/platform-contracts.git#c18ce28ba22c3a6a4f81c6c7fc945e45ca5c56e9&path:packages/i18n"
   }
 }
