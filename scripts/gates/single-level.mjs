@@ -2,6 +2,30 @@
 import { pathToFileURL } from 'node:url';
 import { runScanGate } from './scan.mjs';
 
+/**
+ * ── THIS GATE IS A TRIPWIRE, NOT A PROOF ───────────────────────────────────
+ * Read this before trusting it, and before widening it.
+ *
+ * It matches VOCABULARY. Two fresh-context verifier rounds defeated earlier
+ * versions in both directions at once, because French money vocabulary IS
+ * ordinary French vocabulary: « solde » is also a clearance sale, « avoir » is
+ * also the verb to have, « en cours » is also "in progress", « retrait » is
+ * also a pickup, « dépôt » is also a warehouse, « garantie » is also a
+ * warranty, « balance » is also the scales a market seller weighs goods on.
+ * Cross that with unbounded synonyms for the money noun AND for the actor and
+ * no regex over the product is both leak-free and safe.
+ *
+ * So this gate catches the OBVIOUS and the ACCIDENTAL. A synonym outside its
+ * lists escapes it, by design and on the record. It does NOT establish that no
+ * wallet exists. The gate that carries that weight is
+ * `persisted-state-declared` — a wallet must be PERSISTED to be a wallet, and
+ * that surface is declared rather than guessed at.
+ *
+ * The priority when tuning is fixed: NEVER break honest work. A gate that cries
+ * wolf on « engagement vendeur » or « la balance du marché » teaches everyone
+ * to disable gates, and costs more than the leak it closed.
+ */
+
 /* Run the gate only when EXECUTED, not when imported. `fr-pattern-coverage`
    imports PATTERNS to prove every one of them is exercised by a fixture; without
    this guard that import would run the gate and exit the coverage process. */

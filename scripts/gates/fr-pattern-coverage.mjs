@@ -92,6 +92,19 @@ for (const { gate, fixtures } of GATES) {
   const patterns = loadPatterns(gatePath);
   if (patterns === null) { failed = true; continue; }
 
+  /* A law gate can be gutted with ZERO diff to PATTERNS: pass
+     `defaultRoots: ['services']` to runScanGate and `apps/` stops being
+     scanned, while coverage, the roster and both fixtures stay green. A
+     verifier did exactly that. These gates must scan the canonical roots. */
+  const gateSrc = readFileSync(gatePath, 'utf8');
+  for (const narrowing of ['defaultRoots', 'scanExtensions']) {
+    if (new RegExp(`\\b${narrowing}\\s*:`).test(gateSrc)) {
+      console.error(`fr-pattern-coverage FAILED — ${gate} passes \`${narrowing}\` to runScanGate.`);
+      console.error('  That narrows what the law gate scans without changing a single pattern.');
+      failed = true;
+    }
+  }
+
   const lines = readdirSync(fixtures)
     .filter((f) => /\.(ts|tsx|mts|cts|js|json)$/.test(f))
     .flatMap((f) => readFileSync(join(fixtures, f), 'utf8').split('\n'));

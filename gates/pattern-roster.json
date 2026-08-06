@@ -5,8 +5,8 @@
       "regex": "/wallet/i"
     },
     {
-      "name": "balance",
-      "regex": "/(?<!text-?wrap:\\s{0,2}['\"])(?<!text-)\\bbalance\\b/i"
+      "name": "balance (english money sense)",
+      "regex": "/(?<!text-?wrap:\\s*)(?<!text-)(?<!insufficient_)(?<![a-zA-ZÀ-ÿ])(?<!la\\s)(?<!une\\s)(?<!ma\\s)(?<!sa\\s)balances?\\b/i"
     },
     {
       "name": "holdFunds/captureFunds/releaseFunds",
@@ -92,7 +92,7 @@
     },
     {
       "name": "caution/arrhes/nantissement bound to an earner (fr)",
-      "regex": "/(caution|arrhes|nantissement|gage)s?\\w{0,12}(vendeur|vendeuse|revendeur|revendeuse|fournisseur|marchand|commer[cç]ant|grossiste|boutique|g[ée]rant|agent|membre|b[ée]n[ée]ficiaire|livreur|coursier|client|cliente|utilisateur|compte)/i"
+      "regex": "/(?<![a-zA-Z\\u00C0-\\u00FF])(caution|arrhes|nantissement|gage)s?\\w{0,12}(vendeur|vendeuse|revendeur|revendeuse|fournisseur|marchand|commer[cç]ant|grossiste|boutique|g[ée]rant|agent|membre|b[ée]n[ée]ficiaire|livreur|coursier|client|cliente|utilisateur|compte)/i"
     },
     {
       "name": "earner carrying caution/arrhes (fr)",
@@ -100,7 +100,7 @@
     },
     {
       "name": "caution/arrhes carrying an amount (fr)",
-      "regex": "/(caution|arrhes|nantissement|gage)[_-]?(fcfa|xof|montant|amount|min|max)/i"
+      "regex": "/(?<![a-zA-ZÀ-ÿ])(caution|arrhes|nantissement|gage)[_-]?(fcfa|xof|montant|amount|min|max)/i"
     },
     {
       "name": "exiger/verser une caution (fr)",
