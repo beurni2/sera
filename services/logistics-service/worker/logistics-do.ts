@@ -271,13 +271,21 @@ export class LogisticsDO {
         return malformed();
       }
       const orderId = body['orderId'] as string;
-      this.fundingFacts[orderId] = {
+      const incoming: FundingFact = {
         status,
         paymentMode: body['paymentMode'] as string,
         asOf: body['asOf'] as string,
         stale: (body['stale'] as boolean | undefined) ?? false,
       };
-      return Response.json({ ok: true, orderId });
+      // At-least-once producers REDELIVER. A fact older than the stored one
+      // is acknowledged but never applied — a replayed 'funded' from before
+      // a 'cancelled' must not re-open admission (SE-I02; verifier finding).
+      const stored = this.fundingFacts[orderId];
+      if (stored !== undefined && Date.parse(incoming.asOf) < Date.parse(stored.asOf)) {
+        return Response.json({ ok: true, orderId, applied: false, reason: 'older_fact_ignored' });
+      }
+      this.fundingFacts[orderId] = incoming;
+      return Response.json({ ok: true, orderId, applied: true });
     }
     if (request.method === 'POST' && pathname === '/intake/readiness') {
       const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
@@ -291,12 +299,18 @@ export class LogisticsDO {
         return malformed();
       }
       const orderId = body['orderId'] as string;
-      this.readinessFacts[orderId] = {
+      const incoming: ReadinessFact = {
         ready: body['ready'] as boolean,
         asOf: body['asOf'] as string,
         stale: (body['stale'] as boolean | undefined) ?? false,
       };
-      return Response.json({ ok: true, orderId });
+      // Same ordering law as funding: an older redelivered fact never wins.
+      const stored = this.readinessFacts[orderId];
+      if (stored !== undefined && Date.parse(incoming.asOf) < Date.parse(stored.asOf)) {
+        return Response.json({ ok: true, orderId, applied: false, reason: 'older_fact_ignored' });
+      }
+      this.readinessFacts[orderId] = incoming;
+      return Response.json({ ok: true, orderId, applied: true });
     }
 
     // ── Ops door (router-gated: SERA_OPS_SECRET — the founder) ────────────

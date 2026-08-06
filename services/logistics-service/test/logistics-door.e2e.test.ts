@@ -386,6 +386,65 @@ describe('riders, personal codes, and the full dispatch loop through the doors',
   });
 });
 
+describe('replay safety through the door — the verifier’s reproduced probes, pinned', () => {
+  it('a RETRIED /ops/expire-due (same nowIso) is harmless: the rider who acked after the first sweep keeps their course', async () => {
+    const ORDER = 'order-sweep-replay';
+    const TASK = 'task-sweep-replay-door';
+    await fundOrder(mf, ORDER);
+    await readyOrder(mf, ORDER);
+    expect(
+      (await call(mf, 'POST', '/intake/task-ready', intakeAuth, readyEvent('cmd-sweep-replay-ready', TASK, ORDER))).status,
+    ).toBe(200);
+    await prepRider(mf, 'r-sweep-a');
+    const codeB = await prepRider(mf, 'r-sweep-b');
+    expect(
+      (await call(mf, 'POST', '/ops/assign', opsAuth, { command_id: 'cmd-sweep-replay-1', taskId: TASK, riderId: 'r-sweep-a' })).status,
+    ).toBe(200);
+    // ONE sweep instant, used twice — the timed-out-POST-retried scenario
+    const sweepAt = new Date(Date.now() + 6 * 60 * 1000).toISOString();
+    const first = await call(mf, 'POST', '/ops/expire-due', opsAuth, { nowIso: sweepAt });
+    expect((first.json['expiredLeases'] as Json[]).some((l) => l['taskId'] === TASK)).toBe(true);
+    // re-grant to B, who ANSWERS IN TIME (anchored)
+    const regrant = await call(mf, 'POST', '/ops/assign', opsAuth, { command_id: 'cmd-sweep-replay-2', taskId: TASK, riderId: 'r-sweep-b' });
+    expect(regrant.status).toBe(200);
+    const asId = (regrant.json['assignment'] as Json)['assignmentId'] as string;
+    expect((await call(mf, 'POST', '/rider/assignment/ack', codeAuth(codeB), { assignmentId: asId })).json).toMatchObject({
+      ok: true,
+      anchored: true,
+    });
+    // THE REPLAY — before the fix this returned B's acked assignment to the
+    // queue while the authority kept B's anchored lease: task and rider both
+    // stranded forever. Now: no new consequence.
+    const replay = await call(mf, 'POST', '/ops/expire-due', opsAuth, { nowIso: sweepAt });
+    expect(replay.status).toBe(200);
+    expect(replay.json['requeued']).toEqual([]);
+    expect(replay.json['events']).toEqual([]);
+    const board = await call(mf, 'GET', '/ops/board', opsAuth);
+    const b = board.json['board'] as Json;
+    expect((b['assignments'] as Json[]).some((a) => a['assignmentId'] === asId)).toBe(true);
+    expect((b['queued'] as Json[]).some((q) => q['taskId'] === TASK)).toBe(false);
+    const moi = await call(mf, 'GET', '/rider/moi', codeAuth(codeB));
+    expect((moi.json['rider'] as Json)['assignment']).toMatchObject({ assignmentId: asId, taskId: TASK });
+  });
+
+  it('an OLDER redelivered intake fact never wins: a replayed « funded » from before a « cancelled » does not re-open admission (SE-I02)', async () => {
+    const ORDER = 'order-fact-order';
+    const T2 = '2026-08-06T12:30:00.000Z'; // later than T
+    expect((await fundOrder(mf, ORDER)).json).toMatchObject({ applied: true }); // funded @ T
+    expect((await fundOrder(mf, ORDER, { status: 'cancelled', asOf: T2 })).json).toMatchObject({ applied: true });
+    // the at-least-once redelivery of the OLD funded fact — acknowledged, ignored
+    const redelivered = await fundOrder(mf, ORDER); // asOf T < T2
+    expect(redelivered.status).toBe(200);
+    expect(redelivered.json).toMatchObject({ ok: true, applied: false, reason: 'older_fact_ignored' });
+    await readyOrder(mf, ORDER, { asOf: T2 });
+    const refused = await call(
+      mf, 'POST', '/intake/task-ready', intakeAuth, readyEvent('cmd-fact-order', 'task-fact-order', ORDER),
+    );
+    expect(refused.status).toBe(422);
+    expect(refused.json).toMatchObject({ reason: 'order_cancelled' });
+  });
+});
+
 describe('serialization through the door — SE-I01 under real concurrency', () => {
   it('20 CONCURRENT /ops/assign on ONE task, 20 assignable riders → EXACTLY 1 grant, 19 refusals', async () => {
     const ORDER = 'order-race-door';

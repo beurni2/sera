@@ -277,6 +277,16 @@ export class LeasedDispatch {
       command_id: `expire-due-${nowIso}`,
       nowIso,
     });
+    // SE-LIVE-1 verifier BLOCKER: a REPLAYED sweep drives NOTHING. The
+    // authority answers the ORIGINAL expired snapshot without touching lease
+    // state — but expireByTasks matches by taskId alone, so re-driving the
+    // book with that stale list returned tasks re-granted (and even ACKED)
+    // since the first application back to the queue, stranding an anchored
+    // rider forever. A retried sweep POST with the same instant is the
+    // natural retry the command-id design invites; it must be harmless.
+    if (decision.ok && decision.idempotentReplay) {
+      return { expiredLeases: decision.expired ?? [], requeued: [], events: [] };
+    }
     const expiredLeases = decision.ok ? (decision.expired ?? []) : [];
     for (const lease of expiredLeases) this.deps.witness.revoke(refOf(lease));
     const { requeued, events } = this.deps.book.expireByTasks(

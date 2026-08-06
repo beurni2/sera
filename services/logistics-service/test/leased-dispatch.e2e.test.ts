@@ -410,6 +410,33 @@ describe('LeasedDispatch — the full grant path on the real authority', () => {
     expect(second).toEqual({ ok: false, stage: 'lease', reason: 'rider_already_leased' });
   });
 
+  it('SWEEP REPLAY IS HARMLESS (SE-LIVE-1 verifier BLOCKER): a replayed expire_due drives NEITHER the witness NOR the book — an assignment granted and ACKED after the first sweep survives its replay', async () => {
+    const t = 'task-sweep-replay';
+    const SWEEP_AT = '2026-07-12T12:26:00.000Z'; // unique instant — no cross-test replay
+    const { salt, dispatch, queue, book, addRider } = world(t);
+    expect((await dispatch.assign(assignCmd(salt, t))).ok).toBe(true);
+    // first application: the unanswered v1 lease expires and requeues
+    const first = await dispatch.expireDue(SWEEP_AT);
+    expect(first.expiredLeases.some((l) => l.taskId === t)).toBe(true);
+    expect(first.requeued).toHaveLength(1);
+    // the task re-grants to a SECOND rider, who answers IN TIME (anchored)
+    addRider(`${salt}-r-2`);
+    const regrant = await dispatch.assign({ ...assignCmd(salt, t, 2), riderId: `${salt}-r-2`, at: SWEEP_AT });
+    expect(regrant.ok).toBe(true);
+    expect(await dispatch.acknowledge(`${salt}-as-2`, 'server_confirmed', SWEEP_AT)).toMatchObject({
+      ok: true,
+      anchored: true,
+    });
+    // THE REPLAY: same instant → same command_id at the authority. It answers
+    // the ORIGINAL snapshot; the orchestrator must requeue NOTHING.
+    const replay = await dispatch.expireDue(SWEEP_AT);
+    expect(replay.expiredLeases.some((l) => l.taskId === t)).toBe(true); // the historical answer
+    expect(replay.requeued).toHaveLength(0); // and NO new consequence
+    expect(replay.events).toHaveLength(0);
+    expect(book.get(`${salt}-as-2`)?.status).toBe('acknowledged'); // the acked rider keeps their course
+    expect(queue.get(t)?.status).toBe('assigned'); // the task never returned to the queue
+  });
+
   it('ANCHOR ④ — THE TOO-LATE-ACK OVERRIDE (manual interleave on the in-memory core): the lease dies first, the ack lands mid-sweep, the book FOLLOWS the lease back to returned_to_queue', async () => {
     const t = 'task-late-ack';
     // The same pure decideLease core, in memory, wrapped so the rider's
