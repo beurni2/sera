@@ -23,25 +23,20 @@ export const PATTERNS = [
     { name: 'referral', regex: /referral/i },
     { name: 'sponsorTree', regex: /sponsor[_-]?tree/i },
 
-    /* ── AUDIT-B+1 F2 — THE SECOND LEVEL, AND WHAT STAYS LEGAL.
-       Law 9 forbids MULTI-level. Single-level parrainage is a SHIPPED,
-       founder-designed capability (shop-plus
-       `apps/reseller-app/src/cercle/screens.tsx:409`, « single-level, forever
-       (loi 1) ») and it PAYS AN AMOUNT (`ce.parrainage_montant`) — so a generic
-       « commission on parrainage » ban would break it. Only the SECOND LEVEL
-       and cascade rewards are banned. Numeric `niveau2` is deliberately NOT
-       banned: it is how a product CATEGORY taxonomy is written.
-       `gates/fixtures/single-level-legal/` fails the board if this line moves. */
-    { name: 'grand-parrain (fr, 2nd level)', regex: /grand[_-]?parrain/i },
-    { name: 'filleul du filleul (fr, 2nd level)', regex: /filleul[^\n]{0,20}filleul/i },
-    { name: 'deuxième/troisième niveau ou génération (fr)', regex: /(deuxi[eè]me|troisi[eè]me|second)[_-]?(niveau|g[ée]n[ée]ration)/i },
-    { name: 'niveau deux/trois (fr)', regex: /niveau[_-]?(deux|trois)\b/i },
+    /* SECOND LEVEL — unambiguous French. Numeric `niveau2` is deliberately NOT
+       banned: that is how a product CATEGORY taxonomy is written. */
+    { name: 'grand-parrain / parrain du parrain (fr)', regex: /(grand[_-]?parrain|parrain[_-]?du[_-]?parrain|parrain[_-]?de[_-]?(mon|son|ma|sa)[_-]?parrain)/i },
+    { name: 'filleul du filleul (fr)', regex: /filleul[^\n]{0,20}filleul|petite?s?[_-]?filleul/i },
     { name: 'sous-parrain / sous-réseau (fr)', regex: /sous[_-]?(parrain|filleul|r[ée]seau|affili[ée])/i },
-    { name: 'arbre de parrainage/revendeuses (fr)', regex: /arbre[_-]?(de|des|du)?[_-]?(parrainage|filleul|revendeu|affili|[ée]quipe|equipe)/i },
-    { name: 'profondeur de réseau (fr)', regex: /profondeur[_-]?\w{0,8}(r[ée]seau|parrainage|arbre)/i },
-    { name: 'équipe de mon équipe / réseau de réseau (fr)', regex: /(equipe|[ée]quipe|r[ée]seau)[_-]?(de|du)?[_-]?(mon|ma|son|sa)?[_-]?(equipe|[ée]quipe|r[ée]seau)/i },
+    { name: 'deuxième/troisième niveau ou génération (fr)', regex: /(deuxi[eè]me|troisi[eè]me|second)[_-]?(niveau|g[ée]n[ée]ration)|niveau[_-]?(deux|trois)\b/i },
+    { name: 'commission/bonus par niveau (fr)', regex: /(commission|bonus|prime|gain)s?[_-]?(de[_-]?|du[_-]?|sur[_-]?)?niveau[_-]?[2-9]/i },
+    { name: 'commission indirecte / en cascade (fr)', regex: /(commission|prime|bonus|gain|revenu)s?[_-]?(indirecte?s?|en[_-]?cascade|cascade)/i },
+    { name: 'arbre / lignée / descendance (fr)', regex: /(arbre[_-]?(de|des|du)?[_-]?(parrainage|filleul|revendeu|affili|[ée]quipe)|(?<![a-zA-ZÀ-ÿ])lign[ée]e|(?<![a-zA-ZÀ-ÿ])descendance)/i },
+    { name: 'profondeur de réseau (fr)', regex: /profondeur[_-]?\w{0,8}(r[ée]seau|parrainage|arbre|[ée]quipe)/i },
+    { name: 'équipe de mon équipe / réseau de réseau (fr)', regex: /([ée]quipe|r[ée]seau)[_-]?(de|du)?[_-]?(mon|ma|son|sa)[_-]?([ée]quipe|r[ée]seau)/i },
+    { name: 'volume/chiffre d\'équipe (fr)', regex: /(volume|chiffre|ca)[_-]?(de[_-]?l)?[ée]quipe/i },
     { name: 'chaîne de parrainage (fr)', regex: /cha[iî]ne[_-]?(de[_-]?)?parrainage/i },
-    { name: 'commission indirecte / en cascade (fr)', regex: /(commission|prime|bonus)[_-]?(indirecte?|en[_-]?cascade|cascade)/i },
+    { name: 'plan/matrice binaire (fr)', regex: /(plan|matrice)[_-]?binaire/i },
     { name: 'multi-niveau (fr)', regex: /multi[_-]?niveau/i },
     { name: 'pyramide (fr)', regex: /pyramid/i },
 ];

@@ -38,3 +38,9 @@ export const deuxiemeNiveau: string[] = []; // interdit
 export const niveauDeux: string[] = []; // interdit
 export const equipeDeMonEquipe: string[] = []; // interdit
 export const chaineDeParrainage: string[] = []; // interdit
+
+// Une ligne par motif encore sans fixture — un motif que rien n'exerce peut
+// être supprimé sans que la CI le voie.
+export const commissionNiveau2 = 0; // interdit
+export const volumeEquipe = 0; // interdit
+export const planBinaire = {}; // interdit

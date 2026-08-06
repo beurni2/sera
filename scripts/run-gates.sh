@@ -262,6 +262,44 @@ capture single-level-legal-parrainage pass node scripts/gates/single-level.mjs g
 log "gate: fr-pattern-coverage — every banned pattern is exercised by a fixture (must pass)"
 capture fr-pattern-coverage pass node scripts/gates/fr-pattern-coverage.mjs
 
+# Law 4 in Shop+ / Séra (founder ruling 2026-08-06). Both specs carry « zero
+# seller deposit » as a CI-enforced cross-cutting invariant, and neither repo had
+# any gate for it — a verifier planted sellerDeposit/cautionVendeurFcfa and NO
+# gate changed verdict. These are NOT copies of the boutik-plus files: run those
+# here and they fail on 87 lines of correct shipped code (requiredDeposit is the
+# canonical BUYER pay-at-door field; « Au dépôt » is a warehouse; « rien n'a été
+# débité » is buyer reassurance). Bound to the earner instead.
+log "gate: no-seller-deposit — repo source (must pass)"
+capture no-seller-deposit-positive pass node scripts/gates/no-seller-deposit.mjs
+
+log "gate: no-seller-deposit — NEGATIVE FIXTURE (deposit demanded of an earner, must fail)"
+capture no-seller-deposit-negative fail node scripts/gates/no-seller-deposit.mjs gates/fixtures/negative/no-seller-deposit
+
+log "gate: no-seller-deposit — FRENCH FIXTURE ALONE (must fail)"
+capture no-seller-deposit-negative-fr fail node scripts/gates/no-seller-deposit.mjs gates/fixtures/negative/no-seller-deposit/caution-vendeur.fr.ts
+
+log "gate: no-seller-debit — repo source (must pass)"
+capture no-seller-debit-positive pass node scripts/gates/no-seller-debit.mjs
+
+log "gate: no-seller-debit — NEGATIVE FIXTURE (money taken back from an earner, must fail)"
+capture no-seller-debit-negative fail node scripts/gates/no-seller-debit.mjs gates/fixtures/negative/no-seller-debit
+
+log "gate: no-seller-debit — FRENCH FIXTURE ALONE (must fail)"
+capture no-seller-debit-negative-fr fail node scripts/gates/no-seller-debit.mjs gates/fixtures/negative/no-seller-debit/retenue-vendeur.fr.ts
+
+# The coverage gate had NO negative demonstration — the board proved it could
+# pass, never that it could fail, which is how a hole in IT would ship. This
+# corrupts the roster in a temp copy and requires a refusal.
+log "gate: fr-pattern-coverage — NEGATIVE (a gutted roster must be refused)"
+ROSTER_BAK="$(mktemp)"
+cp gates/pattern-roster.json "$ROSTER_BAK"
+restore_roster() { cp "$ROSTER_BAK" gates/pattern-roster.json; rm -f "$ROSTER_BAK"; }
+trap restore_roster EXIT
+node -e 'const f="gates/pattern-roster.json";const fs=require("fs");const r=JSON.parse(fs.readFileSync(f,"utf8"));const k=Object.keys(r)[0];r[k][0].regex="/zzgutted/";fs.writeFileSync(f,JSON.stringify(r,null,2));'
+capture fr-pattern-coverage-negative fail node scripts/gates/fr-pattern-coverage.mjs
+restore_roster
+trap - EXIT
+
 # AUDIT-B+1 F2 — THE FRENCH FIXTURES, SCANNED ONE FILE AT A TIME.
 # Scanning the whole negative DIRECTORY cannot prove the French half works: the
 # English fixture beside it fails too, so the directory stays red even if every

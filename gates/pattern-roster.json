@@ -1,41 +1,250 @@
 {
   "no-wallet-no-funds": [
-    "wallet",
-    "balance",
-    "holdFunds/captureFunds/releaseFunds",
-    "escrowAccount",
-    "topUp",
-    "withdrawal",
-    "money noun bound to an actor (fr)",
-    "actor carrying a money noun (fr)",
-    "money noun accumulated (fr)",
-    "money noun assigned as a member/key (fr)",
-    "money noun as a JSON/object key (fr)",
-    "money noun declared as an amount (fr)",
-    "créditer/débiter (fr)",
-    "retrait/recharge/approvisionnement of an account (fr)",
-    "cagnotte / porte-monnaie / tirelire (fr)"
+    {
+      "name": "wallet",
+      "regex": "/wallet/i"
+    },
+    {
+      "name": "balance",
+      "regex": "/(?<!text-?wrap:\\s{0,2}['\"])(?<!text-)\\bbalance\\b/i"
+    },
+    {
+      "name": "holdFunds/captureFunds/releaseFunds",
+      "regex": "/(hold|capture|release)[_-]?funds/i"
+    },
+    {
+      "name": "escrowAccount",
+      "regex": "/escrow[_-]?account/i"
+    },
+    {
+      "name": "topUp",
+      "regex": "/top[_-]?up\\b/i"
+    },
+    {
+      "name": "withdrawal",
+      "regex": "/withdraw/i"
+    },
+    {
+      "name": "cagnotte / porte-monnaie / tirelire (fr)",
+      "regex": "/(cagnotte|porte[_-]?monnaie|tirelire)/i"
+    },
+    {
+      "name": "créditer/débiter (fr)",
+      "regex": "/(?<![a-zA-ZÀ-ÿ])(cr[ée]diter|d[ée]biter)/i"
+    },
+    {
+      "name": "approvisionner/recharger un compte (fr)",
+      "regex": "/(approvisionn|recharg)\\w*[_-]?(le[_-]?|la[_-]?)?(compte|solde|portefeuille)/i"
+    },
+    {
+      "name": "money noun bound to an actor (fr)",
+      "regex": "/(solde|portefeuille|cr[ée]dit|fonds|[ée]pargne|tr[ée]sorerie|cr[ée]ance|ardoise|cagnotte|tirelire)s?\\w{0,12}(vendeur|vendeuse|revendeur|revendeuse|fournisseur|marchand|commer[cç]ant|grossiste|boutique|g[ée]rant|agent|membre|b[ée]n[ée]ficiaire|livreur|coursier|client|cliente|utilisateur|compte)/i"
+    },
+    {
+      "name": "actor carrying a money noun (fr)",
+      "regex": "/(vendeur|vendeuse|revendeur|revendeuse|fournisseur|marchand|commer[cç]ant|grossiste|boutique|g[ée]rant|agent|membre|b[ée]n[ée]ficiaire|livreur|coursier|client|cliente|utilisateur|compte)\\w{0,12}(solde|portefeuille|cr[ée]dit|fonds|[ée]pargne|tr[ée]sorerie|cr[ée]ance|ardoise|cagnotte|tirelire)\\b/i"
+    },
+    {
+      "name": "money noun accumulated (fr)",
+      "regex": "/(?<![a-zA-ZÀ-ÿ])(solde|portefeuille|cr[ée]dit|fonds|[ée]pargne|tr[ée]sorerie|cr[ée]ance|ardoise|cagnotte|tirelire)\\w*\\s*[+-]=/i"
+    },
+    {
+      "name": "money noun assigned as a member (fr)",
+      "regex": "/(?:\\.|\\[\\s*[\"'])(solde|portefeuille|cr[ée]dit|fonds|[ée]pargne|tr[ée]sorerie|cr[ée]ance|ardoise|cagnotte|tirelire)\\b[\"']?\\s*\\]?\\s*[+-]?=/i"
+    },
+    {
+      "name": "money noun as a JSON key (fr)",
+      "regex": "/[\"'](solde|portefeuille|cr[ée]dit|fonds|[ée]pargne|tr[ée]sorerie|cr[ée]ance|ardoise|cagnotte|tirelire)[\"']\\s*:\\s*[0-9-]/i"
+    }
+  ],
+  "no-seller-deposit": [
+    {
+      "name": "deposit demanded of an earner",
+      "regex": "/(seller|reseller|supplier|rider|courier|vendor|merchant)[_-]?deposit|deposit[_-]?(from[_-]?)?(seller|reseller|supplier|rider)/i"
+    },
+    {
+      "name": "sellerReserve",
+      "regex": "/(seller|reseller|rider)[_-]?reserve/i"
+    },
+    {
+      "name": "reserveBalance/reserveAmount",
+      "regex": "/reserve[_-]?(balance|amount|fcfa)/i"
+    },
+    {
+      "name": "bond demanded of an earner",
+      "regex": "/(seller|reseller|rider|courier|security)[_-]?bond\\b/i"
+    },
+    {
+      "name": "onboardingFee",
+      "regex": "/onboarding[_-]?fee/i"
+    },
+    {
+      "name": "subscriptionFee",
+      "regex": "/subscription[_-]?fee/i"
+    },
+    {
+      "name": "joining/signup/registration fee",
+      "regex": "/(joining|signup|sign[_-]?up|registration)[_-]?fee/i"
+    },
+    {
+      "name": "frais d'inscription/adhésion (fr)",
+      "regex": "/frais[_-]?d[_'-]?(inscription|adh[ée]sion)/i"
+    },
+    {
+      "name": "caution/arrhes/nantissement bound to an earner (fr)",
+      "regex": "/(caution|arrhes|nantissement|gage)s?\\w{0,12}(vendeur|vendeuse|revendeur|revendeuse|fournisseur|marchand|commer[cç]ant|grossiste|boutique|g[ée]rant|agent|membre|b[ée]n[ée]ficiaire|livreur|coursier|client|cliente|utilisateur|compte)/i"
+    },
+    {
+      "name": "earner carrying caution/arrhes (fr)",
+      "regex": "/(vendeur|vendeuse|revendeur|revendeuse|fournisseur|marchand|commer[cç]ant|grossiste|boutique|g[ée]rant|agent|membre|b[ée]n[ée]ficiaire|livreur|coursier|client|cliente|utilisateur|compte)\\w{0,12}(caution|arrhes|nantissement)/i"
+    },
+    {
+      "name": "caution/arrhes carrying an amount (fr)",
+      "regex": "/(caution|arrhes|nantissement|gage)[_-]?(fcfa|xof|montant|amount|min|max)/i"
+    },
+    {
+      "name": "exiger/verser une caution (fr)",
+      "regex": "/(exiger|demander|verser|bloquer)[_.-]?(une?|la|le)?[_.-]?(caution|arrhes|garantie[_-]?financi[eè]re)/i"
+    }
+  ],
+  "no-seller-debit": [
+    {
+      "name": "clawback",
+      "regex": "/clawback/i"
+    },
+    {
+      "name": "garnish",
+      "regex": "/garnish/i"
+    },
+    {
+      "name": "sellerCharge/chargeSeller",
+      "regex": "/(seller|reseller|rider)[_-]?charge|charge[_-]?(seller|reseller|rider)/i"
+    },
+    {
+      "name": "deduct from an earner",
+      "regex": "/deduct\\w*[_-]?(from[_-]?)?(seller|reseller|supplier|rider|courier|vendeur|revendeuse|livreur)/i"
+    },
+    {
+      "name": "debit an earner",
+      "regex": "/debit\\w{0,4}[_-]?(seller|reseller|supplier|rider|courier)|((seller|reseller|rider)[_-]?debit)/i"
+    },
+    {
+      "name": "débiter un gagnant (fr)",
+      "regex": "/d[ée]bit\\w*[_-]?(le[_-]?|la[_-]?|du[_-]?)?(vendeur|vendeuse|revendeur|revendeuse|fournisseur|livreur|coursier|marchand)/i"
+    },
+    {
+      "name": "earner carrying a débit (fr)",
+      "regex": "/(vendeur|vendeuse|revendeur|revendeuse|fournisseur|livreur|coursier|marchand)\\w{0,10}d[ée]bit/i"
+    },
+    {
+      "name": "retenue sur ventes/gains (fr)",
+      "regex": "/retenue[_-]?(sur[_-]?)?(ventes?|gains?|revenus?|commissions?|vendeur|revendeuse|livreur)/i"
+    },
+    {
+      "name": "prélèvement sur ventes/gains (fr)",
+      "regex": "/pr[ée]l[èe]v\\w*[_-]?(sur[_-]?)?(ventes?|gains?|revenus?|vendeur|revendeuse|livreur)/i"
+    },
+    {
+      "name": "pénalité bound to an earner (fr)",
+      "regex": "/(p[ée]nalit|amende)\\w{0,4}[_-]?(du?[_-]?|de[_-]?la[_-]?)?(vendeur|vendeuse|revendeur|revendeuse|livreur|coursier|marchand)/i"
+    },
+    {
+      "name": "earner carrying a pénalité (fr)",
+      "regex": "/(vendeur|vendeuse|revendeur|revendeuse|livreur|coursier|marchand)\\w{0,10}(p[ée]nalit|amende)/i"
+    },
+    {
+      "name": "pénalité/amende carrying an amount (fr)",
+      "regex": "/(p[ée]nalit[ée]?|amende)[_-]?(fcfa|xof|montant|amount)/i"
+    }
   ],
   "single-level": [
-    "downline",
-    "upline",
-    "recruit",
-    "mlm",
-    "multi-level",
-    "networkDepth",
-    "referral",
-    "sponsorTree",
-    "grand-parrain (fr, 2nd level)",
-    "filleul du filleul (fr, 2nd level)",
-    "deuxième/troisième niveau ou génération (fr)",
-    "niveau deux/trois (fr)",
-    "sous-parrain / sous-réseau (fr)",
-    "arbre de parrainage/revendeuses (fr)",
-    "profondeur de réseau (fr)",
-    "équipe de mon équipe / réseau de réseau (fr)",
-    "chaîne de parrainage (fr)",
-    "commission indirecte / en cascade (fr)",
-    "multi-niveau (fr)",
-    "pyramide (fr)"
+    {
+      "name": "downline",
+      "regex": "/downline/i"
+    },
+    {
+      "name": "upline",
+      "regex": "/upline/i"
+    },
+    {
+      "name": "recruit",
+      "regex": "/recruit/i"
+    },
+    {
+      "name": "mlm",
+      "regex": "/\\bmlm\\b/i"
+    },
+    {
+      "name": "multi-level",
+      "regex": "/multi[_-]?level/i"
+    },
+    {
+      "name": "networkDepth",
+      "regex": "/network[_-]?depth/i"
+    },
+    {
+      "name": "referral",
+      "regex": "/referral/i"
+    },
+    {
+      "name": "sponsorTree",
+      "regex": "/sponsor[_-]?tree/i"
+    },
+    {
+      "name": "grand-parrain / parrain du parrain (fr)",
+      "regex": "/(grand[_-]?parrain|parrain[_-]?du[_-]?parrain|parrain[_-]?de[_-]?(mon|son|ma|sa)[_-]?parrain)/i"
+    },
+    {
+      "name": "filleul du filleul (fr)",
+      "regex": "/filleul[^\\n]{0,20}filleul|petite?s?[_-]?filleul/i"
+    },
+    {
+      "name": "sous-parrain / sous-réseau (fr)",
+      "regex": "/sous[_-]?(parrain|filleul|r[ée]seau|affili[ée])/i"
+    },
+    {
+      "name": "deuxième/troisième niveau ou génération (fr)",
+      "regex": "/(deuxi[eè]me|troisi[eè]me|second)[_-]?(niveau|g[ée]n[ée]ration)|niveau[_-]?(deux|trois)\\b/i"
+    },
+    {
+      "name": "commission/bonus par niveau (fr)",
+      "regex": "/(commission|bonus|prime|gain)s?[_-]?(de[_-]?|du[_-]?|sur[_-]?)?niveau[_-]?[2-9]/i"
+    },
+    {
+      "name": "commission indirecte / en cascade (fr)",
+      "regex": "/(commission|prime|bonus|gain|revenu)s?[_-]?(indirecte?s?|en[_-]?cascade|cascade)/i"
+    },
+    {
+      "name": "arbre / lignée / descendance (fr)",
+      "regex": "/(arbre[_-]?(de|des|du)?[_-]?(parrainage|filleul|revendeu|affili|[ée]quipe)|(?<![a-zA-ZÀ-ÿ])lign[ée]e|(?<![a-zA-ZÀ-ÿ])descendance)/i"
+    },
+    {
+      "name": "profondeur de réseau (fr)",
+      "regex": "/profondeur[_-]?\\w{0,8}(r[ée]seau|parrainage|arbre|[ée]quipe)/i"
+    },
+    {
+      "name": "équipe de mon équipe / réseau de réseau (fr)",
+      "regex": "/([ée]quipe|r[ée]seau)[_-]?(de|du)?[_-]?(mon|ma|son|sa)[_-]?([ée]quipe|r[ée]seau)/i"
+    },
+    {
+      "name": "volume/chiffre d'équipe (fr)",
+      "regex": "/(volume|chiffre|ca)[_-]?(de[_-]?l)?[ée]quipe/i"
+    },
+    {
+      "name": "chaîne de parrainage (fr)",
+      "regex": "/cha[iî]ne[_-]?(de[_-]?)?parrainage/i"
+    },
+    {
+      "name": "plan/matrice binaire (fr)",
+      "regex": "/(plan|matrice)[_-]?binaire/i"
+    },
+    {
+      "name": "multi-niveau (fr)",
+      "regex": "/multi[_-]?niveau/i"
+    },
+    {
+      "name": "pyramide (fr)",
+      "regex": "/pyramid/i"
+    }
   ]
 }

@@ -1,74 +1,97 @@
 #!/usr/bin/env node
 /**
- * CI gate: fr-pattern-coverage (AUDIT-B+1 F2, verifier MAJOR 1).
+ * CI gate: fr-pattern-coverage — the gate that guards the law gates.
  *
- * The French negative fixtures fail on the SET of patterns, not on any one of
- * them. A verifier proved the consequence: delete the `solde… ` pattern — the
- * exact identifier the whole slice exists for, named in the commit message, the
- * fixture filename and the board entry — and every fixture stayed red because
- * `cagnotte` and `approvisionnerCompte` still fired. CI would never notice the
- * law had been un-enforced.
+ * Three defects it exists to make impossible, each one found by a verifier
+ * AFTER an earlier version of this file claimed to have closed it:
  *
- * This gate closes that: EVERY pattern must be exercised by at least one line
- * of its own negative fixtures. Delete a pattern and the fixture line it alone
- * caught becomes unexplained — this gate names it and fails. That makes each
- * pattern individually load-bearing, which is what failure mode #7 demands.
+ *  1. A pattern nothing exercises can be deleted and CI stays green. So every
+ *     pattern must match at least one fixture line.
+ *  2. Coverage ALONE cannot see a deletion — remove a pattern and there is
+ *     nothing left to be unexercised. So the roster is checked in.
+ *  3. A roster of NAMES cannot see a pattern gutted in place: swap the regex
+ *     for `/soldeVendeur/` and keep the name, and coverage, roster and the
+ *     negative fixture all stay green while the law is gone. So the roster
+ *     records each pattern's REGEX SOURCE, and any change to it must be made
+ *     deliberately, in the same commit.
+ *
+ * The gate modules are imported in a CHILD process. An earlier version grepped
+ * for the token `isMainModule`; a gate that merely MENTIONS it in a comment
+ * passed that check, then executed on import and its `process.exit(0)` killed
+ * this process with a success code. A child cannot do that to us.
  */
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
-
-/**
- * ── THE ROSTER — why a coverage check alone is not enough ───────────────────
- * Measured, and it is worth stating plainly: the coverage half of this gate
- * CANNOT detect a deleted pattern. It iterates the patterns that exist and asks
- * whether each is exercised; delete one and there is simply nothing left to be
- * unexercised, so the gate goes green on a weakened law. That is the same
- * failure it was written to prevent, one level up.
- *
- * So the roster below is checked in. Every pattern name each gate carries is
- * recorded, and this gate fails on ANY divergence — a deletion, a rename, or a
- * silent weakening. Adding a pattern is a deliberate act: you update the roster
- * in the same commit, which is exactly the review moment we want.
- */
-const ROSTER_PATH = 'gates/pattern-roster.json';
 
 const GATES = [
   { gate: 'no-wallet-no-funds', fixtures: 'gates/fixtures/negative/no-wallet-no-funds' },
   { gate: 'no-seller-deposit', fixtures: 'gates/fixtures/negative/no-seller-deposit' },
+  { gate: 'no-seller-debit', fixtures: 'gates/fixtures/negative/no-seller-debit' },
   { gate: 'single-level', fixtures: 'gates/fixtures/negative/single-level' },
 ];
-
-/* A gate module that lacks the main-module guard EXECUTES when imported, and
-   its `process.exit(0)` then terminates THIS process with a success code —
-   the coverage check dies silently and CI reads green. Measured: a gate
-   reverted to a pre-guard version made this whole gate exit 0 while a law was
-   unenforced. So the shape is verified TEXTUALLY, before any import. */
-function assertImportable(gatePath) {
-  const src = readFileSync(gatePath, 'utf8');
-  const problems = [];
-  if (!/export const PATTERNS\s*=/.test(src)) problems.push('does not `export const PATTERNS`');
-  if (!/isMainModule/.test(src)) problems.push('has no main-module guard, so importing it runs the gate and exits this process');
-  if (problems.length > 0) {
-    console.error(`fr-pattern-coverage ERROR — ${gatePath} ${problems.join(' and ')}.`);
-    return false;
-  }
-  return true;
-}
+const ROSTER_PATH = 'gates/pattern-roster.json';
 
 let failed = false;
+
+/** Import a gate in a CHILD process; it cannot exit ours. Returns [{name, regex}]. */
+function loadPatterns(gatePath) {
+  const script =
+    `const m = await import(${JSON.stringify(`${process.cwd()}/${gatePath}`)});` +
+    `if (!Array.isArray(m.PATTERNS)) { console.error('NO_PATTERNS'); process.exit(3); }` +
+    `process.stdout.write('@@' + JSON.stringify(m.PATTERNS.map((p) => ({ name: p.name, regex: String(p.regex) }))));`;
+  let out;
+  try {
+    out = execFileSync(process.execPath, ['--input-type=module', '-e', script], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (e) {
+    console.error(`fr-pattern-coverage FAILED — ${gatePath} could not be imported cleanly (exit ${e.status}).`);
+    console.error('  A law gate must `export const PATTERNS` and must NOT run on import.');
+    return null;
+  }
+  const marker = out.indexOf('@@');
+  if (marker === -1) {
+    console.error(`fr-pattern-coverage FAILED — ${gatePath} produced no pattern list; it likely RAN on import.`);
+    return null;
+  }
+  if (marker > 0) {
+    console.error(`fr-pattern-coverage FAILED — ${gatePath} printed output on import: ${JSON.stringify(out.slice(0, marker).trim())}`);
+    return null;
+  }
+  return JSON.parse(out.slice(marker + 2));
+}
+
+if (!existsSync(ROSTER_PATH)) {
+  console.error(`fr-pattern-coverage ERROR — ${ROSTER_PATH} is missing; it is how a deleted or gutted pattern is caught`);
+  process.exit(2);
+}
+const roster = JSON.parse(readFileSync(ROSTER_PATH, 'utf8'));
+
 let checkedGates = 0;
 let checkedPatterns = 0;
 
 for (const { gate, fixtures } of GATES) {
   const gatePath = `scripts/gates/${gate}.mjs`;
   if (!existsSync(gatePath)) continue;
-  if (!assertImportable(gatePath)) { failed = true; continue; }
+
+  /* Every gate that EXISTS must be in the roster. Without this, emptying the
+     roster (or dropping one key) silently disables deletion detection while the
+     success line still advertises full coverage. */
+  if (!Object.prototype.hasOwnProperty.call(roster, gate)) {
+    console.error(`fr-pattern-coverage FAILED — ${gate} exists but has no entry in ${ROSTER_PATH}`);
+    failed = true;
+    continue;
+  }
   if (!existsSync(fixtures)) {
     console.error(`fr-pattern-coverage ERROR — ${gate} has no negative fixtures at ${fixtures}`);
     failed = true;
     continue;
   }
-  const { PATTERNS } = await import(`${process.cwd()}/${gatePath}?cov=${Date.now()}`);
+  const patterns = loadPatterns(gatePath);
+  if (patterns === null) { failed = true; continue; }
+
   const lines = readdirSync(fixtures)
     .filter((f) => /\.(ts|tsx|mts|cts|js|json)$/.test(f))
     .flatMap((f) => readFileSync(join(fixtures, f), 'utf8').split('\n'));
@@ -78,50 +101,41 @@ for (const { gate, fixtures } of GATES) {
     continue;
   }
   checkedGates += 1;
-  const unexercised = PATTERNS.filter((p) => !lines.some((l) => p.regex.test(l)));
-  checkedPatterns += PATTERNS.length;
+  checkedPatterns += patterns.length;
+
+  /* (1) coverage */
+  const unexercised = patterns.filter((p) => {
+    const re = new RegExp(p.regex.slice(1, p.regex.lastIndexOf('/')), p.regex.slice(p.regex.lastIndexOf('/') + 1));
+    return !lines.some((l) => re.test(l));
+  });
   if (unexercised.length > 0) {
-    console.error(
-      `fr-pattern-coverage FAILED — ${gate}: ${unexercised.length} pattern(s) that NO fixture line exercises.\n` +
-        `  A pattern nothing tests can be deleted without CI noticing, which is exactly\n` +
-        `  how the law gets silently un-enforced. Add a fixture line for each:`,
-    );
+    console.error(`fr-pattern-coverage FAILED — ${gate}: ${unexercised.length} pattern(s) exercised by NO fixture line:`);
     for (const p of unexercised) console.error(`    [${p.name}] ${p.regex}`);
     failed = true;
   }
-}
 
-/* Roster comparison — catches DELETION, which coverage cannot. */
-const rosterFile = ROSTER_PATH;
-if (!existsSync(rosterFile)) {
-  console.error(`fr-pattern-coverage ERROR — ${rosterFile} is missing; the roster is how a deleted pattern is caught`);
-  process.exit(2);
-}
-const roster = JSON.parse(readFileSync(rosterFile, 'utf8'));
-for (const gate of Object.keys(roster)) {
-  const gatePath = `scripts/gates/${gate}.mjs`;
-  if (!existsSync(gatePath)) {
-    console.error(`fr-pattern-coverage FAILED — roster lists ${gate} but ${gatePath} does not exist`);
-    failed = true;
-    continue;
+  /* (2)+(3) roster: names AND regex sources */
+  const want = roster[gate];
+  const liveByName = new Map(patterns.map((p) => [p.name, p.regex]));
+  const wantByName = new Map(want.map((p) => [p.name, p.regex]));
+  for (const [name, rx] of wantByName) {
+    if (!liveByName.has(name)) {
+      console.error(`fr-pattern-coverage FAILED — ${gate}: pattern REMOVED from a law gate: "${name}"`);
+      console.error(`  If intended, remove it from ${ROSTER_PATH} in the SAME commit and say why.`);
+      failed = true;
+    } else if (liveByName.get(name) !== rx) {
+      console.error(`fr-pattern-coverage FAILED — ${gate}: pattern "${name}" was CHANGED IN PLACE.`);
+      console.error(`    roster: ${rx}`);
+      console.error(`    live  : ${liveByName.get(name)}`);
+      console.error('  A regex can be gutted while its name, its fixture and the board all stay green.');
+      failed = true;
+    }
   }
-  if (!assertImportable(gatePath)) { failed = true; continue; }
-  const { PATTERNS } = await import(`${process.cwd()}/${gatePath}?roster=${Date.now()}`);
-  const live = PATTERNS.map((p) => p.name).sort();
-  const want = [...roster[gate]].sort();
-  const removed = want.filter((n) => !live.includes(n));
-  const added = live.filter((n) => !want.includes(n));
-  if (removed.length > 0) {
-    console.error(`fr-pattern-coverage FAILED — ${gate}: ${removed.length} pattern(s) REMOVED from a law gate:`);
-    for (const n of removed) console.error(`    - ${n}`);
-    console.error('  If this removal is intended, delete it from the roster in the SAME commit and say why.');
-    failed = true;
-  }
-  if (added.length > 0) {
-    console.error(`fr-pattern-coverage FAILED — ${gate}: ${added.length} pattern(s) not in the roster:`);
-    for (const n of added) console.error(`    + ${n}`);
-    console.error(`  Add them to ${rosterFile} so the next deletion is visible.`);
-    failed = true;
+  for (const name of liveByName.keys()) {
+    if (!wantByName.has(name)) {
+      console.error(`fr-pattern-coverage FAILED — ${gate}: pattern not in the roster: "${name}". Add it to ${ROSTER_PATH}.`);
+      failed = true;
+    }
   }
 }
 
@@ -130,6 +144,4 @@ if (checkedGates === 0) {
   process.exit(2);
 }
 if (failed) process.exit(1);
-console.log(
-  `fr-pattern-coverage OK — every one of ${checkedPatterns} pattern(s) across ${checkedGates} gate(s) is exercised by a fixture line`,
-);
+console.log(`fr-pattern-coverage OK — ${checkedPatterns} pattern(s) across ${checkedGates} gate(s): each exercised by a fixture, each matching the checked-in roster`);
