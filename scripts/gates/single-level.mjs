@@ -12,8 +12,9 @@ import { runScanGate } from './scan.mjs';
  * The limit, on the record: a second level can be named anything. `descendance`
  * and `lignée` are here because they are unambiguous; a team that invents its
  * own word for « my filleule's filleules » escapes this list. What actually
- * forbids a second level is that no persisted key carries one — see
- * `persisted-state-declared`, and the single-level shape of the Cercle model.
+ * forbids a second level is that no persisted key carries one, and that the
+ * Cercle model is single-level by shape — both checked by review, not by this
+ * scan.
  *
  * The priority when tuning is fixed: NEVER break honest work. `niveau2` is a
  * product CATEGORY here, « alignée » is a layout word, and both have already

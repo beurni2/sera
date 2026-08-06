@@ -17,9 +17,10 @@ import { runScanGate } from './scan.mjs';
  *
  * So this gate catches the OBVIOUS and the ACCIDENTAL. A synonym outside its
  * lists escapes it, by design and on the record. It does NOT establish that no
- * wallet exists. The gate that carries that weight is
- * `persisted-state-declared` — a wallet must be PERSISTED to be a wallet, and
- * that surface is declared rather than guessed at.
+ * wallet exists. Nothing automated does. That claim rests on review of the
+ * persistence layer — a wallet must be PERSISTED to be a wallet, so the
+ * question to put to every diff is which stored key accumulates a per-actor
+ * amount. Checked by hand across all three repos on 2026-08-06: none does.
  *
  * The priority when tuning is fixed: NEVER break honest work. A gate that cries
  * wolf on « engagement vendeur » or « la balance du marché » teaches everyone
