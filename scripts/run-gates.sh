@@ -253,6 +253,18 @@ capture single-level-negative fail node scripts/gates/single-level.mjs gates/fix
 log "gate: single-level — POSITIVE FIXTURE (single-level parrainage is legal, must pass)"
 capture single-level-legal-parrainage pass node scripts/gates/single-level.mjs gates/fixtures/single-level-legal
 
+# AUDIT-B+1 F2 — THE FRENCH FIXTURES, SCANNED ONE FILE AT A TIME.
+# Scanning the whole negative DIRECTORY cannot prove the French half works: the
+# English fixture beside it fails too, so the directory stays red even if every
+# French pattern is deleted. Measured — that mutation passed the directory scan.
+# Each French fixture is therefore scanned ALONE, and its prose is written in
+# French precisely so no English pattern can be what makes it fail.
+log "gate: no-wallet-no-funds — FRENCH FIXTURE ALONE (soldeVendeur/crediter, must fail)"
+capture no-wallet-no-funds-negative-fr fail node scripts/gates/no-wallet-no-funds.mjs gates/fixtures/negative/no-wallet-no-funds/solde-vendeur.fr.ts
+
+log "gate: single-level — FRENCH FIXTURE ALONE (second level in French, must fail)"
+capture single-level-negative-fr fail node scripts/gates/single-level.mjs gates/fixtures/negative/single-level/reseau-multi-niveau.fr.ts
+
 log "gate: French Voice copy-lint — rider-app catalog (must pass)"
 capture copy-lint-rider-positive pass pnpm exec copy-lint apps/rider-app/i18n/catalog.json
 
