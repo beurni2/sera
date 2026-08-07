@@ -181,7 +181,17 @@ function canonicalJson(value: unknown): string {
  *  no route writes them today, so no half-built custody path exists. */
 export type CustodyCommand =
   | { kind: 'arm_secret'; command_id: string; secretKind: 'pickup_verification_code' | 'custody_seal' | 'buyer_drop_code'; secretDigest: string; at: string }
-  | { kind: 'verify_pickup'; command_id: string; input: VerificationInput; presentedPickupCodeDigest: string; at: string };
+  | { kind: 'verify_pickup'; command_id: string; input: VerificationInput; presentedPickupCodeDigest: string; at: string }
+  | {
+      kind: 'begin_custody';
+      command_id: string;
+      riderId: string;
+      /** HASHED AT THE DOOR, like every other secret this object handles — the
+       *  seal plaintext dies with the request that carried it. */
+      custodySealDigest: string;
+      sealPhotoRefs: readonly string[];
+      at: string;
+    };
 
 /**
  * What a command ANSWERED — stored beside it, because the log alone cannot say.
@@ -395,6 +405,36 @@ export class CustodyDO {
     return { packageId: chain.package_id, at };
   }
 
+  /**
+   * ═══ SE-LIVE-4b, THE FIRST LINE: NO CLAIM, NO CUSTODY ═══
+   *
+   * SE-LIVE-4a made the package claim a precondition of OPENING a custody file.
+   * It could not make it a precondition of TRANSITIONING custody, because no
+   * route transitioned custody yet — and an unreachable guard is speculative
+   * flexibility. This slice adds the transition, so this slice adds the guard,
+   * and the guard is what finally closes the window 4a could only narrow:
+   *
+   *   a custody file opened BEFORE 4a holds no claim, heals only when someone
+   *   re-opens it, and until then a NEW order can win its package. Two files,
+   *   one package. Harmless while neither can take custody — which is exactly
+   *   what this makes true, permanently, rather than by timing.
+   *
+   * Every command that moves custody calls this FIRST. Not « every route »:
+   * routes are added by whoever adds them, and « a gate added later is a gate
+   * that already let something through ».
+   */
+  private claimHeldRefusal(): Response | null {
+    if (this.claimHeld) return null;
+    return Response.json(
+      {
+        ok: false,
+        reason: 'package_claim_not_held',
+        detail: 'this custody file does not hold the claim on its package; re-open it first',
+      },
+      { status: 409 },
+    );
+  }
+
   /** Rebuild from the durable log. The spine is NEVER mutated outside this
    *  replay and the request path below. INVARIANT: every command handed to
    *  the spine is logged, so in-memory state is always exactly « the log,
@@ -504,6 +544,33 @@ export class CustodyDO {
         return spine.secrets.register(cmd.secretKind, this.chain!.order_id, cmd.secretDigest);
       case 'verify_pickup':
         return spine.verifyPickup(cmd.input, cmd.presentedPickupCodeDigest, cmd.at);
+      case 'begin_custody': {
+        /**
+         * THE SELLER'S CUSTODY IS ESTABLISHED HERE, from the command's own
+         * instant, so that `beginCustody`'s `from: seller:{supplierId}` is
+         * CORROBORATED BY THE LEDGER rather than merely asserted by the
+         * transition that ends it. « Counted, not corroborated » has cost this
+         * slice twice already.
+         *
+         * ⚠ AND THE INSTANT IS HONEST ABOUT WHAT IT IS. The seller has held the
+         * package since readiness, which happened upstream in Boutik+ and is
+         * not a fact this object has. So this entry carries the BEGIN instant,
+         * not the true origin — it records WHO held it before the rider, never
+         * WHEN they took it. Deriving it from the logged command is what keeps
+         * replay deterministic; inventing a clock read here would break the
+         * head that binds this ledger.
+         */
+        if (spine.ledger.currentCustodian(this.chain!.package_id) === undefined) {
+          spine.establishSellerCustody(cmd.at);
+        }
+        return spine.beginCustody({
+          riderId: cmd.riderId,
+          verificationOrderId: this.chain!.order_id,
+          custodySealId: cmd.custodySealDigest,
+          sealPhotoRefs: cmd.sealPhotoRefs,
+          at: cmd.at,
+        });
+      }
     }
   }
 
@@ -1071,6 +1138,77 @@ export class CustodyDO {
 
     /** THE LEDGER, READ-ONLY. Entries are returned as the store's own frozen
      *  copies; there is no write route here and no update path anywhere. */
+    /**
+     * SE4.3 — « Rider applies/witnesses custody seal → registers custodySealId
+     * + photos → custody begins » (Sera-Building-Plan.md:61), under SE-I05:
+     * « Custody begins only after rider pickup verification (objective
+     * conformity) AND custody-seal registration. »
+     *
+     * THE ORDER IS NOT THIS ROUTE'S TO CHOOSE — `beginCustody` refuses
+     * `verification_not_accepted` before it touches the seal, so verify-then-
+     * seal is enforced by the spine, not by the door remembering to check.
+     *
+     * ⚠ WHOSE HAND THIS IS, stated so it is never read as more: the rider is
+     * still the FOUNDER'S ATTESTATION at this slice, exactly as `riderId` was
+     * in SE-LIVE-3 — this route is behind his ops key. SE-LIVE-4b-ii replaces
+     * that with the rider's own personal code, verified against logistics over
+     * a service binding (founder ruling 2026-08-07: one book mints and revokes,
+     * custody only asks). Until then `/attestations` labels it for what it is.
+     */
+    if (request.method === 'POST' && pathname === '/custody/begin') {
+      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      if (
+        body === null ||
+        !isBoundedStr(body['command_id'], MAX_ID) ||
+        !isBoundedStr(body['riderId'], MAX_ID) ||
+        !isBoundedStr(body['custodySealId'], MAX_SECRET) ||
+        !Array.isArray(body['sealPhotoRefs']) ||
+        (body['at'] !== undefined && !isIso(body['at']))
+      ) {
+        return malformed();
+      }
+      const refs = body['sealPhotoRefs'] as unknown[];
+      // Evidence refs are identifiers, bounded like every other one. An empty
+      // list is refused by the spine (`no_evidence_refs`) — the seal moment is
+      // the proof-photo moment, and a seal with no photo proves nothing.
+      if (refs.length === 0 || refs.length > MAX_CHECKS) return malformed('seal_photo_refs_out_of_bounds');
+      for (const r of refs) if (!isBoundedStr(r, MAX_ID)) return malformed('seal_photo_ref_not_usable');
+
+      // ⚠ NO CLAIM, NO CUSTODY — before the command is built, before the spine
+      // is touched, before anything is logged.
+      const refused = this.claimHeldRefusal();
+      if (refused !== null) return refused;
+
+      const cmd: CustodyCommand = {
+        kind: 'begin_custody',
+        command_id: (body['command_id'] as string).trim(),
+        riderId: (body['riderId'] as string).trim(),
+        // HASHED AT THE DOOR — the registry stores digests, so the digest is
+        // what `consume` must be handed (SE-LIVE-3's digest-at-the-door law).
+        custodySealDigest: digestSecret(body['custodySealId'] as string),
+        sealPhotoRefs: refs.map((r) => (r as string).trim()),
+        at: (body['at'] as string | undefined) ?? new Date().toISOString(),
+      };
+      const prior = this.priorFor(cmd);
+      if (prior.kind === 'duplicate') return this.replayOutcome(prior.outcome, cmd);
+      if (prior.kind === 'conflict') {
+        return Response.json({ ok: false, reason: 'command_id_reused_with_other_content' }, { status: 409 });
+      }
+      if (this.tooLargeToCommit(cmd)) {
+        return Response.json({ ok: false, reason: 'command_too_large' }, { status: 413 });
+      }
+
+      const outcome = this.apply(this.spine, cmd) as { ok: boolean; reason?: string };
+      // EVERY command that reached the spine is logged, whatever it answered —
+      // `beginCustody` CONSUMES the seal before it can fail downstream, exactly
+      // as `verifyPickup` consumes the pickup code (SE-LIVE-3 round-1 blocker).
+      const recorded: RecordedOutcome = outcome.ok
+        ? { httpStatus: 200, body: { ok: true, status: 'custody_with_courier', riderId: cmd.riderId } }
+        : { httpStatus: 409, body: { ok: false, reason: outcome.reason ?? 'refused' } };
+      await this.commit(cmd, recorded);
+      return Response.json(recorded.body, { status: recorded.httpStatus });
+    }
+
     if (request.method === 'GET' && pathname === '/ledger') {
       return Response.json({
         ok: true,
