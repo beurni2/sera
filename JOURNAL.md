@@ -1079,3 +1079,19 @@ The founder ended the verify→fix→verify loop for this slice: one round, fix 
 **Checked and confirmed SAFE by the verifier** (stated because « the verifier found nothing here » is itself evidence): `X-Rider-Authenticated` cannot be injected through `/ops/*` (fresh headers object — measured); the logistics `/verify/` door has its own key and is fail-closed when unset, with ops/intake/wrong/no key all giving a byte-identical 401; no logistics status reads as a pass (`>=500`→503, non-2xx→401, 2xx requires `ok===true` **and** a non-empty string `riderId`); no Response or body read twice; a premature begin cannot burn the seal (`verificationAccepted` is checked before `secrets.consume`); the claim marker fails closed on every disagreement; `claimHeldRefusal` at the route rather than in `apply()` is correct, because replay must re-apply a legitimately-logged begin; `wrangler.toml` v1/v2 tags cannot silently skip a migration; secret law held.
 
 **Evidence:** typecheck 0 · custody-service **198/198** (was 192; +6) · logistics-service **135/135** (unchanged) · `run-gates.sh` exit 0 ALL GATES GREEN. Head `51c3a5c`.
+
+**MERGED AND DEPLOYED — `210f813` (founder authorised after the blockers were fixed).** Merge was a guarded fast-forward (`merge-base --is-ancestor origin/main` returned 0; `0503d3e..210f813`). CI green on the exact sha (run 31213236206). Deploy order as ruled — **logistics first** (it owns the `/verify/rider-code` door custody calls), then custody:
+- **logistics** run 31213562881 — `PROVENANCE OK — live logistics Worker is 210f813… speaking canon 1.0.0.` The poll observed the propagation (four polls still answering the previous release `09db1d9…`, then the flip), so the assertion measured a change rather than restating a constant.
+- **custody** run 31213757825 — `PROVENANCE OK — live custody Worker is 210f813… speaking canon 1.0.0.` Passed on the FIRST poll; the release differs from what was live before (`0503d3e`), so it did flip, but the transition itself was not observed. Recorded as the weaker of the two pieces of evidence.
+- **`SERA_RIDER_VERIFY_SECRET` armed on BOTH Workers.** The arming steps exit 0 even when the repo secret is absent (they warn and continue), so a green tick is not proof; the run annotations were checked on both runs and neither carries the « Porte rider-verify NON armée » warning. Only the Node-20 deprecation notice is present. The wire is live, not half-armed.
+
+**⚠ NOT VERIFIED: the live Worker was never probed.** The allowlist is proven by mutation-tested miniflare e2e tests against the real bundle, and provenance says the live Worker IS that bundle — but this environment's network policy denies outbound HTTPS to `workers.dev`, so no request was made to the deployed custody Worker. The founder can confirm it himself with no credentials, because the allowlist runs BEFORE authentication:
+
+```
+B=https://custody-service.ilboudobernard2.workers.dev
+curl -i -X POST $B/rider/secrets/arm  -d '{"orderId":"x"}'   # expect 404 not_found
+curl -i -X POST $B/rider/order/open   -d '{"orderId":"x"}'   # expect 404 not_found
+curl -i      "$B/rider/ledger?orderId=x"                     # expect 404 not_found
+curl -i -X POST $B/rider/verification -d '{"orderId":"x"}'   # expect 401 unauthorized
+```
+The last one answering **401 rather than 404** is the whole proof: the allowlist let it through to the credential check, and the other three never got that far.
