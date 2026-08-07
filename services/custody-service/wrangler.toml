@@ -24,9 +24,25 @@ compatibility_flags = ["nodejs_compat"]
 name = "CUSTODY"
 class_name = "CustodyDO"
 
+# SE-LIVE-4a — one claim object PER PACKAGE. Canon keys the custody record by
+# package (Build Spec:79, SE-I04) while CustodyDO is keyed by order, so the
+# custody object wins this claim before it writes its chain. Reached only from
+# inside CustodyDO — the Worker's own routes never address it.
+[[durable_objects.bindings]]
+name = "PACKAGE_CLAIM"
+class_name = "PackageClaimDO"
+
 # FIRST-DEPLOY MIGRATION — `new_sqlite_classes` (the protection-service and
 # logistics-service precedent): key-value-backed DO namespaces are no longer
 # issued, and SQLite-backed DOs expose the same storage API this object uses.
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["CustodyDO"]
+
+# v2 — the SE-LIVE-4a claim class. A SEPARATE TAG, not an edit of v1: tag v1
+# is already applied on the live Worker (custody-deploy run #1 succeeded on
+# 2026-08-07, provenance asserted), and wrangler applies tags it has not seen.
+# Editing an applied tag is how a migration silently does nothing.
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["PackageClaimDO"]

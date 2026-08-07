@@ -97,6 +97,21 @@ const logKey = (seq: number): string => `${LOG_PREFIX}${String(seq).padStart(12,
  *  and the LEDGER it rebuilt from them. See `checkIntegrity` for exactly what
  *  that does and does not prove. */
 const HEAD_KEY = 'custody:ledger-head:v1';
+/**
+ * SE-LIVE-4a — this object's own record that it WON the package claim (the
+ * claim itself lives in `PackageClaimDO`, one instance per `packageId`). Kept
+ * OUT of `CustodyHead` deliberately: the head's shape is hashed into every
+ * existing custody file, and adding a field would make every file already on
+ * the live Worker report a mismatch it did not earn. The claim is a fact about
+ * two objects; the head vouches for one.
+ */
+const CLAIM_HELD_KEY = 'custody:package-claim-held:v1';
+
+/** The one binding this object reaches outward for: the per-package claim
+ *  namespace. Nothing else — a custody file talks to no other service. */
+export interface CustodyObjectEnv {
+  readonly PACKAGE_CLAIM: DurableObjectNamespace;
+}
 
 interface CustodyHead {
   /**
@@ -288,7 +303,56 @@ export class CustodyDO {
    *  vouch for its own history serves nothing. */
   private integrityFailure: string | null = null;
 
-  constructor(private readonly state: DurableObjectState) {}
+  /** True once this object holds the claim on its own `packageId`. Loaded from
+   *  storage on wake; see `winPackageClaim`. */
+  private claimHeld = false;
+
+  constructor(
+    private readonly state: DurableObjectState,
+    private readonly env: CustodyObjectEnv,
+  ) {}
+
+  /**
+   * SE-LIVE-4a — WIN THE PACKAGE, OR DO NOT EXIST. Canon keys the custody
+   * record by package (Build Spec:79) and SE-I04 says « Every package has
+   * exactly one current custodian »; this object is keyed by ORDER, so
+   * uniqueness has to be won somewhere. It is won here, against
+   * `PackageClaimDO` — one instance per `packageId` — BEFORE the chain row is
+   * written, so a second order over a claimed package never gets a custody
+   * file to act with.
+   *
+   * Idempotent for the same order (a retry after a failed chain write is not a
+   * lock-out), and SELF-HEALING for a file opened before this slice existed: a
+   * chain with no claim recorded re-attempts on the next `/order/open`.
+   */
+  private async winPackageClaim(chain: OrderChain, at: string): Promise<Response | null> {
+    if (this.claimHeld) return null;
+    const stub = this.env.PACKAGE_CLAIM.get(this.env.PACKAGE_CLAIM.idFromName(chain.package_id));
+    const res = await stub.fetch(
+      new Request('https://package/claim', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          // The claim object is told its own name, exactly as the router tells
+          // this one — a fresh header object, never a caller's value.
+          'X-Package-Object': chain.package_id,
+        },
+        body: JSON.stringify({ packageId: chain.package_id, orderId: chain.order_id, at }),
+      }),
+    );
+    const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+    if (!res.ok || body === null || body['ok'] !== true) {
+      // The claim object already says WHY and WHO holds it; pass that through
+      // unchanged rather than flattening it to a generic refusal.
+      return Response.json(
+        { ok: false, reason: body?.['reason'] ?? 'package_claim_refused', claim: body?.['claim'] },
+        { status: res.status === 200 ? 409 : res.status },
+      );
+    }
+    await this.state.storage.put(CLAIM_HELD_KEY, { packageId: chain.package_id, at });
+    this.claimHeld = true;
+    return null;
+  }
 
   /** Rebuild from the durable log. The spine is NEVER mutated outside this
    *  replay and the request path below. INVARIANT: every command handed to
@@ -297,6 +361,9 @@ export class CustodyDO {
   private async ensureLoaded(): Promise<void> {
     if (this.loaded) return;
     this.chain = (await this.state.storage.get<OrderChain>(CHAIN_KEY)) ?? null;
+    // The claim is re-read, never assumed: a file opened before SE-LIVE-4a has
+    // no marker, and must re-attempt the claim rather than act as if it won.
+    this.claimHeld = (await this.state.storage.get(CLAIM_HELD_KEY)) !== undefined;
     // Keyed rows, read in key order — which IS arrival order (see logKey).
     const rows = await this.state.storage.list<LoggedCommand>({ prefix: LOG_PREFIX });
     this.log = [...rows.values()];
@@ -661,9 +728,15 @@ export class CustodyDO {
           this.chain.paymentMode === chain.paymentMode;
         // An identical re-open is absorbed; a DIFFERENT one refuses — the
         // chain ids under a custody file are not re-writable.
-        return same
-          ? Response.json({ ok: true, status: 'already_open', chain: this.chain })
-          : Response.json({ ok: false, reason: 'chain_already_open_with_other_ids' }, { status: 409 });
+        if (!same) {
+          return Response.json({ ok: false, reason: 'chain_already_open_with_other_ids' }, { status: 409 });
+        }
+        // SE-LIVE-4a self-heal: a file opened before the claim existed gets
+        // one here. `winPackageClaim` returns immediately when already held,
+        // so the normal re-open costs nothing.
+        const refusal = await this.winPackageClaim(this.chain, new Date().toISOString());
+        if (refusal !== null) return refusal;
+        return Response.json({ ok: true, status: 'already_open', chain: this.chain });
       }
       /**
        * ⚠ VERIFIER BLOCKER (round 3) — AN ORPHANED LOG IS NEVER ADOPTED. With
@@ -676,6 +749,16 @@ export class CustodyDO {
        * unreachable code on the most sensitive path in the repo, so there
        * isn't one. Round 4 confirmed the adoption path is closed.
        */
+      /**
+       * SE-LIVE-4a — THE CLAIM IS WON BEFORE ANYTHING IS WRITTEN. Order matters
+       * and it is the whole point: if the chain landed first, a second order
+       * over the same package would already have a custody file — with a
+       * ledger, an address and the ability to act — by the time it discovered
+       * it had lost. Losing here means no chain row, no head, no object state
+       * at all: the file simply never opens.
+       */
+      const refusal = await this.winPackageClaim(chain, new Date().toISOString());
+      if (refusal !== null) return refusal;
       this.chain = chain;
       this.spine = this.replay(chain, this.log);
       /**

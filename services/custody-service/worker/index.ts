@@ -1,6 +1,7 @@
 import { CustodyDO } from './custody-do.js';
+import { PackageClaimDO } from './package-claim-do.js';
 
-export { CustodyDO };
+export { CustodyDO, PackageClaimDO };
 
 /**
  * custody-service Worker entry (SE-LIVE-3, M4).
@@ -40,6 +41,14 @@ declare const __SERA_CANON__: string;
 
 export interface Env {
   readonly CUSTODY: DurableObjectNamespace;
+  /**
+   * SE-LIVE-4a — the per-package claim namespace. NO ROUTE ON THIS WORKER
+   * ADDRESSES IT: the founder's door resolves an order and hands it to
+   * `CUSTODY`, and the custody object alone reaches the claim object, before
+   * it writes its chain. That is deliberate — a package's one-file-only rule
+   * should not be something an operator can reach around.
+   */
+  readonly PACKAGE_CLAIM: DurableObjectNamespace;
   readonly SERA_CUSTODY_OPS_SECRET?: string;
 }
 

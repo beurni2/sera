@@ -59,7 +59,7 @@ function boot(dir: string): Miniflare {
     // the module does not even resolve (measured); with it they run unchanged.
     compatibilityDate: '2025-07-05',
     compatibilityFlags: ['nodejs_compat'],
-    durableObjects: { CUSTODY: 'CustodyDO' },
+    durableObjects: { CUSTODY: 'CustodyDO', PACKAGE_CLAIM: 'PackageClaimDO' },
     durableObjectsPersist: dir,
     bindings: { SERA_CUSTODY_OPS_SECRET: OPS },
   });

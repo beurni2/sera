@@ -42,7 +42,7 @@ function boot(dir: string): Miniflare {
     scriptPath: SCRIPT,
     compatibilityDate: '2025-07-05',
     compatibilityFlags: ['nodejs_compat'],
-    durableObjects: { CUSTODY: 'CustodyDO' },
+    durableObjects: { CUSTODY: 'CustodyDO', PACKAGE_CLAIM: 'PackageClaimDO' },
     durableObjectsPersist: dir,
     bindings: { SERA_CUSTODY_OPS_SECRET: OPS },
   });
@@ -186,7 +186,7 @@ describe('DoD 4 — a Worker deployed with NO ops secret refuses everything, ide
       scriptPath: SCRIPT,
       compatibilityDate: '2025-07-05',
       compatibilityFlags: ['nodejs_compat'],
-      durableObjects: { CUSTODY: 'CustodyDO' },
+      durableObjects: { CUSTODY: 'CustodyDO', PACKAGE_CLAIM: 'PackageClaimDO' },
       durableObjectsPersist: dir,
       bindings: {}, // ← the whole point: the secret is ABSENT
     });
