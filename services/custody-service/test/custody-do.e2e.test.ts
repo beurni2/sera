@@ -182,8 +182,18 @@ describe('pickup verification — the code is consumed, the ledger records, the 
    * app sends a malformed check list burns the code with no re-arm path.
    * Changing that is a custody-core change and belongs to its own slice with
    * the founder's ruling — not to a test fixing itself.
+   *
+   * ⚠ AND THE BURN MUST OUTLIVE THE PROCESS — this is the SE-LIVE-3 verifier's
+   * own reproduction, kept as the pin for its BLOCKER. The first cut did not
+   * log a command whose outcome was `invalid`, reasoning that nothing had been
+   * recorded. But the consumption above happened BEFORE that outcome, so the
+   * restart below rebuilt a registry that had forgotten it: a code the whole
+   * system had written off as burned worked again, and anyone still holding
+   * the string could put an `accepted` pickup verification on the chain.
+   * Remove the `commit` before the `invalid` return in custody-do.ts and the
+   * retry after this restart answers 200 instead of 409.
    */
-  it('A CHECK OUTSIDE POLICY v1 is refused — riders verify objective conformity only (SE-I12) — and the code is spent by the attempt', async () => {
+  it('A CHECK OUTSIDE POLICY v1 is refused — riders verify objective conformity only (SE-I12) — and the code is spent by the attempt, ACROSS A RESTART', async () => {
     const order = 'ord-custody-outside';
     const code = 'PICKUP-OUTSIDE-0003';
     expect((await call('POST', '/ops/order/open', opsAuth, {
@@ -203,14 +213,21 @@ describe('pickup verification — the code is consumed, the ledger records, the 
     expect(res.json).toMatchObject({ kind: 'invalid', reason: 'check_not_in_policy', detail: 'authenticity' });
     // Nothing was RECORDED…
     expect((await call('GET', `/ops/ledger?orderId=${order}`, opsAuth)).json['entries']).toEqual([]);
-    // …but the code was SPENT by the presentation: a well-formed retry with
-    // the same code is now refused. This is the trap named above.
+
+    await restart(); // the runtime dies; the registry can only come back by replay
+
+    // …but the code was SPENT by the presentation, and it STAYS spent: a
+    // well-formed retry with the same code is refused on a freshly replayed
+    // spine. This is the trap named above, and the pin for the blocker.
     const retry = await call('POST', '/ops/verification', opsAuth, {
       orderId: order, command_id: 'cmd-verify-outside-retry', riderId: 'rider-1',
       presentedPickupCode: code, checkResults: ALL_PASS, dwellSec: 150, evidenceBundleId: 'ev-o', at: T,
     });
     expect(retry.status).toBe(409);
     expect(retry.json).toMatchObject({ reason: 'pickup_code_refused', detail: 'secret_already_used' });
+    // And the refused retry recorded nothing either — a burned code cannot
+    // write a custody fact by being presented again.
+    expect((await call('GET', `/ops/ledger?orderId=${order}`, opsAuth)).json['entries']).toEqual([]);
   });
 
   it('THE ACCEPTED VERIFICATION: recorded on the hash chain, and the chain verifies', async () => {
@@ -260,6 +277,132 @@ describe('pickup verification — the code is consumed, the ledger records, the 
     expect(again.json).toMatchObject({ status: 'duplicate' });
     const ledger = await call('GET', `/ops/ledger?orderId=${ORDER}`, opsAuth);
     expect(ledger.json['entries']).toHaveLength(1);
+  });
+});
+
+/**
+ * ⚠ SE-LIVE-3 VERIFIER, ROUND 1 (MAJOR) — AN ID IS NOT A COMMAND.
+ * Idempotency first matched on `command_id` alone, so ANY command reusing an
+ * id was answered « duplicate ». Two lies came out of that: arming a second
+ * secret under a used id replied 200 while the first secret stayed armed
+ * (the caller believes their new code works; it does not), and a
+ * VERIFICATION reusing an arm's id replied « already on record » with an
+ * EMPTY ledger (the caller believes custody was verified; nothing happened).
+ * Custody is where a false belief costs someone their goods.
+ */
+describe('a reused command id is a CONFLICT, never a silent duplicate', () => {
+  const order = 'ord-custody-idem';
+  const code = 'PICKUP-IDEM-0004';
+
+  it('opens and arms', async () => {
+    expect((await call('POST', '/ops/order/open', opsAuth, {
+      orderId: order, taskId: 'task-i', packageId: 'pkg-i', correlationId: 'corr-i', supplierId: 'sup-i',
+    })).status).toBe(200);
+    expect((await call('POST', '/ops/secrets/arm', opsAuth, {
+      orderId: order, command_id: 'cmd-arm-i', kind: 'pickup_verification_code', secret: code,
+    })).status).toBe(200);
+  });
+
+  it('the SAME arm replayed is a duplicate — content matches', async () => {
+    const again = await call('POST', '/ops/secrets/arm', opsAuth, {
+      orderId: order, command_id: 'cmd-arm-i', kind: 'pickup_verification_code', secret: code,
+    });
+    expect(again.status).toBe(200);
+    expect(again.json).toMatchObject({ status: 'duplicate' });
+  });
+
+  it('a DIFFERENT secret under that id REFUSES — the caller is never told a code is armed when it is not', async () => {
+    const collide = await call('POST', '/ops/secrets/arm', opsAuth, {
+      orderId: order, command_id: 'cmd-arm-i', kind: 'pickup_verification_code', secret: 'A-DIFFERENT-CODE',
+    });
+    expect(collide.status).toBe(409);
+    expect(collide.json).toMatchObject({ reason: 'command_id_reused_with_other_content' });
+  });
+
+  it('a VERIFICATION under an ARM\'s id REFUSES — it can never answer « already on record » for an act that never happened', async () => {
+    const crossKind = await call('POST', '/ops/verification', opsAuth, {
+      orderId: order, command_id: 'cmd-arm-i', riderId: 'rider-i',
+      presentedPickupCode: code, checkResults: ALL_PASS, dwellSec: 150,
+      evidenceBundleId: 'ev-i', at: T,
+    });
+    expect(crossKind.status).toBe(409);
+    expect(crossKind.json).toMatchObject({ reason: 'command_id_reused_with_other_content' });
+    // …and the refusal is honest: no ledger entry was created by it.
+    expect((await call('GET', `/ops/ledger?orderId=${order}`, opsAuth)).json['entries']).toEqual([]);
+  });
+
+  it('the ORIGINAL arm survived both collisions — the first code, and only the first code, verifies', async () => {
+    const wrong = await call('POST', '/ops/verification', opsAuth, {
+      orderId: order, command_id: 'cmd-verify-i-wrong', riderId: 'rider-i',
+      presentedPickupCode: 'A-DIFFERENT-CODE', checkResults: ALL_PASS, dwellSec: 150,
+      evidenceBundleId: 'ev-i', at: T,
+    });
+    expect(wrong.status).toBe(409);
+    expect(wrong.json).toMatchObject({ reason: 'pickup_code_refused' });
+
+    const ok = await call('POST', '/ops/verification', opsAuth, {
+      orderId: order, command_id: 'cmd-verify-i', riderId: 'rider-i',
+      presentedPickupCode: code, checkResults: ALL_PASS, dwellSec: 150,
+      evidenceBundleId: 'ev-i', at: T,
+    });
+    expect(ok.status).toBe(200);
+    expect(ok.json).toMatchObject({ kind: 'accepted' });
+  });
+
+  it('and the duplicate rule holds ACROSS A RESTART — replayed from the log, not from a warm map — even when the retry carries a LATER instant', async () => {
+    const before = await call('GET', `/ops/ledger?orderId=${order}`, opsAuth);
+    await restart();
+    const again = await call('POST', '/ops/verification', opsAuth, {
+      orderId: order, command_id: 'cmd-verify-i', riderId: 'rider-i',
+      presentedPickupCode: code, checkResults: ALL_PASS, dwellSec: 150,
+      evidenceBundleId: 'ev-i',
+      // A redelivery arrives LATER than the act it repeats. The instant is
+      // not part of what the caller asked for, so this is still one act.
+      at: '2026-08-07T11:30:00.000Z',
+    });
+    expect(again.status).toBe(200);
+    expect(again.json).toMatchObject({ status: 'duplicate' });
+    // One act, one entry, and the recorded instant is the FIRST one — a
+    // redelivery does not re-date a custody fact.
+    const after = await call('GET', `/ops/ledger?orderId=${order}`, opsAuth);
+    expect(after.json['entries']).toHaveLength(1);
+    expect(after.json['entries']).toEqual(before.json['entries']);
+  });
+});
+
+/**
+ * ⚠ SE-LIVE-3 VERIFIER, ROUND 1 (MAJOR) — THE OBJECT IS TOLD ITS OWN NAME.
+ * The router picks the order from the query OR the body, so a request whose
+ * query said one order and whose body said another opened a custody file
+ * under the QUERY's name carrying the BODY's chain: a real ledger, correctly
+ * hash-chained, filed at an address nobody would ever look up again.
+ */
+describe('a custody file cannot be opened under a name that is not its chain', () => {
+  it('refuses when the routed name and the chain disagree — and creates nothing', async () => {
+    const res = await call('POST', '/ops/order/open?orderId=ord-routed-here', opsAuth, {
+      orderId: 'ord-chain-says-there', taskId: 'task-x', packageId: 'pkg-x',
+      correlationId: 'corr-x', supplierId: 'sup-x',
+    });
+    expect(res.status).toBe(400);
+    expect(res.json).toMatchObject({ reason: 'order_id_does_not_name_this_object' });
+
+    // Neither name holds a custody file: the routed object never opened…
+    const routed = await call('GET', '/ops/ledger?orderId=ord-routed-here', opsAuth);
+    expect(routed.status).toBe(409);
+    expect(routed.json).toMatchObject({ reason: 'order_not_open' });
+    // …and the chain's own object was never touched either.
+    const named = await call('GET', '/ops/ledger?orderId=ord-chain-says-there', opsAuth);
+    expect(named.status).toBe(409);
+    expect(named.json).toMatchObject({ reason: 'order_not_open' });
+  });
+
+  it('the same open through the name it claims is accepted', async () => {
+    const res = await call('POST', '/ops/order/open?orderId=ord-chain-says-there', opsAuth, {
+      orderId: 'ord-chain-says-there', taskId: 'task-x', packageId: 'pkg-x',
+      correlationId: 'corr-x', supplierId: 'sup-x',
+    });
+    expect(res.status).toBe(200);
+    expect(res.json).toMatchObject({ ok: true, status: 'open' });
   });
 });
 

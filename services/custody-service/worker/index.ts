@@ -128,7 +128,15 @@ export default {
     const stub = env.CUSTODY.get(env.CUSTODY.idFromName(orderId));
     const inner = new Request(`https://custody${url.pathname.replace(/^\/ops/, '')}${url.search}`, {
       method: request.method,
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        // ⚠ VERIFIER MAJOR (round 1) — THE OBJECT IS TOLD ITS OWN NAME. The
+        // router resolves the order from the query OR the body, so a mistyped
+        // `?orderId=` opened a custody file whose chain said something else:
+        // the record lived at an address nobody would ever look up again.
+        // The object now refuses to open under a name that is not its chain.
+        'X-Custody-Object': orderId,
+      },
       ...(raw !== null && raw !== '' ? { body: raw } : {}),
     });
     return stub.fetch(inner);

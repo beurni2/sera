@@ -34,6 +34,16 @@ import type { VerificationInput } from '../src/pickup-verification-policy.js';
  * acts, so at pilot scale this is nothing; if a journey ever grew long, a
  * checkpoint would be the answer, and it would be a deliberate slice.
  *
+ * ⚠ AND THE PRICE OF REPLAY, STATED PLAINLY: the log stores each command AS IT
+ * ARRIVED, so a pickup code's PLAINTEXT lives in this object's storage. The
+ * registry itself still holds only a sha256 — but replay calls `register()`
+ * and `verifyPickup()`, and both take plaintext, so the log must keep it. The
+ * SE-LIVE-3 verifier read `"secret"` straight out of the SQLite file. This is
+ * a deliberate, DISCLOSED trade-off awaiting the founder's ruling (JOURNAL,
+ * SE-LIVE-3 verifier round 1, blocker ②): either the custody core gains
+ * hash-accepting entry points, or plaintext-at-rest inside the object is
+ * accepted knowingly. It is NOT to be described anywhere as « hashed at rest ».
+ *
  * ═══ node:crypto ═══
  *
  * The ledger and the registry hash with node's SYNCHRONOUS `createHash`.
@@ -64,6 +74,33 @@ export interface OrderChain extends ChainIds {
 const isStr = (v: unknown): v is string => typeof v === 'string' && v.trim().length > 0;
 const isIso = (v: unknown): v is string => typeof v === 'string' && Number.isFinite(Date.parse(v));
 
+/**
+ * A stable fingerprint of what the caller ASKED FOR — keys sorted, so two
+ * structurally identical commands agree and any difference in the act (its
+ * kind, its secret, its rider, its checks, its dwell, its evidence)
+ * disagrees.
+ *
+ * TWO FIELDS ARE EXCLUDED, deliberately. `command_id` is the key being
+ * compared. `at` is the INSTANT, which this object mints itself whenever the
+ * caller does not supply one — always for an arm. Including it made every
+ * honest redelivery a « conflict », because a redelivery arrives at a
+ * different millisecond: an at-least-once producer retrying its own arm was
+ * told its id was taken. A differing instant under a repeated id is a
+ * REDELIVERY, never a second act. The logged command keeps the FIRST instant,
+ * so replay stays exact and the ledger records one time, not two.
+ */
+function fingerprint(cmd: CustodyCommand): string {
+  const { command_id: _id, at: _at, ...content } = cmd as Record<string, unknown> & { command_id: string; at: string };
+  const stable = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(stable);
+    if (v !== null && typeof v === 'object') {
+      return Object.fromEntries(Object.entries(v as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : 1)).map(([k, x]) => [k, stable(x)]));
+    }
+    return v;
+  };
+  return JSON.stringify(stable(content));
+}
+
 function malformed(reason = 'malformed'): Response {
   return Response.json({ ok: false, reason }, { status: 400 });
 }
@@ -77,8 +114,9 @@ export class CustodyDO {
   constructor(private readonly state: DurableObjectState) {}
 
   /** Rebuild from the durable log. The spine is NEVER mutated outside this
-   *  replay and the request path below, so in-memory state is always exactly
-   *  « the log, applied in order ». */
+   *  replay and the request path below. INVARIANT: every command handed to
+   *  the spine is logged, so in-memory state is always exactly « the log,
+   *  applied in order » — the verifier round below is what made that true. */
   private async ensureLoaded(): Promise<void> {
     if (this.loaded) return;
     const stored = await this.state.storage.get<unknown>([CHAIN_KEY, LOG_KEY]);
@@ -88,9 +126,9 @@ export class CustodyDO {
     this.loaded = true;
   }
 
-  /** THE REPLAY. A fresh spine, then every accepted command re-applied in
-   *  order — the same calls, with the same arguments, in the same sequence.
-   *  Refused commands were never logged, so they cannot resurrect here. */
+  /** THE REPLAY. A fresh spine, then every logged command re-applied in
+   *  order — the same calls, the same arguments, the same sequence. Commands
+   *  that never reached the spine were never logged and cannot resurrect. */
   private replay(chain: OrderChain, log: readonly CustodyCommand[]): CustodySpine {
     const spine = new CustodySpine(
       { order_id: chain.order_id, task_id: chain.task_id, package_id: chain.package_id, correlation_id: chain.correlation_id },
@@ -137,8 +175,24 @@ export class CustodyDO {
     await this.state.storage.put(LOG_KEY, this.log);
   }
 
-  private alreadyApplied(commandId: string): boolean {
-    return this.log.some((c) => c.command_id === commandId);
+  /**
+   * ⚠ VERIFIER MAJOR (round 1) — AN ID IS NOT A COMMAND. The first cut
+   * matched on `command_id` alone, so a DIFFERENT command reusing an id was
+   * answered « duplicate »: arming `BBB` under an id that armed `AAA` replied
+   * 200 while `AAA` stayed armed, and a VERIFICATION reusing an arm's id
+   * replied « already on record » with an EMPTY ledger. An idempotency key
+   * that collides across kinds and payloads manufactures false beliefs about
+   * custody, which is the one thing this object exists not to do.
+   *
+   * The whole command (minus its id) is now fingerprinted: the same command
+   * twice is a duplicate; the same id with different content is a CONFLICT
+   * and refuses, so the caller learns their id is taken instead of being told
+   * their act happened.
+   */
+  private priorFor(cmd: CustodyCommand): 'none' | 'duplicate' | 'conflict' {
+    const prior = this.log.find((c) => c.command_id === cmd.command_id);
+    if (prior === undefined) return 'none';
+    return fingerprint(prior) === fingerprint(cmd) ? 'duplicate' : 'conflict';
   }
 
   private async route(request: Request): Promise<Response> {
@@ -158,6 +212,12 @@ export class CustodyDO {
         !isStr(body['supplierId'])
       ) {
         return malformed();
+      }
+      /** The name that routed this request IS the object's identity; a chain
+       *  whose `order_id` differs would be filed where nobody can find it. */
+      const objectName = request.headers.get('X-Custody-Object');
+      if (objectName !== null && objectName !== (body['orderId'] as string).trim()) {
+        return Response.json({ ok: false, reason: 'order_id_does_not_name_this_object' }, { status: 400 });
       }
       const mode = body['paymentMode'] ?? 'FULL_PREPAY';
       if (mode !== 'FULL_PREPAY' && mode !== 'DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR') return malformed('unknown_payment_mode');
@@ -193,10 +253,15 @@ export class CustodyDO {
       return Response.json({ ok: false, reason: 'order_not_open' }, { status: 409 });
     }
 
-    /** Arm one of the four secrets. The plaintext is hashed by the registry
-     *  and NEVER stored or returned by this object; a spent secret can never
-     *  be re-armed (the registry refuses), which is the law that makes
-     *  single-use real across a restart. */
+    /** Arm one of the four secrets. The REGISTRY holds only a sha256 and this
+     *  route never returns the plaintext; a spent secret can never be re-armed
+     *  (the registry refuses), which is the law that makes single-use real
+     *  across a restart.
+     *
+     *  ⚠ BUT THE LOG HOLDS THE PLAINTEXT — see the header block. An earlier
+     *  version of this comment said the plaintext is « never stored by this
+     *  object », which was false, and a false comment on a secret path is
+     *  worse than no comment. */
     if (request.method === 'POST' && pathname === '/secrets/arm') {
       const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
       const kind = body?.['kind'];
@@ -209,9 +274,6 @@ export class CustodyDO {
         return malformed();
       }
       const commandId = (body['command_id'] as string).trim();
-      if (this.alreadyApplied(commandId)) {
-        return Response.json({ ok: true, status: 'duplicate' });
-      }
       const cmd: CustodyCommand = {
         kind: 'arm_secret',
         command_id: commandId,
@@ -219,12 +281,19 @@ export class CustodyDO {
         secret: body['secret'] as string,
         at: new Date().toISOString(),
       };
+      const prior = this.priorFor(cmd);
+      if (prior === 'duplicate') return Response.json({ ok: true, status: 'duplicate' });
+      if (prior === 'conflict') {
+        return Response.json({ ok: false, reason: 'command_id_reused_with_other_content' }, { status: 409 });
+      }
       const outcome = this.apply(this.spine, cmd) as { ok: boolean; reason?: string };
+      // Same rule as verification: it reached the spine, so it is logged —
+      // `register` on a spent secret mutates nothing today, but the log's
+      // completeness must not depend on knowing that.
+      await this.commit(cmd);
       if (!outcome.ok) {
-        // Refused commands are NEVER logged — the log is accepted history.
         return Response.json({ ok: false, reason: outcome.reason ?? 'refused' }, { status: 409 });
       }
-      await this.commit(cmd);
       return Response.json({ ok: true, status: 'armed', kind });
     }
 
@@ -261,9 +330,6 @@ export class CustodyDO {
         return malformed();
       }
       const commandId = (body['command_id'] as string).trim();
-      if (this.alreadyApplied(commandId)) {
-        return Response.json({ ok: true, status: 'duplicate' });
-      }
       const checkResults: Record<string, boolean> = {};
       for (const [k, v] of Object.entries(body['checkResults'] as Record<string, unknown>)) {
         if (typeof v !== 'boolean') return malformed('check_result_not_boolean');
@@ -282,16 +348,36 @@ export class CustodyDO {
         presentedPickupCode: body['presentedPickupCode'] as string,
         at: (body['at'] as string | undefined) ?? new Date().toISOString(),
       };
+      const prior = this.priorFor(cmd);
+      if (prior === 'duplicate') return Response.json({ ok: true, status: 'duplicate' });
+      if (prior === 'conflict') {
+        return Response.json({ ok: false, reason: 'command_id_reused_with_other_content' }, { status: 409 });
+      }
       const outcome = this.apply(this.spine, cmd) as { kind: string; reason?: string; detail?: string };
-      // « invalid » means the command never happened (a code refused, a check
-      // outside policy): nothing was recorded, so nothing is logged.
+      /**
+       * ⚠ VERIFIER BLOCKER (SE-LIVE-3 round 1) — EVERY COMMAND THAT REACHED
+       * THE SPINE IS LOGGED, whatever it answered. The first cut skipped the
+       * log for an « invalid » outcome, reasoning that nothing was recorded.
+       * That was WRONG and the verifier drove it: `verifyPickup` CONSUMES the
+       * single-use code BEFORE running the policy, so an out-of-policy check
+       * list mutates the registry and then returns `invalid`. Unlogged, that
+       * mutation vanished on the next eviction — and a code everyone had
+       * written off as burned worked again, putting an `accepted` pickup
+       * verification on the chain for anyone still holding the string.
+       *
+       * The invariant is now structural rather than case-by-case: if it
+       * touched the spine, it is in the log. Replay re-applies it and lands
+       * on the same state, including the consumption. Commands refused
+       * BEFORE the spine (malformed body, duplicate id) never touch it and
+       * are not logged.
+       */
+      await this.commit(cmd);
       if (outcome.kind === 'invalid') {
         return Response.json({ ok: false, kind: 'invalid', reason: outcome.reason, detail: outcome.detail }, { status: 409 });
       }
       // accepted AND refused are both RECORDED custody facts — the refusal
       // ladder is a first-class outcome, not an error (« no generic failed
-      // terminal »). Both go in the log.
-      await this.commit(cmd);
+      // terminal »).
       return Response.json({
         ok: true,
         kind: outcome.kind,
