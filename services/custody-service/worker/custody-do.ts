@@ -419,9 +419,22 @@ export class CustodyDO {
    *   one package. Harmless while neither can take custody — which is exactly
    *   what this makes true, permanently, rather than by timing.
    *
-   * Every command that moves custody calls this FIRST. Not « every route »:
-   * routes are added by whoever adds them, and « a gate added later is a gate
-   * that already let something through ».
+   * ⚠ WHERE THIS IS ENFORCED, stated accurately (verifier MINOR, 4b-i round 1).
+   * An earlier version of this comment promised « every command that moves
+   * custody calls this FIRST — not every route ». That was a forward promise
+   * the code does not keep: the call sits in the `/custody/begin` ROUTE
+   * handler, at exactly the level the sentence disclaimed.
+   *
+   * It stays at the route DELIBERATELY, and the reason matters. `apply()` is
+   * shared by the live path and by REPLAY, and replay must re-apply a
+   * `begin_custody` that was legitimately logged even if the claim has since
+   * been lost — the log is what happened, and refusing there would erase a
+   * custody fact rather than prevent one. A guard that belongs on the DOOR
+   * cannot be moved into the ledger's memory without making the ledger lie.
+   *
+   * So the obligation is on whoever adds the next custody-moving route: call
+   * this first, as `/custody/begin` does. It is not structural, and this
+   * comment no longer claims it is.
    */
   private claimHeldRefusal(): Response | null {
     if (this.claimHeld) return null;
@@ -433,6 +446,19 @@ export class CustodyDO {
       },
       { status: 409 },
     );
+  }
+
+  /** WHO verified this pickup, from this object's own log — `null` when no
+   *  verification has been accepted (the spine refuses that case separately,
+   *  with its own reason, so this never has to guess). */
+  private acceptedVerificationRider(): string | null {
+    for (const row of this.log) {
+      if (row.cmd.kind !== 'verify_pickup') continue;
+      if (row.outcome.httpStatus !== 200) continue;
+      if (row.outcome.body['kind'] !== 'accepted') continue;
+      return row.cmd.input.riderId;
+    }
+    return null;
   }
 
   /** Rebuild from the durable log. The spine is NEVER mutated outside this
@@ -1172,12 +1198,57 @@ export class CustodyDO {
       // list is refused by the spine (`no_evidence_refs`) — the seal moment is
       // the proof-photo moment, and a seal with no photo proves nothing.
       if (refs.length === 0 || refs.length > MAX_CHECKS) return malformed('seal_photo_refs_out_of_bounds');
-      for (const r of refs) if (!isBoundedStr(r, MAX_ID)) return malformed('seal_photo_ref_not_usable');
+      for (const r of refs) {
+        if (!isBoundedStr(r, MAX_ID) || hasControlChar(r as string)) return malformed('seal_photo_ref_not_usable');
+      }
+      /**
+       * ⚠ VERIFIER MAJOR (4b-i round 1) — `riderId` IS NOW A CUSTODIAN, NOT A
+       * LABEL. `isBoundedStr` checks length only and permits control bytes;
+       * that was tolerable while `riderId` was an attestation field, and it is
+       * not now, because the spine writes it into the custody transition as
+       * `courier:{riderId}`. An id carrying backspaces or a CR renders in a
+       * console as a DIFFERENT RIDER'S NAME while the file attests
+       * `headMatches: true` over it — the ledger exists to settle who held the
+       * package, and a record that misrenders cannot settle anything.
+       *
+       * Reachable today only through the founder's own key (his typo), which is
+       * why this is not a blocker. It becomes attacker-supplied at SE-LIVE-4b-ii
+       * the moment the rider's own credential opens this route, so it is closed
+       * now rather than carried.
+       */
+      if (hasControlChar(body['riderId'] as string)) return malformed('rider_id_not_usable');
 
       // ⚠ NO CLAIM, NO CUSTODY — before the command is built, before the spine
       // is touched, before anything is logged.
       const refused = this.claimHeldRefusal();
       if (refused !== null) return refused;
+
+      /**
+       * ⚠ VERIFIER MAJOR (4b-i round 1) — ONE HAND, NOT TWO. The spine gates
+       * `beginCustody` on « a verification was accepted » and never asks WHOSE.
+       * So Alice could verify the goods and Mallory become the custodian: the
+       * ledger said `courier:rider-MALLORY`, `/attestations` said
+       * `rider-ALICE`, and nothing refused or flagged it. Two readable records
+       * of one pickup, naming different people.
+       *
+       * SE-I05 requires verification AND seal; the whole point of the bounded
+       * verification (SE-I12) is that the person taking the goods personally
+       * observed their conformity, so the two hands must be the same one. This
+       * is the founder's in-scope category exactly — an inconsistency the
+       * object can detect from ITSELF: the verifying rider is in this object's
+       * own command log.
+       *
+       * Bound here rather than in the spine because the spine keeps only a
+       * boolean (`verificationAccepted`); the log is what remembers who.
+       */
+      const verifier = this.acceptedVerificationRider();
+      const claimedRider = (body['riderId'] as string).trim();
+      if (verifier !== null && verifier !== claimedRider) {
+        return Response.json(
+          { ok: false, reason: 'rider_did_not_verify_this_pickup', verifiedBy: verifier },
+          { status: 409 },
+        );
+      }
 
       const cmd: CustodyCommand = {
         kind: 'begin_custody',
@@ -1250,6 +1321,31 @@ export class CustodyDO {
      * digests, and this route does not surface even those.
      */
     if (request.method === 'GET' && pathname === '/attestations') {
+      /**
+       * ⚠ VERIFIER MINOR (4b-i round 1) — THE CUSTODY TRANSITION'S RIDER WAS
+       * PROTECTED AND UNREADABLE. This route filtered `verify_pickup` only, so
+       * after SE-LIVE-4b-i the rider who actually TOOK CUSTODY appeared
+       * nowhere in it — while the code comment and the JOURNAL both said the
+       * attestation was labelled here. That re-created, for the custody
+       * transition, precisely the round-5 defect this route exists to fix for
+       * verification: a fact this object protects and never lets anyone read.
+       */
+      const custodyTaken = this.log
+        .filter((row) => row.cmd.kind === 'begin_custody')
+        .map((row) => {
+          const cmd = row.cmd as Extract<CustodyCommand, { kind: 'begin_custody' }>;
+          return {
+            command_id: cmd.command_id,
+            at: cmd.at,
+            riderId: cmd.riderId,
+            sealPhotoRefs: [...cmd.sealPhotoRefs],
+            outcome: row.outcome.body['status'] ?? row.outcome.body['reason'] ?? 'unknown',
+            reason: row.outcome.body['reason'] ?? null,
+            // Whether custody actually moved on this act — a refused begin is
+            // a custody fact too, and must be readable as a refusal.
+            recorded: row.outcome.httpStatus === 200,
+          };
+        });
       const attestations = this.log
         .filter((row) => row.cmd.kind === 'verify_pickup')
         .map((row) => {
@@ -1288,6 +1384,10 @@ export class CustodyDO {
         // verified, not the rider's own credential.
         attribution: 'founder_attested',
         attestations,
+        // The seal side of SE-I05, beside the verification side. NO SECRET —
+        // the seal is a digest by the time it reaches the log, and not even
+        // the digest is surfaced.
+        custodyTaken,
       });
     }
 

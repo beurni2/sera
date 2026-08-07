@@ -291,7 +291,7 @@ describe('no claim, no custody — the legacy window closed permanently', () => 
     await mf.dispose();
   });
 
-  it('and the rival that won the free package cannot take custody of it either', async () => {
+  it('the rival that won the free package may take custody; the older file may not', async () => {
     const dir = freshDir('legacy-rival');
     let mf = boot(dir);
     await armedOrder(mf, 'ord-legacy-B', 'pkg-legacy-rival');
@@ -314,6 +314,94 @@ describe('no claim, no custody — the legacy window closed permanently', () => 
     const stale = await beginCustody(mf, 'ord-legacy-B');
     expect(stale.status).toBe(409);
     expect(stale.json).toMatchObject({ ok: false, reason: 'package_claim_not_held' });
+    await mf.dispose();
+  });
+});
+
+/**
+ * ⚠ THE TWO ATTRIBUTION DEFECTS THE 4b-i VERIFIER FOUND. Neither could move a
+ * package — custody CONTROL survived every attack. Both corrupt what the record
+ * SAYS about who holds it, and both become control defects at SE-LIVE-4b-ii,
+ * when the rider's own credential opens this route and `riderId` stops being
+ * the founder's typo and starts being attacker-supplied. Closed now.
+ */
+describe('the custody record says who actually took the package', () => {
+  // NUL/backspace/CR are built rather than typed: a literal control byte in a
+  // source file is invisible in review and turns the file binary to grep.
+  const BS = String.fromCharCode(8);
+  const CR = String.fromCharCode(13);
+
+  it('a riderId carrying control bytes is refused — a custodian that misrenders settles nothing', async () => {
+    const dir = freshDir('rider-bytes');
+    const mf = boot(dir);
+    await armedOrder(mf);
+    expect((await verifyPickup(mf)).status).toBe(200);
+
+    for (const bad of [`rider-mallory${BS}${BS}${BS}${BS}${BS}${BS}${BS}moussa`, `rider-moussa${CR}rider-mallory`]) {
+      const res = await beginCustody(mf, ORDER, { command_id: `begin-${bad.length}`, riderId: bad });
+      expect(res.status).toBe(400);
+      expect(res.json).toMatchObject({ reason: 'rider_id_not_usable' });
+    }
+    // A photo ref is a name in the record too, and misrenders the same way.
+    const badRef = await beginCustody(mf, ORDER, {
+      command_id: 'begin-bad-ref', sealPhotoRefs: [`seal${BS}${BS}${BS}${BS}other.jpg`],
+    });
+    expect(badRef.status).toBe(400);
+    expect(badRef.json).toMatchObject({ reason: 'seal_photo_ref_not_usable' });
+
+    // Nothing moved through any of them.
+    const led = await hit(mf, 'GET', `/ops/ledger?orderId=${ORDER}`);
+    expect(String(led.json['currentCustodian'] ?? '')).not.toContain('courier');
+    await mf.dispose();
+  });
+
+  it('the rider who takes custody must be the rider who verified the pickup', async () => {
+    const dir = freshDir('one-hand');
+    const mf = boot(dir);
+    await armedOrder(mf);
+
+    // Alice verifies the goods…
+    expect((await hit(mf, 'POST', '/ops/verification', {
+      orderId: ORDER, command_id: 'verify-alice', riderId: 'rider-ALICE',
+      presentedPickupCode: PICKUP_CODE, evidenceBundleId: 'ev-alice',
+      dwellSec: 150, checkResults: ALL_PASS, at: T,
+    })).status).toBe(200);
+
+    // …so Mallory cannot be the one who walks away with them.
+    const stolen = await beginCustody(mf, ORDER, { command_id: 'begin-mallory', riderId: 'rider-MALLORY' });
+    expect(stolen.status).toBe(409);
+    expect(stolen.json).toMatchObject({ ok: false, reason: 'rider_did_not_verify_this_pickup', verifiedBy: 'rider-ALICE' });
+
+    // The two readable records cannot disagree, because the second never happened.
+    const led = await hit(mf, 'GET', `/ops/ledger?orderId=${ORDER}`);
+    expect(String(led.json['currentCustodian'] ?? '')).not.toContain('MALLORY');
+
+    // …and Alice herself proceeds normally. The guard binds; it does not brick.
+    const honest = await beginCustody(mf, ORDER, { command_id: 'begin-alice', riderId: 'rider-ALICE' });
+    expect(honest.status).toBe(200);
+    expect(led.json).toBeDefined();
+    expect((await hit(mf, 'GET', `/ops/ledger?orderId=${ORDER}`)).json)
+      .toMatchObject({ currentCustodian: 'courier:rider-ALICE' });
+    await mf.dispose();
+  });
+
+  it('the rider who took custody is readable — protected and unreadable is not shipped', async () => {
+    const dir = freshDir('readable');
+    const mf = boot(dir);
+    await armedOrder(mf);
+    expect((await verifyPickup(mf)).status).toBe(200);
+    expect((await beginCustody(mf)).status).toBe(200);
+
+    const att = await hit(mf, 'GET', `/ops/attestations?orderId=${ORDER}`);
+    expect(att.status).toBe(200);
+    expect(att.json).toMatchObject({ attribution: 'founder_attested' });
+    const taken = att.json['custodyTaken'] as Record<string, unknown>[];
+    expect(taken).toHaveLength(1);
+    expect(taken[0]).toMatchObject({ riderId: RIDER, outcome: 'custody_with_courier', recorded: true });
+    // The seal itself is never surfaced — not the plaintext, not the digest.
+    const text = JSON.stringify(att.json);
+    expect(text).not.toContain(SEAL_CODE);
+    expect(text).not.toContain(PICKUP_CODE);
     await mf.dispose();
   });
 });
