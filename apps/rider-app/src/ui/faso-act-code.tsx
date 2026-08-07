@@ -38,6 +38,7 @@ export function FasoActCode({
   onSubmit,
   working,
   outcome,
+  canSend,
 }: {
   readonly strings: {
     readonly title: string;
@@ -52,9 +53,17 @@ export function FasoActCode({
    *  `tone` decides only whether it reads as a settled fact or a refusal —
    *  a refused package is not an error, it is a custody fact. */
   readonly outcome?: { readonly title: string; readonly hint?: string | undefined; readonly tone: 'ok' | 'refused' | 'waiting' } | undefined;
+  /**
+   * ⚠ AN EXTERNAL GATE THE CALLER OWNS (verifier blocker A4). On the
+   * verification screen this is « every one of the nine checks has an answer »
+   * — because sending an unfinished list BURNS the single-use pickup code and
+   * leaves the order unverifiable for ever. Defaults to true for the seal,
+   * which has no checklist.
+   */
+  readonly canSend?: boolean | undefined;
 }) {
   const [typed, setTyped] = useState('');
-  const ready = typed.trim() !== '' && !working;
+  const ready = typed.trim() !== '' && !working && canSend !== false;
 
   return (
     <View style={styles.wrap}>
@@ -123,4 +132,85 @@ const styles = StyleSheet.create({
   outcomePlain: { backgroundColor: C.paper },
   outcomeTitle: { ...ty('body'), fontFamily: textFace(700), color: C.ink },
   outcomeHint: { ...ty('body', 'min'), fontFamily: textFace(400), color: C.sub },
+  checkRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 },
+  checkLabel: { ...ty('body'), color: C.ink, flex: 1 },
+  checkAnswers: { flexDirection: 'row', gap: 8 },
+  checkChoice: {
+    ...ty('body'),
+    fontFamily: textFace(700),
+    color: C.sub,
+    // ≥44px target on both answers — a mis-tap here costs a supplier a
+    // fault record, so neither is a small one.
+    minWidth: 60,
+    minHeight: 44,
+    lineHeight: 44,
+    textAlign: 'center',
+    borderRadius: rad('card'),
+    backgroundColor: C.paper,
+    overflow: 'hidden',
+  },
+  checkYes: { backgroundColor: C.okBg, color: C.okFg },
+  checkNo: { backgroundColor: C.warnBg, color: C.warnFg },
 });
+
+/**
+ * ═══ SE-LIVE-4c-viii · A CHECK IS ANSWERED, NEVER MERELY LEFT ═══
+ *
+ * ⚠ VERIFIER BLOCKERS A4 + A8, WHICH ARE THE SAME MISTAKE SEEN TWICE. The
+ * checklist was a row of binary boxes: ticked meant « conforme », and
+ * UNTICKED meant two incompatible things at once — « I have not looked yet »
+ * and « this one fails ». Both of the resulting harms were measured on the
+ * shipped Worker:
+ *
+ *   · A4 — an unfinished list SENDS. `verifyPickup` CONSUMES the single-use
+ *     pickup code before the policy runs, so a partial submit answers
+ *     `policy_checks_missing` having already BURNED the code; the correct
+ *     submit then answers `secret_already_used`, and `openNewVerificationCycle`
+ *     only re-arms after a *refused* verification — this outcome is `invalid`.
+ *     The order becomes unverifiable, permanently, with no route to recover it.
+ *   · A8 — a forgotten tick becomes a REFUSAL, and a refusal emits
+ *     `protection.claim_opened.v1` with `faultClass: 'seller'`. A supplier is
+ *     recorded at fault, for ever, because a rider's thumb missed a box.
+ *
+ * FOUNDER RULING (2026-08-07): keep ONE send button — no separate refuse
+ * action. That is only safe if the ambiguity is removed, so every check is now
+ * explicitly ANSWERED: « Oui » or « Non », nothing implied by absence. The
+ * send button stays disabled until all nine carry an answer, so an unfinished
+ * list can no longer reach the code at all, and a « Non » is a thing the rider
+ * deliberately said rather than a box they missed.
+ *
+ * SE-I12 holds: these are objective, observable checks, and the SERVICE judges
+ * them. This row only collects an answer.
+ */
+export function FasoCheckAnswer({
+  label,
+  answer,
+  onAnswer,
+  labels,
+}: {
+  readonly label: string;
+  /** `undefined` = not yet answered. It never means « no ». */
+  readonly answer: boolean | undefined;
+  readonly onAnswer: (value: boolean) => void;
+  /** From the catalog — this component never spells a word. */
+  readonly labels: { readonly yes: string; readonly no: string };
+}) {
+  return (
+    <View style={styles.checkRow}>
+      <Text style={styles.checkLabel}>{label}</Text>
+      <View style={styles.checkAnswers}>
+        {[true, false].map((value) => (
+          <Text
+            key={String(value)}
+            accessibilityRole="button"
+            accessibilityState={{ selected: answer === value }}
+            onPress={() => onAnswer(value)}
+            style={[styles.checkChoice, answer === value && (value ? styles.checkYes : styles.checkNo)]}
+          >
+            {value ? labels.yes : labels.no}
+          </Text>
+        ))}
+      </View>
+    </View>
+  );
+}

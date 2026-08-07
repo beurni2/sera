@@ -202,3 +202,28 @@ describe('⚠ the SOS does not promise what no server receives (blocker A2)', ()
     expect(app.indexOf('<SosButton')).toBeGreaterThan(app.indexOf('</ScrollView>'));
   });
 });
+
+describe('⚠ an unfinished checklist can never reach the pickup code (A4 + A8)', () => {
+  it('every check is ANSWERED, never implied by an untouched box', () => {
+    // `verifyPickup` CONSUMES the single-use code before the policy runs, so a
+    // partial submit burned it and left the order unverifiable for ever — and
+    // an unticked box became a REFUSAL, permanently recording the supplier at
+    // fault. Both were the same ambiguity: unticked meant "not looked at yet"
+    // AND "fails".
+    expect(app).toMatch(/<FasoCheckAnswer/);
+    expect(app, 'the old binary box').not.toMatch(/<FasoCheckRow[\s\S]{0,200}POLICY_CHECK_IDS/);
+    expect(app).toMatch(/answer=\{checks\[id\]\}/);
+    expect(app).toMatch(/onAnswer=\{\(value\) => setChecks/);
+  });
+
+  it('the send is gated on ANSWERED, not on all-conforme', () => {
+    // `allChecked` (all true) would block a legitimate refusal; `allAnswered`
+    // blocks only an unfinished list.
+    expect(app).toMatch(/const allAnswered = POLICY_CHECK_IDS\.every\(\(id\) => checks\[id\] !== undefined\)/);
+    expect(app).toMatch(/canSend=\{allAnswered\}/);
+  });
+
+  it('and the screen says what is missing rather than a dead button', () => {
+    expect(app).toMatch(/verify\.answer_all/);
+  });
+});

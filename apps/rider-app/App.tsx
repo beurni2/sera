@@ -83,7 +83,7 @@ import { resolveEvidenceCapture, type CaptureOutcome } from './src/net/evidence-
 import { expoPhotoSource } from './src/net/expoPhotoSource';
 import { mintActId, type CustodyAnswer } from './src/net/custody-acts';
 import { ACT_IDLE, holdsPackage, maySeal, sealOutcome, verifyOutcome, type ActPhase } from './src/net/act-model';
-import { FasoActCode } from './src/ui/faso-act-code';
+import { FasoActCode, FasoCheckAnswer } from './src/ui/faso-act-code';
 import { FpIn, FpPulseDot, QuoteRule as FasoQuoteRule, CornerTicks as FasoCornerTicks } from './src/ui/signature';
 import { C as FASO } from './src/ui/faso';
 import {
@@ -489,6 +489,10 @@ export default function App() {
   const screen = stack[stack.length - 1] ?? START;
   const active = world.courses.find((c) => c.id === activeId) ?? null;
   const allChecked = POLICY_CHECK_IDS.every((id) => checks[id] === true);
+  /** ⚠ ANSWERED, not ticked (A4). `allChecked` asks « are they all conforme »;
+   *  this asks « has the rider said something about every one » — the gate that
+   *  stops an unfinished list ever reaching the single-use pickup code. */
+  const allAnswered = POLICY_CHECK_IDS.every((id) => checks[id] !== undefined);
 
   // SERA-S4 · the reconnect drain sender. The LIVE sender posts each queued write to
   // its service at assembly; here it models the server accepting on reconnect
@@ -925,14 +929,26 @@ export default function App() {
                       {/* SE4.2 — objective conformity only (SE-I12). The
                           checklist the app has always had; the SERVICE judges
                           it, this only collects it. */}
+                      {/**
+                        * ⚠ EVERY CHECK IS ANSWERED — « Oui » or « Non », never
+                        * implied by an untouched box (blockers A4+A8). An
+                        * unfinished list used to SEND, and `verifyPickup`
+                        * consumes the single-use pickup code BEFORE the policy
+                        * runs — so a partial submit burned the code and left
+                        * the order unverifiable for ever. And an unticked box
+                        * became a REFUSAL, which permanently records the
+                        * supplier at fault. Neither can happen by omission now.
+                        */}
                       {POLICY_CHECK_IDS.map((id) => (
-                        <FasoCheckRow
+                        <FasoCheckAnswer
                           key={id}
                           label={t(`check.${id}`)}
-                          checked={checks[id] === true}
-                          onPress={() => setChecks((c) => ({ ...c, [id]: c[id] !== true }))}
+                          answer={checks[id]}
+                          labels={{ yes: t('check.yes'), no: t('check.no') }}
+                          onAnswer={(value) => setChecks((c) => ({ ...c, [id]: value }))}
                         />
                       ))}
+                      {!allAnswered ? <FasoBody>{t('verify.answer_all')}</FasoBody> : null}
                       <FasoActCode
                         strings={{
                           title: t('verify.code_title'),
@@ -951,6 +967,7 @@ export default function App() {
                             : undefined
                         }
                         onSubmit={sendVerification}
+                        canSend={allAnswered}
                       />
                     </>
                   )}

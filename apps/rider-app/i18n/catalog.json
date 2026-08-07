@@ -1153,7 +1153,7 @@
   },
   {
     "key": "acts.offline_hint",
-    "fr": "Le scellé s'enregistre quand le réseau revient.",
+    "fr": "Rien n'est envoyé sans réseau. Réessayez ici même.",
     "register": "neutral",
     "screenClass": "instruction"
   },
@@ -1204,5 +1204,41 @@
     "fr": "Restez où vous êtes si c'est sûr.",
     "register": "neutral",
     "screenClass": "instruction"
+  },
+  {
+    "key": "check.yes",
+    "fr": "Oui",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "check.no",
+    "fr": "Non",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "verify.answer_all",
+    "fr": "Répondez à chaque point.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "assignment.state_active",
+    "fr": "Course à faire",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "assignment.state_acked",
+    "fr": "Course acceptée",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "assignment.state_pending",
+    "fr": "En attente",
+    "register": "neutral",
+    "screenClass": "label"
   }
 ]

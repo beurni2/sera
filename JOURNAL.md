@@ -1247,3 +1247,27 @@ Fresh-context verifier over `210f813..6c0a325`. It ran the suites, the gate boar
 
 ### Standing state
 **NOT MERGEABLE.** Nothing here is merged or deployed; the live Workers are `210f813` (4a+4b), which these findings do not touch. Regression checked and clean: the UNWIRED demo build is byte-unchanged in behaviour (the `App.tsx` diff removes 6 lines, all shared chrome; `wo6-invariants`, `faso-scroll` and the gallery all pass).
+
+## 2026-08-07 · SE-LIVE-4c/4d — the 10 blockers, closed (founder rulings applied)
+**FOUNDER RULINGS (2026-08-07):** ① build the photo capture · ② keep the separate refuse action DROPPED (one send button) · ③ persist act state on the phone. All three are implemented as ruled.
+
+**A1 · THE SOS WAS DELETED, NOT SENT — CLOSED.** The outbox flushed through `async () => 'applied'` and `flush` DROPS anything reported applied, so a raised alert was erased on the next reconnect (which fires on MOUNT). `httpSosSender` is now actually wired: an SOS settles only on a server 200, anything else keeps it pending and counted. **This is the one I claimed fixed in `1941b73` and had not — the correction is on the record above.**
+
+**A2 · THE FALSE ACK — CLOSED PROPERLY.** My first pass changed the `raised` words and left the « (aperçu) réponse du dispatch » button, so one tap still produced « Quelqu'un arrive pour vous. » The prop is now optional and the sheet renders **no ack button at all** when it is absent, which it is on every wired build.
+
+**A3 · RETRY POISONING — CLOSED.** The command id now identifies the **content**, not the screen, and `dwellSec` is frozen with the attempt. A true retry replays; a corrected code is a new act. (My original reasoning — « a stable id makes retries safe » — was simply wrong about custody's content-keyed fingerprint.)
+
+**A4 + A8 · THE CHECKLIST — CLOSED, AND THEY WERE ONE MISTAKE.** An untouched box meant « not looked at yet » AND « fails » at the same time. That let an unfinished list SEND (burning the single-use pickup code before the policy runs, leaving the order permanently unverifiable) and let a forgotten tick become a REFUSAL (permanently recording the supplier at fault via `protection.claim_opened.v1`). Per ruling ②, there is still ONE send button — made safe by removing the ambiguity instead: every check is explicitly **Oui / Non**, and the button is disabled until all nine carry an answer.
+
+**A5 · THE OFFLINE LIE — CLOSED.** « Le scellé s'enregistre quand le réseau revient » promised a queued write that `custody-acts.ts` explicitly does not make. Now: « Rien n'est envoyé sans réseau. Réessayez ici même. »
+
+**A6 · THE KILLED APP — CLOSED per ruling ③.** `act-memory.ts` persists the order, the stage the LEDGER reached, and the attempt ids. **⚠ It never writes the pickup code, the seal id or the rider's code** — that would smuggle in exactly what the no-offline-queue rule exists to prevent — and a test scans the persisted bytes to prove it. A relaunched rider re-types the seal from the seal in their hand and re-hears the code from the dispatcher; neither has to rest on the device.
+
+**A7 · FABRICATED EVIDENCE REFS — CLOSED per ruling ①.** `ev-<uuid>` named a bundle that never existed, defeating the spine's `no_evidence_refs` guard and writing a dangling pointer into the hash-chained ledger. Bytes now go to the media-service (`POST /media`; it sniffs the real format and mints an opaque ref no caller input can shape) and the ref is what the bucket returned. **No upload, no ref, and the act does not go.**
+> **CTO CHOICE ON RULING ①, stated because it is mine and reversible:** the founder said « build the photo capture » without naming a library, so I chose **`expo-image-picker`** over `expo-camera` — one system sheet, works on every handset, least to break on a 1 GB phone, and it matches the standing « Séra = simple » directive. `expo-camera` would give a framed, branded proof-photo moment at the cost of its own screen and permission flow; that swap is a one-file change to `expoPhotoSource.ts` if he prefers it.
+
+**A9 · THE SOS MISREPORTED ITSELF — CLOSED.** It carried `DEMO_RIDER_ID`, `onShift` always false and `activeCourseId` always null. It now carries the signed-in rider and their live assignment (the server overrides `riderId` from the code regardless — sending a fiction was the problem).
+
+**A10 · RAW ENUMS TO THE RIDER — catalog strings added** (`assignment.state_*`); the wiring of those labels is the one item of the ten still to land.
+
+**Evidence:** typecheck 0 · rider-app **253/253** (was 239) · logistics-service 146/146 · copy-lint 0 violations at 207 entries · `run-gates.sh` exit 0 ALL GATES GREEN.
