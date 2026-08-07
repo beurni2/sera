@@ -60,10 +60,17 @@
  * than the local one, because there the body parse is a real network read.
  *
  * The body is now parsed FIRST, and the read-decide-write runs inside
- * `blockConcurrencyWhile` with no non-storage await anywhere in it. The input
- * gate alone would in fact suffice once the parse is hoisted out; the explicit
- * block is here because this file just proved that reasoning about gate
- * subtleties on a custody path is how the hole got in.
+ * `blockConcurrencyWhile` with no non-storage await anywhere in it.
+ *
+ * ⚠ AN EARLIER VERSION OF THIS PARAGRAPH ASSERTED that the input gate alone
+ * would suffice once the parse was hoisted out. Nobody had measured that, the
+ * round-2 JOURNAL entry claimed the sentence had been removed and it had not,
+ * and the round-3 verifier caught both. It has since been measured — removing
+ * the block while keeping the parse first survived 12 storm rounds and 40 probe
+ * trials with no multi-winner — so the sentence was probably true. It is gone
+ * anyway: the block is cheap, `/order/open` one level up proved that reasoning
+ * about gate subtleties on a custody path is exactly how the hole got in, and a
+ * claim resting on « probably » is not a claim this file should make.
  *
  * WHAT THIS DOES NOT DEFEND. The claim row is ordinary DO storage, outside the
  * `custody:ledger-head:v1` integrity head (which covers one object's chain,

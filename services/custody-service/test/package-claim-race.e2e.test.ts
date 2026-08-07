@@ -11,28 +11,29 @@ import { afterAll, describe, expect, it } from 'vitest';
  * suite that was supposed to catch it DID NOT. That second failure is the
  * reason this file exists.
  *
- * ⚠ WHAT MAKES A RACE VISIBLE HERE, measured rather than reasoned. Three
- * things, and without all three the broken code passes:
+ * ⚠ HOW THESE TESTS DETECT, and why the first two attempts did not.
  *
- *   ① A WARM, BUSY RUNTIME. On a cold isolate the requests serialise.
- *   ② ENOUGH TRIALS. The interleaving is probabilistic, not deterministic.
- *   ③ THE RESPONSE BODIES MUST BE READ. Leaving eight responses unconsumed
- *      changes how the requests overlap. This one cost the most to find: the
- *      round-1 worker passes a sweep that checks only status codes, and fails
- *      the same sweep the moment the bodies are read.
+ * COUNTING RACE OUTCOMES DOES NOT WORK. Attempt one asserted « exactly one 200
+ * per package ». Attempt two added a warm runtime, a sweep of trials, and a
+ * trick of reading every response body, and a JOURNAL entry called all three
+ * necessary — « measured rather than reasoned ». **That claim was false and the
+ * round-3 verifier disproved it**: against the broken worker the defect
+ * reproduces with neither the warm-up nor the body reads, in about half of
+ * runs, and reading bodies at most doubles a ~1–3 % per-trial hit rate. Only
+ * « enough trials » was ever load-bearing. Worse, the resulting test caught the
+ * defect in only 5 of 8 runs AND timed out on healthy code often enough to turn
+ * the CI gate red — a pin that is wrong in both directions.
  *
- * A first attempt used a STREAMED request body instead, reasoning that a slow
- * parse would force the yield. It does not — `dispatchFetch` and the DO stub
- * both buffer the body before the object sees it — and that version passed on
- * the broken code. It was deleted rather than kept: a race test that has never
- * failed is not evidence, and keeping one labelled as a pin is the same lie it
- * is supposed to catch.
+ * SO THESE TESTS DO NOT COUNT OUTCOMES. They storm the doors, then ASK THE
+ * OBJECTS what state they are in: every order, does it have a custody file;
+ * every package, who holds its claim. Two files over one package, or a claim
+ * held by an order that is not carrying that package, are FACTS ON DISK — they
+ * do not depend on catching an interleaving in the act. That makes the pin
+ * deterministic, and it is why the storm needs only a handful of rounds.
  *
- * The cross-object hop (the second test) needs no such care — it is slowed
- * deliberately by test scaffolding to production size.
- *
- * POSITIVE CONTROL for both, recorded in JOURNAL.md: each FAILS on the code it
- * names and passes on this one.
+ * POSITIVE CONTROLS, recorded in JOURNAL.md: this detector finds two-files and
+ * orphaned-claim states on the workers that had those defects, and finds none
+ * here.
  */
 
 const OPS = 'test-custody-ops-secret-0004';
@@ -48,6 +49,36 @@ function freshDir(tag: string): string {
 afterAll(() => {
   for (const d of dirs) rmSync(d, { recursive: true, force: true });
 });
+
+/**
+ * The shipped bundle with `PackageClaimDO.fetch` replaced by a thrower — the
+ * round-3 M3 reproduction. TEST SCAFFOLDING ONLY. It stands in for the ordinary
+ * production events that make a cross-object call reject: a deploy terminating
+ * in-flight DO calls, a transient stub failure, an overloaded claim object.
+ */
+function bootWithThrowingClaims(dir: string): Miniflare {
+  const wrapper = `
+    import worker, { CustodyDO, PackageClaimDO } from './worker.mjs';
+    export { CustodyDO };
+    export class ThrowingPackageClaimDO extends PackageClaimDO {
+      async fetch() { throw new Error('claim object exploded'); }
+    }
+    export default worker;
+  `;
+  return new Miniflare({
+    modules: [
+      { type: 'ESModule', path: '/throwing.mjs', contents: wrapper },
+      { type: 'ESModule', path: '/worker.mjs', contents: BUNDLE },
+    ],
+    modulesRoot: '/',
+    scriptPath: '/throwing.mjs',
+    compatibilityDate: '2025-07-05',
+    compatibilityFlags: ['nodejs_compat'],
+    durableObjects: { CUSTODY: 'CustodyDO', PACKAGE_CLAIM: 'ThrowingPackageClaimDO' },
+    durableObjectsPersist: dir,
+    bindings: { SERA_CUSTODY_OPS_SECRET: OPS },
+  });
+}
 
 function boot(dir: string): Miniflare {
   return new Miniflare({
@@ -118,74 +149,88 @@ async function holderOf(mf: Miniflare, packageId: string): Promise<string | null
   return (body['claim'] as Record<string, unknown>)['orderId'] as string;
 }
 
+/** Every order that actually has a custody file, and which package it carries. */
+async function custodyFiles(mf: Miniflare, orders: string[]): Promise<Map<string, string>> {
+  const files = new Map<string, string>();
+  for (const o of orders) {
+    const res = await mf.dispatchFetch(`http://custody/ops/ledger?orderId=${o}`, { headers: opsAuth });
+    if (res.status !== 200) { await res.text(); continue; }
+    const body = JSON.parse(await res.text()) as Record<string, unknown>;
+    files.set(o, body['packageId'] as string);
+  }
+  return files;
+}
+
 /**
- * ⚠ THE PIN FOR THE ROUND-1 BLOCKER, built the way it should have been built
- * the first time. The claim object used to read its stored row, then await the
- * body parse, then decide on the pre-await value; concurrent claims all saw an
- * empty row and all wrote.
+ * ⚠ THE PIN FOR BOTH RACES — and the third attempt at it, because the first two
+ * were defective in ways that matter more than the defect itself (see the file
+ * header). It storms the doors and then reads STATE, so it cannot miss.
  *
- * It needs a warm runtime, a sweep of trials, and the response bodies read —
- * see the file header. Verified against the round-1 worker: this test FAILS on
- * it (trial 5, two winners over one package) and passes here.
- *
- * `scripts/probe-claim-race.mjs` is the same race as a standalone script, kept
- * because it prints what each winner can then DO with the shared package.
+ * Two things are violations, and both are visible on disk afterwards:
+ *   ① TWO CUSTODY FILES over one package — SE-I04 with two custodians the
+ *      moment SE-LIVE-4b adds a transition.
+ *   ② AN ORPHANED CLAIM — a package held by an order that is not carrying it.
+ *      Nothing in this service releases a claim, so an honest unrelated order
+ *      for that package is refused forever and Séra can never take custody of
+ *      those goods.
  */
-describe('the package claim is decided once, however many orders arrive together', () => {
-  it('no package is ever opened by two orders across a sweep of eight-way races', async () => {
-    const dir = freshDir('sweep');
+describe('storming every door leaves no package double-filed and no claim orphaned', () => {
+  it('holds across rounds of simultaneous opens on shared and split packages', { timeout: 120_000 }, async () => {
+    const dir = freshDir('storm');
     const mf = boot(dir);
 
-    // ① Warm the runtime with unrelated traffic so it is not cold-serialising.
-    await Promise.all(
-      Array.from({ length: 20 }, (_, i) =>
+    for (let round = 0; round < 6; round += 1) {
+      const shared = `pkg-storm-${round}-shared`;
+      const rivals = Array.from({ length: 8 }, (_, i) => `ord-storm-${round}-rival-${i}`);
+      const splitter = `ord-storm-${round}-splitter`;
+      const split = Array.from({ length: 6 }, (_, i) => `pkg-storm-${round}-split-${i}`);
+      const twin = `ord-storm-${round}-twin`;
+      const twinPkg = `pkg-storm-${round}-twin`;
+
+      const open = (orderId: string, packageId: string) =>
         mf.dispatchFetch('http://custody/ops/order/open', {
           method: 'POST',
           headers: opsAuth,
           body: JSON.stringify({
-            orderId: `ord-warm-${i}`, taskId: 't', packageId: `pkg-warm-${i}`,
-            correlationId: 'c', supplierId: 'sup-sweep-0001',
+            orderId, taskId: `task-${orderId}`, packageId,
+            correlationId: `corr-${orderId}`, supplierId: 'sup-storm-0001',
           }),
-        }),
-      ),
-    );
+        });
 
-    // ② Sweep. Every trial is eight DIFFERENT orders over ONE package.
-    for (let t = 0; t < 25; t += 1) {
-      const PKG = `pkg-sweep-${t}`;
-      const orders = Array.from({ length: 8 }, (_, i) => `ord-sweep-${t}-${i}`);
-      const results = await Promise.all(
-        orders.map((o) =>
-          mf.dispatchFetch('http://custody/ops/order/open', {
-            method: 'POST',
-            headers: opsAuth,
-            body: JSON.stringify({
-              orderId: o, taskId: `task-${o}`, packageId: PKG,
-              correlationId: `corr-${o}`, supplierId: 'sup-sweep-0001',
-            }),
-          }),
-        ),
-      );
+      // Everything at once: eight orders duelling for one package, one order
+      // splitting itself across six, and one order re-sent four times.
+      await Promise.all([
+        ...rivals.map((o) => open(o, shared)),
+        ...split.map((p) => open(splitter, p)),
+        ...Array.from({ length: 4 }, () => open(twin, twinPkg)),
+      ]).then((rs) => Promise.all(rs.map((r) => r.text())));
 
-      // The bodies are READ, not just the statuses. Leaving eight responses
-      // unconsumed changes how the requests overlap, and a sweep that skips
-      // the read stops reproducing the defect it exists for — measured on the
-      // round-1 worker: bodies read → 8 winners; bodies ignored → 1.
-      const opened = (await Promise.all(results.map((r) => r.text())))
-        .map((t) => JSON.parse(t) as Record<string, unknown>)
-        .filter((b) => b['ok'] === true);
-      // THE INVARIANT: one package, one custody file — in every trial.
-      expect({ trial: t, package: PKG, opened: opened.length }).toEqual({ trial: t, package: PKG, opened: 1 });
+      const allOrders = [...rivals, splitter, twin];
+      const files = await custodyFiles(mf, allOrders);
 
-      // …and the claim row names exactly one order, the one that has the file.
-      const holder = await holderOf(mf, PKG);
-      expect(orders).toContain(holder);
-      const withFile: string[] = [];
-      for (const o of orders) {
-        const led = await mf.dispatchFetch(`http://custody/ops/ledger?orderId=${o}`, { headers: opsAuth });
-        if (led.status === 200) withFile.push(o);
+      // ① No package carries two custody files.
+      const byPackage = new Map<string, string[]>();
+      for (const [order, pkg] of files) byPackage.set(pkg, [...(byPackage.get(pkg) ?? []), order]);
+      const doubled = [...byPackage.entries()].filter(([, os]) => os.length > 1);
+      expect({ round, doubleFiled: doubled }).toEqual({ round, doubleFiled: [] });
+
+      // ② No claim is held by an order that is not carrying that package.
+      const orphans: { packageId: string; heldBy: string }[] = [];
+      for (const pkg of [shared, twinPkg, ...split]) {
+        const holder = await holderOf(mf, pkg);
+        if (holder === null) continue;
+        if (files.get(holder) !== pkg) orphans.push({ packageId: pkg, heldBy: holder });
       }
-      expect(withFile).toEqual([holder]);
+      expect({ round, orphans }).toEqual({ round, orphans: [] });
+
+      // …and the guard is not just refusing everything: every package that is
+      // not carried by a file must still be openable by an honest order.
+      for (const pkg of [shared, twinPkg, ...split]) {
+        if ([...files.values()].includes(pkg)) continue;
+        const honest = await open(`ord-storm-honest-${pkg}`, pkg);
+        expect({ pkg, status: honest.status }).toEqual({ pkg, status: 200 });
+        await honest.text();
+      }
     }
 
     await mf.dispose();
@@ -267,5 +312,60 @@ describe('an order cannot claim more packages than the one custody file it opens
     }
 
     await mf.dispose();
+  });
+});
+
+/**
+ * ⚠ THE PIN FOR THE ROUND-3 M3 FINDING. Wrapping `/order/open` in
+ * `blockConcurrencyWhile` bought serialisation and cost error shape: a
+ * rejection inside that block aborts the object BEFORE `fetch`'s catch-all
+ * runs, so a claim object that threw made the door answer a raw 500 with a
+ * stack trace in it — the class `index.ts` closed at SE-LIVE-3 round 5,
+ * reopened by a different mechanism.
+ *
+ * It failed CLOSED throughout, and that half is asserted here too: a door that
+ * crashes politely is still not allowed to leave half a custody file behind.
+ */
+describe('a claim object that throws is answered, not crashed through', () => {
+  it('refuses by name, leaks no stack trace, writes nothing, and recovers', async () => {
+    const dir = freshDir('throwing');
+    const mf = bootWithThrowingClaims(dir);
+
+    const res = await mf.dispatchFetch('http://custody/ops/order/open', {
+      method: 'POST',
+      headers: opsAuth,
+      body: JSON.stringify({
+        orderId: 'ord-throw', taskId: 't', packageId: 'pkg-throw',
+        correlationId: 'c', supplierId: 'sup-throw-0001',
+      }),
+    });
+    const text = await res.text();
+
+    // Structured, like every other refusal this door gives.
+    expect(JSON.parse(text)).toMatchObject({ ok: false });
+    expect(JSON.parse(text)['reason']).toMatch(/package_claim_unreachable|custody_object_unavailable/);
+    // And it does not hand an operator a stack trace to read.
+    expect(text).not.toContain('at async');
+    expect(text).not.toContain('exploded');
+
+    // FAILED CLOSED: no custody file exists for that order.
+    const led = await mf.dispatchFetch('http://custody/ops/ledger?orderId=ord-throw', { headers: opsAuth });
+    expect(JSON.parse(await led.text())).toMatchObject({ reason: 'order_not_open' });
+    await mf.dispose();
+
+    // …and the package was left free, so an honest order can still take it
+    // once the claim object is healthy again.
+    const healthy = boot(dir);
+    const again = await healthy.dispatchFetch('http://custody/ops/order/open', {
+      method: 'POST',
+      headers: opsAuth,
+      body: JSON.stringify({
+        orderId: 'ord-after-throw', taskId: 't', packageId: 'pkg-throw',
+        correlationId: 'c', supplierId: 'sup-throw-0001',
+      }),
+    });
+    expect(again.status).toBe(200);
+    await again.text();
+    await healthy.dispose();
   });
 });

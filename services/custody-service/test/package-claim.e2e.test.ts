@@ -534,6 +534,39 @@ describe('the claim object refuses to answer about a package it has not been tol
     await mf.dispose();
   });
 
+  /**
+   * ⚠ VERIFIER MINOR (round 3) — THE WRITE-PATH TWIN WAS UNPINNED. Deleting the
+   * misfiled check from the CLAIM route left all tests green; only the GET side
+   * was covered. The GET guard's comment says an answer there « decides whether
+   * a second custody file may open » — but it is this one that actually decides
+   * it, because this is the route `/order/open` calls.
+   */
+  it('refuses to DECIDE a claim for a package it is not, not merely to report one', async () => {
+    const dir = freshDir('misfiled-write');
+    const mf = boot(dir);
+    const PKG = 'pkg-misfiled-write-0001';
+    expect((await call(mf, 'POST', '/ops/order/open', chainFor('ord-misfiled-w', PKG))).status).toBe(200);
+
+    const ns = await mf.getDurableObjectNamespace('PACKAGE_CLAIM');
+    const claimed = await ns.get(ns.idFromName(PKG)).fetch('https://package/claim', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Package-Object': 'pkg-some-other-00000' },
+      body: JSON.stringify({ packageId: 'pkg-some-other-00000', orderId: 'ord-rival', at: '2026-08-07T09:00:00.000Z' }),
+    });
+    expect(claimed.status).toBe(409);
+    const text = await claimed.text();
+    expect(JSON.parse(text)).toMatchObject({ ok: false, reason: 'claim_does_not_name_this_object' });
+    // It refuses without disclosing the record it is refusing about.
+    expect(text).not.toContain('ord-misfiled-w');
+
+    // …and the real holder is untouched by the attempt.
+    const held = await ns.get(ns.idFromName(PKG)).fetch('https://package/claim', {
+      method: 'GET', headers: { 'X-Package-Object': PKG },
+    });
+    expect(JSON.parse(await held.text())).toMatchObject({ ok: true, claim: { orderId: 'ord-misfiled-w' } });
+    await mf.dispose();
+  });
+
   it('a stored claim and the object holding it must agree on which package it is', async () => {
     const dir = freshDir('misfiled-claim');
     const mf = boot(dir);

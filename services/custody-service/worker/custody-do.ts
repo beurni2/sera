@@ -349,18 +349,40 @@ export class CustodyDO {
    */
   private async winPackageClaim(chain: OrderChain, at: string): Promise<Response | ClaimHeldMarker> {
     const stub = this.env.PACKAGE_CLAIM.get(this.env.PACKAGE_CLAIM.idFromName(chain.package_id));
-    const res = await stub.fetch(
-      new Request('https://package/claim', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          // The claim object is told its own name, exactly as the router tells
-          // this one — a fresh header object, never a caller's value.
-          'X-Package-Object': chain.package_id,
-        },
-        body: JSON.stringify({ packageId: chain.package_id, orderId: chain.order_id, at }),
-      }),
-    );
+    /**
+     * ⚠ VERIFIER MAJOR (round 3) — THE HOP IS CAUGHT, BECAUSE IT RUNS INSIDE
+     * `blockConcurrencyWhile`. A rejection inside that block aborts the object
+     * BEFORE `fetch`'s catch-all can turn it into a structured refusal, so a
+     * claim object that threw made this door answer a raw 500 carrying a stack
+     * trace — the exact class `index.ts` closed at round 5 of SE-LIVE-3
+     * (« a door that can be made to crash is not a door that can be reasoned
+     * about »), reopened by a different mechanism. Triggers are ordinary, not
+     * adversarial: a deploy terminating in-flight DO calls, a transient stub
+     * failure, an overloaded claim object.
+     *
+     * It always failed CLOSED — no chain, no head, no claim, and later opens
+     * work — so no custody invariant was ever at risk. What was at risk is the
+     * ability to read the door's answers.
+     */
+    let res: Response;
+    try {
+      res = await stub.fetch(
+        new Request('https://package/claim', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            // The claim object is told its own name, exactly as the router tells
+            // this one — a fresh header object, never a caller's value.
+            'X-Package-Object': chain.package_id,
+          },
+          body: JSON.stringify({ packageId: chain.package_id, orderId: chain.order_id, at }),
+        }),
+      );
+    } catch {
+      // Nothing has been written; the package is left unclaimed and the order
+      // unopened, which is the honest state to retry from.
+      return Response.json({ ok: false, reason: 'package_claim_unreachable' }, { status: 503 });
+    }
     const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
     if (!res.ok || body === null || body['ok'] !== true) {
       // The claim object already says WHY and WHO holds it; pass that through

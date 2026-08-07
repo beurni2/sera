@@ -164,6 +164,19 @@ export default {
       },
       ...(raw !== null && raw !== '' ? { body: raw } : {}),
     });
-    return stub.fetch(inner);
+    /**
+     * ⚠ VERIFIER MAJOR (round 3) — BELT AND BRACES ON THE OUTER DOOR. The
+     * object's own catch-all cannot cover a rejection inside
+     * `blockConcurrencyWhile` (that aborts the object first), and workerd
+     * CANCELS a block that runs too long — measured at ~30 s, answering « the
+     * Durable Object was reset ». Either way the door must answer in the shape
+     * every other route answers in. The object is fixed too; this is the layer
+     * that cannot be bypassed by whatever the next slice adds inside it.
+     */
+    try {
+      return await stub.fetch(inner);
+    } catch {
+      return Response.json({ ok: false, reason: 'custody_object_unavailable' }, { status: 503 });
+    }
   },
 };
