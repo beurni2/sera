@@ -760,98 +760,121 @@ export class CustodyDO {
         supplierId: (body['supplierId'] as string).trim(),
         paymentMode: mode,
       };
-      if (this.chain !== null) {
-        const same =
-          this.chain.order_id === chain.order_id &&
-          this.chain.task_id === chain.task_id &&
-          this.chain.package_id === chain.package_id &&
-          this.chain.correlation_id === chain.correlation_id &&
-          this.chain.supplierId === chain.supplierId &&
-          this.chain.paymentMode === chain.paymentMode;
-        // An identical re-open is absorbed; a DIFFERENT one refuses — the
-        // chain ids under a custody file are not re-writable.
-        if (!same) {
-          return Response.json({ ok: false, reason: 'chain_already_open_with_other_ids' }, { status: 409 });
+      /**
+       * ⚠ VERIFIER MAJOR (round 2) — THE SAME RACE, ONE LEVEL UP. Everything
+       * below reads `this.chain`, then awaits a CROSS-OBJECT HOP to the claim
+       * object, then writes the chain. A Durable Object's input gate does not
+       * cover that: it serialises around STORAGE operations and reopens across
+       * an ordinary await, and the hop is an ordinary await — a cross-object
+       * call that, on a package's first open, includes a cold object create.
+       *
+       * MEASURED with the hop at production size (50 ms): six concurrent opens
+       * of ONE order naming SIX packages all passed `this.chain === null`, each
+       * won a DIFFERENT package, and one chain survived. The other five
+       * packages were left claimed by an order that is not carrying them —
+       * and nothing in this service releases a claim, so an honest unrelated
+       * order for one of those packages is refused forever and Séra can never
+       * take custody of those goods.
+       *
+       * Reachable with no attacker: a corrected retry racing the original, or
+       * an at-least-once producer delivering twice. The body is already parsed,
+       * so the block holds only read-decide-write plus the one hop it exists
+       * to protect.
+       */
+      return await this.state.blockConcurrencyWhile(async () => {
+        if (this.chain !== null) {
+          const same =
+            this.chain.order_id === chain.order_id &&
+            this.chain.task_id === chain.task_id &&
+            this.chain.package_id === chain.package_id &&
+            this.chain.correlation_id === chain.correlation_id &&
+            this.chain.supplierId === chain.supplierId &&
+            this.chain.paymentMode === chain.paymentMode;
+          // An identical re-open is absorbed; a DIFFERENT one refuses — the
+          // chain ids under a custody file are not re-writable.
+          if (!same) {
+            return Response.json({ ok: false, reason: 'chain_already_open_with_other_ids' }, { status: 409 });
+          }
+          /**
+           * SE-LIVE-4a self-heal: a file opened before the claim existed gets one
+           * here. Skipped outright once the marker corroborates the chain, so the
+           * normal re-open costs nothing.
+           *
+           * ⚠ THE LIMIT, STATED PLAINLY (verifier MAJOR, round 1 — my first
+           * disclosure was narrower than the truth). Healing happens on
+           * `/order/open` and nowhere else, so a file opened before this slice
+           * and never re-opened stays unclaimed — and a NEW order naming that
+           * same package will win the free claim. Then there really are two
+           * custody files over one package, and the legitimate older holder is
+           * refused on its own honest re-open, correctly but painfully.
+           *
+           * It is bounded, not harmless: no route transitions custody yet, so
+           * neither file has a custodian and SE-I04 is not yet violable. SE-LIVE-4b
+           * is what closes it, by making a held claim a precondition of every
+           * transition — an unclaimed legacy file will then be unable to take
+           * custody at all.
+           */
+          if (!this.claimHeld) {
+            const won = await this.winPackageClaim(this.chain, new Date().toISOString());
+            if (won instanceof Response) return won;
+            await this.state.storage.put(CLAIM_HELD_KEY, won);
+            this.claimHeld = true;
+          }
+          return Response.json({ ok: true, status: 'already_open', chain: this.chain });
         }
         /**
-         * SE-LIVE-4a self-heal: a file opened before the claim existed gets one
-         * here. Skipped outright once the marker corroborates the chain, so the
-         * normal re-open costs nothing.
-         *
-         * ⚠ THE LIMIT, STATED PLAINLY (verifier MAJOR, round 1 — my first
-         * disclosure was narrower than the truth). Healing happens on
-         * `/order/open` and nowhere else, so a file opened before this slice
-         * and never re-opened stays unclaimed — and a NEW order naming that
-         * same package will win the free claim. Then there really are two
-         * custody files over one package, and the legitimate older holder is
-         * refused on its own honest re-open, correctly but painfully.
-         *
-         * It is bounded, not harmless: no route transitions custody yet, so
-         * neither file has a custodian and SE-I04 is not yet violable. SE-LIVE-4b
-         * is what closes it, by making a held claim a precondition of every
-         * transition — an unclaimed legacy file will then be unable to take
-         * custody at all.
+         * ⚠ VERIFIER BLOCKER (round 3) — AN ORPHANED LOG IS NEVER ADOPTED. With
+         * the chain row gone but the command rows present, this route used to
+         * re-base a VICTIM's custody log onto whatever ids the caller supplied,
+         * and the next act sealed the new head — so the object vouched for it.
+         * That guard now lives in `checkIntegrity`
+         * (`existing_command_log_without_chain`), which runs on every wake and
+         * refuses before any route is reached; a duplicate check here would be
+         * unreachable code on the most sensitive path in the repo, so there
+         * isn't one. Round 4 confirmed the adoption path is closed.
          */
-        if (!this.claimHeld) {
-          const won = await this.winPackageClaim(this.chain, new Date().toISOString());
-          if (won instanceof Response) return won;
-          await this.state.storage.put(CLAIM_HELD_KEY, won);
-          this.claimHeld = true;
+        /**
+         * SE-LIVE-4a — THE CLAIM IS WON BEFORE ANYTHING IS WRITTEN. Order matters
+         * and it is the whole point: if the chain landed first, a second order
+         * over the same package would already have a custody file — with a
+         * ledger, an address and the ability to act — by the time it discovered
+         * it had lost. Losing here means no chain row, no head, no object state
+         * at all: the file simply never opens.
+         */
+        const won = await this.winPackageClaim(chain, new Date().toISOString());
+        if (won instanceof Response) return won;
+        this.chain = chain;
+        this.spine = this.replay(chain, this.log);
+        /**
+         * ONE WRITE, chain AND head. The head binds the chain (round-4 blocker),
+         * so the chain must never exist without one — a chain row written alone
+         * would be unbound for exactly as long as it took the first act to
+         * arrive, and that window is the whole vulnerability.
+         */
+        /**
+         * ⚠ VERIFIER MAJOR (round 1) — THE MARKER RIDES THIS WRITE. It used to be
+         * its own awaited `put` inside `winPackageClaim`, so marker-lands-and-
+         * chain-does-not was reachable — and an object holding a marker for one
+         * package then opened a chain naming another without claiming it. This
+         * file already learned the lesson at the commit path (« ONE WRITE, NOT
+         * TWO », round 3 of SE-LIVE-3) and the slice re-introduced the pattern.
+         * All three keys commit together or not at all.
+         */
+        await this.state.storage.put({
+          [CHAIN_KEY]: chain,
+          [HEAD_KEY]: this.currentHeadFor(this.log),
+          [CLAIM_HELD_KEY]: won,
+        });
+        this.claimHeld = true;
+        // The spine changed, so the recorded head must be re-checked against it —
+        // otherwise `/ledger/verify` answers off a stale flag for the rest of the
+        // session (round 3 proved that too).
+        await this.checkIntegrity();
+        if (this.integrityFailure !== null) {
+          return Response.json({ ok: false, reason: this.integrityFailure }, { status: 409 });
         }
-        return Response.json({ ok: true, status: 'already_open', chain: this.chain });
-      }
-      /**
-       * ⚠ VERIFIER BLOCKER (round 3) — AN ORPHANED LOG IS NEVER ADOPTED. With
-       * the chain row gone but the command rows present, this route used to
-       * re-base a VICTIM's custody log onto whatever ids the caller supplied,
-       * and the next act sealed the new head — so the object vouched for it.
-       * That guard now lives in `checkIntegrity`
-       * (`existing_command_log_without_chain`), which runs on every wake and
-       * refuses before any route is reached; a duplicate check here would be
-       * unreachable code on the most sensitive path in the repo, so there
-       * isn't one. Round 4 confirmed the adoption path is closed.
-       */
-      /**
-       * SE-LIVE-4a — THE CLAIM IS WON BEFORE ANYTHING IS WRITTEN. Order matters
-       * and it is the whole point: if the chain landed first, a second order
-       * over the same package would already have a custody file — with a
-       * ledger, an address and the ability to act — by the time it discovered
-       * it had lost. Losing here means no chain row, no head, no object state
-       * at all: the file simply never opens.
-       */
-      const won = await this.winPackageClaim(chain, new Date().toISOString());
-      if (won instanceof Response) return won;
-      this.chain = chain;
-      this.spine = this.replay(chain, this.log);
-      /**
-       * ONE WRITE, chain AND head. The head binds the chain (round-4 blocker),
-       * so the chain must never exist without one — a chain row written alone
-       * would be unbound for exactly as long as it took the first act to
-       * arrive, and that window is the whole vulnerability.
-       */
-      /**
-       * ⚠ VERIFIER MAJOR (round 1) — THE MARKER RIDES THIS WRITE. It used to be
-       * its own awaited `put` inside `winPackageClaim`, so marker-lands-and-
-       * chain-does-not was reachable — and an object holding a marker for one
-       * package then opened a chain naming another without claiming it. This
-       * file already learned the lesson at the commit path (« ONE WRITE, NOT
-       * TWO », round 3 of SE-LIVE-3) and the slice re-introduced the pattern.
-       * All three keys commit together or not at all.
-       */
-      await this.state.storage.put({
-        [CHAIN_KEY]: chain,
-        [HEAD_KEY]: this.currentHeadFor(this.log),
-        [CLAIM_HELD_KEY]: won,
+        return Response.json({ ok: true, status: 'open', chain });
       });
-      this.claimHeld = true;
-      // The spine changed, so the recorded head must be re-checked against it —
-      // otherwise `/ledger/verify` answers off a stale flag for the rest of the
-      // session (round 3 proved that too).
-      await this.checkIntegrity();
-      if (this.integrityFailure !== null) {
-        return Response.json({ ok: false, reason: this.integrityFailure }, { status: 409 });
-      }
-      return Response.json({ ok: true, status: 'open', chain });
     }
 
     if (this.chain === null || this.spine === null) {
