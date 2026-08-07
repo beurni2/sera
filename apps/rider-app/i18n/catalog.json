@@ -1096,5 +1096,119 @@
     "fr": "La vérification et le scellé arrivent bientôt.",
     "register": "neutral",
     "screenClass": "status"
+  },
+  {
+    "key": "verify.code_title",
+    "fr": "Code de ramassage",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "verify.code_hint",
+    "fr": "Le code que Séra vous a donné au téléphone.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "verify.code_placeholder",
+    "fr": "Tapez le code",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "verify.action_send",
+    "fr": "Envoyer la vérification",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "seal.id_title",
+    "fr": "Numéro du scellé",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "seal.id_hint",
+    "fr": "Le numéro écrit sur le scellé que vous posez.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "seal.id_placeholder",
+    "fr": "Tapez le numéro",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "seal.action_send",
+    "fr": "Enregistrer le scellé",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "acts.sending",
+    "fr": "Un instant…",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "acts.offline",
+    "fr": "Pas de réseau.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "acts.offline_hint",
+    "fr": "Le scellé s'enregistre quand le réseau revient.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "acts.unreachable",
+    "fr": "Séra ne répond pas.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "acts.unreachable_hint",
+    "fr": "Réessayez dans un moment. Rien n'est perdu.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "acts.refused",
+    "fr": "Séra a refusé.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "acts.verify_accepted",
+    "fr": "Vérification acceptée.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "acts.verify_refused",
+    "fr": "Colis refusé. Le vendeur garde le colis.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "acts.custody_taken",
+    "fr": "Colis sous votre garde.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "sos.reached",
+    "fr": "Séra a reçu l'alerte.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "sos.reached_hint",
+    "fr": "Restez où vous êtes si c'est sûr.",
+    "register": "neutral",
+    "screenClass": "instruction"
   }
 ]

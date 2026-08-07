@@ -30,6 +30,19 @@ import {
   type RiderRegistrySnapshot,
   type ShiftOutcome,
 } from '../src/rider-registry.js';
+import {
+  acknowledge as sosAcknowledge,
+  SOS_EVENT_ACKNOWLEDGED,
+  SOS_EVENT_CREATED,
+  ackSeconds,
+  board as sosBoard,
+  raise as sosRaise,
+  raiseFromBody,
+  sosKey,
+  SOS_PREFIX,
+  type SosIncident,
+  type SosStore,
+} from './sos-book.js';
 
 /**
  * LogisticsDO — SE-LIVE-1: THE one durable logistics authority.
@@ -406,6 +419,42 @@ export class LogisticsDO {
         .sort((a, b) => (a.riderId < b.riderId ? -1 : 1));
       return Response.json({ ok: true, codes });
     }
+    /**
+     * ⚠ THE ACK IS THE FOUNDER'S ACT, AND ONLY HIS. It lives behind the ops
+     * key so a rider can never acknowledge their own alert — the same
+     * two-door separation custody draws between attesting and acting. Nothing
+     * on this service acknowledges an incident on a timer: SE7.1's « ack
+     * within SLA » is a target to MEASURE (`ackSeconds`), never a countdown
+     * that answers for a human who has not looked.
+     */
+    if (request.method === 'GET' && pathname === '/ops/sos') {
+      const incidents = await sosBoard(this.sosStore);
+      return Response.json({
+        ok: true,
+        // Open first and never aged out — SE7.1, « persistent signal until ack ».
+        incidents: incidents.map((i) => ({ ...i, ackSeconds: ackSeconds(i) })),
+      });
+    }
+    if (request.method === 'POST' && pathname === '/ops/sos/ack') {
+      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      if (body === null || !isStr(body['command_id']) || !isStr(body['by'])) return malformed();
+      const outcome = await sosAcknowledge(
+        this.sosStore,
+        (body['command_id'] as string).trim(),
+        (body['by'] as string).trim(),
+        now,
+      );
+      // An ack for an incident nobody raised is refused, never invented: the
+      // ack asserts that a human is responding to a REAL alert.
+      if (!outcome.ok) return Response.json(outcome, { status: 404 });
+      return Response.json({
+        ok: true,
+        duplicate: outcome.duplicate,
+        incident: outcome.incident,
+        ackSeconds: ackSeconds(outcome.incident),
+        event: SOS_EVENT_ACKNOWLEDGED,
+      });
+    }
     if (request.method === 'POST' && pathname === '/ops/assign') {
       const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
       if (
@@ -659,6 +708,37 @@ export class LogisticsDO {
       if (request.method === 'GET' && pathname === '/rider/moi') {
         return Response.json({ ok: true, rider: this.riderView(riderId) });
       }
+      /**
+       * ⚠ SE-LIVE-4d — THE SOS WIRE (founder order, 2026-08-07). Until this
+       * route existed the rider app's SOS reached NOTHING: the raise went to
+       * the app's own demo store and the screen said « Alerte envoyée ». This
+       * is where it actually arrives.
+       *
+       * THE RIDER IS THE ONE WHO RAISES, and their own code is what proves it
+       * — `riderId` comes from `resolveCode` above, never from the body, so an
+       * alert can never be filed under someone else's name. The app's minted
+       * `command_id` makes one press one incident however many times the
+       * outbox retries it.
+       *
+       * NO SHIFT CHECK, DELIBERATELY. A rider in danger off-shift is still a
+       * rider in danger. `onShift` is recorded as context for the dispatcher,
+       * never as a condition of being heard.
+       */
+      if (request.method === 'POST' && pathname === '/rider/sos') {
+        const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+        const incident = raiseFromBody({ ...(body ?? {}), riderId }, now);
+        if (incident === null) return malformed();
+        const outcome = await sosRaise(this.sosStore, incident);
+        if (!outcome.ok) return malformed();
+        // The rider is told it ARRIVED — which is now a true statement — and
+        // nothing more. Whether anyone has answered is `state`, not a promise.
+        return Response.json({
+          ok: true,
+          duplicate: outcome.duplicate,
+          incident: outcome.incident,
+          event: SOS_EVENT_CREATED,
+        });
+      }
       if (request.method === 'POST' && pathname === '/rider/ack-privacy') {
         this.registry.acknowledgePrivacyNotice(riderId, PRIVACY_NOTICE_VERSION, now);
         return Response.json({ ok: true, noticeVersion: PRIVACY_NOTICE_VERSION });
@@ -699,6 +779,24 @@ export class LogisticsDO {
     }
 
     return Response.json({ ok: false, reason: 'not_found' }, { status: 404 });
+  }
+
+  /**
+   * SE-LIVE-4d — the SOS book's storage, bound to this object. One durable
+   * row per incident, keyed by the app's minted `command_id`, so a retry finds
+   * the incident it already opened instead of opening another.
+   */
+  private get sosStore(): SosStore {
+    return {
+      get: (key) => this.state.storage.get<SosIncident>(key),
+      put: async (key, value) => {
+        await this.state.storage.put(key, value);
+      },
+      list: async () => {
+        const rows = await this.state.storage.list<SosIncident>({ prefix: SOS_PREFIX });
+        return [...rows.values()];
+      },
+    };
   }
 
   /** Hash the presented code and look it up — a miss, a non-string, and a
