@@ -16,6 +16,24 @@ jobs:
     runs-on: ubuntu-latest
     env:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      # ═══ SE-LIVE-4c-iv — THE TWO WORKER ADDRESSES, AND NOTHING ELSE ═══
+      #
+      # These are repo VARIABLES, not secrets, and that is correct: they are
+      # public URLs (the same ones `/health` answers on). `EXPO_PUBLIC_*` is
+      # INLINED INTO THE SHIPPED BUNDLE, so anything named here is published —
+      # which is why the founder's `SERA_CUSTODY_OPS_SECRET`, the
+      # service-to-service `SERA_RIDER_VERIFY_SECRET`, and every other key are
+      # absent and must stay absent. A test asserts that.
+      #
+      # THE RIDER'S OWN CODE IS NEVER HERE EITHER. It is a credential, typed by
+      # the rider on the sign-in screen, held in memory for the session only.
+      #
+      # UNSET ⇒ the app builds and runs, signs nobody in, and says plainly that
+      # this build cannot reach Séra. It never fakes a session or a custody
+      # seal. Set both variables in Settings → Variables to arm the preview
+      # against the live Workers.
+      EXPO_PUBLIC_SERA_LOGISTICS_BASE: ${{ vars.LOGISTICS_BASE }}
+      EXPO_PUBLIC_SERA_CUSTODY_BASE: ${{ vars.CUSTODY_BASE }}
     steps:
       - name: Check EXPO_TOKEN presence (skip gracefully when absent)
         id: token
@@ -43,6 +61,15 @@ jobs:
           git config --global --add url."https://x-access-token:${{ secrets.PLATFORM_CONTRACTS_READ_TOKEN }}@github.com/beurni2/platform-contracts".insteadOf "git@github.com:beurni2/platform-contracts"
       - run: pnpm install --frozen-lockfile
         if: steps.token.outputs.present == 'true'
+      - name: Say which Séra this build can reach (URLs are public; never keys)
+        if: steps.token.outputs.present == 'true'
+        run: |
+          if [ -z "$EXPO_PUBLIC_SERA_LOGISTICS_BASE" ] || [ -z "$EXPO_PUBLIC_SERA_CUSTODY_BASE" ]; then
+            echo "::warning title=Aperçu non relié à Séra::LOGISTICS_BASE et/ou CUSTODY_BASE ne sont pas configurés (Settings → Variables). L'aperçu se lance, mais aucun code coursier ne pourra ouvrir de session et aucun scellé ne pourra être enregistré — l'écran le dit clairement."
+          else
+            echo "logistics: $EXPO_PUBLIC_SERA_LOGISTICS_BASE"
+            echo "custody:   $EXPO_PUBLIC_SERA_CUSTODY_BASE"
+          fi
       - name: Publish rider-app preview update (EAS, non-interactive)
         if: steps.token.outputs.present == 'true'
         working-directory: apps/rider-app
