@@ -858,6 +858,56 @@ describe('the founder-attested rider identity can be read back', () => {
     // And it still leaks no secret.
     expect(JSON.stringify(res.json)).not.toContain(code);
   });
+
+  /**
+   * ⚠ ROUND 6 (MAJOR) — WHICH ATTEMPT BURNED THE CODE. Three refusals that
+   * differ in the only way that matters were rendered identically: a wrong
+   * code burns nothing, an OUT-OF-POLICY check list BURNS the single-use code
+   * (verifyPickup consumes before it judges), and a presentation after the
+   * spend burns nothing. An `invalid` verification never reaches the ledger,
+   * so this route is the only place that fact can be read at all.
+   */
+  it('tells apart the refusal that SPENT the code from the two that did not', async () => {
+    const order = 'ord-attest-burn';
+    const code = 'PICKUP-BURN-0014';
+    expect((await call('POST', '/ops/order/open', opsAuth, {
+      orderId: order, taskId: 'task-ab', packageId: 'pkg-ab', correlationId: 'corr-ab', supplierId: 'sup-ab',
+    })).status).toBe(200);
+    expect((await call('POST', '/ops/secrets/arm', opsAuth, {
+      orderId: order, command_id: 'arm-ab', kind: 'pickup_verification_code', secret: code,
+    })).status).toBe(200);
+
+    // 1. wrong code — burns nothing
+    await call('POST', '/ops/verification', opsAuth, {
+      orderId: order, command_id: 'v-wrong', riderId: 'R-WRONG', presentedPickupCode: 'NOPE',
+      checkResults: ALL_PASS, dwellSec: 100, evidenceBundleId: 'ev', at: T,
+    });
+    // 2. out-of-policy — SPENDS the code
+    const oop: Record<string, boolean> = { ...ALL_PASS, authenticity: true };
+    await call('POST', '/ops/verification', opsAuth, {
+      orderId: order, command_id: 'v-oop', riderId: 'R-OOP', presentedPickupCode: code,
+      checkResults: oop, dwellSec: 100, evidenceBundleId: 'ev', at: T,
+    });
+    // 3. after the spend — burns nothing
+    await call('POST', '/ops/verification', opsAuth, {
+      orderId: order, command_id: 'v-late', riderId: 'R-LATE', presentedPickupCode: code,
+      checkResults: ALL_PASS, dwellSec: 100, evidenceBundleId: 'ev', at: T,
+    });
+
+    const rows = (await call('GET', `/ops/attestations?orderId=${order}`, opsAuth)).json['attestations'] as Json[];
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toMatchObject({ riderId: 'R-WRONG', reason: 'pickup_code_refused', detail: 'secret_mismatch' });
+    // THE ONE THAT SPENT IT, and it is distinguishable from the other two.
+    expect(rows[1]).toMatchObject({ riderId: 'R-OOP', reason: 'check_not_in_policy', detail: 'authenticity' });
+    expect(rows[2]).toMatchObject({ riderId: 'R-LATE', reason: 'pickup_code_refused', detail: 'secret_already_used' });
+    expect(rows[1]?.['reason']).not.toBe(rows[0]?.['reason']);
+
+    // Corroborated independently: the code really is spent.
+    const rearm = await call('POST', '/ops/secrets/arm', opsAuth, {
+      orderId: order, command_id: 'arm-ab', kind: 'pickup_verification_code', secret: code,
+    });
+    expect(rearm.json).toMatchObject({ duplicate: true, spent: true });
+  });
 });
 
 describe('two orders that share a secret STRING are still two separate custody files', () => {

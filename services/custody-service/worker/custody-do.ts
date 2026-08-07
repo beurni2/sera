@@ -579,7 +579,19 @@ export class CustodyDO {
      * INTEGRITY failure, not a request error: the file is misfiled, whoever is
      * asking.
      */
-    const misfiled = objectName !== null && this.chain !== null && this.chain.order_id !== objectName;
+    /**
+     * ⚠ VERIFIER MAJOR (round 6) — AND A MISSING ANCHOR IS A FAILURE, NOT A
+     * PASS. The first cut read `objectName !== null && …`, so a caller that
+     * simply OMITTED the header skipped the check entirely: the round-5
+     * blocker in full — serve, attest `headMatches: true`, and accept an act
+     * on another order's record — with the fix present. Not reachable through
+     * the shipped router (it always sets the header, and builds a fresh header
+     * object so a caller cannot forge one), but SE-LIVE-4 adds the rider's own
+     * door, and « a gate added later is a gate that already let something
+     * through ». The object refuses to act on a record it has not been told
+     * the name of.
+     */
+    const misfiled = this.chain !== null && this.chain.order_id !== objectName;
 
     const failure = this.integrityFailure ?? (misfiled ? 'chain_does_not_name_this_object' : null);
     if (failure !== null) {
@@ -908,6 +920,21 @@ export class CustodyDO {
             dwellSec: cmd.input.dwellSec,
             checkResults: { ...cmd.input.checkResults },
             outcome: row.outcome.body['kind'] ?? row.outcome.body['reason'] ?? 'unknown',
+            /**
+             * ⚠ VERIFIER MAJOR (round 6) — WHICH ATTEMPT BURNED THE CODE.
+             * Three materially different refusals rendered identically here:
+             * a wrong code (burns nothing), an out-of-policy check list (BURNS
+             * the single-use code, because `verifyPickup` consumes before it
+             * judges), and a presentation after the spend (burns nothing).
+             * An `invalid` verification never reaches the ledger, so the
+             * command log is the ONLY record of which act spent the code — and
+             * this route is the only thing that reads the command log. Both
+             * fields were already in the recorded outcome; dropping them
+             * re-created, for the consumption, exactly the « protected and
+             * unreadable » defect this route was added to fix for `riderId`.
+             */
+            reason: row.outcome.body['reason'] ?? null,
+            detail: row.outcome.body['detail'] ?? null,
             recorded: row.outcome.httpStatus === 200,
           };
         });

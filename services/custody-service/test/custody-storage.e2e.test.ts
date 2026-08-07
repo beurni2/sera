@@ -170,6 +170,122 @@ async function call(mf: Miniflare, method: string, path: string, body?: unknown)
   return { status: res.status, json };
 }
 
+/**
+ * ⚠ SE-LIVE-3 VERIFIER, ROUND 6 (MINOR) — DoD 4's own clause had NO TEST. Both
+ * suites boot WITH the ops secret bound, so « no secret configured ⇒ everything
+ * refuses with one uniform 401 » was asserted nowhere: the existing tests only
+ * covered a wrong or missing BEARER against a Worker whose secret was set. The
+ * behaviour was correct; the clause was unpinned, which is how a fail-closed
+ * door quietly becomes a fail-open one.
+ */
+describe('DoD 4 — a Worker deployed with NO ops secret refuses everything, identically', () => {
+  it('answers one uniform 401 on every route and writes nothing to storage', async () => {
+    const dir = freshDir('unarmed');
+    const mf = new Miniflare({
+      modules: true,
+      scriptPath: SCRIPT,
+      compatibilityDate: '2025-07-05',
+      compatibilityFlags: ['nodejs_compat'],
+      durableObjects: { CUSTODY: 'CustodyDO' },
+      durableObjectsPersist: dir,
+      bindings: {}, // ← the whole point: the secret is ABSENT
+    });
+
+    // /health stays open by design — it carries no custody data.
+    const health = await mf.dispatchFetch('http://custody/health');
+    expect(health.status).toBe(200);
+
+    const bodies: string[] = [];
+    for (const [method, path, auth] of [
+      ['GET', '/ops/ledger?orderId=o', {}],
+      ['GET', '/ops/ledger?orderId=o', { Authorization: 'Bearer anything' }],
+      ['GET', '/ops/ledger?orderId=o', { Authorization: 'Bearer ' }],
+      ['GET', '/ops/attestations?orderId=o', { Authorization: 'Bearer x' }],
+      ['GET', '/ops/ledger/verify?orderId=o', {}],
+      ['GET', '/ops/events?orderId=o', {}],
+      ['POST', '/ops/order/open', {}],
+      ['POST', '/ops/secrets/arm', { Authorization: 'Bearer x' }],
+      ['POST', '/ops/verification', {}],
+    ] as const) {
+      const res = await mf.dispatchFetch(`http://custody${path}`, {
+        method,
+        headers: { 'Content-Type': 'application/json', ...auth },
+        ...(method === 'POST' ? { body: JSON.stringify({ orderId: 'o' }) } : {}),
+      });
+      expect(res.status).toBe(401);
+      bodies.push(await res.text());
+    }
+    // IDENTICAL — a difference between any two would be something to probe.
+    expect(new Set(bodies).size).toBe(1);
+    expect(JSON.parse(bodies[0] as string)).toEqual({ error: 'unauthorized' });
+
+    await mf.dispose();
+    // And an unarmed door leaves NO trace: nothing reached an object at all.
+    expect(allBytes(dir)).not.toContain('custody:chain:v1');
+  });
+});
+
+/**
+ * ⚠ SE-LIVE-3 VERIFIER, ROUND 6 (MAJOR) — A MISSING ANCHOR IS A FAILURE.
+ * The object's identity check read `objectName !== null && …`, so a caller
+ * that simply OMITTED the header skipped it entirely — serve, attest
+ * `headMatches: true`, and accept an act on another order's record, with the
+ * round-5 fix present. The shipped router always sets the header, so this is
+ * not reachable through it today; SE-LIVE-4 adds the rider's own door, and a
+ * gate added later is a gate that already let something through.
+ *
+ * This test goes straight to the Durable Object namespace — exactly what a
+ * SECOND caller of it looks like — bypassing the router entirely.
+ */
+describe('the object refuses to act on a record it was not told the name of', () => {
+  it('a caller that omits X-Custody-Object is refused on every route', async () => {
+    const dir = freshDir('no-anchor');
+    const CODE = 'PICKUP-ANCHOR-9800';
+    const mf = boot(dir);
+    expect((await call(mf, 'POST', '/ops/order/open', {
+      orderId: 'ord-anchor', taskId: 't', packageId: 'pkg-anchor', correlationId: 'c', supplierId: 's',
+    })).status).toBe(200);
+    expect((await call(mf, 'POST', '/ops/secrets/arm', {
+      orderId: 'ord-anchor', command_id: 'arm-x', kind: 'pickup_verification_code', secret: CODE,
+    })).status).toBe(200);
+
+    // Through the ROUTER (header present) the record serves normally.
+    expect((await call(mf, 'GET', '/ops/ledger?orderId=ord-anchor')).status).toBe(200);
+
+    // Straight to the object, with NO header — the second-caller shape.
+    const ns = await mf.getDurableObjectNamespace('CUSTODY');
+    const stub = ns.get(ns.idFromName('ord-anchor'));
+    for (const [method, path] of [
+      ['GET', '/ledger'],
+      ['GET', '/events'],
+      ['GET', '/attestations'],
+    ] as const) {
+      const res = await stub.fetch(`https://custody${path}`, { method });
+      const text = await res.text();
+      expect(res.status).toBe(409);
+      expect(JSON.parse(text)).toMatchObject({ reason: 'chain_does_not_name_this_object' });
+      // It must not leak the record it is refusing to serve.
+      expect(text).not.toContain('pkg-anchor');
+    }
+    // `/ledger/verify` ANSWERS rather than refusing — that is its job (round 5)
+    // — but the verdict must name the misfiling, not report a healthy file.
+    const verdict = await stub.fetch('https://custody/ledger/verify', { method: 'GET' });
+    expect(verdict.status).toBe(200);
+    expect(JSON.parse(await verdict.text())).toMatchObject({
+      ok: false, headMatches: false, reason: 'chain_does_not_name_this_object',
+    });
+
+    // …and it must not accept an act either.
+    const act = await stub.fetch('https://custody/secrets/arm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderId: 'ord-anchor', command_id: 'arm-noanchor', kind: 'custody_seal', secret: 'X' }),
+    });
+    expect(act.status).toBe(409);
+    await mf.dispose();
+  });
+});
+
 describe('SECRETS AT REST — the spec says « single-use codes hashed », and now the disk agrees', () => {
   const ORDER = 'ord-at-rest';
   const PICKUP = 'PICKUP-AT-REST-9001';
@@ -640,6 +756,48 @@ describe('a half-written custody file fails closed and says which half is missin
     const res = await call(mf, 'GET', '/ops/ledger?orderId=ord-half-b');
     expect(res.status).toBe(409);
     expect(res.json).toMatchObject({ reason: 'command_log_tampered' });
+    await mf.dispose();
+  });
+});
+
+/**
+ * ⚠ SE-LIVE-3 VERIFIER, ROUND 6 (MINOR) — `/attestations` was exercised by one
+ * happy-path test and appeared nowhere in this suite, so its refusal on a
+ * damaged file and its no-leak property under tampering were both unpinned.
+ */
+describe('the attestation route refuses a damaged file and leaks nothing', () => {
+  it('409s on a tampered log, and never returns a secret or a digest', async () => {
+    const dir = freshDir('attest-damaged');
+    const CODE = 'PICKUP-ATTEST-9700';
+    const AT = '2026-08-07T09:00:00.000Z';
+    let mf = boot(dir);
+    expect((await call(mf, 'POST', '/ops/order/open', {
+      orderId: 'ord-attest-d', taskId: 't', packageId: 'p', correlationId: 'c', supplierId: 's',
+    })).status).toBe(200);
+    expect((await call(mf, 'POST', '/ops/secrets/arm', {
+      orderId: 'ord-attest-d', command_id: 'arm-a', kind: 'pickup_verification_code', secret: CODE,
+    })).status).toBe(200);
+    expect((await call(mf, 'POST', '/ops/verification', {
+      orderId: 'ord-attest-d', command_id: 'v-a', riderId: 'rider-ATTEST', presentedPickupCode: CODE,
+      checkResults: ALL_PASS, dwellSec: 120, evidenceBundleId: 'ev-a', at: AT,
+    })).status).toBe(200);
+
+    // Healthy: it answers, and carries neither the code nor any digest.
+    const ok = await call(mf, 'GET', '/ops/attestations?orderId=ord-attest-d');
+    expect(ok.status).toBe(200);
+    expect((ok.json['attestations'] as Json[])[0]).toMatchObject({ riderId: 'rider-ATTEST' });
+    const text = JSON.stringify(ok.json);
+    expect(text).not.toContain(CODE);
+    expect(text).not.toMatch(/[0-9a-f]{64}/); // no digest either
+    await mf.dispose();
+
+    expect(forgeInStoredCommands(dir, 'rider-ATTEST', 'rider-FORGED')).toBeGreaterThan(0);
+
+    mf = boot(dir);
+    const damaged = await call(mf, 'GET', '/ops/attestations?orderId=ord-attest-d');
+    expect(damaged.status).toBe(409);
+    expect(damaged.json).toMatchObject({ reason: 'command_log_tampered' });
+    expect(JSON.stringify(damaged.json)).not.toContain('rider-');
     await mf.dispose();
   });
 });
