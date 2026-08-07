@@ -878,3 +878,23 @@ The round answered the question it was sent to answer, and the answer is good ne
 - **⚠ CORRECTIONS TO MY OWN CLAIMS, both from this round:** ① the threat-model ruling says a storage forgery « must be deliberate and complete ». **It need not be either.** The verifier opened a throwaway persist dir, opened an order there carrying a victim's ids and a fabricated verification, and copied those rows over the real object — which then minted every hash itself and answered `valid:true, headMatches:true`. The floor is « run the Worker in a sandbox and type what you want », not « understand the hash scheme ». The ruling's conclusion is unchanged (this is the out-of-scope class), but its reasoning was wrong and is corrected here. ② `tooLargeToCommit`'s headroom is **~15.7 KB**, not the 18 KB I recorded — the secret is hashed to 64 hex chars before it reaches the row, so `MAX_SECRET` does not contribute. Same conclusion, corrected number.
 - **DISCLOSURE CORRECTED:** the rollback note said a consistent-snapshot rollback is « undetectable ». True, but it understated the cost: a rollback to a pre-verification snapshot leaves `/ledger/verify` reporting a healthy file **and un-spends the single-use pickup code** — a different rider presented the same string and got `200 accepted`. DoD 6 holds across RESTARTS, not across ROLLBACKS, and that distinction now belongs in the disclosure.
 - **Evidence:** typecheck 0 · custody-service **156/156** (was 152; +4) · `pnpm test` 15/15 · `run-gates.sh` exit 0 **ALL GATES GREEN**. Both MAJOR fixes mutation-checked — and **both initially had NO pin at all**; the mutation exposed that, the tests were written, and only then were the fixes counted. The verifier independently re-ran all five round-5 mutations and confirmed the JOURNAL's counts.
+
+## 2026-08-07 · FOUNDER RULING — `packageId` identity DEFERRED, and named as a prerequisite for SE-LIVE-4
+« defer it, note it for SE-LIVE-4 » (2026-08-07), on the CTO's recommendation, resolving the §7 conflict the round-6 verifier surfaced.
+
+**THE CONFLICT, quoted.** `docs/Sera-Build-Spec.md:79` — `CustodyRecord{ packageId, currentCustodian, transitions[], exception? }  // exactly one current custodian` — keys the custody record by **package**, and SE-I04 (line 36), enforced as a **build-failing CI gate** (line 179), says « Every package has **exactly one current custodian** ». SE-LIVE-3's DoD 3 says « One Durable Object per **order** ». The DoD was implemented faithfully, and the consequence is real and reachable **through the front door with the founder's key alone, no attacker**: two orders can each open a custody file naming the same `packageId`, and each will record `pickup_verification` entries against it with its own custodian view. Proven by the verifier:
+
+```
+open ORD-A pkg=PKG-SHARED-0001 -> 200
+open ORD-B pkg=PKG-SHARED-0001 -> 200   (same package, same task)
+both: ledger.packageId=PKG-SHARED-0001, entries=1, currentCustodian=null
+```
+
+`custodianByPackage` (`src/custody-ledger.ts:61`) is per-ledger and per-object, the DO is `idFromName(orderId)`, and nothing upstream binds it either — `logistics-service` does not carry `packageId` at all.
+
+**THE RULING: deferred, and why that is safe TODAY.** No answer this object serves is wrong right now, because **no custody transition exists in this slice** — `currentCustodian` is always `null`, by the same founder ruling (2026-08-06) that put seal and transitions in SE-LIVE-4. SE-I04 is a statement about custodians, and there are none yet. Re-addressing the object now would redo the binding work that five verifier rounds hardened, to fix something with no live consequence.
+
+**⚠ NAMED PREREQUISITE FOR SE-LIVE-4 — this is the slice that makes it real.** SE-LIVE-4 adds custody transitions, and a transition is exactly what turns « two files over one package » from harmless into an SE-I04 violation with two live custodians. That slice may NOT begin its custody-transition work until this is settled, and the decision belongs in its design, not after it:
+- either the object keys on `packageId` (and the order→package mapping becomes an explicit, first-wins binding), or
+- `packageId` uniqueness becomes an enforced UPSTREAM guarantee with a stated owner, and this object refuses a package it has not been told is exclusively its own.
+The work order for SE-LIVE-4 must quote Build Spec:79 + SE-I04 and carry this as its first item. **Building transitions on today's addressing without settling it is the failure this note exists to prevent.**
