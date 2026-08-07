@@ -1159,3 +1159,30 @@ The acts SE-I05 gates custody on: `POST /rider/verification` (SE4.2) and `POST /
 **Evidence:** typecheck 0 · rider-app **202/202** (was 179; +23) · copy-lint 0 violations at 175 entries · `run-gates.sh` exit 0 ALL GATES GREEN · workflow YAML parses.
 
 **STILL OPEN IN 4c (not built, named):** the screens are not yet wired to these ports — `App.tsx` still runs the demo world end to end, and the sign-in screen is not mounted. That is the last piece of 4c and it is UI assembly over ports that are now built and proven. **No verifier has run on 4c yet**; per the standing order it runs when the slice is whole, before any merge request.
+
+## 2026-08-07 · SE-LIVE-4c-v — the door, wired into the app
+`App.tsx` now mounts the sign-in screen, gated on whether this build was given a Séra to reach. **WIRED** ⇒ the rider's own code first, then their real session; **UNWIRED** ⇒ the walkable demo world exactly as before, so the founder's preview and the gallery are untouched. One or the other, never both — a build that can reach Séra must never show demo courses beside real ones.
+
+**⚠ MY FIRST CUT WAS WRONG, AND TWO PINNED INVARIANTS CAUGHT IT.** I early-returned a whole second shell (its own safe area, its own scroll container). That broke:
+- `faso-scroll` — « exactly one scroll surface »;
+- **`wo6-invariants` R14 — « the SOS button + sheet are mounted UNCONDITIONALLY, outside every screen branch ».**
+
+The second was a **genuine design error, not a test to bend**. A rider in danger must not have to sign in first. « SOS visible from every rider screen » (Building Plan l.88) means the sign-in screen too — and the comment I had written to justify its absence reasoned about *how useful the data would be to a dispatcher* rather than about *the person holding the phone*. Dispatch can act on « someone has this app open, something is wrong, here is coarse location » even with no rider named. This is exactly what a pinned invariant is for, and it caught me.
+
+Rendering the door **inside the existing single tree** fixes both and is better anyway: it inherits the header, the offline banner and the SOS disc for free, because it is simply another screen rather than a shell beside the app. The change is two inserted lines around the existing content block — **no screen branch is re-indented or touched**.
+
+*(A third failure was self-inflicted prose: the scroll invariant is a source scan, and my own comment contained the literal element name, so the count read 2. I reworded the comment — the test was right and the code was right.)*
+
+- A thrown port still answers (`unreachable`), never a spinner that never stops — a dead button is the cruellest failure on this screen.
+- The code lives in React state for the session and is never written to the outbox or the document store; asserted.
+
+**MUTATION EVIDENCE — three mutations, isolated, tree clean after each:** gating on runtime state instead of build wiring (a demo build would demand a code) → 3 kills · letting a wired build fall through to the demo world → 3 kills · swallowing a thrown port → 1 kill.
+
+**Evidence:** typecheck 0 · rider-app **210/210** (was 202; +8) · copy-lint 0 violations at 175 entries · `run-gates.sh` exit 0 ALL GATES GREEN.
+
+### ⏳ WHAT REMAINS IN 4c, and why I stopped here rather than guessing
+The two custody ACTS are built, tested and mutation-proven as ports (4c-iii/iv) but are **not yet wired to the verify and seal screens**, because wiring them needs input surfaces that **do not exist in the app today**:
+- the verify screen is a checklist plus an action — it **never collects the `pickupVerificationCode`**;
+- the seal screen shows a **hardcoded demo constant** (`SEAL_ID = SC-77 412`), not a real `custodySealId`, and captures no `sealPhotoRefs`.
+
+**These are real-world flow questions, not plumbing, and they are the founder's:** how does the rider receive the pickup code (spoken by the seller? printed on the pick slip?), and does the seal id get typed or scanned off the physical seal? Both are custody secrets under Law 3, so inventing the flow here would be exactly the « interpret rather than ask » failure. **Asked, not assumed.**
