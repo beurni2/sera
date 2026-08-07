@@ -406,6 +406,222 @@ describe('a custody file cannot be opened under a name that is not its chain', (
   });
 });
 
+/**
+ * ⚠ SE-LIVE-3 VERIFIER, ROUND 2 (MAJOR) — A REDELIVERY MUST REPEAT THE ANSWER
+ * IT GOT, NOT INVENT A CHEERFUL ONE.
+ *
+ * Round 1 made every spine-reaching command durable (right) and made
+ * idempotency content-based (right). Together they produced a lie: a command
+ * that FAILED was now in the log, so its honest redelivery was answered
+ * `200 {ok:true}`. The verifier drove three shapes of it, and all three are
+ * pinned below. `command_id` exists precisely FOR at-least-once producers, so
+ * the retry path is the one that must never mislead.
+ */
+describe('a redelivered command repeats its real answer — refusals included', () => {
+  const order = 'ord-custody-honest';
+  const code = 'PICKUP-HONEST-0005';
+
+  it('opens and arms', async () => {
+    expect((await call('POST', '/ops/order/open', opsAuth, {
+      orderId: order, taskId: 'task-h', packageId: 'pkg-h', correlationId: 'corr-h', supplierId: 'sup-h',
+    })).status).toBe(200);
+    expect((await call('POST', '/ops/secrets/arm', opsAuth, {
+      orderId: order, command_id: 'arm-h', kind: 'pickup_verification_code', secret: code,
+    })).status).toBe(200);
+  });
+
+  it('A WRONG CODE stays refused on redelivery — a timed-out producer never concludes the pickup verified', async () => {
+    const body = {
+      orderId: order, command_id: 'v-wrong-h', riderId: 'rider-h',
+      presentedPickupCode: 'NOT-THE-CODE', checkResults: ALL_PASS, dwellSec: 150,
+      evidenceBundleId: 'ev-h', at: T,
+    };
+    const first = await call('POST', '/ops/verification', opsAuth, body);
+    expect(first.status).toBe(409);
+    expect(first.json).toMatchObject({ kind: 'invalid', reason: 'pickup_code_refused' });
+
+    // THE PIN: the same command again — same status, same reason, and it says
+    // plainly that it is a repeat. Before the fix this was 200 {ok:true}.
+    const again = await call('POST', '/ops/verification', opsAuth, body);
+    expect(again.status).toBe(409);
+    expect(again.json).toMatchObject({ kind: 'invalid', reason: 'pickup_code_refused', duplicate: true });
+    expect((await call('GET', `/ops/ledger?orderId=${order}`, opsAuth)).json['entries']).toEqual([]);
+  });
+
+  it('A REFUSED RE-ARM stays refused — the caller is never told a spent code is armed', async () => {
+    // Spend the code first.
+    expect((await call('POST', '/ops/verification', opsAuth, {
+      orderId: order, command_id: 'v-ok-h', riderId: 'rider-h', presentedPickupCode: code,
+      checkResults: ALL_PASS, dwellSec: 150, evidenceBundleId: 'ev-h', at: T,
+    })).status).toBe(200);
+
+    const rearm = {
+      orderId: order, command_id: 'rearm-h', kind: 'pickup_verification_code', secret: 'A-BRAND-NEW-CODE',
+    };
+    const first = await call('POST', '/ops/secrets/arm', opsAuth, rearm);
+    expect(first.status).toBe(409);
+    expect(first.json).toMatchObject({ reason: 'secret_already_used' });
+
+    const again = await call('POST', '/ops/secrets/arm', opsAuth, rearm);
+    expect(again.status).toBe(409);
+    expect(again.json).toMatchObject({ reason: 'secret_already_used', duplicate: true });
+
+    // …and the code that 200 would have implied was armed still does not work.
+    const use = await call('POST', '/ops/verification', opsAuth, {
+      orderId: order, command_id: 'v-newcode-h', riderId: 'rider-h', presentedPickupCode: 'A-BRAND-NEW-CODE',
+      checkResults: ALL_PASS, dwellSec: 150, evidenceBundleId: 'ev-h', at: T,
+    });
+    expect(use.status).toBe(409);
+  });
+
+  it('ACCEPTED and REFUSED are still TELLABLE APART on redelivery — a refusal a retry cannot read back is not first-class', async () => {
+    const accepted = await call('POST', '/ops/verification', opsAuth, {
+      orderId: order, command_id: 'v-ok-h', riderId: 'rider-h', presentedPickupCode: code,
+      checkResults: ALL_PASS, dwellSec: 150, evidenceBundleId: 'ev-h', at: T,
+    });
+    expect(accepted.status).toBe(200);
+    expect(accepted.json).toMatchObject({ status: 'duplicate', kind: 'accepted', ledgerSeq: 0 });
+
+    // A refusal on its own order, then its redelivery.
+    const other = 'ord-custody-honest-refused';
+    const otherCode = 'PICKUP-HONEST-0006';
+    expect((await call('POST', '/ops/order/open', opsAuth, {
+      orderId: other, taskId: 'task-h2', packageId: 'pkg-h2', correlationId: 'corr-h2', supplierId: 'sup-h2',
+    })).status).toBe(200);
+    expect((await call('POST', '/ops/secrets/arm', opsAuth, {
+      orderId: other, command_id: 'arm-h2', kind: 'pickup_verification_code', secret: otherCode,
+    })).status).toBe(200);
+    const refusedBody = {
+      orderId: other, command_id: 'v-refused-h2', riderId: 'rider-h2', presentedPickupCode: otherCode,
+      checkResults: { ...ALL_PASS, damage: false }, dwellSec: 200, evidenceBundleId: 'ev-h2', at: T,
+    };
+    expect((await call('POST', '/ops/verification', opsAuth, refusedBody)).json).toMatchObject({ kind: 'refused' });
+    const refusedAgain = await call('POST', '/ops/verification', opsAuth, refusedBody);
+    expect(refusedAgain.status).toBe(200);
+    expect(refusedAgain.json).toMatchObject({ status: 'duplicate', kind: 'refused' });
+    // The two 200s do NOT say the same thing — which is the whole point.
+    expect(refusedAgain.json['kind']).not.toBe(accepted.json['kind']);
+  });
+});
+
+/**
+ * ⚠ SE-LIVE-3 VERIFIER, ROUND 2 (MAJOR) — the name guard was scoped to the one
+ * route round 1's reproduction happened to use. `/secrets/arm` and
+ * `/verification` ignore `body.orderId` and act on this object's own chain, so
+ * a query/body disagreement armed a live secret on the WRONG order and
+ * answered `200 armed`.
+ */
+describe('every route refuses a body that names another order', () => {
+  it('an arm routed to A with a body naming B is refused, and neither order is touched', async () => {
+    const a = 'ord-name-a';
+    const b = 'ord-name-b';
+    for (const id of [a, b]) {
+      expect((await call('POST', '/ops/order/open', opsAuth, {
+        orderId: id, taskId: `task-${id}`, packageId: `pkg-${id}`, correlationId: `corr-${id}`, supplierId: 'sup-n',
+      })).status).toBe(200);
+    }
+
+    const crossed = await call('POST', `/ops/secrets/arm?orderId=${a}`, opsAuth, {
+      orderId: b, command_id: 'arm-crossed', kind: 'pickup_verification_code', secret: 'CROSSED-CODE',
+    });
+    expect(crossed.status).toBe(400);
+    expect(crossed.json).toMatchObject({ reason: 'order_id_does_not_name_this_object' });
+
+    // The secret landed on NEITHER order — it is unknown to both.
+    for (const id of [a, b]) {
+      const use = await call('POST', '/ops/verification', opsAuth, {
+        orderId: id, command_id: `v-${id}`, riderId: 'rider-n', presentedPickupCode: 'CROSSED-CODE',
+        checkResults: ALL_PASS, dwellSec: 150, evidenceBundleId: 'ev-n', at: T,
+      });
+      expect(use.status).toBe(409);
+      expect(use.json).toMatchObject({ reason: 'pickup_code_refused', detail: 'secret_unknown' });
+    }
+  });
+
+  it('a verification routed to A with a body naming B is refused too', async () => {
+    const crossed = await call('POST', '/ops/verification?orderId=ord-name-a', opsAuth, {
+      orderId: 'ord-name-b', command_id: 'v-crossed', riderId: 'rider-n',
+      presentedPickupCode: 'X', checkResults: ALL_PASS, dwellSec: 150, evidenceBundleId: 'ev-n', at: T,
+    });
+    expect(crossed.status).toBe(400);
+    expect(crossed.json).toMatchObject({ reason: 'order_id_does_not_name_this_object' });
+  });
+});
+
+describe('the instant and the check list are validated, not merely parsed', () => {
+  it('an instant that is not strict ISO-8601 UTC is refused — a custody fact is no place for a loose parse', async () => {
+    const res = await call('POST', '/ops/verification', opsAuth, {
+      orderId: ORDER, command_id: 'v-badtime', riderId: 'rider-1',
+      presentedPickupCode: PICKUP_CODE, checkResults: ALL_PASS, dwellSec: 150,
+      evidenceBundleId: 'ev-1', at: 'Aug 7 2026',
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('a check named __proto__ is REFUSED as out-of-policy, not silently swallowed (SE-I12)', async () => {
+    const order = 'ord-proto';
+    const code = 'PICKUP-PROTO-0007';
+    expect((await call('POST', '/ops/order/open', opsAuth, {
+      orderId: order, taskId: 'task-p', packageId: 'pkg-p', correlationId: 'corr-p', supplierId: 'sup-p',
+    })).status).toBe(200);
+    expect((await call('POST', '/ops/secrets/arm', opsAuth, {
+      orderId: order, command_id: 'arm-p', kind: 'pickup_verification_code', secret: code,
+    })).status).toBe(200);
+
+    // NB: `{ __proto__: true }` in a literal sets the PROTOTYPE and creates no
+    // own key, so it would never reach the wire. Define it as a real own
+    // enumerable property, which is what `JSON.parse` produces on the server.
+    const checks: Record<string, boolean> = { ...ALL_PASS };
+    Object.defineProperty(checks, '__proto__', { value: true, enumerable: true, configurable: true, writable: true });
+    expect(JSON.stringify(checks)).toContain('__proto__');
+
+    const res = await call('POST', '/ops/verification', opsAuth, {
+      orderId: order, command_id: 'v-proto', riderId: 'rider-p', presentedPickupCode: code,
+      checkResults: checks, dwellSec: 150, evidenceBundleId: 'ev-p', at: T,
+    });
+    expect(res.status).toBe(409);
+    expect(res.json).toMatchObject({ kind: 'invalid', reason: 'check_not_in_policy', detail: '__proto__' });
+  });
+});
+
+describe('two orders that share a secret STRING are still two separate custody files', () => {
+  it('spending it on one leaves the other fully usable — across a restart', async () => {
+    const shared = 'SHARED-SECRET-STRING-0008';
+    for (const id of ['ord-share-a', 'ord-share-b']) {
+      expect((await call('POST', '/ops/order/open', opsAuth, {
+        orderId: id, taskId: `task-${id}`, packageId: `pkg-${id}`, correlationId: `corr-${id}`, supplierId: 'sup-s',
+      })).status).toBe(200);
+      expect((await call('POST', '/ops/secrets/arm', opsAuth, {
+        orderId: id, command_id: `arm-${id}`, kind: 'pickup_verification_code', secret: shared,
+      })).status).toBe(200);
+    }
+
+    // Spend it on A only.
+    expect((await call('POST', '/ops/verification', opsAuth, {
+      orderId: 'ord-share-a', command_id: 'v-share-a', riderId: 'rider-s', presentedPickupCode: shared,
+      checkResults: ALL_PASS, dwellSec: 150, evidenceBundleId: 'ev-s', at: T,
+    })).status).toBe(200);
+
+    await restart();
+
+    // A is spent…
+    const reuseA = await call('POST', '/ops/verification', opsAuth, {
+      orderId: 'ord-share-a', command_id: 'v-share-a2', riderId: 'rider-s', presentedPickupCode: shared,
+      checkResults: ALL_PASS, dwellSec: 150, evidenceBundleId: 'ev-s', at: T,
+    });
+    expect(reuseA.status).toBe(409);
+    expect(reuseA.json).toMatchObject({ detail: 'secret_already_used' });
+
+    // …and B is untouched. A shared registry would have burned this too.
+    const useB = await call('POST', '/ops/verification', opsAuth, {
+      orderId: 'ord-share-b', command_id: 'v-share-b', riderId: 'rider-s', presentedPickupCode: shared,
+      checkResults: ALL_PASS, dwellSec: 150, evidenceBundleId: 'ev-s', at: T,
+    });
+    expect(useB.status).toBe(200);
+    expect(useB.json).toMatchObject({ kind: 'accepted' });
+  });
+});
+
 describe('DURABILITY — the whole point of this slice, across a real process death', () => {
   it('the ledger, its hash chain, the emitted events AND the spent code all survive a restart', async () => {
     const beforeLedger = await call('GET', `/ops/ledger?orderId=${ORDER}`, opsAuth);
