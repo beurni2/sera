@@ -93,6 +93,28 @@ function forgeInStoredCommands(dir: string, from: string, to: string): number {
   return forged;
 }
 
+/** Delete stored rows whose key matches — how a partial storage loss looks,
+ *  and how the round-3 attacker set up their forgery. */
+function deleteRows(dir: string, match: (key: string) => boolean): number {
+  let removed = 0;
+  for (const file of filesUnder(dir)) {
+    if (!file.endsWith('.sqlite') || file.includes('metadata')) continue;
+    const db = new DatabaseSync(file);
+    try {
+      const rows = db.prepare('select key from _cf_KV').all() as unknown as { key: Uint8Array }[];
+      for (const row of rows) {
+        const key = Buffer.from(row.key).toString('latin1');
+        if (!match(key)) continue;
+        db.prepare('delete from _cf_KV where key = ?').run(row.key);
+        removed += 1;
+      }
+    } finally {
+      db.close();
+    }
+  }
+  return removed;
+}
+
 const dirs: string[] = [];
 function freshDir(tag: string): string {
   const d = mkdtempSync(join(tmpdir(), `custody-storage-${tag}-`));
@@ -196,6 +218,228 @@ describe('SECRETS AT REST — the spec says « single-use codes hashed », and n
   });
 });
 
+/**
+ * ⚠ SE-LIVE-3 VERIFIER, ROUND 3 (BLOCKER) — THE OBJECT WAS MADE TO FORGE FOR
+ * THE ATTACKER. No hash was recomputed and no head was rewritten. Deleting two
+ * rows — the chain and the head — left the command log an ORPHAN, and
+ * `/order/open` then adopted it under whatever ids the caller supplied. The
+ * next act sealed the new head, so the object vouched for the result:
+ * `valid: true`, `headMatches: true`, and the victim's package erased from its
+ * own custody record, permanently and self-consistently.
+ *
+ * The likelier path is not an attack at all: a partial storage loss takes the
+ * chain, the operator sees `order_not_open`, and RE-OPENING — the obvious
+ * recovery — silently re-attributes the file to whatever they type.
+ */
+describe('an orphaned command log is never adopted by a new chain', () => {
+  const ORDER = 'ord-orphan';
+  const CODE = 'PICKUP-ORPHAN-9200';
+  const AT = '2026-08-07T09:00:00.000Z';
+
+  it('refuses to re-open over an existing log, and never re-attributes the record', async () => {
+    const dir = freshDir('orphan');
+    let mf = boot(dir);
+
+    expect((await call(mf, 'POST', '/ops/order/open', {
+      orderId: ORDER, taskId: 't', packageId: 'pkg-VICTIM', correlationId: 'corr-VICTIM', supplierId: 'sup-VICTIM',
+    })).status).toBe(200);
+    expect((await call(mf, 'POST', '/ops/secrets/arm', {
+      orderId: ORDER, command_id: 'arm-o', kind: 'pickup_verification_code', secret: CODE,
+    })).status).toBe(200);
+    expect((await call(mf, 'POST', '/ops/verification', {
+      orderId: ORDER, command_id: 'v-o', riderId: 'rider-1', presentedPickupCode: CODE,
+      checkResults: ALL_PASS, dwellSec: 120, evidenceBundleId: 'ev-o', at: AT,
+    })).status).toBe(200);
+    await mf.dispose();
+
+    // The setup: chain and head gone, command rows left intact.
+    const removed = deleteRows(dir, (k) => k === 'custody:chain:v1' || k === 'custody:ledger-head:v1');
+    expect(removed).toBe(2);
+
+    mf = boot(dir);
+    const reopen = await call(mf, 'POST', '/ops/order/open', {
+      orderId: ORDER, taskId: 't', packageId: 'pkg-ATTACKER', correlationId: 'corr-ATTACKER', supplierId: 'sup-ATTACKER',
+    });
+    // THE PIN: commands can only exist UNDER a chain, so a log without one is a
+    // damaged file, not a new one. It refuses and names what it found.
+    expect(reopen.status).toBe(409);
+    expect(reopen.json).toMatchObject({ reason: 'existing_command_log_without_chain' });
+
+    // And no act can seal the attacker's version into place afterwards.
+    const act = await call(mf, 'POST', '/ops/secrets/arm', {
+      orderId: ORDER, command_id: 'arm-after', kind: 'buyer_drop_code', secret: 'X',
+    });
+    expect(act.status).toBe(409);
+    expect(act.json).toMatchObject({ reason: 'existing_command_log_without_chain' });
+
+    // The victim's package was never replaced by the attacker's anywhere.
+    await mf.dispose();
+    expect(allBytes(dir)).not.toContain('pkg-ATTACKER');
+    expect(allBytes(dir)).toContain('pkg-VICTIM');
+  });
+});
+
+/**
+ * ⚠ SE-LIVE-3 VERIFIER, ROUND 3 (MAJOR) — the head bound the LEDGER, and the
+ * ledger entry for a pickup carries only `{result, orderId, attempt}`. So every
+ * fact that never reaches the ledger was rewritable at rest while the object
+ * still answered `headMatches: true`. The head now chains the COMMAND LOG
+ * itself, so these are all caught.
+ */
+describe('the command log is chained too — the facts that never reach the ledger are bound as well', () => {
+  const CODE = 'PICKUP-BIND-9300';
+  const AT = '2026-08-07T09:00:00.000Z';
+
+  async function seed(dir: string, order: string): Promise<Miniflare> {
+    const mf = boot(dir);
+    expect((await call(mf, 'POST', '/ops/order/open', {
+      orderId: order, taskId: 't', packageId: `pkg-${order}`, correlationId: 'c', supplierId: 's',
+    })).status).toBe(200);
+    expect((await call(mf, 'POST', '/ops/secrets/arm', {
+      orderId: order, command_id: 'arm-b', kind: 'pickup_verification_code', secret: CODE,
+    })).status).toBe(200);
+    expect((await call(mf, 'POST', '/ops/secrets/arm', {
+      orderId: order, command_id: 'arm-drop', kind: 'buyer_drop_code', secret: 'BUYER-REAL-CODE-01',
+    })).status).toBe(200);
+    return mf;
+  }
+
+  it('WHO verified cannot be rewritten — riderId is the only attestation this slice ships', async () => {
+    const dir = freshDir('bind-rider');
+    let mf = await seed(dir, 'ord-bind-a');
+    expect((await call(mf, 'POST', '/ops/verification', {
+      orderId: 'ord-bind-a', command_id: 'v-b', riderId: 'rider-MOUSSA-001', presentedPickupCode: CODE,
+      checkResults: ALL_PASS, dwellSec: 120, evidenceBundleId: 'ev-REAL-PHOTOS-01', at: AT,
+    })).status).toBe(200);
+    await mf.dispose();
+
+    expect(forgeInStoredCommands(dir, 'rider-MOUSSA-001', 'rider-SALIF-9999')).toBeGreaterThan(0);
+
+    mf = boot(dir);
+    const res = await call(mf, 'GET', '/ops/ledger?orderId=ord-bind-a');
+    expect(res.status).toBe(409);
+    expect(res.json).toMatchObject({ reason: 'command_log_tampered' });
+    await mf.dispose();
+  });
+
+  it('WHICH CHECK FAILED cannot be rewritten — a damaged package cannot become a wrong-colour one', async () => {
+    const dir = freshDir('bind-fault');
+    let mf = await seed(dir, 'ord-bind-b');
+    expect((await call(mf, 'POST', '/ops/verification', {
+      orderId: 'ord-bind-b', command_id: 'v-b', riderId: 'rider-1', presentedPickupCode: CODE,
+      checkResults: { ...ALL_PASS, damage: false }, dwellSec: 200, evidenceBundleId: 'ev-b', at: AT,
+    })).json).toMatchObject({ kind: 'refused' });
+    const before = await call(mf, 'GET', '/ops/ledger?orderId=ord-bind-b');
+    await mf.dispose();
+
+    /**
+     * THE VERIFIER'S OWN FORGERY, byte for byte. Booleans serialize as a single
+     * 'T'/'F' after the key name, so swapping `damage` false→true and `colour`
+     * true→false keeps EXACTLY ONE failed check. The verification therefore
+     * stays `refused` and the LEDGER ENTRY IS IDENTICAL — the old ledger-only
+     * head could not see this at all. Only chaining the command log catches it.
+     */
+    const swapped = forgeInStoredCommands(dir, 'damageF', 'damageT')
+      + forgeInStoredCommands(dir, 'colourT', 'colourF');
+    expect(swapped).toBe(2);
+
+    mf = boot(dir);
+    const res = await call(mf, 'GET', '/ops/ledger?orderId=ord-bind-b');
+    expect(res.status).toBe(409);
+    expect(res.json).toMatchObject({ reason: 'command_log_tampered' });
+    // Proof the forgery really was ledger-invisible: it left `result` refused,
+    // so the entry the old head bound would have been unchanged.
+    expect(((before.json['entries'] as Json[])[0]?.['payload'] as Json)['result']).toBe('refused');
+    await mf.dispose();
+  });
+
+  it('AN ARMED, UNSPENT SECRET cannot be swapped — a buyer drop code stays the buyer\'s', async () => {
+    const dir = freshDir('bind-secret');
+    let mf = await seed(dir, 'ord-bind-c');
+    await mf.dispose();
+
+    // The attacker substitutes their own code's digest for the buyer's.
+    const real = digest('BUYER-REAL-CODE-01');
+    const attacker = digest('ATTACKER-CODE-9999');
+    expect(real.length).toBe(attacker.length);
+    expect(forgeInStoredCommands(dir, real, attacker)).toBeGreaterThan(0);
+
+    mf = boot(dir);
+    const res = await call(mf, 'GET', '/ops/ledger?orderId=ord-bind-c');
+    expect(res.status).toBe(409);
+    expect(res.json).toMatchObject({ reason: 'command_log_tampered' });
+    await mf.dispose();
+  });
+});
+
+/**
+ * ⚠ SE-LIVE-3 VERIFIER, ROUND 3 (MAJOR) — the row and the head used to be TWO
+ * separate awaited puts, so either landing alone left the custody file
+ * refusing every route forever: the record still on disk and nobody able to
+ * read it again, including to settle the dispute it exists for. `commit` now
+ * writes both keys in ONE `put`, so the window does not exist.
+ *
+ * Atomicity itself cannot be observed from outside, so what is pinned here is
+ * the BEHAVIOUR of the states that window used to produce — both fail closed
+ * and name themselves, and both are stated plainly as UNRECOVERABLE from this
+ * door. Recovering a damaged custody record is an operational act with
+ * evidence attached, not a POST anyone can retry.
+ */
+describe('a half-written custody file fails closed and says which half is missing', () => {
+  const CODE = 'PICKUP-HALF-9400';
+  const AT = '2026-08-07T09:00:00.000Z';
+
+  async function seeded(dir: string, order: string): Promise<void> {
+    const mf = boot(dir);
+    expect((await call(mf, 'POST', '/ops/order/open', {
+      orderId: order, taskId: 't', packageId: `pkg-${order}`, correlationId: 'c', supplierId: 's',
+    })).status).toBe(200);
+    expect((await call(mf, 'POST', '/ops/secrets/arm', {
+      orderId: order, command_id: 'arm-h', kind: 'pickup_verification_code', secret: CODE,
+    })).status).toBe(200);
+    expect((await call(mf, 'POST', '/ops/verification', {
+      orderId: order, command_id: 'v-h', riderId: 'rider-1', presentedPickupCode: CODE,
+      checkResults: ALL_PASS, dwellSec: 120, evidenceBundleId: 'ev-h', at: AT,
+    })).status).toBe(200);
+    await mf.dispose();
+  }
+
+  it('commands without their head refuse every route, and stay refused across restarts', async () => {
+    const dir = freshDir('half-head');
+    await seeded(dir, 'ord-half-a');
+    expect(deleteRows(dir, (k) => k === 'custody:ledger-head:v1')).toBe(1);
+
+    let mf = boot(dir);
+    for (const [method, path] of [
+      ['GET', '/ops/ledger?orderId=ord-half-a'],
+      ['GET', '/ops/ledger/verify?orderId=ord-half-a'],
+      ['GET', '/ops/events?orderId=ord-half-a'],
+    ] as const) {
+      const res = await call(mf, method, path);
+      expect(res.status).toBe(409);
+      expect(res.json).toMatchObject({ reason: 'head_missing_for_existing_log' });
+    }
+    await mf.dispose();
+
+    // Still refused on a fresh boot — it does not heal, and it must not.
+    mf = boot(dir);
+    expect((await call(mf, 'GET', '/ops/ledger?orderId=ord-half-a')).status).toBe(409);
+    await mf.dispose();
+  });
+
+  it('a head without its last command is caught as tampering, not waved through', async () => {
+    const dir = freshDir('half-row');
+    await seeded(dir, 'ord-half-b');
+    expect(deleteRows(dir, (k) => k === 'custody:cmd:000000000001')).toBe(1);
+
+    const mf = boot(dir);
+    const res = await call(mf, 'GET', '/ops/ledger?orderId=ord-half-b');
+    expect(res.status).toBe(409);
+    expect(res.json).toMatchObject({ reason: 'command_log_tampered' });
+    await mf.dispose();
+  });
+});
+
 describe('THE FORGERY THE VERIFIER PULLED OFF — the object must now refuse to serve', () => {
   const ORDER = 'ord-forge';
   const CODE = 'PICKUP-FORGE-9100';
@@ -243,7 +487,7 @@ describe('THE FORGERY THE VERIFIER PULLED OFF — the object must now refuse to 
     // vouch for its own history serves nothing.
     const after = await call(mf, 'GET', `/ops/ledger?orderId=${ORDER}`);
     expect(after.status).toBe(409);
-    expect(after.json).toMatchObject({ reason: 'ledger_head_mismatch' });
+    expect(after.json).toMatchObject({ reason: 'command_log_tampered' });
 
     const verify = await call(mf, 'GET', `/ops/ledger/verify?orderId=${ORDER}`);
     expect(verify.status).toBe(409);
@@ -253,7 +497,7 @@ describe('THE FORGERY THE VERIFIER PULLED OFF — the object must now refuse to 
       orderId: ORDER, command_id: 'arm-after-forgery', kind: 'buyer_drop_code', secret: 'X',
     });
     expect(act.status).toBe(409);
-    expect(act.json).toMatchObject({ reason: 'ledger_head_mismatch' });
+    expect(act.json).toMatchObject({ reason: 'command_log_tampered' });
     await mf.dispose();
   });
 

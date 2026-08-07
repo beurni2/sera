@@ -29,10 +29,20 @@ import type { VerificationInput } from '../src/pickup-verification-policy.js';
  * and, on wake, rebuilds the spine by REPLAYING them in order. The
  * custody core is imported and used exactly as written — not one line of it
  * changed for this slice. Replay is exact because every spine act is
- * deterministic: instants arrive as arguments (`at`), never from a clock
- * inside, and the source-scan gate enforces that. It is also the pattern this
- * ecosystem already uses for its other stateful aggregate — Shop+'s OrderDO
- * replays an input log through `applyOrderInput`.
+ * deterministic: `../src` takes each instant as an argument (`at`), and the
+ * instant is stored ON the command, so a rebuild re-applies the same values in
+ * the same order. It is also the pattern this ecosystem already uses for its
+ * other stateful aggregate — Shop+'s OrderDO replays an input log through
+ * `applyOrderInput`.
+ *
+ * ⚠ CORRECTION (verifier round 3): an earlier version of this block claimed « a
+ * source-scan gate enforces » that no clock is read inside. NO SUCH GATE
+ * EXISTS — `grep` over `scripts/gates` finds nothing of the kind — and this
+ * object itself mints `new Date()` when a caller supplies no instant (that is
+ * fine: the minted value is logged, so replay uses it). What actually catches a
+ * future non-deterministic act is `checkIntegrity`, which recomputes the ledger
+ * and reports `replay_diverged`. The missing gate is named for the founder in
+ * JOURNAL.md rather than invented here.
  *
  * Cost, stated HONESTLY (verifier round 2 corrected this): replay is
  * O(commands) per wake, and « commands » means every ATTEMPT that reached the
@@ -76,17 +86,58 @@ export const CUSTODY_ACTOR = 'ops:sera:fondateur';
 
 const CHAIN_KEY = 'custody:chain:v1';
 /** One key PER COMMAND (verifier MAJOR, round 2) — never one array in one
- *  value. `seq` is zero-padded so the lexicographic order `storage.list`
- *  returns IS the order the commands arrived in. */
+ *  value. `seq` is zero-padded to 12 digits so the lexicographic order
+ *  `storage.list` returns IS arrival order — true up to 10^12 commands on one
+ *  order, past which the padding would no longer sort. A delivery is a handful
+ *  of acts; the bound is stated because it is a bound, not because it is
+ *  reachable. */
 const LOG_PREFIX = 'custody:cmd:';
 const logKey = (seq: number): string => `${LOG_PREFIX}${String(seq).padStart(12, '0')}`;
-/** The ledger's last hash + length, written with every act that appends.
- *  See `checkIntegrity` for exactly what this does and does not prove. */
+/** What this object vouches for: the COMMAND LOG (every byte of every row)
+ *  and the LEDGER it rebuilt from them. See `checkIntegrity` for exactly what
+ *  that does and does not prove. */
 const HEAD_KEY = 'custody:ledger-head:v1';
 
-interface LedgerHead {
-  length: number;
-  hash: string;
+interface CustodyHead {
+  /** Rows logged, and a running hash over all of them. */
+  logLength: number;
+  logHash: string;
+  /** Ledger entries produced by replaying them, and the last entry's hash. */
+  ledgerLength: number;
+  ledgerHash: string;
+}
+
+const LOG_GENESIS = '0'.repeat(64);
+
+/**
+ * The command log's own hash chain — one link per row, folded in arrival order.
+ *
+ * ⚠ VERIFIER MAJOR (round 3). The head used to bind the LEDGER alone, and the
+ * ledger entry for a pickup carries only `{result, orderId, attempt}`. So every
+ * fact that never reaches the ledger was forgeable at rest while the object
+ * still answered `headMatches: true`: WHO verified (`riderId` — which under the
+ * founder's ruling is the only attestation this slice ships), the evidence
+ * bundle, the dwell, WHICH check failed (a damaged package became a
+ * wrong-colour package with the ledger hash unchanged), and the digest of any
+ * armed-but-unspent secret — a buyer drop code could be swapped for the
+ * attacker's. Binding the ledger was never enough; the log is the real record,
+ * so the log is what gets chained.
+ */
+const foldLogHash = (prev: string, row: LoggedCommand): string =>
+  createHash('sha256').update(prev, 'utf8').update(canonicalJson(row), 'utf8').digest('hex');
+
+/** Key-sorted JSON so the same row always hashes the same way. */
+function canonicalJson(value: unknown): string {
+  const stable = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(stable);
+    if (v !== null && typeof v === 'object') {
+      return Object.fromEntries(
+        Object.entries(v as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : 1)).map(([k, x]) => [k, stable(x)]),
+      );
+    }
+    return v;
+  };
+  return JSON.stringify(stable(value));
 }
 
 /** The commands this object accepts. SE-LIVE-3 ships the opening of an order,
@@ -113,10 +164,20 @@ export type CustodyCommand =
  * So the answer is recorded with the act, and a duplicate REPLAYS THE RECORDED
  * ANSWER. One command id, one truthful answer, however many times it arrives.
  */
-export type RecordedOutcome =
-  | { ok: true; status: 'armed'; kind: string }
-  | { ok: true; status: 'verified'; kind: string; ledgerSeq: number }
-  | { ok: false; httpStatus: number; body: Record<string, unknown> };
+/**
+ * The EXACT answer that was returned — status line and body, nothing
+ * reinterpreted. Round 2 stored a summary instead and round 3 caught what that
+ * cost: a REFUSED pickup replayed as `repeated: "verified"` (a load-bearing
+ * word under SE-I05), the accepted path dropped `chainValid`, and only the
+ * refusal path carried a `duplicate` marker, so `if (res.duplicate)` read an
+ * accepted duplicate as a first-time answer. Storing the response verbatim
+ * removes the whole class: a redelivery is byte-identical to what the caller
+ * already got, plus `duplicate: true`.
+ */
+export interface RecordedOutcome {
+  httpStatus: number;
+  body: Record<string, unknown>;
+}
 
 interface LoggedCommand {
   cmd: CustodyCommand;
@@ -143,8 +204,20 @@ const isStr = (v: unknown): v is string => typeof v === 'string' && v.trim().len
  * (SE-LIVE-4) is where it belongs. Today the only caller is the founder's key.
  */
 const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$/;
-const isIso = (v: unknown): v is string =>
-  typeof v === 'string' && ISO_UTC.test(v) && Number.isFinite(Date.parse(v));
+const isIso = (v: unknown): v is string => {
+  if (typeof v !== 'string' || !ISO_UTC.test(v)) return false;
+  const parsed = Date.parse(v);
+  if (!Number.isFinite(parsed)) return false;
+  /**
+   * ⚠ VERIFIER MINOR (round 3) — AND THE DATE MUST EXIST. The shape check plus
+   * a finite parse still accepted « 2026-02-30 », because Date.parse rolls it
+   * to March 2 — and the object then wrote `2026-02-30T09:00:00.000Z` verbatim
+   * onto the hash chain AND into the canonical event envelope. Round-tripping
+   * the parsed instant rejects any date the calendar does not have.
+   */
+  const normalized = v.length === 20 ? `${v.slice(0, 19)}.000Z` : v;
+  return new Date(parsed).toISOString() === normalized;
+};
 
 /** The door's one-way boundary: what crosses INTO the log is never a secret. */
 const digestSecret = (secret: string): string => createHash('sha256').update(secret, 'utf8').digest('hex');
@@ -166,14 +239,7 @@ const digestSecret = (secret: string): string => createHash('sha256').update(sec
  */
 function fingerprint(cmd: CustodyCommand): string {
   const { command_id: _id, at: _at, ...content } = cmd as Record<string, unknown> & { command_id: string; at: string };
-  const stable = (v: unknown): unknown => {
-    if (Array.isArray(v)) return v.map(stable);
-    if (v !== null && typeof v === 'object') {
-      return Object.fromEntries(Object.entries(v as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : 1)).map(([k, x]) => [k, stable(x)]));
-    }
-    return v;
-  };
-  return JSON.stringify(stable(content));
+  return canonicalJson(content);
 }
 
 function malformed(reason = 'malformed'): Response {
@@ -228,24 +294,30 @@ export class CustodyDO {
    */
   private async checkIntegrity(): Promise<void> {
     this.integrityFailure = null;
-    const head = (await this.state.storage.get<LedgerHead>(HEAD_KEY)) ?? null;
-    const entries = this.spine === null ? [] : this.spine.ledger.all();
-    if (head === null) {
-      // No act has appended yet; an empty ledger is the only consistent state.
-      if (entries.length > 0) this.integrityFailure = 'ledger_without_head';
+    const head = (await this.state.storage.get<CustodyHead>(HEAD_KEY)) ?? null;
+    const observed = this.currentHeadFor(this.log);
+    // Commands can only ever exist UNDER a chain. A log without one is a
+    // DAMAGED file, never a new one — and never something to re-open over.
+    if (this.log.length > 0 && this.chain === null) {
+      this.integrityFailure = 'existing_command_log_without_chain';
       return;
     }
-    const last = entries[entries.length - 1] as { hash?: string } | undefined;
-    if (entries.length !== head.length || (last?.hash ?? '') !== head.hash) {
-      this.integrityFailure = 'ledger_head_mismatch';
+    if (head === null) {
+      // Nothing has been committed yet, so an empty log is the only consistent
+      // state. A log with no head means the head was lost — never that the
+      // commands are new.
+      if (observed.logLength > 0) this.integrityFailure = 'head_missing_for_existing_log';
+      return;
     }
-  }
-
-  private async recordHead(): Promise<void> {
-    const entries = this.spine === null ? [] : this.spine.ledger.all();
-    if (entries.length === 0) return;
-    const last = entries[entries.length - 1] as { hash?: string };
-    await this.state.storage.put(HEAD_KEY, { length: entries.length, hash: last.hash ?? '' });
+    if (observed.logLength !== head.logLength || observed.logHash !== head.logHash) {
+      this.integrityFailure = 'command_log_tampered';
+      return;
+    }
+    if (observed.ledgerLength !== head.ledgerLength || observed.ledgerHash !== head.ledgerHash) {
+      // The commands are intact but rebuilding them produced a different
+      // ledger: the replay diverged. That is a code fault, not a forgery.
+      this.integrityFailure = 'replay_diverged';
+    }
   }
 
   /** THE REPLAY. A fresh spine, then every logged command re-applied in
@@ -295,21 +367,53 @@ export class CustodyDO {
    *  rebuilds from what actually committed. */
   private async commit(cmd: CustodyCommand, outcome: RecordedOutcome): Promise<void> {
     const row: LoggedCommand = { cmd, outcome };
-    // ONE SMALL VALUE PER COMMAND, and the head with it. The first cut rewrote
-    // the whole log into a single value on every command — see the header block
-    // for why that would eventually have bricked a busy custody file.
-    await this.state.storage.put(logKey(this.log.length), row);
-    this.log = [...this.log, row];
-    await this.recordHead();
+    const next = [...this.log, row];
+    const head: CustodyHead = { ...this.currentHeadFor(next) };
+    /**
+     * ⚠ VERIFIER MAJOR (round 3) — ONE WRITE, NOT TWO. The row and the head
+     * used to be two separate awaited puts, and either landing alone left the
+     * custody file refusing EVERY route forever with no repair, quarantine or
+     * export path: the record still on disk, and nobody able to read it again —
+     * including to settle the dispute it exists for. A single `put` of both
+     * keys commits together or not at all, so that window does not exist.
+     */
+    await this.state.storage.put({ [logKey(this.log.length)]: row, [HEAD_KEY]: head });
+    this.log = next;
   }
 
-  /** Replay the answer a command already gave. A duplicate must never be more
-   *  (or less) truthful than the act it repeats. */
-  private replayOutcome(outcome: RecordedOutcome): Response {
-    if (outcome.ok === false) {
-      return Response.json({ ...outcome.body, duplicate: true }, { status: outcome.httpStatus });
+  /** The head implied by a given log, with the CURRENT rebuilt ledger. */
+  private currentHeadFor(log: readonly LoggedCommand[]): CustodyHead {
+    let logHash = LOG_GENESIS;
+    for (const row of log) logHash = foldLogHash(logHash, row);
+    const entries = this.spine === null ? [] : this.spine.ledger.all();
+    const last = entries[entries.length - 1] as { hash?: string } | undefined;
+    return { logLength: log.length, logHash, ledgerLength: entries.length, ledgerHash: last?.hash ?? LOG_GENESIS };
+  }
+
+  /**
+   * Replay the answer a command already gave — VERBATIM, plus `duplicate: true`.
+   * A redelivery must be neither more nor less truthful than the act it
+   * repeats, and it must not need a different reader.
+   */
+  private replayOutcome(outcome: RecordedOutcome, cmd: CustodyCommand): Response {
+    const body: Record<string, unknown> = { ...outcome.body, duplicate: true };
+    /**
+     * ⚠ AND IT SAYS WHEN THE ANSWER HAS GONE STALE. An unspent armed secret is
+     * silently REPLACED by a later arm (pre-existing registry behaviour). So a
+     * faithful replay of « armed » could describe a code that no longer works.
+     * The replay is still faithful — it is what happened — but the caller is
+     * told the arm has since been superseded rather than left to find out from
+     * a rider standing at a door with a dead code.
+     */
+    if (cmd.kind === 'arm_secret' && outcome.httpStatus === 200) {
+      const armsOfKind = this.log.filter((row) => {
+        const c = row.cmd;
+        return c.kind === 'arm_secret' && c.secretKind === cmd.secretKind && row.outcome.httpStatus === 200;
+      });
+      const latest = armsOfKind[armsOfKind.length - 1];
+      if (latest !== undefined && latest.cmd.command_id !== cmd.command_id) body['superseded'] = true;
     }
-    return Response.json({ ...outcome, status: 'duplicate', repeated: outcome.status });
+    return Response.json(body, { status: outcome.httpStatus });
   }
 
   /**
@@ -351,6 +455,12 @@ export class CustodyDO {
      * Reading the body here is safe: it is a string this object already holds
      * (the router forwards it verbatim), and each route re-parses its own copy.
      */
+    /** A custody file that cannot vouch for its own history serves nothing —
+     *  not a read, not an act. Fail closed and say why. */
+    if (this.integrityFailure !== null) {
+      return Response.json({ ok: false, reason: this.integrityFailure }, { status: 409 });
+    }
+
     const objectName = request.headers.get('X-Custody-Object');
     if (objectName !== null && request.method !== 'GET') {
       const peek = (await request.clone().json().catch(() => null)) as Record<string, unknown> | null;
@@ -358,12 +468,6 @@ export class CustodyDO {
       if (typeof claimed === 'string' && claimed.trim() !== '' && claimed.trim() !== objectName) {
         return Response.json({ ok: false, reason: 'order_id_does_not_name_this_object' }, { status: 400 });
       }
-    }
-
-    /** A custody file that cannot vouch for its own history serves nothing —
-     *  not a read, not an act. Fail closed and say why. */
-    if (this.integrityFailure !== null) {
-      return Response.json({ ok: false, reason: this.integrityFailure }, { status: 409 });
     }
 
     /** Open the order's custody file: its chain ids and the supplier it came
@@ -407,9 +511,44 @@ export class CustodyDO {
           ? Response.json({ ok: true, status: 'already_open', chain: this.chain })
           : Response.json({ ok: false, reason: 'chain_already_open_with_other_ids' }, { status: 409 });
       }
+      /**
+       * ⚠ VERIFIER BLOCKER (round 3) — AN ORPHANED LOG IS NEVER ADOPTED.
+       * « First-wins » only ever fired when a chain was already loaded. With
+       * the chain row gone but the command rows present, this route re-based a
+       * VICTIM's custody log onto whatever ids the caller supplied, and the
+       * next act sealed the new head — so the object then vouched for it:
+       * `valid: true`, `headMatches: true`, the victim's package erased from
+       * its own custody record, permanently and self-consistently. No hash
+       * work was required; the attacker deleted two rows and let this object
+       * do the forgery for them.
+       *
+       * The non-adversarial path is the likelier one and no better: a partial
+       * storage loss takes the chain, the operator sees `order_not_open`, and
+       * RE-OPENING — the natural recovery action — silently re-attributes the
+       * whole file to whatever they type. One typo in `packageId` and a
+       * custody record belongs to a different package.
+       *
+       * Commands can only ever exist UNDER a chain, so a log without one is a
+       * damaged file, not a new one. It refuses, loudly, and is not repairable
+       * from this door — recovering a damaged custody record is an operational
+       * act with evidence attached, not a POST anyone can retry.
+       */
+      if (this.log.length > 0) {
+        return Response.json(
+          { ok: false, reason: 'existing_command_log_without_chain', commands: this.log.length },
+          { status: 409 },
+        );
+      }
       await this.state.storage.put(CHAIN_KEY, chain);
       this.chain = chain;
       this.spine = this.replay(chain, this.log);
+      // The spine changed, so the recorded head must be re-checked against it —
+      // otherwise `/ledger/verify` answers off a stale flag for the rest of the
+      // session (round 3 proved that too).
+      await this.checkIntegrity();
+      if (this.integrityFailure !== null) {
+        return Response.json({ ok: false, reason: this.integrityFailure }, { status: 409 });
+      }
       return Response.json({ ok: true, status: 'open', chain });
     }
 
@@ -417,15 +556,13 @@ export class CustodyDO {
       return Response.json({ ok: false, reason: 'order_not_open' }, { status: 409 });
     }
 
-    /** Arm one of the four secrets. The REGISTRY holds only a sha256 and this
+    /** Arm one of the secrets this registry keys (pickup code, custody seal,
+     *  buyer drop code — NOT the canonical four of Build Spec line 96, two of
+     *  which are not armed here at all). The REGISTRY holds only a sha256 and this
      *  route never returns the plaintext; a spent secret can never be re-armed
      *  (the registry refuses), which is the law that makes single-use real
      *  across a restart.
-     *
-     *  ⚠ BUT THE LOG HOLDS THE PLAINTEXT — see the header block. An earlier
-     *  version of this comment said the plaintext is « never stored by this
-     *  object », which was false, and a false comment on a secret path is
-     *  worse than no comment. */
+     *  The LOG holds only a digest — see the header block. */
     if (request.method === 'POST' && pathname === '/secrets/arm') {
       const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
       const kind = body?.['kind'];
@@ -447,7 +584,7 @@ export class CustodyDO {
         at: new Date().toISOString(),
       };
       const prior = this.priorFor(cmd);
-      if (prior.kind === 'duplicate') return this.replayOutcome(prior.outcome);
+      if (prior.kind === 'duplicate') return this.replayOutcome(prior.outcome, cmd);
       if (prior.kind === 'conflict') {
         return Response.json({ ok: false, reason: 'command_id_reused_with_other_content' }, { status: 409 });
       }
@@ -457,13 +594,12 @@ export class CustodyDO {
       // knowing that. The ANSWER is logged with it, so a redelivery repeats
       // this same answer instead of inventing a cheerful one.
       const outcome: RecordedOutcome = applied.ok
-        ? { ok: true, status: 'armed', kind }
-        : { ok: false, httpStatus: 409, body: { ok: false, reason: applied.reason ?? 'refused' } };
+        ? { httpStatus: 200, body: { ok: true, status: 'armed', kind } }
+        : { httpStatus: 409, body: { ok: false, reason: applied.reason ?? 'refused' } };
       await this.commit(cmd, outcome);
-      if (!applied.ok) {
-        return Response.json({ ok: false, reason: applied.reason ?? 'refused' }, { status: 409 });
-      }
-      return Response.json({ ok: true, status: 'armed', kind });
+      // The answer that was STORED is the answer that is RETURNED — one object,
+      // so a redelivery cannot describe something the caller never got.
+      return Response.json(outcome.body, { status: outcome.httpStatus });
     }
 
     /**
@@ -531,7 +667,7 @@ export class CustodyDO {
         at: (body['at'] as string | undefined) ?? new Date().toISOString(),
       };
       const prior = this.priorFor(cmd);
-      if (prior.kind === 'duplicate') return this.replayOutcome(prior.outcome);
+      if (prior.kind === 'duplicate') return this.replayOutcome(prior.outcome, cmd);
       if (prior.kind === 'conflict') {
         return Response.json({ ok: false, reason: 'command_id_reused_with_other_content' }, { status: 409 });
       }
@@ -556,24 +692,23 @@ export class CustodyDO {
       const recorded: RecordedOutcome =
         outcome.kind === 'invalid'
           ? {
-              ok: false,
               httpStatus: 409,
               body: { ok: false, kind: 'invalid', reason: outcome.reason, detail: outcome.detail },
             }
-          : { ok: true, status: 'verified', kind: outcome.kind, ledgerSeq: this.spine.ledger.all().length - 1 };
+          : {
+              // accepted AND refused are both RECORDED custody facts — the
+              // refusal ladder is a first-class outcome, not an error (« no
+              // generic failed terminal »).
+              httpStatus: 200,
+              body: {
+                ok: true,
+                kind: outcome.kind,
+                ledgerSeq: this.spine.ledger.all().length - 1,
+                chainValid: this.spine.ledger.verifyChain().valid,
+              },
+            };
       await this.commit(cmd, recorded);
-      if (recorded.ok === false) {
-        return Response.json(recorded.body, { status: recorded.httpStatus });
-      }
-      // accepted AND refused are both RECORDED custody facts — the refusal
-      // ladder is a first-class outcome, not an error (« no generic failed
-      // terminal »), and a redelivery replays THIS answer, not a bare ok.
-      return Response.json({
-        ok: true,
-        kind: outcome.kind,
-        ledgerSeq: recorded.ledgerSeq,
-        chainValid: this.spine.ledger.verifyChain().valid,
-      });
+      return Response.json(recorded.body, { status: recorded.httpStatus });
     }
 
     /** THE LEDGER, READ-ONLY. Entries are returned as the store's own frozen

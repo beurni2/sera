@@ -274,7 +274,9 @@ describe('pickup verification — the code is consumed, the ledger records, the 
       evidenceBundleId: 'ev-1', at: T,
     });
     expect(again.status).toBe(200);
-    expect(again.json).toMatchObject({ status: 'duplicate' });
+    // The redelivery is the ORIGINAL answer verbatim, plus the duplicate mark —
+    // same kind, same ledgerSeq, same chainValid, so one reader handles both.
+    expect(again.json).toMatchObject({ ok: true, kind: 'accepted', ledgerSeq: 0, chainValid: true, duplicate: true });
     const ledger = await call('GET', `/ops/ledger?orderId=${ORDER}`, opsAuth);
     expect(ledger.json['entries']).toHaveLength(1);
   });
@@ -308,7 +310,7 @@ describe('a reused command id is a CONFLICT, never a silent duplicate', () => {
       orderId: order, command_id: 'cmd-arm-i', kind: 'pickup_verification_code', secret: code,
     });
     expect(again.status).toBe(200);
-    expect(again.json).toMatchObject({ status: 'duplicate' });
+    expect(again.json).toMatchObject({ ok: true, status: 'armed', duplicate: true });
   });
 
   it('a DIFFERENT secret under that id REFUSES — the caller is never told a code is armed when it is not', async () => {
@@ -361,7 +363,7 @@ describe('a reused command id is a CONFLICT, never a silent duplicate', () => {
       at: '2026-08-07T11:30:00.000Z',
     });
     expect(again.status).toBe(200);
-    expect(again.json).toMatchObject({ status: 'duplicate' });
+    expect(again.json).toMatchObject({ ok: true, kind: 'accepted', duplicate: true });
     // One act, one entry, and the recorded instant is the FIRST one — a
     // redelivery does not re-date a custody fact.
     const after = await call('GET', `/ops/ledger?orderId=${order}`, opsAuth);
@@ -480,7 +482,7 @@ describe('a redelivered command repeats its real answer — refusals included', 
       checkResults: ALL_PASS, dwellSec: 150, evidenceBundleId: 'ev-h', at: T,
     });
     expect(accepted.status).toBe(200);
-    expect(accepted.json).toMatchObject({ status: 'duplicate', kind: 'accepted', ledgerSeq: 0 });
+    expect(accepted.json).toMatchObject({ duplicate: true, kind: 'accepted', ledgerSeq: 0, chainValid: true });
 
     // A refusal on its own order, then its redelivery.
     const other = 'ord-custody-honest-refused';
@@ -498,7 +500,11 @@ describe('a redelivered command repeats its real answer — refusals included', 
     expect((await call('POST', '/ops/verification', opsAuth, refusedBody)).json).toMatchObject({ kind: 'refused' });
     const refusedAgain = await call('POST', '/ops/verification', opsAuth, refusedBody);
     expect(refusedAgain.status).toBe(200);
-    expect(refusedAgain.json).toMatchObject({ status: 'duplicate', kind: 'refused' });
+    // ⚠ ROUND 3: this used to replay `repeated: "verified"` for a REFUSED
+    // pickup — a load-bearing word under SE-I05. The answer is now the
+    // original one, verbatim.
+    expect(refusedAgain.json).toMatchObject({ duplicate: true, kind: 'refused' });
+    expect(JSON.stringify(refusedAgain.json)).not.toContain('verified');
     // The two 200s do NOT say the same thing — which is the whole point.
     expect(refusedAgain.json['kind']).not.toBe(accepted.json['kind']);
   });
@@ -511,6 +517,69 @@ describe('a redelivered command repeats its real answer — refusals included', 
  * a query/body disagreement armed a live secret on the WRONG order and
  * answered `200 armed`.
  */
+/**
+ * ⚠ SE-LIVE-3 VERIFIER, ROUND 3 (MINOR) — the replay used to SUMMARISE the
+ * answer instead of repeating it, and the summary was wrong in three ways: a
+ * REFUSED pickup replayed as `repeated: "verified"` (a load-bearing word under
+ * SE-I05), the accepted path silently dropped `chainValid`, and only the
+ * refusal path carried a `duplicate` marker — so a consumer written as
+ * `if (res.duplicate)` read an accepted duplicate as a first-time answer.
+ */
+describe('a duplicate is the ORIGINAL answer, verbatim, plus one honest marker', () => {
+  const order = 'ord-verbatim';
+  const code = 'PICKUP-VERBATIM-0009';
+
+  it('an accepted verification replays byte-for-byte, with duplicate: true added and nothing removed', async () => {
+    expect((await call('POST', '/ops/order/open', opsAuth, {
+      orderId: order, taskId: 'task-v', packageId: 'pkg-v', correlationId: 'corr-v', supplierId: 'sup-v',
+    })).status).toBe(200);
+    expect((await call('POST', '/ops/secrets/arm', opsAuth, {
+      orderId: order, command_id: 'arm-v', kind: 'pickup_verification_code', secret: code,
+    })).status).toBe(200);
+
+    const body = {
+      orderId: order, command_id: 'v-v', riderId: 'rider-v', presentedPickupCode: code,
+      checkResults: ALL_PASS, dwellSec: 150, evidenceBundleId: 'ev-v', at: T,
+    };
+    const first = await call('POST', '/ops/verification', opsAuth, body);
+    const again = await call('POST', '/ops/verification', opsAuth, body);
+
+    expect(again.status).toBe(first.status);
+    // Identical, field for field — the ONLY difference is the marker.
+    expect(again.json).toEqual({ ...first.json, duplicate: true });
+    // And the marker is on the SUCCESS path too, so one reader handles both.
+    expect(again.json['duplicate']).toBe(true);
+    expect(again.json['chainValid']).toBe(true);
+  });
+
+  it('a duplicate ARM says so when a later arm has since replaced the code', async () => {
+    // First arm, then a second arm of the same kind replaces it (pre-existing
+    // registry behaviour, disclosed in JOURNAL.md).
+    expect((await call('POST', '/ops/secrets/arm', opsAuth, {
+      orderId: order, command_id: 'arm-first', kind: 'buyer_drop_code', secret: 'DROP-AAA',
+    })).status).toBe(200);
+    expect((await call('POST', '/ops/secrets/arm', opsAuth, {
+      orderId: order, command_id: 'arm-second', kind: 'buyer_drop_code', secret: 'DROP-BBB',
+    })).status).toBe(200);
+
+    // Redelivering the FIRST arm is still answered faithfully — it did happen —
+    // but the caller is told it no longer describes a working code, instead of
+    // finding out from a rider standing at a door.
+    const replayFirst = await call('POST', '/ops/secrets/arm', opsAuth, {
+      orderId: order, command_id: 'arm-first', kind: 'buyer_drop_code', secret: 'DROP-AAA',
+    });
+    expect(replayFirst.status).toBe(200);
+    expect(replayFirst.json).toMatchObject({ ok: true, status: 'armed', duplicate: true, superseded: true });
+
+    // The LATEST arm replays without the flag — it is still the live one.
+    const replaySecond = await call('POST', '/ops/secrets/arm', opsAuth, {
+      orderId: order, command_id: 'arm-second', kind: 'buyer_drop_code', secret: 'DROP-BBB',
+    });
+    expect(replaySecond.json).toMatchObject({ ok: true, status: 'armed', duplicate: true });
+    expect(replaySecond.json['superseded']).toBeUndefined();
+  });
+});
+
 describe('every route refuses a body that names another order', () => {
   it('an arm routed to A with a body naming B is refused, and neither order is touched', async () => {
     const a = 'ord-name-a';
@@ -556,6 +625,31 @@ describe('the instant and the check list are validated, not merely parsed', () =
       evidenceBundleId: 'ev-1', at: 'Aug 7 2026',
     });
     expect(res.status).toBe(400);
+  });
+
+  it('a date the calendar does not have is refused — Date.parse rolls Feb 30 to Mar 2, and that must not reach the chain', async () => {
+    const res = await call('POST', '/ops/verification', opsAuth, {
+      orderId: ORDER, command_id: 'v-feb30', riderId: 'rider-1',
+      presentedPickupCode: PICKUP_CODE, checkResults: ALL_PASS, dwellSec: 150,
+      evidenceBundleId: 'ev-1', at: '2026-02-30T09:00:00.000Z',
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('a well-formed instant WITHOUT milliseconds is still accepted — the check is strict, not brittle', async () => {
+    const order = 'ord-noms';
+    const code = 'PICKUP-NOMS-0010';
+    expect((await call('POST', '/ops/order/open', opsAuth, {
+      orderId: order, taskId: 'task-n', packageId: 'pkg-n', correlationId: 'corr-n', supplierId: 'sup-n2',
+    })).status).toBe(200);
+    expect((await call('POST', '/ops/secrets/arm', opsAuth, {
+      orderId: order, command_id: 'arm-n', kind: 'pickup_verification_code', secret: code,
+    })).status).toBe(200);
+    const res = await call('POST', '/ops/verification', opsAuth, {
+      orderId: order, command_id: 'v-n', riderId: 'rider-n', presentedPickupCode: code,
+      checkResults: ALL_PASS, dwellSec: 150, evidenceBundleId: 'ev-n', at: '2026-08-07T09:00:00Z',
+    });
+    expect(res.status).toBe(200);
   });
 
   it('a check named __proto__ is REFUSED as out-of-policy, not silently swallowed (SE-I12)', async () => {
