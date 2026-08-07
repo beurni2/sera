@@ -116,21 +116,59 @@ describe('⚠ a WIRED build shows only what a server said (blocker A3)', () => {
     expect(app, 'a hardcoded dwell').not.toMatch(/dwellSec:\s*\d+/);
   });
 
-  it('⚠ one act, one command id — reused across every retry in the session', () => {
-    // Custody dedupes on it and replays its recorded answer, so a double tap
-    // or a lost response can never produce two custody transitions.
-    expect(app).toMatch(/verifyActId = useRef\(mintActId\(\)\)/);
-    expect(app).toMatch(/sealActId = useRef\(mintActId\(\)\)/);
-    expect(app).toMatch(/commandId: verifyActId\.current/);
-    expect(app).toMatch(/commandId: sealActId\.current/);
-    // Never re-minted at send time — that would defeat the dedup entirely.
-    expect(app).not.toMatch(/commandId: mintActId\(\)/);
+  it('⚠ the command id is stable PER CONTENT, not per mount (blocker A3)', () => {
+    // I first minted it once per mount and called retries safe. Custody's
+    // idempotency is CONTENT-keyed — `fingerprint()` excludes only command_id
+    // and `at` — so the same id with any changed field is
+    // `command_id_reused_with_other_content`, which my readAnswer shows to the
+    // rider as « Séra a refusé ». Measured on the shipped Worker: correcting a
+    // mistyped code, and even a byte-identical retry after a timeout, both
+    // conflicted — the second while the ledger had ACCEPTED.
+    expect(app).toMatch(/attemptFor\(`verify\|/);
+    expect(app).toMatch(/attemptFor\(`seal\|/);
+    // The key must cover every field that enters the fingerprint.
+    expect(app).toMatch(/attemptFor\(`verify\|\$\{liveAssignment\.orderId\}\|\$\{pickupCode\}\|\$\{JSON\.stringify\(checks\)\}`\)/);
+    // …and the id must NOT be re-minted per mount any more.
+    expect(app).not.toMatch(/verifyActId = useRef\(mintActId\(\)\)/);
+    expect(app).not.toMatch(/sealActId = useRef\(mintActId\(\)\)/);
   });
 
-  it('an honest empty state when the rider carries nothing', () => {
-    expect(app).toMatch(/assignment\.none_title/);
-    expect(app).toMatch(/assignment\.none_hint/);
+  it('⚠ dwell is FROZEN with the attempt, not recomputed per send', () => {
+    // dwellSec is part of the fingerprint, so a moving number makes every
+    // retry a fresh conflict — that is how an ACCEPTED verification came back
+    // to the rider as a refusal.
+    expect(app).toMatch(/dwellSec: attempt\.dwellSec/);
+    // Measured in exactly ONE place — `attemptFor`, where the attempt is
+    // created — and read from the frozen attempt everywhere else.
+    expect(app.match(/Date\.now\(\) - dwellStart\.current/g)).toHaveLength(1);
+    const sendSite = app.slice(app.indexOf('custodyActs.verifyPickup'), app.indexOf('const sendSeal'));
+    expect(sendSite, 'dwell recomputed at send time').not.toMatch(/Date\.now\(\)/);
   });
+
+  it('⚠ no photo, no act — neither ref is ever fabricated (blocker A7)', () => {
+    // `ev-<uuid>` named a bundle that never existed, defeating the spine's
+    // no_evidence_refs guard and writing a dangling pointer into the ledger.
+    expect(app, 'a synthetic evidence ref').not.toMatch(/`ev-\$\{/);
+    expect(app).toMatch(/if \(verifyBundleId === null\) return;/);
+    expect(app).toMatch(/if \(sealPhotoRefs\.length === 0\) return;/);
+  });
+
+  it('⚠ the SOS is actually sent on a wired build (blocker A1)', () => {
+    // It used to flush through `async () => 'applied'`, and outbox.flush DROPS
+    // an entry reported applied — so the alert was deleted, never sent.
+    expect(app).toMatch(/httpSosSender\(base, code\)/);
+    expect(app, 'the old always-applied sender').not.toMatch(/sandboxReconnectSender/);
+    // …and the SOS carries the real rider, not the demo id.
+    expect(app).toMatch(/const sosRiderId = WIRED \?/);
+  });
+
+  it('⚠ no dispatch stand-in can answer on a wired build (blocker A2)', () => {
+    // One tap on the « (aperçu) » ack flipped the sheet to « Quelqu'un arrive
+    // pour vous » — the same false promise, on a real build.
+    expect(app).toMatch(/if \(WIRED\) return;/);
+    expect(app).toMatch(/WIRED \? \{\} : \{ onSandboxAck: sosSandboxAck \}/);
+  });
+
 });
 
 describe('⚠ the door claims no identity it has not been given (blocker A6)', () => {

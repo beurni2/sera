@@ -78,6 +78,9 @@ import { FasoSignIn } from './src/ui/faso-signin';
 import { IDLE, refusalKeys, submit as submitSignIn, type SignInState } from './src/net/signin-model';
 import { isWired, resolveRiderSession } from './src/net/resolveRiderSession';
 import { resolveCustodyActs } from './src/net/resolveCustodyActs';
+import { httpSosSender } from './src/net/sos-wire';
+import { resolveEvidenceCapture, type CaptureOutcome } from './src/net/evidence-capture';
+import { expoPhotoSource } from './src/net/expoPhotoSource';
 import { mintActId, type CustodyAnswer } from './src/net/custody-acts';
 import { ACT_IDLE, holdsPackage, maySeal, sealOutcome, verifyOutcome, type ActPhase } from './src/net/act-model';
 import { FasoActCode } from './src/ui/faso-act-code';
@@ -338,9 +341,65 @@ export default function App() {
   const custodyActs = useMemo(() => resolveCustodyActs(net), [net]);
   const [verifyPhase, setVerifyPhase] = useState<ActPhase>(ACT_IDLE);
   const [sealPhase, setSealPhase] = useState<ActPhase>(ACT_IDLE);
-  const verifyActId = useRef(mintActId());
-  const sealActId = useRef(mintActId());
+  /**
+   * ⚠ VERIFIER BLOCKER A3 — MY RETRY REASONING WAS WRONG, AND IT POISONED THE
+   * ACT. I minted the id once per mount and said that made retries safe.
+   * Custody's idempotency is CONTENT-KEYED: `fingerprint()` hashes everything
+   * except `command_id` and `at`, so the same id with ANY changed field is
+   * `409 command_id_reused_with_other_content` — which my `readAnswer` maps to
+   * « refused ». Measured on the shipped Worker: a rider mistypes the dictated
+   * code, corrects it, and is told the LEDGER refused. Worse, `dwellSec` was
+   * recomputed from `Date.now()` on every send, so even a byte-identical retry
+   * after the 15 s timeout conflicted — and the ledger had ACCEPTED.
+   *
+   * THE ID NOW IDENTIFIES THE CONTENT, not the screen. A retry of the SAME
+   * value reuses it (custody replays its recorded answer — a true, safe
+   * retry); a CORRECTED value is a genuinely different act and gets a fresh
+   * id. `attemptFor` keeps that mapping for the session.
+   *
+   * DWELL IS FROZEN WITH THE ATTEMPT for the same reason: it is part of the
+   * fingerprint, so a moving number makes every retry a new conflict.
+   */
+  /**
+   * ⚠ VERIFIER BLOCKER A7 — THE PROOF PHOTO IS REAL NOW, OR THE ACT DOES NOT
+   * GO. Both refs used to be `ev-<uuid>`: pointers to a bundle that never
+   * existed, defeating the spine's `no_evidence_refs` guard and writing a
+   * dangling reference permanently into the hash-chained ledger. The ref is
+   * now whatever the media bucket returned for bytes it actually stored — and
+   * when there is no photo there is NO REF, so custody refuses the seal by
+   * name instead of recording a fiction.
+   */
+  const evidence = useMemo(() => resolveEvidenceCapture(expoPhotoSource, net), [net]);
+  const [verifyBundleId, setVerifyBundleId] = useState<string | null>(null);
+  const [sealPhotoRefs, setSealPhotoRefs] = useState<readonly string[]>([]);
+  const [captureIssue, setCaptureIssue] = useState<CaptureOutcome | null>(null);
+  const takePhoto = useCallback(
+    (keep: (ref: string) => void) => {
+      setCaptureIssue(null);
+      void evidence.captureAndUpload().then((outcome) => {
+        if (outcome.ok) keep(outcome.ref);
+        // Cancelled is the rider's own decision — say nothing about it.
+        else if (outcome.reason !== 'cancelled') setCaptureIssue(outcome);
+      }, () => setCaptureIssue({ ok: false, reason: 'unreachable' }));
+    },
+    [evidence],
+  );
+
+  const attempts = useRef(new Map<string, { id: ReturnType<typeof mintActId>; dwellSec: number }>());
   const dwellStart = useRef<number>(Date.now());
+  const attemptFor = useCallback((key: string) => {
+    const held = attempts.current.get(key);
+    if (held !== undefined) return held;
+    const fresh = {
+      id: mintActId(),
+      // Measured, then FROZEN with this attempt — the policy records whether
+      // the real dwell fell in its 120–240 s target, so it must not drift
+      // between a send and its retry.
+      dwellSec: Math.max(0, Math.round((Date.now() - dwellStart.current) / 1000)),
+    };
+    attempts.current.set(key, fresh);
+    return fresh;
+  }, []);
 
   const riderCode = signInState.kind === 'signed_in' ? signInState.code : null;
   const liveAssignment = signInState.kind === 'signed_in' ? signInState.session.assignment : null;
@@ -361,10 +420,15 @@ export default function App() {
   const sendVerification = useCallback(
     (pickupCode: string) => {
       if (riderCode === null || liveAssignment === null) return;
+      // ⚠ NO PHOTO, NO VERIFICATION (A7). The bundle ref must name bytes the
+      // media bucket actually stored; there is no synthetic fallback.
+      if (verifyBundleId === null) return;
+      // Keyed by everything that enters custody's fingerprint for this act.
+      const attempt = attemptFor(`verify|${liveAssignment.orderId}|${pickupCode}|${JSON.stringify(checks)}`);
       runAct(setVerifyPhase, () =>
         custodyActs.verifyPickup(
           {
-            commandId: verifyActId.current,
+            commandId: attempt.id,
             orderId: liveAssignment.orderId,
             presentedPickupCode: pickupCode,
             /**
@@ -376,35 +440,39 @@ export default function App() {
              * named gap — the ledger is carrying a reference to a bundle
              * nobody has filled in, and that must not be discovered later.
              */
-            evidenceBundleId: `ev-${verifyActId.current}`,
-            dwellSec: Math.max(0, Math.round((Date.now() - dwellStart.current) / 1000)),
+            evidenceBundleId: verifyBundleId,
+            dwellSec: attempt.dwellSec,
             checkResults: checks,
           },
           riderCode,
         ),
       );
     },
-    [custodyActs, riderCode, liveAssignment, checks, runAct],
+    [custodyActs, riderCode, liveAssignment, checks, runAct, attemptFor, verifyBundleId],
   );
 
   const sendSeal = useCallback(
     (sealId: string) => {
       if (riderCode === null || liveAssignment === null) return;
+      // ⚠ NO PHOTO, NO SEAL (A7) — the spine refuses `no_evidence_refs`, and
+      // sending a fabricated ref to dodge that guard is what shipped before.
+      if (sealPhotoRefs.length === 0) return;
+      const attempt = attemptFor(`seal|${liveAssignment.orderId}|${sealId}|${sealPhotoRefs.join(',')}`);
       runAct(setSealPhase, () =>
         custodyActs.beginCustody(
           {
-            commandId: sealActId.current,
+            commandId: attempt.id,
             orderId: liveAssignment.orderId,
             custodySealId: sealId,
             // The seal photo is the proof-photo moment; capture is not wired
             // yet, so this names the same stable bundle the verification does.
-            sealPhotoRefs: [`ev-${sealActId.current}`],
+            sealPhotoRefs,
           },
           riderCode,
         ),
       );
     },
-    [custodyActs, riderCode, liveAssignment, runAct],
+    [custodyActs, riderCode, liveAssignment, runAct, attemptFor, sealPhotoRefs],
   );
 
   const signIn = useCallback(
@@ -426,7 +494,39 @@ export default function App() {
   // its service at assembly; here it models the server accepting on reconnect
   // ('applied', like SANDBOX_EVIDENCE_ACK) so the backlog drains truthfully in the
   // walkable demo. The rider never asserts this.
-  const sandboxReconnectSender = useCallback(async (): Promise<FlushOutcome> => 'applied', []);
+  /**
+   * ═══ ⚠ VERIFIER BLOCKER A1 — THE SOS WAS BEING DELETED, NOT SENT ═══
+   *
+   * This was `async () => 'applied'` for EVERY entry, and `outbox.flush` drops
+   * anything reported `applied`. So a raised SOS persisted to disk, and the
+   * next reconnect — which fires on MOUNT, since connectivity initialises
+   * `'online'` — marked it delivered and **erased it**. Nothing was sent, the
+   * backlog cleared, and the rider believed Séra had it. 4d built
+   * `httpSosSender` to fix exactly this and I never wired it; the commit
+   * message claiming otherwise was false, and this is where that is undone.
+   *
+   * WIRED   ⇒ the real sender. An SOS settles ONLY on a server 200; anything
+   *            else keeps it pending and visible in the backlog, and the next
+   *            reconnect retries it with the same `command_id`.
+   * UNWIRED ⇒ the demo world's stand-in, unchanged: there is no server to
+   *            reach, the whole app is a walkable demo, and its own footer
+   *            says so.
+   *
+   * ⚠ A KIND THIS SENDER DOES NOT SPEAK IS KEPT PENDING, NEVER « APPLIED ».
+   * Today the wired arm creates no `delivery.evidence` entries (that capture
+   * lives in the demo tree), so nothing accumulates — but if one ever appears,
+   * it stays queued and counted rather than being silently dropped the way the
+   * SOS was. Reporting a success we did not perform is the bug, not the
+   * backlog.
+   */
+  const reconnectSender = useMemo(() => {
+    const base = process.env.EXPO_PUBLIC_SERA_LOGISTICS_BASE;
+    const code = signInState.kind === 'signed_in' ? signInState.code : null;
+    if (!WIRED || base === undefined || code === null) {
+      return async (): Promise<FlushOutcome> => (WIRED ? 'collision-refused' : 'applied');
+    }
+    return httpSosSender(base, code);
+  }, [WIRED, signInState]);
   const refreshBacklog = useCallback(() => {
     // a durable-read failure is itself a durability-health signal → surface it,
     // never an unhandled rejection.
@@ -445,14 +545,14 @@ export default function App() {
   // just re-counts what is queued (queued = pending, never done — SE-I06 family).
   useEffect(() => {
     if (connectivity === 'online') {
-      void drainOnReconnect(outboxStore, sandboxReconnectSender).then((remaining) => {
+      void drainOnReconnect(outboxStore, reconnectSender).then((remaining) => {
         setBacklog(remaining);
         if (remaining === 0) setPersistFailed(false);
       });
     } else {
       refreshBacklog();
     }
-  }, [connectivity, outboxStore, sandboxReconnectSender, refreshBacklog]);
+  }, [connectivity, outboxStore, reconnectSender, refreshBacklog]);
 
   // SOS hold timer — a deliberate HOLD fires the SOS; released or unmounted, it
   // is cleared. There are NO post-fire timers: the acknowledgment comes from the
@@ -557,10 +657,22 @@ export default function App() {
     // on disk), then persist the raise to the outbox in the background — so it
     // survives a kill+reboot and flushes at-least-once with dedup on this id.
     const commandId = mintCommandId();
+    /**
+     * ⚠ VERIFIER BLOCKER A9 — EVERY SOS FROM A WIRED BUILD MISREPORTED ITSELF.
+     * `DEMO_RIDER_ID` ('rider-moussa-demo') went into the payload; `onShift`
+     * was always false (the shift control lives in the demo tree, which a
+     * wired build never renders) and `activeCourseId` always null. The
+     * dispatcher would have been handed an alert naming a rider who does not
+     * exist. On a wired build the identity is the SIGNED-IN rider and the
+     * course is their live assignment; the SERVER overrides `riderId` from the
+     * code regardless, but sending a fiction was indefensible.
+     */
+    const sosRiderId = WIRED ? (signInState.kind === 'signed_in' ? signInState.session.riderId : '') : DEMO_RIDER_ID;
+    const sosCourseId = WIRED ? (liveAssignment?.orderId ?? null) : activeId;
     const raised = raiseSos(world, commandId, {
-      riderId: DEMO_RIDER_ID,
+      riderId: sosRiderId,
       onShift: shift === 'on',
-      activeCourseId: activeId,
+      activeCourseId: sosCourseId,
       connectivity,
       hours: SANDBOX_DISPATCH_HOURS,
     });
@@ -569,10 +681,10 @@ export default function App() {
     // failure routes to the banner surface (persistFailed); success refreshes the
     // real backlog count. The safety incident already showed instantly regardless.
     void appendSosRaise(outboxStore, commandId, {
-      riderId: DEMO_RIDER_ID,
+      riderId: sosRiderId,
       hours: SANDBOX_DISPATCH_HOURS,
       onShift: shift === 'on',
-      activeCourseId: activeId,
+      activeCourseId: sosCourseId,
       raisedAt: raised.raisedAt,
     }).then(refreshBacklog, () => setPersistFailed(true));
     const status = raised.status;
@@ -580,7 +692,7 @@ export default function App() {
     else if (status === 'escalated') setSos('escalated');
     else if (status === 'acknowledged') setSos('acknowledged');
     else setSos('raised');
-  }, [world, shift, activeId, connectivity, outboxStore, refreshBacklog]);
+  }, [world, shift, activeId, connectivity, outboxStore, refreshBacklog, WIRED, signInState, liveAssignment]);
   const sosHoldStart = useCallback(() => {
     if (holdTimer.current) clearTimeout(holdTimer.current);
     holdTimer.current = setTimeout(fireSos, 650);
@@ -590,11 +702,21 @@ export default function App() {
   // arriving — a SANDBOX stand-in that drives the store's acknowledgeSos (which
   // THROWS on a queued incident), never the rider's own hand.
   const sosSandboxAck = useCallback(() => {
+    /**
+     * ⚠ VERIFIER BLOCKER A2, THE HALF I MISSED. My first fix changed the
+     * `raised` words on a wired build but left this preview button, so ONE TAP
+     * still flipped the sheet to « On vous a vu. / Quelqu'un arrive pour
+     * vous. » — the same false promise, on a build a real rider signs into.
+     * The stand-in exists to make the demo walkable; on a wired build there is
+     * a real dispatcher and a real ack, and nothing here may stand in for
+     * either.
+     */
+    if (WIRED) return;
     if (world.incident === null) return;
     acknowledgeSos(world, world.incident.responder);
     setWorld({ ...world });
     setSos('acknowledged');
-  }, [world]);
+  }, [world, WIRED]);
   const sosSafe = useCallback(() => setSos('over'), []);
   const sosClose = useCallback(() => {
     clearSos(world);
@@ -1447,7 +1569,8 @@ export default function App() {
         onHoldStart={sosHoldStart}
         onHoldEnd={sosHoldEnd}
         onCancel={cancelSos}
-        onSandboxAck={sosSandboxAck}
+        // A2: no dispatch stand-in exists on a wired build — see sosSandboxAck.
+        {...(WIRED ? {} : { onSandboxAck: sosSandboxAck })}
         onSafe={sosSafe}
         onClose={sosClose}
       />

@@ -47,7 +47,16 @@ export function SosSheet({
   state: SosState;
   strings: SosStrings;
   onHoldStart: () => void; onHoldEnd: () => void; onCancel: () => void;
-  onSandboxAck: () => void; onSafe: () => void; onClose: () => void;
+  /**
+   * ⚠ OPTIONAL, AND ABSENT ON A WIRED BUILD (verifier blocker A2). This is the
+   * demo's stand-in for a dispatcher answering. When it is not supplied, no
+   * ack button renders at all — because on a build a real rider signs into
+   * there is a real dispatcher and a real acknowledgement, and nothing here
+   * may stand in for either. A tap that says « Quelqu'un arrive pour vous »
+   * when nobody has seen the alert is the worst sentence this app can show.
+   */
+  onSandboxAck?: (() => void) | undefined;
+  onSafe: () => void; onClose: () => void;
 }) {
   const reduced = useReducedMotion();
   const slide = useRef(new Animated.Value(state === 'closed' ? 1 : 0)).current;
@@ -87,7 +96,7 @@ export function SosSheet({
           <>
             <Text style={styles.title}>{strings.raised}</Text>
             <Text style={styles.hint}>{strings.raisedHint}</Text>
-            <SandboxAck label={strings.previewAck} onPress={onSandboxAck} />
+            {onSandboxAck !== undefined && <SandboxAck label={strings.previewAck} onPress={onSandboxAck} />}
           </>
         )}
         {state === 'escalated' && (
@@ -95,7 +104,7 @@ export function SosSheet({
             <Text style={styles.titleAmber}>{strings.escalated}</Text>
             <Text style={styles.hint}>{strings.escalatedHint}</Text>
             <Text style={styles.note}>{strings.transportPending}</Text>
-            <SandboxAck label={strings.previewAckEscalated} onPress={onSandboxAck} />
+            {onSandboxAck !== undefined && <SandboxAck label={strings.previewAckEscalated} onPress={onSandboxAck} />}
           </>
         )}
         {state === 'acknowledged' && (
