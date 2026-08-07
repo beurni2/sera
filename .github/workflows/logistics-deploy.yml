@@ -121,6 +121,18 @@ jobs:
           fi
           printf '%s' "$INTAKE_SECRET" | npx --yes wrangler@4 secret put SERA_INTAKE_SECRET
 
+      - name: Arm SERA_RIDER_VERIFY_SECRET (piped — skipped only if the repo secret is absent)
+        working-directory: services/logistics-service
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          RIDER_VERIFY_SECRET: ${{ secrets.SERA_RIDER_VERIFY_SECRET }}
+        run: |
+          if [ -z "$RIDER_VERIFY_SECRET" ]; then
+            echo "::warning title=Porte rider-verify NON armée::SERA_RIDER_VERIFY_SECRET absent — the /verify/ door refuses rider-code verification (fail-closed) until the repo secret is set and this workflow re-dispatched."
+            exit 0
+          fi
+          printf '%s' "$RIDER_VERIFY_SECRET" | npx --yes wrangler@4 secret put SERA_RIDER_VERIFY_SECRET
+
       # ═══ The F9 assertion: the live Worker must BE the bundle this job built ═══
       # A Workers deploy PROPAGATES; it does not switch — poll up to 180s.
       - name: Assert the live logistics Worker is the bundle this job built

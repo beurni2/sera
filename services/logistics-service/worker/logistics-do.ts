@@ -620,6 +620,34 @@ export class LogisticsDO {
       });
     }
 
+    /**
+     * ═══ SE-LIVE-4b-ii — THE ONE BOOK ANSWERS, IT DOES NOT LEND ═══
+     *
+     * FOUNDER RULING (2026-08-07): rider identity stays in logistics; custody
+     * asks. « One place mints and revokes a rider code; custody only ever asks
+     * *is this code this rider's, right now* and gets a riderId or a refusal. »
+     *
+     * This is that question and nothing else. It resolves a presented code to a
+     * riderId — the same `resolveCode` the rider door itself uses, so a revoked
+     * code stops answering HERE the instant it stops answering THERE, because
+     * revoke deletes the hash both of them read. There is no second credential
+     * store to fall out of step with this one, which is the whole point of the
+     * ruling.
+     *
+     * It returns a riderId and NOTHING ELSE — no shift, no assignment, no
+     * roster row. Custody needs to know who is holding the phone; it has no
+     * business knowing what else this rider is doing today.
+     */
+    if (request.method === 'POST' && pathname === '/verify/rider-code') {
+      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      const presented = body?.['code'];
+      const record = await this.resolveCode(presented);
+      // The SAME uniform refusal the rider door gives, for the same reason: a
+      // caller must not be able to tell « no such code » from « revoked ».
+      if (record === null) return unauthorized();
+      return Response.json({ ok: true, riderId: record.riderId });
+    }
+
     // ── Rider door (personal code — resolved HERE, hashes live with the book) ──
     if (pathname.startsWith('/rider/')) {
       const header = request.headers.get('Authorization') ?? '';

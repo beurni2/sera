@@ -39,6 +39,8 @@ export interface Env {
   readonly LOGISTICS: DurableObjectNamespace;
   readonly SERA_OPS_SECRET?: string;
   readonly SERA_INTAKE_SECRET?: string;
+  /** SE-LIVE-4b-ii — the custody Worker's key to `/verify/`. Its own door. */
+  readonly SERA_RIDER_VERIFY_SECRET?: string;
   readonly SERA_CONSOLE_ORIGIN?: string;
 }
 
@@ -132,6 +134,24 @@ export default {
       // Preserved authority-route discipline: non-POST never reaches the object.
       if (url.pathname === '/authority/dispatch' && request.method !== 'POST') {
         return withCors(Response.json({ ok: false, reason: 'not_found' }, { status: 404 }), request, env);
+      }
+      return withCors(await stub().fetch(request), request, env);
+    }
+
+    /**
+     * SE-LIVE-4b-ii — the custody Worker's door into this book, and ITS OWN
+     * KEY. Not the ops secret (that is the founder's, and custody is not the
+     * founder), not the intake secret (that is the producers'). Each caller
+     * holds exactly the door it needs — the discipline `/intake/` already set.
+     *
+     * Reached over a Cloudflare SERVICE BINDING, but the binding is transport,
+     * not authentication: this Worker is publicly addressable, so the route is
+     * gated like every other. Fail-closed — deployed before the secret is set,
+     * it refuses everything with the one uniform 401.
+     */
+    if (url.pathname.startsWith('/verify/')) {
+      if (!(await authorized(request, env.SERA_RIDER_VERIFY_SECRET))) {
+        return withCors(unauthorized(), request, env);
       }
       return withCors(await stub().fetch(request), request, env);
     }

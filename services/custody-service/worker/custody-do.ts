@@ -190,6 +190,15 @@ export type CustodyCommand =
        *  seal plaintext dies with the request that carried it. */
       custodySealDigest: string;
       sealPhotoRefs: readonly string[];
+      /**
+       * SE-LIVE-4b-ii — HOW this rider was established, recorded WITH the act
+       * rather than asserted once on the response. `founder_attested` is the
+       * founder naming a rider through his own key; `rider_authenticated` is
+       * the rider's own personal code, resolved against logistics. A ledger
+       * that cannot say which of the two it was cannot settle a dispute about
+       * who was actually standing there.
+       */
+      attribution: 'founder_attested' | 'rider_authenticated';
       at: string;
     };
 
@@ -1183,10 +1192,19 @@ export class CustodyDO {
      */
     if (request.method === 'POST' && pathname === '/custody/begin') {
       const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      /**
+       * ⚠ WHO SUPPLIES `riderId` DEPENDS ON WHICH DOOR THIS CAME THROUGH, and
+       * my own test caught this: on the RIDER path the identity arrives in the
+       * router's header from logistics, so demanding it in the body rejected
+       * every honest rider act with `malformed`. On the founder's path there is
+       * no header and the body must carry it, because it is his attestation.
+       */
+      const doorRider = request.headers.get('X-Rider-Authenticated');
+      const riderFromDoor = doorRider !== null && doorRider !== '';
       if (
         body === null ||
         !isBoundedStr(body['command_id'], MAX_ID) ||
-        !isBoundedStr(body['riderId'], MAX_ID) ||
+        (!riderFromDoor && !isBoundedStr(body['riderId'], MAX_ID)) ||
         !isBoundedStr(body['custodySealId'], MAX_SECRET) ||
         !Array.isArray(body['sealPhotoRefs']) ||
         (body['at'] !== undefined && !isIso(body['at']))
@@ -1216,7 +1234,7 @@ export class CustodyDO {
        * the moment the rider's own credential opens this route, so it is closed
        * now rather than carried.
        */
-      if (hasControlChar(body['riderId'] as string)) return malformed('rider_id_not_usable');
+      if (!riderFromDoor && hasControlChar(body['riderId'] as string)) return malformed('rider_id_not_usable');
 
       // ⚠ NO CLAIM, NO CUSTODY — before the command is built, before the spine
       // is touched, before anything is logged.
@@ -1241,8 +1259,17 @@ export class CustodyDO {
        * Bound here rather than in the spine because the spine keeps only a
        * boolean (`verificationAccepted`); the log is what remembers who.
        */
+      /**
+       * ⚠ THE RIDER PATH'S IDENTITY WINS, AND THE BODY IS IGNORED. The header
+       * is set by the router in a fresh headers object from logistics' answer,
+       * so it cannot be forged or overridden by a caller. On the founder's own
+       * door there is no header and the body's `riderId` stands — as his
+       * attestation, recorded as such.
+       */
+      const attribution: 'founder_attested' | 'rider_authenticated' =
+        riderFromDoor ? 'rider_authenticated' : 'founder_attested';
       const verifier = this.acceptedVerificationRider();
-      const claimedRider = (body['riderId'] as string).trim();
+      const claimedRider = riderFromDoor ? (doorRider as string) : (body['riderId'] as string).trim();
       if (verifier !== null && verifier !== claimedRider) {
         return Response.json(
           { ok: false, reason: 'rider_did_not_verify_this_pickup', verifiedBy: verifier },
@@ -1253,7 +1280,8 @@ export class CustodyDO {
       const cmd: CustodyCommand = {
         kind: 'begin_custody',
         command_id: (body['command_id'] as string).trim(),
-        riderId: (body['riderId'] as string).trim(),
+        riderId: claimedRider,
+        attribution,
         // HASHED AT THE DOOR — the registry stores digests, so the digest is
         // what `consume` must be handed (SE-LIVE-3's digest-at-the-door law).
         custodySealDigest: digestSecret(body['custodySealId'] as string),
@@ -1338,6 +1366,7 @@ export class CustodyDO {
             command_id: cmd.command_id,
             at: cmd.at,
             riderId: cmd.riderId,
+            attribution: cmd.attribution,
             sealPhotoRefs: [...cmd.sealPhotoRefs],
             outcome: row.outcome.body['status'] ?? row.outcome.body['reason'] ?? 'unknown',
             reason: row.outcome.body['reason'] ?? null,
@@ -1382,6 +1411,14 @@ export class CustodyDO {
         // is (founder ruling, 2026-08-06): until the rider app authenticates
         // its own hand in SE-LIVE-4, this is the FOUNDER's attestation of who
         // verified, not the rider's own credential.
+        /**
+         * ⚠ THIS BLANKET LABEL SPEAKS FOR THE VERIFICATIONS ONLY, and says so.
+         * `/verification` is still the founder's door alone, so every row in
+         * `attestations` is his attestation. The CUSTODY acts below carry their
+         * own per-act `attribution`, because after SE-LIVE-4b-ii they may be
+         * either — and one label over two different kinds of evidence is
+         * exactly the sort of sentence that outruns its code.
+         */
         attribution: 'founder_attested',
         attestations,
         // The seal side of SE-I05, beside the verification side. NO SECRET —

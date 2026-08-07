@@ -50,6 +50,14 @@ export interface Env {
    */
   readonly PACKAGE_CLAIM: DurableObjectNamespace;
   readonly SERA_CUSTODY_OPS_SECRET?: string;
+  /**
+   * SE-LIVE-4b-ii — the logistics Worker, over a service binding. Custody ASKS
+   * it who a rider is; custody never stores rider credentials (founder ruling
+   * 2026-08-07: one book mints and revokes).
+   */
+  readonly LOGISTICS?: { fetch: (request: Request) => Promise<Response> };
+  /** The key to logistics' `/verify/` door. Custody's own, not the founder's. */
+  readonly SERA_RIDER_VERIFY_SECRET?: string;
 }
 
 const BEARER_PREFIX = 'Bearer ';
@@ -124,10 +132,72 @@ export default {
       });
     }
 
-    if (!url.pathname.startsWith('/ops/')) {
+    /**
+     * ═══ SE-LIVE-4b-ii — TWO DOORS, AND THE OBJECT IS TOLD WHICH ONE ═══
+     *
+     * `/ops/*` is the FOUNDER'S key: whatever rider it names is his
+     * ATTESTATION of who acted. `/rider/*` is the RIDER'S OWN personal code,
+     * resolved against logistics — the one book that mints and revokes it
+     * (founder ruling 2026-08-07). A revoked code stops working here the
+     * instant it stops working there, because both read the same hash.
+     *
+     * ⚠ THE RESOLVED IDENTITY NEVER COMES FROM THE REQUEST. On the rider path
+     * the router puts logistics' answer into a FRESH headers object, so a
+     * caller cannot supply it and cannot override it — the same discipline
+     * `X-Custody-Object` has carried since SE-LIVE-3 round 1. A `riderId` in
+     * the body is ignored on this path.
+     */
+    const riderPath = url.pathname.startsWith('/rider/');
+    let attestedRider: string | null = null;
+
+    if (riderPath) {
+      const header = request.headers.get('Authorization') ?? '';
+      const code = header.startsWith(BEARER_PREFIX) ? header.slice(BEARER_PREFIX.length) : '';
+      if (code === '' || env.LOGISTICS === undefined || (env.SERA_RIDER_VERIFY_SECRET ?? '') === '') {
+        // Fail closed, and identically: an unwired custody Worker must not be
+        // distinguishable from a wrong code.
+        return unauthorized();
+      }
+      let resolved: Response;
+      try {
+        resolved = await env.LOGISTICS.fetch(
+          new Request('https://logistics/verify/rider-code', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `${BEARER_PREFIX}${env.SERA_RIDER_VERIFY_SECRET}`,
+            },
+            body: JSON.stringify({ code }),
+          }),
+        );
+      } catch {
+        // Logistics unreachable is not « bad code » — say so, structured, and
+        // never with a stack trace (the round-3 door-crash lesson).
+        return Response.json({ ok: false, reason: 'rider_directory_unavailable' }, { status: 503 });
+      }
+      /**
+       * ⚠ « DOWN » AND « WRONG » ARE DIFFERENT ANSWERS, and conflating them is
+       * cruel to a rider standing at a door: one means try again, the other
+       * means your code is dead. A service binding surfaces a thrown target as
+       * a 5xx rather than by throwing at the call site, so the catch above is
+       * not enough on its own — my own test caught that by getting a 401 where
+       * it expected 503.
+       */
+      if (resolved.status >= 500) {
+        return Response.json({ ok: false, reason: 'rider_directory_unavailable' }, { status: 503 });
+      }
+      if (!resolved.ok) return unauthorized();
+      const answer = (await resolved.json().catch(() => null)) as Record<string, unknown> | null;
+      const riderId = answer?.['riderId'];
+      // CORROBORATED, NOT COUNTED — `ok:true` is not an identity. A directory
+      // that answers without naming a usable rider is a refusal, not a pass.
+      if (answer?.['ok'] !== true || typeof riderId !== 'string' || riderId.trim() === '') {
+        return unauthorized();
+      }
+      attestedRider = riderId.trim();
+    } else if (!url.pathname.startsWith('/ops/')) {
       return Response.json({ ok: false, reason: 'not_found' }, { status: 404 });
-    }
-    if (!(await authorized(request, env.SERA_CUSTODY_OPS_SECRET))) {
+    } else if (!(await authorized(request, env.SERA_CUSTODY_OPS_SECRET))) {
       return unauthorized();
     }
 
@@ -151,7 +221,7 @@ export default {
     }
 
     const stub = env.CUSTODY.get(env.CUSTODY.idFromName(orderId));
-    const inner = new Request(`https://custody${url.pathname.replace(/^\/ops/, '')}${url.search}`, {
+    const inner = new Request(`https://custody${url.pathname.replace(/^\/(ops|rider)/, '')}${url.search}`, {
       method: request.method,
       headers: {
         'Content-Type': 'application/json',
@@ -161,6 +231,11 @@ export default {
         // the record lived at an address nobody would ever look up again.
         // The object now refuses to open under a name that is not its chain.
         'X-Custody-Object': orderId,
+        // Present ONLY on the rider path, and only ever logistics' answer.
+        // Its presence is what tells the object the act is rider-authenticated
+        // rather than founder-attested — so attribution is a property of the
+        // door the request came through, never of anything a caller wrote.
+        ...(attestedRider !== null ? { 'X-Rider-Authenticated': attestedRider } : {}),
       },
       ...(raw !== null && raw !== '' ? { body: raw } : {}),
     });

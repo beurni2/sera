@@ -17,6 +17,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 const OPS = 'test-ops-secret-door-e2e';
 const INTAKE = 'test-intake-secret-door-e2e';
+const VERIFY = 'test-rider-verify-secret-door-e2e';
 const opsAuth = { Authorization: `Bearer ${OPS}`, 'Content-Type': 'application/json' };
 const intakeAuth = { Authorization: `Bearer ${INTAKE}`, 'Content-Type': 'application/json' };
 const codeAuth = (code: string) => ({ Authorization: `Bearer ${code}`, 'Content-Type': 'application/json' });
@@ -28,7 +29,7 @@ const boot = (persist?: string) =>
     modules: true,
     scriptPath: 'dist-worker/worker.mjs',
     durableObjects: { LOGISTICS: 'LogisticsDO' },
-    bindings: { SERA_OPS_SECRET: OPS, SERA_INTAKE_SECRET: INTAKE },
+    bindings: { SERA_OPS_SECRET: OPS, SERA_INTAKE_SECRET: INTAKE, SERA_RIDER_VERIFY_SECRET: VERIFY },
     // Per-instance dirs ALWAYS (the FONDS SQLITE_BUSY lesson) — the restart
     // suite reuses ONE dir on purpose: that reuse IS the durability claim.
     ...(persist !== undefined ? { durableObjectsPersist: persist } : {}),
@@ -842,5 +843,65 @@ describe('SE-LIVE-2c verifier round 2 — a foreign-correlation command cannot s
     expect(replay.status, 'idempotency must survive the per-task exemption').toBe(200);
     expect(replay.json).toMatchObject({ ok: true, duplicate: true });
     expect(replay.json['taskId']).toBe(first.json['taskId']);
+  });
+});
+
+/**
+ * ⚠ SE-LIVE-4b-ii — THE `/verify/` DOOR HAS ITS OWN KEY, AND IT WAS UNPINNED.
+ *
+ * Caught by mutation, not by review: deleting the authorization check from
+ * `/verify/` left all 134 logistics tests green. An unauthenticated route here
+ * is a public oracle for « is this string a live rider code » — brute-forceable
+ * at whatever rate the internet allows, against the credential that opens the
+ * custody seal in SE-LIVE-4b-ii.
+ *
+ * The key is ALSO neither the ops secret nor the intake secret: each caller
+ * holds exactly the door it needs, the discipline `/intake/` set.
+ */
+describe('the rider-code verification door (SE-LIVE-4b-ii)', () => {
+  it('needs its own key, resolves a live code, and refuses a revoked one identically', async () => {
+    const rider = 'rider-verify-door-0001';
+    const code = await prepRider(mf, rider);
+    const verifyAuth = { Authorization: `Bearer ${VERIFY}`, 'Content-Type': 'application/json' };
+
+    // No key, a wrong key, and the OTHER doors' keys all refuse — identically.
+    const refusals: string[] = [];
+    for (const headers of [
+      { 'Content-Type': 'application/json' },
+      { Authorization: 'Bearer nope', 'Content-Type': 'application/json' },
+      opsAuth,
+      intakeAuth,
+    ]) {
+      const res = await mf.dispatchFetch('http://logistics/verify/rider-code', {
+        method: 'POST', headers, body: JSON.stringify({ code }),
+      });
+      expect(res.status).toBe(401);
+      refusals.push(await res.text());
+    }
+    expect(new Set(refusals).size).toBe(1);
+
+    // With its own key it answers, and answers ONLY the riderId — no shift, no
+    // assignment, no roster row. Custody has no business knowing the rest.
+    const ok = await call(mf, 'POST', '/verify/rider-code', verifyAuth, { code });
+    expect(ok.status).toBe(200);
+    expect(ok.json).toEqual({ ok: true, riderId: rider });
+
+    // A code the book does not know gets the SAME uniform 401 — « unknown »
+    // must not be distinguishable from « revoked ».
+    const unknown = await mf.dispatchFetch('http://logistics/verify/rider-code', {
+      method: 'POST', headers: verifyAuth, body: JSON.stringify({ code: 'SR-ZZZZ-ZZZZ-ZZZZ' }),
+    });
+    expect(unknown.status).toBe(401);
+    expect(await unknown.text()).toBe(refusals[0]);
+
+    // …and once revoked, the live code joins them. ONE BOOK: the code dies for
+    // custody at the same instant it dies for the rider door.
+    expect((await call(mf, 'POST', '/ops/rider-code/revoke', opsAuth, { riderId: rider })).status).toBe(200);
+    const after = await mf.dispatchFetch('http://logistics/verify/rider-code', {
+      method: 'POST', headers: verifyAuth, body: JSON.stringify({ code }),
+    });
+    expect(after.status).toBe(401);
+    expect(await after.text()).toBe(refusals[0]);
+    expect((await call(mf, 'GET', '/rider/moi', codeAuth(code))).status).toBe(401);
   });
 });

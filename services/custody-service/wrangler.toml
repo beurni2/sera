@@ -46,3 +46,12 @@ new_sqlite_classes = ["CustodyDO"]
 [[migrations]]
 tag = "v2"
 new_sqlite_classes = ["PackageClaimDO"]
+
+# SE-LIVE-4b-ii — custody asks logistics who a rider is; it never stores rider
+# credentials (founder ruling 2026-08-07: one book mints and revokes, so a
+# revoked code dies everywhere at once). The binding is TRANSPORT ONLY — the
+# logistics `/verify/` door is still gated by SERA_RIDER_VERIFY_SECRET, because
+# that Worker is publicly addressable.
+[[services]]
+binding = "LOGISTICS"
+service = "logistics-service"
