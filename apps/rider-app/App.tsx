@@ -74,6 +74,9 @@ import {
   type ChipTone,
 } from './src/ui/kit';
 import { SosButton, SosSheet, type SosState } from './src/ui/faso-sos';
+import { FasoSignIn } from './src/ui/faso-signin';
+import { IDLE, refusalKeys, submit as submitSignIn, type SignInState } from './src/net/signin-model';
+import { isWired, resolveRiderSession } from './src/net/resolveRiderSession';
 import { FpIn, FpPulseDot, QuoteRule as FasoQuoteRule, CornerTicks as FasoCornerTicks } from './src/ui/signature';
 import { C as FASO } from './src/ui/faso';
 import {
@@ -287,6 +290,39 @@ export default function App() {
   const [key1, setKey1] = useState(false);
   const [key2, setKey2] = useState(false);
   const [oneKeyMsg, setOneKeyMsg] = useState(false);
+  /**
+   * ═══ SE-LIVE-4c-v · THE DOOR, WHEN THERE IS A SÉRA TO OPEN ═══
+   *
+   * `WIRED` is decided at BUILD time from `EXPO_PUBLIC_SERA_LOGISTICS_BASE`:
+   *
+   *   WIRED   ⇒ the app asks for the rider's own code first, and shows their
+   *             REAL session and REAL assignment from `GET /rider/moi`.
+   *   UNWIRED ⇒ the walkable demo world, exactly as before — the founder's
+   *             preview, the gallery and every existing test are untouched.
+   *
+   * That split is deliberate, not a hedge: a build that cannot reach Séra must
+   * not present a sign-in it can never satisfy, and a build that CAN reach
+   * Séra must never show demo courses beside real ones. One or the other,
+   * decided once, visible in `signInState`.
+   *
+   * ⚠ THE CODE LIVES IN THIS STATE AND NOWHERE ELSE — held for the session so
+   * the custody acts can use it as their Bearer, never written to the outbox,
+   * the document store, or a log. Signing out drops it.
+   */
+  const [signInState, setSignInState] = useState<SignInState>(IDLE);
+  const sessionPort = useMemo(() => resolveRiderSession(net), [net]);
+  const WIRED = isWired();
+  const signIn = useCallback(
+    (typed: string) => {
+      setSignInState({ kind: 'working' });
+      void submitSignIn(sessionPort, typed).then(setSignInState, () =>
+        // A thrown port is still an answer the rider deserves: « Séra did not
+        // reply », never a silent dead button.
+        setSignInState({ kind: 'refused', why: 'unreachable' }),
+      );
+    },
+    [sessionPort],
+  );
   const screen = stack[stack.length - 1] ?? START;
   const active = world.courses.find((c) => c.id === activeId) ?? null;
   const allChecked = POLICY_CHECK_IDS.every((id) => checks[id] === true);
@@ -542,6 +578,53 @@ export default function App() {
             re-animates on screen change — the per-screen entry replaces the old
             cross-screen ScreenTransition (redundant + flex:1 broke the scroll). */}
         <View style={styles.content}>
+          {/**
+            * ═══ SE-LIVE-4c-v · THE DOOR, WHEN THERE IS A SÉRA TO OPEN ═══
+            *
+            * `WIRED` is decided at BUILD time from
+            * `EXPO_PUBLIC_SERA_LOGISTICS_BASE`:
+            *   WIRED   ⇒ the rider's own code first, then their REAL session.
+            *   UNWIRED ⇒ the walkable demo world, exactly as before — the
+            *             founder's preview and the gallery are untouched.
+            * One or the other, never both: a build that can reach Séra must
+            * never show demo courses beside real ones.
+            *
+            * ⚠ IT LIVES INSIDE THE ONE SCROLL SURFACE, NOT BESIDE IT. My first
+            * cut early-returned a whole second shell — its own safe area and its
+            * own scroll container — and two pinned invariants caught it, rightly:
+            *   · `faso-scroll`: exactly ONE scroll surface in this app;
+            *   · `wo6-invariants` R14: **the SOS is mounted unconditionally,
+            *     outside every screen branch.**
+            * The second was a genuine design error, not a test to bend. A rider
+            * in danger must not have to sign in first — « SOS visible from
+            * every rider screen » (Building Plan) means THIS screen too, and my
+            * comment justifying its absence reasoned about how useful the data
+            * would be to a dispatcher rather than about the person holding the
+            * phone. Rendering here gives the sign-in the header, the offline
+            * banner and the SOS disc for free, because it is simply another
+            * screen in the one tree.
+            */}
+          {WIRED && signInState.kind !== 'signed_in' ? (
+            <FpIn style={styles.stackGap}>
+              <FasoSignIn
+                strings={{
+                  title: t('signin.title'),
+                  hint: t('signin.hint'),
+                  action: t('signin.action'),
+                  working: t('signin.working'),
+                  placeholder: t('signin.placeholder'),
+                }}
+                working={signInState.kind === 'working'}
+                refusal={
+                  signInState.kind === 'refused'
+                    ? { title: t(refusalKeys(signInState.why).title), hint: t(refusalKeys(signInState.why).hint) }
+                    : undefined
+                }
+                onSubmit={signIn}
+              />
+            </FpIn>
+          ) : (
+          <>
           {/* R1 « Service » — Faso Premium (planche l.55–94): the old skeleton
               retired. shiftOff = a white cert card + « Prendre mon service »;
               shiftPending = the honest fpBar pending (queued confers NOTHING — R1
@@ -1067,6 +1150,8 @@ export default function App() {
               <FasoQuoteRule>{t('delivered.no_money')}</FasoQuoteRule>
               <FasoSecondaryButton label={t('nav.retour_courses')} onPress={toCourses} />
             </FpIn>
+          )}
+          </>
           )}
         </View>
 
