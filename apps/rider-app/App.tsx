@@ -77,6 +77,10 @@ import { SosButton, SosSheet, type SosState } from './src/ui/faso-sos';
 import { FasoSignIn } from './src/ui/faso-signin';
 import { IDLE, refusalKeys, submit as submitSignIn, type SignInState } from './src/net/signin-model';
 import { isWired, resolveRiderSession } from './src/net/resolveRiderSession';
+import { resolveCustodyActs } from './src/net/resolveCustodyActs';
+import { mintActId, type CustodyAnswer } from './src/net/custody-acts';
+import { ACT_IDLE, holdsPackage, maySeal, sealOutcome, verifyOutcome, type ActPhase } from './src/net/act-model';
+import { FasoActCode } from './src/ui/faso-act-code';
 import { FpIn, FpPulseDot, QuoteRule as FasoQuoteRule, CornerTicks as FasoCornerTicks } from './src/ui/signature';
 import { C as FASO } from './src/ui/faso';
 import {
@@ -312,6 +316,97 @@ export default function App() {
   const [signInState, setSignInState] = useState<SignInState>(IDLE);
   const sessionPort = useMemo(() => resolveRiderSession(net), [net]);
   const WIRED = isWired();
+  /**
+   * ═══ SE-LIVE-4c-vi · THE RIDER'S TWO ACTS, ON THE REAL LEDGER ═══
+   *
+   * Founder rulings (2026-08-07): the DISPATCHER gives the rider the pickup
+   * code (spoken on the phone), and the SEAL ID IS TYPED off the seal.
+   *
+   * ⚠ THE COMMAND ID IS MINTED ONCE PER ACT, at the moment the rider opens
+   * the screen, and every retry in this session reuses it — custody dedupes on
+   * it and replays its recorded answer, so a double tap or a lost response can
+   * never produce two verifications or two custody transitions. It lives in
+   * memory only: an act that never reached custody left no custody record, so
+   * re-doing it from the top is correct.
+   *
+   * ⚠ DWELL IS MEASURED, NEVER INVENTED. `PICKUP_VERIFICATION_POLICY_V1`
+   * targets 120–240 s and RECORDS whether the real dwell fell inside it — it
+   * does not gate on it. So this is the true elapsed time on the verification
+   * screen, and a rider who is quick is recorded as quick rather than padded
+   * into looking compliant.
+   */
+  const custodyActs = useMemo(() => resolveCustodyActs(net), [net]);
+  const [verifyPhase, setVerifyPhase] = useState<ActPhase>(ACT_IDLE);
+  const [sealPhase, setSealPhase] = useState<ActPhase>(ACT_IDLE);
+  const verifyActId = useRef(mintActId());
+  const sealActId = useRef(mintActId());
+  const dwellStart = useRef<number>(Date.now());
+
+  const riderCode = signInState.kind === 'signed_in' ? signInState.code : null;
+  const liveAssignment = signInState.kind === 'signed_in' ? signInState.session.assignment : null;
+
+  const runAct = useCallback(
+    (set: (p: ActPhase) => void, act: () => Promise<CustodyAnswer>) => {
+      set({ kind: 'working' });
+      void act().then(
+        (answer) => set({ kind: 'answered', answer }),
+        // A thrown port is still an answer the rider deserves — « Séra ne
+        // répond pas », never a button that spins forever.
+        () => set({ kind: 'answered', answer: { kind: 'unreachable', reason: 'transport' } }),
+      );
+    },
+    [],
+  );
+
+  const sendVerification = useCallback(
+    (pickupCode: string) => {
+      if (riderCode === null || liveAssignment === null) return;
+      runAct(setVerifyPhase, () =>
+        custodyActs.verifyPickup(
+          {
+            commandId: verifyActId.current,
+            orderId: liveAssignment.orderId,
+            presentedPickupCode: pickupCode,
+            /**
+             * ⚠ THE BUNDLE THIS NAMES DOES NOT EXIST YET. Pickup photo capture
+             * is not wired in this app (delivery evidence is, via the outbox).
+             * The id is minted from the act's own command id so it is STABLE:
+             * when the capture lands, its upload attaches to exactly this
+             * reference rather than a second one. Recorded in JOURNAL.md as a
+             * named gap — the ledger is carrying a reference to a bundle
+             * nobody has filled in, and that must not be discovered later.
+             */
+            evidenceBundleId: `ev-${verifyActId.current}`,
+            dwellSec: Math.max(0, Math.round((Date.now() - dwellStart.current) / 1000)),
+            checkResults: checks,
+          },
+          riderCode,
+        ),
+      );
+    },
+    [custodyActs, riderCode, liveAssignment, checks, runAct],
+  );
+
+  const sendSeal = useCallback(
+    (sealId: string) => {
+      if (riderCode === null || liveAssignment === null) return;
+      runAct(setSealPhase, () =>
+        custodyActs.beginCustody(
+          {
+            commandId: sealActId.current,
+            orderId: liveAssignment.orderId,
+            custodySealId: sealId,
+            // The seal photo is the proof-photo moment; capture is not wired
+            // yet, so this names the same stable bundle the verification does.
+            sealPhotoRefs: [`ev-${sealActId.current}`],
+          },
+          riderCode,
+        ),
+      );
+    },
+    [custodyActs, riderCode, liveAssignment, runAct],
+  );
+
   const signIn = useCallback(
     (typed: string) => {
       setSignInState({ kind: 'working' });
@@ -662,14 +757,81 @@ export default function App() {
              */
             <FpIn style={styles.stackGap}>
               <FasoScreenTitle>{t('signin.greeting')}</FasoScreenTitle>
-              {signInState.kind === 'signed_in' && signInState.session.assignment !== null ? (
+              {liveAssignment !== null ? (
                 <>
                   <FasoCard>
-                    <ProofLine label={`${t('assignment.order_label')} · ${signInState.session.assignment.orderId}`} />
-                    <ProofLine label={`${t('assignment.task_label')} · ${signInState.session.assignment.taskId}`} />
-                    <ProofLine label={`${t('assignment.status_label')} · ${signInState.session.assignment.status}`} />
+                    <ProofLine label={`${t('assignment.order_label')} · ${liveAssignment.orderId}`} />
+                    <ProofLine label={`${t('assignment.task_label')} · ${liveAssignment.taskId}`} />
+                    <ProofLine label={`${t('assignment.status_label')} · ${liveAssignment.status}`} />
                   </FasoCard>
-                  <FasoPendingNotice lines={[t('assignment.acts_pending')]} />
+
+                  {/**
+                    * ⚠ SE-I05, IN THE ORDER THE SPEC GIVES IT: « Custody begins
+                    * only after rider pickup verification AND custody-seal
+                    * registration. » So the seal screen does not exist for the
+                    * rider until the LEDGER has accepted the verification —
+                    * `maySeal` reads the server's answer, never « the request
+                    * worked ». A refused package stops here, with the seller
+                    * keeping it, which is the correct and safe end.
+                    */}
+                  {holdsPackage(sealPhase) ? (
+                    <FasoCard>
+                      <ProofLine label={t('acts.custody_taken')} />
+                    </FasoCard>
+                  ) : maySeal(verifyPhase) ? (
+                    <FasoActCode
+                      strings={{
+                        title: t('seal.id_title'),
+                        hint: t('seal.id_hint'),
+                        placeholder: t('seal.id_placeholder'),
+                        action: t('seal.action_send'),
+                        working: t('acts.sending'),
+                      }}
+                      working={sealPhase.kind === 'working'}
+                      outcome={
+                        sealPhase.kind === 'answered'
+                          ? (() => {
+                              const o = sealOutcome(sealPhase.answer);
+                              return { title: t(o.title), hint: o.hint === undefined ? undefined : t(o.hint), tone: o.tone };
+                            })()
+                          : undefined
+                      }
+                      onSubmit={sendSeal}
+                    />
+                  ) : (
+                    <>
+                      {/* SE4.2 — objective conformity only (SE-I12). The
+                          checklist the app has always had; the SERVICE judges
+                          it, this only collects it. */}
+                      {POLICY_CHECK_IDS.map((id) => (
+                        <FasoCheckRow
+                          key={id}
+                          label={t(`check.${id}`)}
+                          checked={checks[id] === true}
+                          onPress={() => setChecks((c) => ({ ...c, [id]: c[id] !== true }))}
+                        />
+                      ))}
+                      <FasoActCode
+                        strings={{
+                          title: t('verify.code_title'),
+                          hint: t('verify.code_hint'),
+                          placeholder: t('verify.code_placeholder'),
+                          action: t('verify.action_send'),
+                          working: t('acts.sending'),
+                        }}
+                        working={verifyPhase.kind === 'working'}
+                        outcome={
+                          verifyPhase.kind === 'answered'
+                            ? (() => {
+                                const o = verifyOutcome(verifyPhase.answer);
+                                return { title: t(o.title), hint: o.hint === undefined ? undefined : t(o.hint), tone: o.tone };
+                              })()
+                            : undefined
+                        }
+                        onSubmit={sendVerification}
+                      />
+                    </>
+                  )}
                 </>
               ) : (
                 /* Honest empty state — encouraging, truthful, never a fake count. */

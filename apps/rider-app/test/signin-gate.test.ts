@@ -96,10 +96,35 @@ describe('⚠ a WIRED build shows only what a server said (blocker A3)', () => {
     expect(wiredArm).not.toMatch(/DROP_CODE_LEN/);
   });
 
-  it('says what is missing instead of miming it', () => {
-    // The two custody acts have no input surface yet, so the screen ends
-    // honestly rather than offering a button that records nothing.
-    expect(app).toMatch(/assignment\.acts_pending/);
+  it('⚠ walks SE-I05 in order — the seal does not exist until the LEDGER accepted the verification', () => {
+    // « Custody begins only after rider pickup verification AND custody-seal
+    // registration. » The seal screen is gated on `maySeal`, which reads the
+    // server's answer — never « the request worked ». A refused package stops
+    // at the verification, with the seller keeping it.
+    expect(app).toMatch(/maySeal\(verifyPhase\)/);
+    expect(app).toMatch(/holdsPackage\(sealPhase\)/);
+    // And the acts go to the real ports, not the demo store.
+    expect(app).toMatch(/custodyActs\.verifyPickup/);
+    expect(app).toMatch(/custodyActs\.beginCustody/);
+  });
+
+  it('⚠ dwell is MEASURED, never invented', () => {
+    // The policy targets 120–240 s and RECORDS whether the real dwell fell
+    // inside it. Padding a quick rider into looking compliant would make the
+    // record a lie about how long they actually stood there.
+    expect(app).toMatch(/dwellSec: Math\.max\(0, Math\.round\(\(Date\.now\(\) - dwellStart\.current\)/);
+    expect(app, 'a hardcoded dwell').not.toMatch(/dwellSec:\s*\d+/);
+  });
+
+  it('⚠ one act, one command id — reused across every retry in the session', () => {
+    // Custody dedupes on it and replays its recorded answer, so a double tap
+    // or a lost response can never produce two custody transitions.
+    expect(app).toMatch(/verifyActId = useRef\(mintActId\(\)\)/);
+    expect(app).toMatch(/sealActId = useRef\(mintActId\(\)\)/);
+    expect(app).toMatch(/commandId: verifyActId\.current/);
+    expect(app).toMatch(/commandId: sealActId\.current/);
+    // Never re-minted at send time — that would defeat the dedup entirely.
+    expect(app).not.toMatch(/commandId: mintActId\(\)/);
   });
 
   it('an honest empty state when the rider carries nothing', () => {

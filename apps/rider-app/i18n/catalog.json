@@ -1092,12 +1092,6 @@
     "screenClass": "instruction"
   },
   {
-    "key": "assignment.acts_pending",
-    "fr": "La vérification et le scellé arrivent bientôt.",
-    "register": "neutral",
-    "screenClass": "status"
-  },
-  {
     "key": "verify.code_title",
     "fr": "Code de ramassage",
     "register": "neutral",
