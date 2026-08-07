@@ -1,0 +1,111 @@
+name: custody-deploy
+
+# SE-LIVE-3 (M4) — deploy the custody Worker (services/custody-service): one
+# door (SERA_CUSTODY_OPS_SECRET), one CustodyDO per order. Mirrors
+# logistics-deploy, including the F9 post-deploy provenance assertion.
+#
+# MANUAL ONLY (workflow_dispatch): a deploy is a deliberate act.
+#
+# ⚠ nodejs_compat: the custody core hashes with node's synchronous createHash.
+# `wrangler.toml` carries the flag; it was MEASURED on workerd before the code
+# was written (with it the ledger appends and the chain verifies; without it
+# the module does not resolve). If a future change drops the flag, custody
+# breaks entirely rather than subtly — which is the safe direction.
+#
+# SECRETS AND VARIABLES this run needs (repo settings):
+#   · CLOUDFLARE_API_TOKEN (secret) — the Workers deploy token.
+#   · PLATFORM_CONTRACTS_READ_TOKEN (secret) — same read token ci.yml uses.
+#   · SERA_CUSTODY_OPS_SECRET (secret) — the founder's key to the custody
+#     ledger. His alone; never bundled into any app.
+#   · CUSTODY_BASE (variable — a public URL) — set after the first deploy so
+#     the provenance step can prove the live Worker is this build.
+#
+# FAIL-CLOSED: deployed before the secret is set, every gated route answers the
+# one identical 401. Correct, not broken.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: custody-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Authorize read access to platform-contracts (CI-only)
+        run: git config --global url."https://x-access-token:${{ secrets.PLATFORM_CONTRACTS_READ_TOKEN }}@github.com/beurni2/platform-contracts".insteadOf "https://github.com/beurni2/platform-contracts"
+      - name: Authorize read access to platform-contracts (CI-only, SSH forms)
+        run: |
+          git config --global --add url."https://x-access-token:${{ secrets.PLATFORM_CONTRACTS_READ_TOKEN }}@github.com/beurni2/platform-contracts".insteadOf "git@github.com:beurni2/platform-contracts"
+          git config --global --add url."https://x-access-token:${{ secrets.PLATFORM_CONTRACTS_READ_TOKEN }}@github.com/beurni2/platform-contracts".insteadOf "ssh://git@github.com/beurni2/platform-contracts"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Resolve the provenance stamp
+        run: |
+          echo "SERA_RELEASE=${{ github.sha }}" >> "$GITHUB_ENV"
+          echo "SERA_CANON=$(node -p "require('./node_modules/@platform/contracts/package.json').version")" >> "$GITHUB_ENV"
+      # Bundled explicitly, AFTER build — never trusted to a cached task output.
+      - name: Bundle the custody Worker
+        run: pnpm --filter @sera/custody-service bundle:worker
+      - name: Deploy to Cloudflare Workers
+        working-directory: services/custody-service
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx --yes wrangler@4 deploy
+      - name: Arm SERA_CUSTODY_OPS_SECRET (piped — skipped only if the repo secret is absent)
+        working-directory: services/custody-service
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CUSTODY_SECRET: ${{ secrets.SERA_CUSTODY_OPS_SECRET }}
+        run: |
+          if [ -z "$CUSTODY_SECRET" ]; then
+            echo "::warning title=Porte custody NON armée::SERA_CUSTODY_OPS_SECRET absent — the custody door refuses everything (fail-closed) until the repo secret is set and this workflow re-dispatched."
+            exit 0
+          fi
+          printf '%s' "$CUSTODY_SECRET" | npx --yes wrangler@4 secret put SERA_CUSTODY_OPS_SECRET
+
+      # ═══ The F9 assertion: the live Worker must BE the bundle this job built ═══
+      - name: Assert the live custody Worker is the bundle this job built
+        env:
+          CUSTODY_BASE: ${{ vars.CUSTODY_BASE }}
+        run: |
+          set -uo pipefail
+          if [ -z "${CUSTODY_BASE}" ]; then
+            echo "::error::CUSTODY_BASE repo variable is empty — the deploy above ran, but NOTHING verified it."
+            echo "Set the variable to the Worker's URL and re-dispatch so this step can prove the live Worker is this build."
+            exit 1
+          fi
+          BASE="${CUSTODY_BASE%/}"
+          OUT=$(mktemp)
+          DEADLINE=$(( $(date +%s) + 180 ))
+          LIVE_CANON='?'; LIVE_RELEASE='?'
+          while :; do
+            CODE=$(curl -sS -o "$OUT" -w '%{http_code}' "$BASE/health" || echo 000)
+            if [ "$CODE" = "200" ]; then
+              LIVE_CANON=$(node -p "JSON.parse(require('fs').readFileSync('$OUT','utf8')).canon" 2>/dev/null || echo '?')
+              LIVE_RELEASE=$(node -p "JSON.parse(require('fs').readFileSync('$OUT','utf8')).release" 2>/dev/null || echo '?')
+              echo "health 200 — live canon=$LIVE_CANON release=$LIVE_RELEASE (want $SERA_CANON / $SERA_RELEASE)"
+              if [ "$LIVE_CANON" = "$SERA_CANON" ] && [ "$LIVE_RELEASE" = "$SERA_RELEASE" ]; then
+                echo "PROVENANCE OK — live custody Worker is $SERA_RELEASE speaking canon $SERA_CANON."
+                exit 0
+              fi
+            else
+              echo "health $CODE — not answering yet"
+            fi
+            if [ "$(date +%s)" -ge "$DEADLINE" ]; then
+              echo "::error::DEPLOY DID NOT TAKE — after 180s the live custody Worker is still not this job's bundle."
+              exit 1
+            fi
+            sleep 10
+          done

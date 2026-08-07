@@ -1,0 +1,32 @@
+# SE-LIVE-3 (M4) — the custody Worker: one door (Bearer SERA_CUSTODY_OPS_SECRET),
+# one CustodyDO PER ORDER (idFromName(orderId)). The secret is set via
+# `wrangler secret put` in the deploy workflow (piped) — NEVER a [vars] entry:
+# this repo is PUBLIC, a var here would be published.
+#
+# ⚠ nodejs_compat IS LOAD-BEARING, and it was MEASURED, not assumed. The
+# hash-chained ledger and the single-use secret registry hash with node's
+# SYNCHRONOUS `createHash`. Probed on real workerd before this file existed:
+# WITH the flag they run unchanged (append + verifyChain + consume all pass);
+# WITHOUT it the module does not even resolve. That is why the custody core
+# needed no rewrite for the Worker — and why removing this flag breaks custody
+# entirely rather than subtly.
+#
+# UNPROVEN UNTIL A REAL `wrangler deploy` RUNS. Miniflare binds the DO by its
+# own test config, never this file — the binding, the flag and the
+# [[migrations]] block are validated only by an actual deploy.
+
+name = "custody-service"
+main = "dist-worker/worker.mjs"
+compatibility_date = "2025-07-05"
+compatibility_flags = ["nodejs_compat"]
+
+[[durable_objects.bindings]]
+name = "CUSTODY"
+class_name = "CustodyDO"
+
+# FIRST-DEPLOY MIGRATION — `new_sqlite_classes` (the protection-service and
+# logistics-service precedent): key-value-backed DO namespaces are no longer
+# issued, and SQLite-backed DOs expose the same storage API this object uses.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["CustodyDO"]
