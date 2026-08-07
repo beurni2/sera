@@ -3,7 +3,7 @@ import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { C, GEO, rad, ty } from './faso';
 import { displayFace, textFace } from './faso-fonts';
 import { Body, Card, PrimaryButton, ScreenTitle } from './faso-kit';
-import { displayRiderCode } from '../net/rider-code';
+import { normalizeRiderCode } from '../net/rider-code';
 
 /**
  * SE-LIVE-4c-ii · THE SIGN-IN SCREEN — the rider's own code, and nothing else
@@ -49,6 +49,8 @@ export function FasoSignIn({
   readonly refusal?: { readonly title: string; readonly hint: string } | undefined;
 }) {
   const [typed, setTyped] = useState('');
+  // Derived, never stored: null until what was typed reads as a code.
+  const confirmed = normalizeRiderCode(typed);
 
   return (
     <View style={styles.wrap}>
@@ -58,9 +60,31 @@ export function FasoSignIn({
       <Card>
         <TextInput
           style={styles.field}
-          // The rider sees the canonical grouping form as they type, so the
-          // shape on screen matches the shape on the paper slip.
-          value={displayRiderCode(typed)}
+          /**
+           * ⚠ VERIFIER BLOCKER A1 — THE FIELD USED TO DESTROY THE CODE. It fed
+           * the field a FORMATTED value while storing the raw one: a controlled
+           * mask that re-applies its own formatter to its own output. React
+           * Native hands back « what is displayed + the new character », so the
+           * `SR-` the mask prepends was fed back in as body text on every
+           * keystroke. Measured, typing the code exactly as printed on the slip:
+           *
+           *   types  SR-ABCD-EFGH-JKMN
+           *   shows  SR-SRAB-CDEF-GHJK      ← the rider's own S and R, absorbed
+           *   sends  SR-SRAB-CDEF-GHJK      ← well-formed, and WRONG
+           *   gets   401 → « Ce code ne marche pas. Demandez un nouveau code. »
+           *
+           * That is precisely the harm this whole slice was written to prevent
+           * — a rider riding across Ouaga about a code that was never broken —
+           * caused by the screen, not the model. Only body-only entry worked,
+           * while the placeholder and the paper slip both teach the broken one.
+           *
+           * THE FIELD NOW SHOWS EXACTLY WHAT WAS TYPED and never fights the
+           * keyboard. Grouping is confirmation BELOW the field (`confirmed`),
+           * where it cannot corrupt anything; `autoCapitalize` does the
+           * uppercasing, and `normalizeRiderCode` still forgives dashes,
+           * spaces, lowercase and a missing prefix at submit.
+           */
+          value={typed}
           onChangeText={setTyped}
           placeholder={strings.placeholder}
           placeholderTextColor={C.sub}
@@ -77,6 +101,14 @@ export function FasoSignIn({
           onSubmitEditing={() => onSubmit(typed)}
         />
       </Card>
+
+      {/* CONFIRMATION, NOT CORRECTION. Once what was typed reads as a code, the
+          canonical form is shown BELOW the field so the rider can compare it
+          against the slip character by character. It never edits the field —
+          that is what broke it (see the block above). */}
+      {confirmed !== null && !working ? (
+        <Text style={styles.confirmed} accessibilityLabel={confirmed}>{confirmed}</Text>
+      ) : null}
 
       {/* The refusal sits directly under the field, where the eye already is —
           never a modal, never an alert. Honest states are designed states. */}
@@ -121,6 +153,13 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: rad('card'),
     backgroundColor: C.paper,
+  },
+  confirmed: {
+    ...ty('body'),
+    fontFamily: textFace(700),
+    color: C.okFg,
+    textAlign: 'center',
+    letterSpacing: 1,
   },
   refusalTitle: { ...ty('body'), fontFamily: textFace(700), color: C.ink },
   refusalHint: { ...ty('body', 'min'), fontFamily: textFace(400), color: C.sub },

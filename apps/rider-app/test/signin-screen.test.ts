@@ -79,6 +79,17 @@ describe('the field is built for a credential read off paper', () => {
     expect(src).toMatch(/editable=\{!working\}/);
   });
 
+  it('⚠ does not mask the field — it shows exactly what was typed (blocker A1)', () => {
+    // A controlled mask re-applied its own formatter to its own output every
+    // keystroke, absorbing the rider's own S and R into the body and sending a
+    // well-formed WRONG code. The field must never rewrite the rider
+    // mid-entry; grouping is confirmation BELOW it. The masking helper is
+    // deleted outright, so the scan below also proves it stayed deleted.
+    expect(src).toMatch(/value=\{typed\}/);
+    expect(src, 'the field re-masks its own output').not.toMatch(/value=\{displayRiderCode/);
+    expect(src, 'the confirmation must be read-only feedback').toMatch(/confirmed/);
+  });
+
   it('meets the ≥44px touch target and centres the code', () => {
     expect(src).toMatch(/minHeight:\s*(4[4-9]|[5-9]\d|\d{3,})/);
     expect(src).toMatch(/textAlign:\s*'center'/);

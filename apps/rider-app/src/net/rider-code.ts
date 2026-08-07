@@ -73,17 +73,17 @@ export function normalizeRiderCode(typed: string): string | null {
 }
 
 /**
- * What to show in the field as the rider types: the same normalisation, but
- * partial — it groups whatever they have so far so the shape is visible while
- * they read the slip. Never rejects; that is `normalizeRiderCode`'s job at
- * submit time.
+ * ⚠ THERE IS DELIBERATELY NO « format as you type » HELPER HERE.
+ *
+ * There was one (`displayRiderCode`), and it caused verifier blocker A1: wired
+ * as a controlled React Native input it re-applied itself to its own output on
+ * every keystroke, absorbing the rider's own `S` and `R` into the code body and
+ * producing a WELL-FORMED, WRONG code that was then sent — so the rider was
+ * told a good code was dead. It is deleted rather than fixed: a masking helper
+ * on a credential field is a trap, and the next person to reach for one should
+ * find this paragraph instead.
+ *
+ * The field shows exactly what was typed. `normalizeRiderCode` is applied at
+ * SUBMIT, and the canonical form is shown as read-only confirmation BELOW the
+ * field, where it cannot corrupt anything.
  */
-export function displayRiderCode(typed: string): string {
-  const bare = typed.toUpperCase().replace(/[^A-Z0-9]/g, '');
-  const body = bare.startsWith(PREFIX) && bare.length > PREFIX.length ? bare.slice(PREFIX.length) : bare;
-  const groups: string[] = [];
-  for (let i = 0; i < body.length && i < BODY_LEN; i += GROUP) {
-    groups.push(body.slice(i, i + GROUP));
-  }
-  return groups.length === 0 ? '' : `${PREFIX}-${groups.join('-')}`;
-}

@@ -63,6 +63,41 @@ import type { PolicyCheckId } from '../custody-flow';
 
 type FetchFn = (input: string, init?: RequestInit) => Promise<Response>;
 
+/**
+ * ⚠ VERIFIER BLOCKER A5 — A STALLED SOCKET USED TO HANG THE ONLY DOOR IN THE
+ * APP. React Native's `fetch` carries no default timeout, and `connectivity`
+ * can read « online » while nothing completes: a captive-portal Wi-Fi, a 2G
+ * cell that associates but never delivers, or simply the seed race in
+ * `expoConnectivity` (it reads the real state asynchronously, so a cold start
+ * on a dead network reports online until the first read lands). While
+ * `working`, the screen disables BOTH the button and the field — so with no
+ * timeout the rider's only exit was force-quitting the app.
+ *
+ * Every request is now bounded. The abort surfaces as `unreachable`, which is
+ * already the « try again in a moment » sentence — never « your code is dead ».
+ */
+const REQUEST_TIMEOUT_MS = 15_000;
+
+/** Run `fetch` with a hard deadline. Returns null when the deadline (or the
+ *  transport) killed it — the caller turns that into `unreachable`. */
+async function fetchWithin(
+  fetchFn: FetchFn,
+  url: string,
+  init: RequestInit,
+  timeoutMs = REQUEST_TIMEOUT_MS,
+): Promise<Response | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetchFn(url, { ...init, signal: controller.signal });
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+
 /** What custody answered. `recorded` is the ledger fact; `reason` names a
  *  refusal in custody's own vocabulary so the screen can speak plainly. */
 export type CustodyAnswer =
@@ -137,6 +172,9 @@ export function httpCustodyActs(
   base: string,
   connectivity: ConnectivityPort,
   fetchFn: FetchFn = globalThis.fetch,
+  /** Injectable so the deadline itself is testable in milliseconds rather
+   *  than by making the suite wait out the real one. */
+  timeoutMs: number = REQUEST_TIMEOUT_MS,
 ): CustodyActsPort {
   const root = base.replace(/\/+$/, '');
 
@@ -144,16 +182,12 @@ export function httpCustodyActs(
     // ⚠ THE CLOSED DOOR. Nothing is sent and — crucially — nothing is stored:
     // no outbox entry, no file, so no custody secret rests on this phone.
     if (connectivity.current() === 'offline') return { kind: 'offline' };
-    let res: Response;
-    try {
-      res = await fetchFn(`${root}${path}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${code}` },
-        body: JSON.stringify(payload),
-      });
-    } catch {
-      return { kind: 'unreachable', reason: 'transport' };
-    }
+    const res = await fetchWithin(fetchFn, `${root}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${code}` },
+      body: JSON.stringify(payload),
+    }, timeoutMs);
+    if (res === null) return { kind: 'unreachable', reason: 'transport' };
     return readAnswer(res);
   }
 
@@ -184,15 +218,42 @@ export function httpCustodyActs(
 }
 
 /**
- * SE-I05 · THE ONE QUESTION THE SCREEN MAY ASK ABOUT CUSTODY.
+ * ═══ SE-I05 · WHAT « RECORDED » DOES AND DOES NOT MEAN ═══
  *
- * Custody has begun if, and only if, the custody Worker recorded the seal.
- * Not « the rider tapped », not « we are online », not « it is queued » —
- * Law 7: queued = pending, never done; never final custody offline.
+ * ⚠ VERIFIER BLOCKER A4 — `recorded` IS NOT `accepted`. This returned
+ * `answer.kind === 'recorded'`, and that was wrong in a way that would have
+ * begun custody over goods a rider had just REFUSED.
  *
- * Every other answer leaves the package with the seller, which is the safe
- * state and the true one.
+ * Custody records a refused pickup as a first-class custody fact — « no
+ * generic failed terminal » — so `custody-do.ts:1219` answers a REFUSED
+ * verification with **`200 {ok:true, kind:'refused'}`**, the same status and
+ * the same `ok:true` as an accepted one. Measured against the shipped Worker:
+ *
+ *     verifyPickup(non-conforming goods)
+ *       → {kind:'recorded', body:{ok:true, kind:'refused', …}}
+ *       → custodyBegan() === true          ← the goods were REFUSED
+ *
+ * That is the refusal ladder: conformity failed, the fault signal is emitted,
+ * and custody must NOT begin (SE-I05; Law 3 — evidence supports, and never on
+ * its own releases anything). The two questions are now separate and each
+ * reads the field the Worker actually sets.
+ */
+
+/** Did the LEDGER accept this pickup verification? Only `kind:'accepted'`
+ *  does — a recorded REFUSAL is a custody fact, not a pass. */
+export function verificationAccepted(answer: CustodyAnswer): boolean {
+  return answer.kind === 'recorded' && answer.body['kind'] === 'accepted';
+}
+
+/**
+ * Has custody actually begun? Only when the Worker recorded the seal and said
+ * so by name (`status: 'custody_with_courier'`, `custody-do.ts:1302`).
+ *
+ * Not « the rider tapped », not « we are online », not « it is queued », and
+ * not merely « something was recorded » — Law 7: queued = pending, never done;
+ * never final custody offline. Every other answer leaves the package with the
+ * seller, which is the safe state and the true one.
  */
 export function custodyBegan(answer: CustodyAnswer): boolean {
-  return answer.kind === 'recorded';
+  return answer.kind === 'recorded' && answer.body['status'] === 'custody_with_courier';
 }

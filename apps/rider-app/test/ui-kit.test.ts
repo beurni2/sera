@@ -169,7 +169,14 @@ describe('WO-6.1 Grand Teint visual layer (rider-app)', () => {
     for (const key of ['nav.tab_service', 'nav.tab_courses']) {
       expect(app).toContain(`t('${key}')`);
     }
-    expect(app).toMatch(/\{HUBS\.includes\(screen\) && \(\s*<FasoTabBar/);
+    /**
+     * The dock renders on the HUBS and nowhere else. The guard gained a
+     * `!WIRED &&` in 4c (verifier A6): the Service/Courses dock belongs to the
+     * DEMO world, and on a wired build tapping « Courses » pushed the stack and
+     * grew a back arrow while the content never changed. The invariant is
+     * unchanged — hubs-only, and the tabs below are still RESETS, never edges.
+     */
+    expect(app).toMatch(/\{!WIRED && HUBS\.includes\(screen\) && \(\s*<FasoTabBar/);
     const tabBlock = app.slice(app.indexOf('<FasoTabBar'), app.indexOf('{/* R14'));
     expect(tabBlock).toMatch(/key: 'service'[^\n]*setStack\(\[START\]\)/);
     expect(tabBlock).toMatch(/key: 'courses'[^\n]*toCourses\(\)/);

@@ -1048,5 +1048,53 @@
     "fr": "SR-....-....-....",
     "register": "neutral",
     "screenClass": "label"
+  },
+  {
+    "key": "assignment.none_title",
+    "fr": "Pas de course pour vous",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "assignment.none_hint",
+    "fr": "Séra vous appelle dès qu'il y a une course.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "assignment.order_label",
+    "fr": "Commande",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "assignment.task_label",
+    "fr": "Course",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "assignment.status_label",
+    "fr": "État",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "sos.not_wired",
+    "fr": "Alerte gardée sur ce téléphone.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "sos.not_wired_hint",
+    "fr": "Appelez Séra tout de suite. Le téléphone n'a pas encore de lien direct.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "assignment.acts_pending",
+    "fr": "La vérification et le scellé arrivent bientôt.",
+    "register": "neutral",
+    "screenClass": "status"
   }
 ]

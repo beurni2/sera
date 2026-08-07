@@ -551,7 +551,20 @@ export default function App() {
             the right state chip. The screen NAME lives in each view's body title. */}
         <FasoHeader
         title={t('app.title')}
-        subtitle={t('service.certified_name')}
+        /**
+         * ⚠ VERIFIER BLOCKER A6 — THE DOOR ASSERTED ANOTHER RIDER'S IDENTITY.
+         * This was unconditionally `service.certified_name` (« Moussa K. ·
+         * Séra 2026 »), rendered directly above « Votre code » — a WIRED
+         * build's sign-in screen claimed a certified rider that no server had
+         * confirmed and who was not the person holding the phone. On a wired
+         * build the subtitle is now the rider logistics actually named, and
+         * before sign-in it claims nothing at all.
+         */
+        subtitle={
+          WIRED
+            ? (signInState.kind === 'signed_in' ? signInState.session.displayName : undefined)
+            : t('service.certified_name')
+        }
         backLabel={`‹ ${t('nav.retour')}`}
         onBack={stack.length > 1 ? back : undefined}
         right={<FasoStatusChip tone={shift === 'on' ? 'ok' : 'muted'} label={headerChip} />}
@@ -622,6 +635,50 @@ export default function App() {
                 }
                 onSubmit={signIn}
               />
+            </FpIn>
+          ) : WIRED ? (
+            /**
+             * ⚠ VERIFIER BLOCKER A3 — A SIGNED-IN RIDER WAS SHOWN THE DEMO
+             * WORLD. The gate only covered the SIGN-IN; the success arm fell
+             * straight through to the demo tree, so a rider holding a real,
+             * server-verified session walked a full verify → seal → drop →
+             * « Course validée » flow that **no ledger anywhere recorded**.
+             * That is the exact sentence this slice's own journal claimed was
+             * impossible (« a build that can reach Séra must never show demo
+             * courses beside real ones ») and it is §9.8 on the custody path.
+             *
+             * A WIRED BUILD NOW SHOWS ONLY WHAT A SERVER SAID. That is the
+             * rider's identity and their one live assignment from
+             * `GET /rider/moi` — no demo courses, no demo checklist, no demo
+             * seal, no demo drop code.
+             *
+             * AND IT SAYS WHAT IS MISSING RATHER THAN MIMING IT. The
+             * verification and seal acts exist as proven ports but have no
+             * input surface yet (the app never collects a `pickupVerificationCode`
+             * and has no real `custodySealId`), and how a rider receives those
+             * two secrets is a founder question, not mine. So this screen ends
+             * honestly at « la vérification et le scellé arrivent bientôt »
+             * instead of offering a button that would record nothing.
+             */
+            <FpIn style={styles.stackGap}>
+              <FasoScreenTitle>{t('signin.greeting')}</FasoScreenTitle>
+              {signInState.kind === 'signed_in' && signInState.session.assignment !== null ? (
+                <>
+                  <FasoCard>
+                    <ProofLine label={`${t('assignment.order_label')} · ${signInState.session.assignment.orderId}`} />
+                    <ProofLine label={`${t('assignment.task_label')} · ${signInState.session.assignment.taskId}`} />
+                    <ProofLine label={`${t('assignment.status_label')} · ${signInState.session.assignment.status}`} />
+                  </FasoCard>
+                  <FasoPendingNotice lines={[t('assignment.acts_pending')]} />
+                </>
+              ) : (
+                /* Honest empty state — encouraging, truthful, never a fake count. */
+                <FasoEmptyState
+                  Icon={IconColis}
+                  title={t('assignment.none_title')}
+                  hint={t('assignment.none_hint')}
+                />
+              )}
             </FpIn>
           ) : (
           <>
@@ -1155,15 +1212,17 @@ export default function App() {
           )}
         </View>
 
-        <View style={styles.footer}>
+        {/* The demo footer belongs to the demo world only — a wired build
+            must not offer « Recommencer la démo » to a working rider. */}
+        {!WIRED && <View style={styles.footer}>
           <Text style={styles.footerHint}>{t('demo.donnees')}</Text>
           <Pressable style={styles.resetAction} onPress={reset}>
             <Text style={styles.resetActionText}>{t('nav.recommencer')}</Text>
           </Pressable>
-        </View>
+        </View>}
       </ScrollView>
 
-      {HUBS.includes(screen) && (
+      {!WIRED && HUBS.includes(screen) && (
         <FasoTabBar
           items={[
             { key: 'service', Icon: IconMoto, label: t('nav.tab_service'), active: screen === 'service', onPress: () => setStack([START]) },
@@ -1192,8 +1251,25 @@ export default function App() {
           holdNote: t('sos.hold_note'),
           queued: t('sos.queued'),
           queuedHint: t('sos.queued_hint'),
-          raised: t('sos.raised'),
-          raisedHint: t('sos.raised_hint'),
+          /**
+           * ⚠ VERIFIER BLOCKER A2 — THE APP PROMISED AN ALERT NOBODY RECEIVES.
+           * « Alerte envoyée. / On cherche quelqu'un pour vous. » is TRUE in
+           * the demo world and FALSE on a wired build: there is no SOS route on
+           * any Worker (grepped — logistics and custody have none), so the
+           * raise goes to the local demo store, drains through the sandbox
+           * sender that always answers `applied`, and the banner clears as if
+           * it had been delivered. On a build a real rider signs into with a
+           * real credential, that is a false safety promise — the most
+           * dangerous string in the app, and the one thing here NOT labelled
+           * demo.
+           *
+           * Until an SOS wire exists (named for the founder in JOURNAL.md), a
+           * wired build says what is actually true: the alert is on this phone,
+           * and Séra must be called directly. The gesture, the hold and the
+           * disc are untouched — Building Plan l.88 still holds.
+           */
+          raised: WIRED ? t('sos.not_wired') : t('sos.raised'),
+          raisedHint: WIRED ? t('sos.not_wired_hint') : t('sos.raised_hint'),
           escalated: t('sos.escalated'),
           escalatedHint: t('sos.escalated_hint'),
           transportPending: t('sos.transport_pending'),

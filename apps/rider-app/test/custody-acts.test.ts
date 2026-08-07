@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createManualConnectivity } from '../src/offline/connectivity';
-import { custodyBegan, httpCustodyActs, mintActId, type CustodyAnswer } from '../src/net/custody-acts';
+import { custodyBegan, httpCustodyActs, mintActId, verificationAccepted, type CustodyAnswer } from '../src/net/custody-acts';
 
 /**
  * SE-LIVE-4c-iii · the rider's two custody acts.
@@ -71,6 +71,74 @@ describe('custody begins only when the ledger says so', () => {
     expect(answer).toMatchObject({ kind: 'recorded', duplicate: true });
     // It still means custody is held — custody replayed its own recorded fact.
     expect(custodyBegan(answer)).toBe(true);
+  });
+});
+
+describe('⚠ a RECORDED refusal is not a pass (verifier blocker A4)', () => {
+  /**
+   * Custody records a refused pickup as a first-class custody fact — « no
+   * generic failed terminal » — so `custody-do.ts:1219` answers a REFUSED
+   * verification with **200 {ok:true, kind:'refused'}**: the same status and
+   * the same `ok:true` as an accepted one. Reading only `ok` began custody
+   * over goods the rider had just refused.
+   */
+  const answerFor = async (body: unknown) =>
+    httpCustodyActs('https://c.dev', online(), async () => json(body, 200)).verifyPickup(VERIFY, 'CODE');
+
+  it('an accepted verification is accepted', async () => {
+    const a = await answerFor({ ok: true, kind: 'accepted', ledgerSeq: 2, chainValid: true });
+    expect(a.kind).toBe('recorded');
+    expect(verificationAccepted(a)).toBe(true);
+  });
+
+  it('⚠ a REFUSED verification is recorded but NOT accepted, and NEVER custody', async () => {
+    const a = await answerFor({ ok: true, kind: 'refused', ledgerSeq: 3, chainValid: true });
+    // It IS a recorded custody fact — the refusal ladder is first-class.
+    expect(a.kind).toBe('recorded');
+    // …but the goods were refused: conformity failed, the fault signal is
+    // emitted, and custody must not begin (SE-I05; Law 3).
+    expect(verificationAccepted(a)).toBe(false);
+    expect(custodyBegan(a)).toBe(false);
+  });
+
+  it('only a sealed custody transition begins custody, and it says so by name', async () => {
+    const sealed = httpCustodyActs('https://c.dev', online(), async () =>
+      json({ ok: true, status: 'custody_with_courier', riderId: 'r1' }),
+    );
+    expect(custodyBegan(await sealed.beginCustody(SEAL, 'CODE'))).toBe(true);
+    // A 200 that records something else — anything at all — is not custody.
+    for (const body of [{ ok: true }, { ok: true, kind: 'accepted' }, { ok: true, status: 'armed' }]) {
+      const other = httpCustodyActs('https://c.dev', online(), async () => json(body, 200));
+      expect(`${JSON.stringify(body)} -> ${custodyBegan(await other.beginCustody(SEAL, 'CODE'))}`)
+        .toBe(`${JSON.stringify(body)} -> false`);
+    }
+  });
+});
+
+describe('a stalled socket cannot hang the door (verifier blocker A5)', () => {
+  it('a request that never resolves is abandoned as unreachable', async () => {
+    // React Native fetch has no default timeout; the screen locks the field
+    // AND the button while working, so without a deadline the rider's only
+    // exit was force-quitting. 50 ms deadline here — the real one is 15 s.
+    const port = httpCustodyActs('https://c.dev', online(), (_u, init) =>
+      new Promise<Response>((_resolve, reject) => {
+        // Never resolves on its own — only the abort signal ends it.
+        init?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+      }),
+      50,
+    );
+    const answer = await port.beginCustody(SEAL, 'CODE');
+    expect(answer).toEqual({ kind: 'unreachable', reason: 'transport' });
+  });
+
+  it('passes an abort signal on every request', async () => {
+    let sawSignal = false;
+    const port = httpCustodyActs('https://c.dev', online(), async (_u, init) => {
+      sawSignal = init?.signal !== undefined;
+      return json({ ok: true, status: 'custody_with_courier' });
+    });
+    await port.beginCustody(SEAL, 'CODE');
+    expect(sawSignal).toBe(true);
   });
 });
 

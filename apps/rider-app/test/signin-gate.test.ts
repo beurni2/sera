@@ -79,3 +79,63 @@ describe('the rider code stays in memory', () => {
     expect(app).toMatch(/setSignInState\(\{ kind: 'refused', why: 'unreachable' \}\)/);
   });
 });
+
+describe('⚠ a WIRED build shows only what a server said (blocker A3)', () => {
+  it('does not fall through to the demo world after sign-in', () => {
+    // The gate used to cover the SIGN-IN only: the success arm fell straight
+    // into the demo tree, so a rider with a real, server-verified session
+    // walked a full verify → seal → drop → « Course validée » flow that no
+    // ledger anywhere recorded. §9.8, on the custody path.
+    expect(app).toMatch(/\) : WIRED \? \(/);
+    // The wired arm renders the session's OWN assignment…
+    expect(app).toMatch(/signInState\.session\.assignment/);
+    // …and the demo tree is now the third arm, reachable only when !WIRED.
+    const wiredArm = app.slice(app.indexOf(') : WIRED ? ('), app.indexOf(') : (\n          <>'));
+    expect(wiredArm).not.toMatch(/world\.courses/);
+    expect(wiredArm).not.toMatch(/SEAL_ID/);
+    expect(wiredArm).not.toMatch(/DROP_CODE_LEN/);
+  });
+
+  it('says what is missing instead of miming it', () => {
+    // The two custody acts have no input surface yet, so the screen ends
+    // honestly rather than offering a button that records nothing.
+    expect(app).toMatch(/assignment\.acts_pending/);
+  });
+
+  it('an honest empty state when the rider carries nothing', () => {
+    expect(app).toMatch(/assignment\.none_title/);
+    expect(app).toMatch(/assignment\.none_hint/);
+  });
+});
+
+describe('⚠ the door claims no identity it has not been given (blocker A6)', () => {
+  it('does not show a demo rider name above « Votre code »', () => {
+    // `subtitle={t('service.certified_name')}` — « Moussa K. · Séra 2026 » —
+    // was unconditional, so a wired build's sign-in asserted a certified rider
+    // that no server confirmed and who was not the person holding the phone.
+    expect(app).not.toMatch(/subtitle=\{t\('service\.certified_name'\)\}/);
+    expect(app).toMatch(/signInState\.session\.displayName/);
+  });
+
+  it('keeps the demo dock and the demo footer out of a wired build', () => {
+    expect(app).toMatch(/\{!WIRED && HUBS\.includes\(screen\)/);
+    expect(app).toMatch(/\{!WIRED && <View style=\{styles\.footer\}>/);
+  });
+});
+
+describe('⚠ the SOS does not promise what no server receives (blocker A2)', () => {
+  it('a wired build does not say « Alerte envoyée »', () => {
+    // There is NO SOS route on any Worker. In the demo world the raise drains
+    // through a sandbox sender that always answers `applied`, so the banner
+    // clears as if delivered — a false safety promise on a build a real rider
+    // signs into, and the one string here not labelled demo.
+    expect(app).toMatch(/raised: WIRED \? t\('sos\.not_wired'\) : t\('sos\.raised'\)/);
+    expect(app).toMatch(/raisedHint: WIRED \? t\('sos\.not_wired_hint'\)/);
+  });
+
+  it('but the gesture itself is untouched — SOS still reaches every screen', () => {
+    // Building Plan l.88. Changing the WORDS must never remove the disc.
+    expect(app.match(/<SosButton /g)).toHaveLength(1);
+    expect(app.indexOf('<SosButton')).toBeGreaterThan(app.indexOf('</ScrollView>'));
+  });
+});

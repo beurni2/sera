@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CODE_ALPHABET, displayRiderCode, formatRiderCode, normalizeRiderCode } from '../src/net/rider-code';
+import { CODE_ALPHABET, formatRiderCode, normalizeRiderCode } from '../src/net/rider-code';
 
 /**
  * SE-LIVE-4c-ii · reading the code off a paper slip.
@@ -86,20 +86,43 @@ describe('an unreadable code is refused here, not sent', () => {
   });
 });
 
-describe('the field shows the shape while it is being typed', () => {
-  it('groups progressively so the rider can see their place', () => {
-    expect(displayRiderCode('')).toBe('');
-    expect(displayRiderCode('a')).toBe('SR-A');
-    expect(displayRiderCode('abcd')).toBe('SR-ABCD');
-    expect(displayRiderCode('abcde')).toBe('SR-ABCD-E');
-    expect(displayRiderCode('abcdefgh')).toBe('SR-ABCD-EFGH');
-    expect(displayRiderCode('abcdefghjkmn')).toBe(REAL);
+describe('⚠ the composed runtime path — the loop that broke A1', () => {
+  /**
+   * VERIFIER B4: `displayRiderCode` and `normalizeRiderCode` were each tested
+   * in isolation, and the RUNTIME composition of them — a controlled RN input
+   * re-feeding the formatter its own output — was tested nowhere. That is
+   * exactly where blocker A1 lived, and why it shipped green.
+   *
+   * The field no longer masks (it shows what was typed), so the composition
+   * that matters now is « whatever the rider typed → what we send », simulated
+   * here for every realistic way a code gets entered.
+   */
+  const entered = (keys: string) => normalizeRiderCode(keys);
+
+  it('every realistic way of typing the printed code reaches the SAME wire form', () => {
+    for (const typed of [
+      'SR-ABCD-EFGH-JKMN',   // exactly as printed
+      'sr-abcd-efgh-jkmn',   // lowercase
+      'SRABCDEFGHJKMN',      // no dashes
+      'SR ABCD EFGH JKMN',   // spaces
+      'ABCD-EFGH-JKMN',      // body with dashes
+      'ABCDEFGHJKMN',        // body only
+      '  SR-abcd-EFGH-jkmn ',// padded + mixed
+    ]) {
+      expect(`${typed} -> ${entered(typed)}`).toBe(`${typed} -> ${REAL}`);
+    }
   });
 
-  it('never rejects mid-typing — refusal belongs at submit', () => {
-    // A field that erases a character as you type it is unusable in the sun.
-    // Out-of-alphabet input is simply carried until the rider submits.
-    expect(displayRiderCode('SR-OOO')).toBe('SR-OOO');
-    expect(displayRiderCode('sr-abcd-efgh-jkmn-pqrs')).toBe(REAL);
+  it('⚠ typing the printed code never yields a DIFFERENT well-formed code', () => {
+    // A1's real harm: the mask produced SR-SRAB-CDEF-GHJK — well-formed, wrong,
+    // and therefore SENT, so the rider was told their good code was dead.
+    expect(entered('SR-ABCD-EFGH-JKMN')).not.toBe('SR-SRAB-CDEF-GHJK');
+    expect(entered('SRABCDEFGHJKMN')).not.toBe('SR-SRAB-CDEF-GHJK');
+  });
+
+  it('a half-typed code is refused locally, never sent as something else', () => {
+    for (const partial of ['S', 'SR', 'SR-', 'SR-ABCD', 'SR-ABCD-EFGH', 'ABCDEFGHJK']) {
+      expect(`${partial} -> ${entered(partial)}`).toBe(`${partial} -> null`);
+    }
   });
 });
