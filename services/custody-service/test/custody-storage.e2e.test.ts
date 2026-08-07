@@ -385,6 +385,107 @@ describe('the command log is chained too — the facts that never reach the ledg
  * door. Recovering a damaged custody record is an operational act with
  * evidence attached, not a POST anyone can retry.
  */
+/**
+ * ⚠ SE-LIVE-3 VERIFIER, ROUND 4 (BLOCKER) — THE CHAIN ROW WAS BOUND BY NOTHING.
+ * This object writes three keys and the head covered two. `custody:chain:v1`
+ * says WHICH package, task, correlation, supplier and payment mode a custody
+ * file is about, and one write to it re-attributed the entire record while
+ * `/ledger/verify` kept answering `headMatches: true`. The next act sealed the
+ * forgery, and re-opening under the TRUE ids was refused as
+ * `chain_already_open_with_other_ids` — the honest recovery locked out.
+ */
+describe('the chain row is bound by the head — the ids cannot be rewritten underneath a custody file', () => {
+  const CODE = 'PICKUP-CHAIN-9500';
+  const AT = '2026-08-07T09:00:00.000Z';
+
+  async function seed(dir: string, order: string, withVerification: boolean): Promise<void> {
+    const mf = boot(dir);
+    expect((await call(mf, 'POST', '/ops/order/open', {
+      orderId: order, taskId: 'task-VICTIM', packageId: 'pkg-VICTIM',
+      correlationId: 'corr-VICTIM', supplierId: 'sup-VICTIM',
+    })).status).toBe(200);
+    expect((await call(mf, 'POST', '/ops/secrets/arm', {
+      orderId: order, command_id: 'arm-c', kind: 'pickup_verification_code', secret: CODE,
+    })).status).toBe(200);
+    if (withVerification) {
+      expect((await call(mf, 'POST', '/ops/verification', {
+        orderId: order, command_id: 'v-c', riderId: 'rider-1', presentedPickupCode: CODE,
+        checkResults: ALL_PASS, dwellSec: 120, evidenceBundleId: 'ev-c', at: AT,
+      })).status).toBe(200);
+    }
+    await mf.dispose();
+  }
+
+  // Each of these reaches NEITHER the command log NOR the ledger, so nothing
+  // but binding the chain itself can catch them.
+  for (const [field, from, to] of [
+    ['taskId', 'task-VICTIM', 'task-ATTACK'],
+    ['correlationId', 'corr-VICTIM', 'corr-ATTACK'],
+    ['supplierId', 'sup-VICTIM', 'sup-ATTACK'],
+  ] as const) {
+    it(`a rewritten ${field} is caught, and the file refuses`, async () => {
+      const dir = freshDir(`chain-${field}`);
+      await seed(dir, `ord-chain-${field}`, true);
+      expect(forgeInStoredCommands(dir, from, to)).toBeGreaterThan(0);
+
+      const mf = boot(dir);
+      const res = await call(mf, 'GET', `/ops/ledger?orderId=ord-chain-${field}`);
+      expect(res.status).toBe(409);
+      expect(res.json).toMatchObject({ reason: 'chain_tampered' });
+      await mf.dispose();
+    });
+  }
+
+  it('paymentMode is inside the bound region too — flipping it at rest would arm the Option-B door-payment gate', async () => {
+    const dir = freshDir('chain-mode');
+    const mf0 = boot(dir);
+    expect((await call(mf0, 'POST', '/ops/order/open', {
+      orderId: 'ord-chain-mode', taskId: 't', packageId: 'p', correlationId: 'c', supplierId: 's',
+      paymentMode: 'FULL_PREPAY',
+    })).status).toBe(200);
+    await mf0.dispose();
+
+    /**
+     * A same-length edit, because a LONGER replacement would break the stored
+     * value's own length prefix and corrupt the row rather than forge it (which
+     * fails closed anyway, as a 500). What this proves is the part that
+     * matters: `paymentMode` sits inside the region the chain hash covers, so
+     * any substitution of it — including the real Option-B value — is caught.
+     */
+    expect(forgeInStoredCommands(dir, 'FULL_PREPAY', 'PULL_PREPAY')).toBeGreaterThan(0);
+
+    const mf = boot(dir);
+    const res = await call(mf, 'GET', '/ops/ledger?orderId=ord-chain-mode');
+    expect(res.status).toBe(409);
+    expect(res.json).toMatchObject({ reason: 'chain_tampered' });
+    await mf.dispose();
+  });
+
+  it('the ARMS-ONLY state is bound too — before any verification, package_id and order_id were both rewritable', async () => {
+    const dir = freshDir('chain-arms');
+    await seed(dir, 'ord-chain-arms', false); // no verification: nothing in the ledger at all
+    expect(forgeInStoredCommands(dir, 'pkg-VICTIM', 'pkg-ATTACK')).toBeGreaterThan(0);
+
+    const mf = boot(dir);
+    const res = await call(mf, 'GET', '/ops/ledger?orderId=ord-chain-arms');
+    expect(res.status).toBe(409);
+    expect(res.json).toMatchObject({ reason: 'chain_tampered' });
+    await mf.dispose();
+  });
+
+  it('and an UNTOUCHED chain still opens, arms and verifies normally — the guard is not just refusing everything', async () => {
+    const dir = freshDir('chain-clean');
+    await seed(dir, 'ord-chain-clean', true);
+    const mf = boot(dir);
+    const res = await call(mf, 'GET', '/ops/ledger?orderId=ord-chain-clean');
+    expect(res.status).toBe(200);
+    expect(res.json).toMatchObject({ packageId: 'pkg-VICTIM' });
+    expect((await call(mf, 'GET', '/ops/ledger/verify?orderId=ord-chain-clean')).json)
+      .toMatchObject({ valid: true, headMatches: true });
+    await mf.dispose();
+  });
+});
+
 describe('a half-written custody file fails closed and says which half is missing', () => {
   const CODE = 'PICKUP-HALF-9400';
   const AT = '2026-08-07T09:00:00.000Z';
@@ -412,13 +513,17 @@ describe('a half-written custody file fails closed and says which half is missin
     let mf = boot(dir);
     for (const [method, path] of [
       ['GET', '/ops/ledger?orderId=ord-half-a'],
-      ['GET', '/ops/ledger/verify?orderId=ord-half-a'],
       ['GET', '/ops/events?orderId=ord-half-a'],
     ] as const) {
       const res = await call(mf, method, path);
       expect(res.status).toBe(409);
-      expect(res.json).toMatchObject({ reason: 'head_missing_for_existing_log' });
+      expect(res.json).toMatchObject({ reason: 'head_missing_for_existing_record' });
     }
+    // …and the attestation route answers with the diagnosis rather than
+    // refusing, so `headMatches` is a real signal and not a constant.
+    const verdict = await call(mf, 'GET', '/ops/ledger/verify?orderId=ord-half-a');
+    expect(verdict.status).toBe(200);
+    expect(verdict.json).toMatchObject({ headMatches: false, reason: 'head_missing_for_existing_record' });
     await mf.dispose();
 
     // Still refused on a fresh boot — it does not heal, and it must not.
@@ -489,8 +594,13 @@ describe('THE FORGERY THE VERIFIER PULLED OFF — the object must now refuse to 
     expect(after.status).toBe(409);
     expect(after.json).toMatchObject({ reason: 'command_log_tampered' });
 
+    // ⚠ ROUND 4: /ledger/verify ANSWERS when the file is damaged — that is the
+    // whole point of an attestation route. It reports the chain as internally
+    // consistent (a forged log looks exactly like that) and the HEAD as the
+    // thing that says otherwise.
     const verify = await call(mf, 'GET', `/ops/ledger/verify?orderId=${ORDER}`);
-    expect(verify.status).toBe(409);
+    expect(verify.status).toBe(200);
+    expect(verify.json).toMatchObject({ headMatches: false, reason: 'command_log_tampered' });
 
     // And no new custody fact can be written onto a file under suspicion.
     const act = await call(mf, 'POST', '/ops/secrets/arm', {

@@ -678,6 +678,106 @@ describe('the instant and the check list are validated, not merely parsed', () =
   });
 });
 
+/**
+ * ⚠ SE-LIVE-3 VERIFIER, ROUND 4 (BLOCKER) — A COMMAND REACHED THE SPINE AND WAS
+ * NEVER LOGGED. Fields were checked for « non-empty string » and nothing else,
+ * so a 3 MiB `riderId` built a command row past the Durable Object's 2 MiB
+ * PER-VALUE limit. `verifyPickup` consumes the single-use code BEFORE judging
+ * anything, so by the time `commit`'s put threw, the code was spent — and the
+ * 500 discarded that with the in-memory state. The verifier then presented the
+ * SAME code again and it was ACCEPTED: DoD 6 (« the four-secrets law holds
+ * across restarts ») was false, and an accepted verification the spine had
+ * actually performed evaporated.
+ */
+describe('an identifier has a length, and nothing reaches the spine that cannot be committed', () => {
+  const order = 'ord-bounded';
+  const code = 'PICKUP-BOUNDED-0011';
+
+  it('opens and arms', async () => {
+    expect((await call('POST', '/ops/order/open', opsAuth, {
+      orderId: order, taskId: 'task-b', packageId: 'pkg-b', correlationId: 'corr-b', supplierId: 'sup-b',
+    })).status).toBe(200);
+    expect((await call('POST', '/ops/secrets/arm', opsAuth, {
+      orderId: order, command_id: 'arm-b', kind: 'pickup_verification_code', secret: code,
+    })).status).toBe(200);
+  });
+
+  it('an oversized riderId is REFUSED at the door — 400, not a 500 that silently un-burns the code', async () => {
+    const huge = 'r'.repeat(3 * 1024 * 1024);
+    const res = await call('POST', '/ops/verification', opsAuth, {
+      orderId: order, command_id: 'v-huge', riderId: huge, presentedPickupCode: code,
+      checkResults: ALL_PASS, dwellSec: 150, evidenceBundleId: 'ev-b', at: T,
+    });
+    expect(res.status).toBe(400);
+
+    // THE PIN: the code was never presented to the spine, so it is untouched —
+    // and it still works exactly once, the way the four-secrets law requires.
+    const ok = await call('POST', '/ops/verification', opsAuth, {
+      orderId: order, command_id: 'v-after-huge', riderId: 'rider-b', presentedPickupCode: code,
+      checkResults: ALL_PASS, dwellSec: 150, evidenceBundleId: 'ev-b', at: T,
+    });
+    expect(ok.status).toBe(200);
+    expect(ok.json).toMatchObject({ kind: 'accepted' });
+  });
+
+  it('every identifier is bounded, and an over-long one is refused before any state moves', async () => {
+    const long = 'x'.repeat(300);
+    const huge = 'y'.repeat(5000);
+    // command_id, evidenceBundleId, and the ids on /order/open
+    expect((await call('POST', '/ops/secrets/arm', opsAuth, {
+      orderId: order, command_id: long, kind: 'custody_seal', secret: 'S',
+    })).status).toBe(400);
+    expect((await call('POST', '/ops/secrets/arm', opsAuth, {
+      orderId: order, command_id: 'arm-huge-secret', kind: 'custody_seal', secret: huge,
+    })).status).toBe(400);
+    expect((await call('POST', '/ops/order/open', opsAuth, {
+      orderId: 'ord-long-ids', taskId: long, packageId: 'p', correlationId: 'c', supplierId: 's',
+    })).status).toBe(400);
+    // a check NAME is an identifier too, and the list is bounded
+    const many: Record<string, boolean> = {};
+    for (let i = 0; i < 100; i += 1) many[`check_${i}`] = true;
+    expect((await call('POST', '/ops/verification', opsAuth, {
+      orderId: order, command_id: 'v-many', riderId: 'r', presentedPickupCode: code,
+      checkResults: many, dwellSec: 1, evidenceBundleId: 'e', at: T,
+    })).status).toBe(400);
+  });
+});
+
+/**
+ * ⚠ SE-LIVE-3 VERIFIER, ROUND 4 (MINOR) — « SPENT » IS DEADER THAN
+ * « SUPERSEDED ». The staleness marker only noticed a LATER ARM, so a
+ * redelivered arm of a code that had already been USED still replayed a bare
+ * « armed » — the exact false comfort the marker exists to prevent, in the
+ * commoner case.
+ */
+describe('a duplicate arm says when the code has been spent, not only when it was replaced', () => {
+  const order = 'ord-spent';
+  const code = 'PICKUP-SPENT-0012';
+
+  it('marks a consumed pickup code as spent on redelivery', async () => {
+    expect((await call('POST', '/ops/order/open', opsAuth, {
+      orderId: order, taskId: 'task-s', packageId: 'pkg-s', correlationId: 'corr-s', supplierId: 'sup-s2',
+    })).status).toBe(200);
+    const arm = { orderId: order, command_id: 'arm-s', kind: 'pickup_verification_code', secret: code };
+    expect((await call('POST', '/ops/secrets/arm', opsAuth, arm)).status).toBe(200);
+
+    // Before it is used, a redelivery is simply a faithful duplicate.
+    const beforeUse = await call('POST', '/ops/secrets/arm', opsAuth, arm);
+    expect(beforeUse.json).toMatchObject({ ok: true, status: 'armed', duplicate: true });
+    expect(beforeUse.json['spent']).toBeUndefined();
+
+    expect((await call('POST', '/ops/verification', opsAuth, {
+      orderId: order, command_id: 'v-s', riderId: 'rider-s', presentedPickupCode: code,
+      checkResults: ALL_PASS, dwellSec: 150, evidenceBundleId: 'ev-s', at: T,
+    })).status).toBe(200);
+
+    // After it is used, the same redelivery says so.
+    const afterUse = await call('POST', '/ops/secrets/arm', opsAuth, arm);
+    expect(afterUse.status).toBe(200);
+    expect(afterUse.json).toMatchObject({ ok: true, status: 'armed', duplicate: true, spent: true });
+  });
+});
+
 describe('two orders that share a secret STRING are still two separate custody files', () => {
   it('spending it on one leaves the other fully usable — across a restart', async () => {
     const shared = 'SHARED-SECRET-STRING-0008';

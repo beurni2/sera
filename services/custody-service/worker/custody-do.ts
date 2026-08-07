@@ -99,6 +99,18 @@ const logKey = (seq: number): string => `${LOG_PREFIX}${String(seq).padStart(12,
 const HEAD_KEY = 'custody:ledger-head:v1';
 
 interface CustodyHead {
+  /**
+   * ⚠ VERIFIER BLOCKER (round 4) — THE CHAIN IS BOUND TOO. This object writes
+   * THREE keys and the head used to cover two. `custody:chain:v1` — the row
+   * that says WHICH package, task, correlation, supplier and payment mode this
+   * custody file is about — was bound by nothing at all. One write to it
+   * re-attributed the whole record while `/ledger/verify` kept answering
+   * `headMatches: true`, the object sealed the forgery with the next act, and
+   * re-opening under the TRUE ids was refused as `chain_already_open_with_
+   * other_ids` — the honest recovery locked out. `paymentMode` was rewritable
+   * the same way, which would arm the Option-B door-payment gate at rest.
+   */
+  chainHash: string;
   /** Rows logged, and a running hash over all of them. */
   logLength: number;
   logHash: string;
@@ -190,6 +202,28 @@ export interface OrderChain extends ChainIds {
 }
 
 const isStr = (v: unknown): v is string => typeof v === 'string' && v.trim().length > 0;
+
+/**
+ * ⚠ VERIFIER BLOCKER (round 4) — AN IDENTIFIER HAS A LENGTH. Fields were
+ * checked for « non-empty string » and nothing else, so a 3 MiB `riderId`
+ * produced a command row past the Durable Object's 2 MiB PER-VALUE limit. The
+ * spine had already consumed the single-use pickup code by then (it consumes
+ * before it judges), `commit`'s `put` threw, `fetch` caught it and answered
+ * 500 — and the consumption was discarded with the in-memory state. So a spent
+ * code was un-spent, an accepted verification that the spine had performed
+ * evaporated, and the invariant « every command handed to the spine is logged »
+ * was false. Keyed rows removed the AGGREGATE cap; the per-value cap is still
+ * there, per row.
+ *
+ * Identifiers are bounded at the door now, so a row that cannot be committed
+ * can never be built — the invariant is restored by construction rather than
+ * by hoping the caller is reasonable.
+ */
+const MAX_ID = 256;
+const MAX_SECRET = 4096;
+const MAX_CHECKS = 64;
+const isBoundedStr = (v: unknown, max: number): v is string =>
+  typeof v === 'string' && v.trim().length > 0 && v.length <= max;
 
 /**
  * ⚠ VERIFIER MINOR (round 2) — STRICT ISO-8601 UTC, nothing looser. The first
@@ -303,10 +337,18 @@ export class CustodyDO {
       return;
     }
     if (head === null) {
-      // Nothing has been committed yet, so an empty log is the only consistent
-      // state. A log with no head means the head was lost — never that the
-      // commands are new.
-      if (observed.logLength > 0) this.integrityFailure = 'head_missing_for_existing_log';
+      // Nothing has been written yet, so a bare object is the only consistent
+      // state. A chain or a log with no head means the head was lost — never
+      // that the record is new. (The head is written WITH the chain by
+      // `/order/open`, so an opened file always has one.)
+      if (observed.logLength > 0 || this.chain !== null) {
+        this.integrityFailure = 'head_missing_for_existing_record';
+      }
+      return;
+    }
+    if (observed.chainHash !== head.chainHash) {
+      // The ids under this custody file are not what this object recorded.
+      this.integrityFailure = 'chain_tampered';
       return;
     }
     if (observed.logLength !== head.logLength || observed.logHash !== head.logHash) {
@@ -365,6 +407,19 @@ export class CustodyDO {
    *  A command is applied in memory first, then committed; if the commit
    *  throws, `fetch` above drops the in-memory spine and the next request
    *  rebuilds from what actually committed. */
+  /**
+   * BELT AND BRACES for the round-4 blocker. The field bounds already make an
+   * oversized row unbuildable, but the invariant this object rests on — « if it
+   * touched the spine, it is committed » — should not depend on having
+   * enumerated every field correctly. Anything that would not fit is refused
+   * BEFORE the spine sees it, so a consumption can never happen and then be
+   * thrown away. The ceiling is far under the 2 MiB per-value limit; the
+   * outcome added at commit time is small and bounded.
+   */
+  private tooLargeToCommit(cmd: CustodyCommand): boolean {
+    return canonicalJson(cmd).length > 64 * 1024;
+  }
+
   private async commit(cmd: CustodyCommand, outcome: RecordedOutcome): Promise<void> {
     const row: LoggedCommand = { cmd, outcome };
     const next = [...this.log, row];
@@ -387,7 +442,13 @@ export class CustodyDO {
     for (const row of log) logHash = foldLogHash(logHash, row);
     const entries = this.spine === null ? [] : this.spine.ledger.all();
     const last = entries[entries.length - 1] as { hash?: string } | undefined;
-    return { logLength: log.length, logHash, ledgerLength: entries.length, ledgerHash: last?.hash ?? LOG_GENESIS };
+    return {
+      chainHash: this.chain === null ? LOG_GENESIS : createHash('sha256').update(canonicalJson(this.chain), 'utf8').digest('hex'),
+      logLength: log.length,
+      logHash,
+      ledgerLength: entries.length,
+      ledgerHash: last?.hash ?? LOG_GENESIS,
+    };
   }
 
   /**
@@ -412,6 +473,23 @@ export class CustodyDO {
       });
       const latest = armsOfKind[armsOfKind.length - 1];
       if (latest !== undefined && latest.cmd.command_id !== cmd.command_id) body['superseded'] = true;
+      /**
+       * ⚠ VERIFIER MINOR (round 4) — AND « SPENT » IS DEADER THAN « SUPERSEDED ».
+       * The flag above only noticed a LATER ARM. A code that had been used was
+       * invisible to it, so redelivering the arm of a CONSUMED pickup code
+       * still replayed a bare « armed » — the exact false comfort `superseded`
+       * was added to prevent, in the more common case.
+       *
+       * Derived from the log, not guessed: `verifyPickup` consumes the pickup
+       * code BEFORE it judges anything, so any logged verification that did not
+       * come back `pickup_code_refused` consumed it.
+       */
+      if (cmd.secretKind === 'pickup_verification_code') {
+        const consumed = this.log.some(
+          (row) => row.cmd.kind === 'verify_pickup' && row.outcome.body['reason'] !== 'pickup_code_refused',
+        );
+        if (consumed) body['spent'] = true;
+      }
     }
     return Response.json(body, { status: outcome.httpStatus });
   }
@@ -455,9 +533,31 @@ export class CustodyDO {
      * Reading the body here is safe: it is a string this object already holds
      * (the router forwards it verbatim), and each route re-parses its own copy.
      */
-    /** A custody file that cannot vouch for its own history serves nothing —
-     *  not a read, not an act. Fail closed and say why. */
+    /**
+     * A custody file that cannot vouch for its own history serves nothing —
+     * not a read, not an act. Fail closed and say why.
+     *
+     * ⚠ ONE EXCEPTION, and it is the point of the route (verifier MINOR, round
+     * 4): `/ledger/verify` ANSWERS. Refusing it too made `headMatches` a
+     * constant `true` — it could only ever be read in a response that had
+     * already proved the file healthy, so the operator's attestation carried
+     * no information beyond the status code, and tests asserting it were
+     * asserting a tautology. The one route whose job is to report integrity
+     * must be reachable precisely when integrity is broken. It exposes a
+     * verdict, never custody content.
+     */
     if (this.integrityFailure !== null) {
+      if (request.method === 'GET' && pathname === '/ledger/verify') {
+        // A REAL verdict, not a refusal — and answered HERE, before the
+        // « order not open » guard, because a file whose chain row is gone is
+        // exactly a file someone needs a verdict on.
+        return Response.json({
+          ok: true,
+          valid: this.spine === null ? false : this.spine.ledger.verifyChain().valid,
+          headMatches: false,
+          reason: this.integrityFailure,
+        });
+      }
       return Response.json({ ok: false, reason: this.integrityFailure }, { status: 409 });
     }
 
@@ -477,11 +577,11 @@ export class CustodyDO {
       const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
       if (
         body === null ||
-        !isStr(body['orderId']) ||
-        !isStr(body['taskId']) ||
-        !isStr(body['packageId']) ||
-        !isStr(body['correlationId']) ||
-        !isStr(body['supplierId'])
+        !isBoundedStr(body['orderId'], MAX_ID) ||
+        !isBoundedStr(body['taskId'], MAX_ID) ||
+        !isBoundedStr(body['packageId'], MAX_ID) ||
+        !isBoundedStr(body['correlationId'], MAX_ID) ||
+        !isBoundedStr(body['supplierId'], MAX_ID)
       ) {
         return malformed();
       }
@@ -512,36 +612,25 @@ export class CustodyDO {
           : Response.json({ ok: false, reason: 'chain_already_open_with_other_ids' }, { status: 409 });
       }
       /**
-       * ⚠ VERIFIER BLOCKER (round 3) — AN ORPHANED LOG IS NEVER ADOPTED.
-       * « First-wins » only ever fired when a chain was already loaded. With
-       * the chain row gone but the command rows present, this route re-based a
-       * VICTIM's custody log onto whatever ids the caller supplied, and the
-       * next act sealed the new head — so the object then vouched for it:
-       * `valid: true`, `headMatches: true`, the victim's package erased from
-       * its own custody record, permanently and self-consistently. No hash
-       * work was required; the attacker deleted two rows and let this object
-       * do the forgery for them.
-       *
-       * The non-adversarial path is the likelier one and no better: a partial
-       * storage loss takes the chain, the operator sees `order_not_open`, and
-       * RE-OPENING — the natural recovery action — silently re-attributes the
-       * whole file to whatever they type. One typo in `packageId` and a
-       * custody record belongs to a different package.
-       *
-       * Commands can only ever exist UNDER a chain, so a log without one is a
-       * damaged file, not a new one. It refuses, loudly, and is not repairable
-       * from this door — recovering a damaged custody record is an operational
-       * act with evidence attached, not a POST anyone can retry.
+       * ⚠ VERIFIER BLOCKER (round 3) — AN ORPHANED LOG IS NEVER ADOPTED. With
+       * the chain row gone but the command rows present, this route used to
+       * re-base a VICTIM's custody log onto whatever ids the caller supplied,
+       * and the next act sealed the new head — so the object vouched for it.
+       * That guard now lives in `checkIntegrity`
+       * (`existing_command_log_without_chain`), which runs on every wake and
+       * refuses before any route is reached; a duplicate check here would be
+       * unreachable code on the most sensitive path in the repo, so there
+       * isn't one. Round 4 confirmed the adoption path is closed.
        */
-      if (this.log.length > 0) {
-        return Response.json(
-          { ok: false, reason: 'existing_command_log_without_chain', commands: this.log.length },
-          { status: 409 },
-        );
-      }
-      await this.state.storage.put(CHAIN_KEY, chain);
       this.chain = chain;
       this.spine = this.replay(chain, this.log);
+      /**
+       * ONE WRITE, chain AND head. The head binds the chain (round-4 blocker),
+       * so the chain must never exist without one — a chain row written alone
+       * would be unbound for exactly as long as it took the first act to
+       * arrive, and that window is the whole vulnerability.
+       */
+      await this.state.storage.put({ [CHAIN_KEY]: chain, [HEAD_KEY]: this.currentHeadFor(this.log) });
       // The spine changed, so the recorded head must be re-checked against it —
       // otherwise `/ledger/verify` answers off a stale flag for the rest of the
       // session (round 3 proved that too).
@@ -568,8 +657,8 @@ export class CustodyDO {
       const kind = body?.['kind'];
       if (
         body === null ||
-        !isStr(body['command_id']) ||
-        !isStr(body['secret']) ||
+        !isBoundedStr(body['command_id'], MAX_ID) ||
+        !isBoundedStr(body['secret'], MAX_SECRET) ||
         (kind !== 'pickup_verification_code' && kind !== 'custody_seal' && kind !== 'buyer_drop_code')
       ) {
         return malformed();
@@ -587,6 +676,9 @@ export class CustodyDO {
       if (prior.kind === 'duplicate') return this.replayOutcome(prior.outcome, cmd);
       if (prior.kind === 'conflict') {
         return Response.json({ ok: false, reason: 'command_id_reused_with_other_content' }, { status: 409 });
+      }
+      if (this.tooLargeToCommit(cmd)) {
+        return Response.json({ ok: false, reason: 'command_too_large' }, { status: 413 });
       }
       const applied = this.apply(this.spine, cmd) as { ok: boolean; reason?: string };
       // It reached the spine, so it is logged — `register` on a spent secret
@@ -620,10 +712,10 @@ export class CustodyDO {
       const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
       if (
         body === null ||
-        !isStr(body['command_id']) ||
-        !isStr(body['riderId']) ||
-        !isStr(body['presentedPickupCode']) ||
-        !isStr(body['evidenceBundleId']) ||
+        !isBoundedStr(body['command_id'], MAX_ID) ||
+        !isBoundedStr(body['riderId'], MAX_ID) ||
+        !isBoundedStr(body['presentedPickupCode'], MAX_SECRET) ||
+        !isBoundedStr(body['evidenceBundleId'], MAX_ID) ||
         typeof body['dwellSec'] !== 'number' ||
         !Number.isFinite(body['dwellSec']) ||
         (body['dwellSec'] as number) < 0 ||
@@ -644,7 +736,12 @@ export class CustodyDO {
        * verification was honest, but the door still said the wrong thing.
        */
       const checkResults: Record<string, boolean> = Object.create(null) as Record<string, boolean>;
-      for (const [k, v] of Object.entries(body['checkResults'] as Record<string, unknown>)) {
+      const submitted = Object.entries(body['checkResults'] as Record<string, unknown>);
+      // Bounded like every other input: the policy has nine checks, and a check
+      // NAME is an identifier, not a place to put a megabyte.
+      if (submitted.length > MAX_CHECKS) return malformed('too_many_checks');
+      for (const [k, v] of submitted) {
+        if (k.length > MAX_ID) return malformed('check_name_too_long');
         if (typeof v !== 'boolean') return malformed('check_result_not_boolean');
         checkResults[k] = v;
       }
@@ -670,6 +767,9 @@ export class CustodyDO {
       if (prior.kind === 'duplicate') return this.replayOutcome(prior.outcome, cmd);
       if (prior.kind === 'conflict') {
         return Response.json({ ok: false, reason: 'command_id_reused_with_other_content' }, { status: 409 });
+      }
+      if (this.tooLargeToCommit(cmd)) {
+        return Response.json({ ok: false, reason: 'command_too_large' }, { status: 413 });
       }
       const outcome = this.apply(this.spine, cmd) as { kind: string; reason?: string; detail?: string };
       /**
@@ -736,11 +836,9 @@ export class CustodyDO {
      * write both — see `checkIntegrity`.
      */
     if (request.method === 'GET' && pathname === '/ledger/verify') {
-      return Response.json({
-        ok: true,
-        ...this.spine.ledger.verifyChain(),
-        headMatches: this.integrityFailure === null,
-      });
+      // Reached only when integrity holds — the damaged verdict is returned
+      // earlier, above the « order not open » guard.
+      return Response.json({ ok: true, ...this.spine.ledger.verifyChain(), headMatches: true });
     }
 
     /** The events the spine has emitted for this order (canonical shapes) —
