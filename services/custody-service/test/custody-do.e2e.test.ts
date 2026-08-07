@@ -843,13 +843,23 @@ describe('the founder-attested rider identity can be read back', () => {
 
     const res = await call('GET', `/ops/attestations?orderId=${order}`, opsAuth);
     expect(res.status).toBe(200);
-    // Labelled on the response so it is never read as more than it is.
-    expect(res.json).toMatchObject({ ok: true, attribution: 'founder_attested' });
+    expect(res.json).toMatchObject({ ok: true });
+    /**
+     * ⚠ THE LABEL MOVED FROM THE RESPONSE TO THE ACT (4b round-1 blocker A2).
+     * This used to assert a blanket `attribution: 'founder_attested'` on the
+     * response, which was true only while the ops key was the only door. The
+     * rider door made it a lie for rider-authenticated rows while the field
+     * kept claiming otherwise, so the blanket is gone and each act carries
+     * its own. Asserted per-row here — a strictly stronger claim, since it
+     * now says WHICH act was the founder's word.
+     */
+    expect(res.json['attribution']).toBeUndefined();
     const rows = res.json['attestations'] as Json[];
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
       command_id: 'v-at',
       riderId: 'RIDER-XYZ-ATTESTED',
+      attribution: 'founder_attested',
       evidenceBundleId: 'ev-REAL-PHOTOS-01',
       dwellSec: 137,
       outcome: 'accepted',

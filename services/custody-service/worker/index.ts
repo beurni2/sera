@@ -6,20 +6,28 @@ export { CustodyDO, PackageClaimDO };
 /**
  * custody-service Worker entry (SE-LIVE-3, M4).
  *
- * ONE DOOR TODAY: every route except GET /health requires the founder's
- * `SERA_CUSTODY_OPS_SECRET` — a wrangler SECRET, never a `[vars]` entry (this
- * repo is PUBLIC). FAIL CLOSED: a Worker deployed before the secret is set
- * refuses everything, loudly, with one identical 401.
+ * TWO DOORS, as of SE-LIVE-4b-ii. Everything except GET /health is gated:
  *
- * ⚠ WHY ONLY ONE DOOR — FOUNDER RULING (2026-08-06, option 2). Pickup
- * verification and the custody seal are the RIDER's acts, but rider identity
- * lives in the logistics Worker (that is where the personal codes are). Rather
- * than build a second rider door here and replace it next slice, SE-LIVE-3
- * makes the LEDGER live, durable and tamper-evident behind the founder's key,
- * and SE-LIVE-4 brings the rider's own authenticated hand with the rider app.
- * Until then a recorded `riderId` is the founder's ATTESTATION of who
- * verified, not the rider's own credential — the JOURNAL says so too, so this
- * ledger is never read as more than it is.
+ *   · `/ops/*`   — the founder's `SERA_CUSTODY_OPS_SECRET`, opening EVERY
+ *                  route on the object. A `riderId` he supplies is his
+ *                  ATTESTATION of who acted, and is recorded as exactly that.
+ *   · `/rider/*` — the rider's OWN personal code, resolved against the
+ *                  logistics Worker (the one book that mints and revokes it),
+ *                  opening ONLY the two acts SE-I05 gives a rider. See
+ *                  RIDER_ROUTES below — that allowlist is load-bearing.
+ *
+ * Both are wrangler SECRETS, never `[vars]` entries (this repo is PUBLIC).
+ * FAIL CLOSED: a Worker deployed before a secret is set refuses that door
+ * entirely, with one identical 401.
+ *
+ * ⚠ HOW THIS GOT HERE — FOUNDER RULING (2026-08-06, option 2). SE-LIVE-3 ran
+ * on the founder's key ALONE, because rider identity lives in logistics and
+ * building a throwaway rider door was worse than waiting one slice: that slice
+ * made the LEDGER live, durable and tamper-evident, and every `riderId` in it
+ * was explicitly the founder's word. SE-LIVE-4b-ii is where the rider's own
+ * authenticated hand arrives, so the ledger now records WHICH of the two each
+ * act was (`attribution`), per act, rather than asserting one label over all
+ * of them.
  *
  * SEPARATE WORKER, deliberately: the custody core hashes with node's
  * synchronous `createHash`, which needs `nodejs_compat`. Keeping custody in
@@ -61,6 +69,45 @@ export interface Env {
 }
 
 const BEARER_PREFIX = 'Bearer ';
+
+/**
+ * ═══ WHAT A RIDER'S CODE OPENS — AND NOTHING ELSE ═══
+ *
+ * ⚠ VERIFIER BLOCKER (4b round 1) — THE RIDER DOOR HAD NO ALLOWLIST. The
+ * `/rider/` prefix gated AUTHENTICATION only; the path rewrite below then
+ * handed whatever was asked for to the object. So one valid rider code opened
+ * ALL NINE of the object's routes, on ANY order id, for EVERY rider in the
+ * book — and it did so without ever consulting the founder's key. Measured on
+ * the shipped bundle, three separate ways to lose a package:
+ *
+ *   · `/rider/secrets/arm` — re-arm the pickup code, the custody seal AND the
+ *     `buyerDropCode` with values the caller chose, then verify and take
+ *     custody. `SecretRegistry.register` REPLACES an unconsumed secret, so the
+ *     whole window between the founder arming a code and the assigned rider
+ *     arriving was open. The real rider then gets `pickup_code_refused` with
+ *     the code she was handed. Breaks SE-I05 and Law 3 (« the four secrets are
+ *     never substituted ») — and arms the one secret SE-I11 rests on.
+ *   · `/rider/order/open` — claim a package id for a decoy order. The claim is
+ *     write-once and nothing releases it, so the honest order is refused
+ *     `package_claimed_by_other_order` FOREVER: Séra can never take custody of
+ *     those goods.
+ *   · `/rider/ledger` · `/attestations` · `/events` — any order's full custody
+ *     file, read by any rider.
+ *
+ * THE FIX IS AN ALLOWLIST, not a denylist: a route added later is closed until
+ * someone deliberately opens it, which is the only direction this can safely
+ * fail. SE-I05 names exactly two rider acts — « Custody begins only after
+ * **rider pickup verification** AND **custody-seal registration** » — so those
+ * two are what a rider code opens. Reads are NOT here: the rider app (4c) gets
+ * a bounded read when it can say what it needs, and « she might want it » is
+ * not a reason to expose every order's custody file today.
+ *
+ * CHECKED BEFORE THE LOGISTICS HOP, deliberately: an unauthenticated caller
+ * must not be able to make this Worker call another service at all. What the
+ * allowlist contains is not a secret (this repo is public and the set is right
+ * here) — the credential is, and that is still answered by one identical 401.
+ */
+const RIDER_ROUTES: ReadonlySet<string> = new Set(['POST /verification', 'POST /custody/begin']);
 
 async function timingSafeEqual(a: string, b: string): Promise<boolean> {
   const enc = new TextEncoder();
@@ -151,6 +198,12 @@ export default {
     let attestedRider: string | null = null;
 
     if (riderPath) {
+      // ⚠ THE ALLOWLIST RUNS FIRST — see RIDER_ROUTES. Answered with the same
+      // `not_found` the unknown-path branch below returns, so the rider door
+      // never becomes a way to enumerate what the founder's door has.
+      if (!RIDER_ROUTES.has(`${request.method} ${url.pathname.replace(/^\/rider/, '')}`)) {
+        return Response.json({ ok: false, reason: 'not_found' }, { status: 404 });
+      }
       const header = request.headers.get('Authorization') ?? '';
       const code = header.startsWith(BEARER_PREFIX) ? header.slice(BEARER_PREFIX.length) : '';
       if (code === '' || env.LOGISTICS === undefined || (env.SERA_RIDER_VERIFY_SECRET ?? '') === '') {

@@ -181,7 +181,31 @@ function canonicalJson(value: unknown): string {
  *  no route writes them today, so no half-built custody path exists. */
 export type CustodyCommand =
   | { kind: 'arm_secret'; command_id: string; secretKind: 'pickup_verification_code' | 'custody_seal' | 'buyer_drop_code'; secretDigest: string; at: string }
-  | { kind: 'verify_pickup'; command_id: string; input: VerificationInput; presentedPickupCodeDigest: string; at: string }
+  | {
+      kind: 'verify_pickup';
+      command_id: string;
+      input: VerificationInput;
+      presentedPickupCodeDigest: string;
+      /**
+       * SE-LIVE-4b-ii — the same per-act record `begin_custody` carries, and
+       * for the same reason. It is OPTIONAL only because commands logged by
+       * SE-LIVE-3 predate the rider door: back then the ops key was the only
+       * way in, so an absent value means `founder_attested` and readers must
+       * render it that way (see `/attestations`). New commands always set it.
+       *
+       * ⚠ ADDING IT CHANGES `fingerprint`, deliberately. A command id retried
+       * across the deploy that introduced this field will answer
+       * `409 command_id_reused_with_other_content` instead of replaying — a
+       * loud, empty-handed refusal the operator can read and reissue. That is
+       * the right trade: the alternative is excluding attribution from the
+       * fingerprint, which would make a founder-attested act and a
+       * rider-authenticated act with one command id indistinguishable, and
+       * « two different acts counted as the same » is the exact error class
+       * this ledger exists to prevent.
+       */
+      attribution?: 'founder_attested' | 'rider_authenticated';
+      at: string;
+    }
   | {
       kind: 'begin_custody';
       command_id: string;
@@ -1061,19 +1085,39 @@ export class CustodyDO {
      * fault signal and custody never begins. This route hands the spine the
      * command and nothing else — no check is evaluated here.
      *
-     * ⚠ WHOSE HAND: gated by the founder's ops key (founder ruling, option 2
-     * — 2026-08-06). The rider's OWN authenticated act arrives in SE-LIVE-4
-     * with the rider app; `riderId` is recorded as given, and until that
-     * slice it is the founder's attestation of who verified, not the rider's
-     * own credential. Stated here so the ledger is never read as more than
-     * it is.
+     * ⚠ WHOSE HAND — AND IT IS NO LONGER ALWAYS THE FOUNDER'S. Through
+     * `/ops/*` the body's `riderId` stands, as his ATTESTATION of who
+     * verified. Through `/rider/*` the identity arrives in the router's
+     * `X-Rider-Authenticated` header, resolved by logistics into a FRESH
+     * headers object the caller cannot write — exactly the discipline
+     * `/custody/begin` already applies, and `X-Custody-Object` before it.
+     *
+     * ⚠ VERIFIER BLOCKER (4b round 1) — THIS ROUTE READ THE BODY ON BOTH
+     * DOORS, and that was attribution laundering in both directions at once:
+     * an authenticated rider's own act was recorded under WHATEVER NAME THE
+     * CALLER TYPED, and then labelled as the founder's word by
+     * `/attestations`. Measured — a request bearing rider Mallory's valid code
+     * with `riderId: 'rider-AICHA'` was recorded `accepted`, verifier
+     * `rider-AICHA`, attribution `founder_attested`. SE-I12 makes the bounded
+     * verification mean « the person taking the goods personally observed
+     * their conformity »; the one-hand binding in `/custody/begin` then checks
+     * the seal against THAT name, so a forgeable name defeats it too. Under
+     * Build Spec:63 (« a rider code/photo/GPS/self-declaration alone MUST NOT
+     * release money ») a record that cannot say who stood there is worth
+     * nothing.
      */
     if (request.method === 'POST' && pathname === '/verification') {
       const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      // Same shape as `/custody/begin`: present ⇒ this is the rider's own
+      // authenticated hand and the body's `riderId` is neither required nor
+      // consulted; absent ⇒ the founder's door, where the body must name whom
+      // he is attesting for.
+      const doorRider = request.headers.get('X-Rider-Authenticated');
+      const riderFromDoor = doorRider !== null && doorRider !== '';
       if (
         body === null ||
         !isBoundedStr(body['command_id'], MAX_ID) ||
-        !isBoundedStr(body['riderId'], MAX_ID) ||
+        (!riderFromDoor && !isBoundedStr(body['riderId'], MAX_ID)) ||
         !isBoundedStr(body['presentedPickupCode'], MAX_SECRET) ||
         !isBoundedStr(body['evidenceBundleId'], MAX_ID) ||
         typeof body['dwellSec'] !== 'number' ||
@@ -1105,16 +1149,33 @@ export class CustodyDO {
         if (typeof v !== 'boolean') return malformed('check_result_not_boolean');
         checkResults[k] = v;
       }
+      /**
+       * ⚠ THE DOOR'S IDENTITY WINS, AND THE BODY IS IGNORED — the same rule
+       * `/custody/begin` follows. `acceptedVerificationRider()` reads this name
+       * back to bind the seal to the hand that verified, so if this name were
+       * forgeable the one-hand binding would be too.
+       *
+       * The control-byte guard is applied to BOTH sources. On the founder's
+       * path it catches his typo; on the rider's it catches an id logistics
+       * would let through (`isStr` there permits interior control bytes), and
+       * this name is now written into `attestations` and compared against the
+       * custodian — an identity that misrenders cannot settle who stood there.
+       */
+      const verifyingRider = riderFromDoor ? (doorRider as string).trim() : (body['riderId'] as string).trim();
+      if (verifyingRider === '' || verifyingRider.length > MAX_ID || hasControlChar(verifyingRider)) {
+        return malformed('rider_id_not_usable');
+      }
       const cmd: CustodyCommand = {
         kind: 'verify_pickup',
         command_id: commandId,
+        attribution: riderFromDoor ? 'rider_authenticated' : 'founder_attested',
         input: {
           // Built FIELD BY FIELD on purpose: `VerificationInput` also carries an
           // optional `custodySealId`, and a seal is one of the four secrets.
           // Spreading the body would let a caller smuggle one in — and it would
           // land in the log. It cannot arrive through this route.
           orderId: this.chain.order_id,
-          riderId: (body['riderId'] as string).trim(),
+          riderId: verifyingRider,
           checkResults,
           dwellSec: body['dwellSec'] as number,
           evidenceBundleId: (body['evidenceBundleId'] as string).trim(),
@@ -1383,6 +1444,13 @@ export class CustodyDO {
             command_id: cmd.command_id,
             at: cmd.at,
             riderId: cmd.input.riderId,
+            /**
+             * ⚠ PER ACT, NOT PER RESPONSE (4b round-1 blocker). Absent means
+             * the command was logged before the rider door existed, when the
+             * ops key was the only way in — so `founder_attested` is the
+             * FACT about those rows, not a default chosen for convenience.
+             */
+            attribution: cmd.attribution ?? 'founder_attested',
             evidenceBundleId: cmd.input.evidenceBundleId,
             dwellSec: cmd.input.dwellSec,
             checkResults: { ...cmd.input.checkResults },
@@ -1407,19 +1475,15 @@ export class CustodyDO {
         });
       return Response.json({
         ok: true,
-        // Stated on the response itself, so it is never read as more than it
-        // is (founder ruling, 2026-08-06): until the rider app authenticates
-        // its own hand in SE-LIVE-4, this is the FOUNDER's attestation of who
-        // verified, not the rider's own credential.
         /**
-         * ⚠ THIS BLANKET LABEL SPEAKS FOR THE VERIFICATIONS ONLY, and says so.
-         * `/verification` is still the founder's door alone, so every row in
-         * `attestations` is his attestation. The CUSTODY acts below carry their
-         * own per-act `attribution`, because after SE-LIVE-4b-ii they may be
-         * either — and one label over two different kinds of evidence is
-         * exactly the sort of sentence that outruns its code.
+         * ⚠ THE BLANKET LABEL IS GONE — VERIFIER BLOCKER (4b round 1). It read
+         * `attribution: 'founder_attested'` over the whole response, justified
+         * by a comment saying « `/verification` is still the founder's door
+         * alone ». That sentence was false the moment 4b-ii shipped the rider
+         * door, and the JOURNAL repeated it. There is no longer any single
+         * true value here: every row on BOTH lists now carries its own, which
+         * is the only shape that can stay true as doors are added.
          */
-        attribution: 'founder_attested',
         attestations,
         // The seal side of SE-I05, beside the verification side. NO SECRET —
         // the seal is a digest by the time it reaches the log, and not even

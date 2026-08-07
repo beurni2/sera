@@ -271,3 +271,183 @@ describe('the rider takes custody with his own code', () => {
     await mf.dispose();
   });
 });
+
+/**
+ * ═══ VERIFIER BLOCKER A1 (4b round 1) — WHAT A VALID RIDER CODE OPENS ═══
+ *
+ * The test above was the ONLY thing guarding the rider door's route surface,
+ * and it guarded nothing: it exercised `/ops/*` with a rider code (refused by
+ * the pre-existing ops check) and `/rider/*` with the ops secret (refused
+ * because logistics does not know that string). Delete the allowlist entirely
+ * and it still passes — which is the state this slice shipped in. §9.7.
+ *
+ * These pin the CONSEQUENCE, not the status code. Every one of them uses a
+ * code logistics genuinely resolves, so the only thing standing between the
+ * request and the object is `RIDER_ROUTES`.
+ */
+describe('a valid rider code opens the two rider acts and nothing else', () => {
+  /** Opened and both secrets armed by the founder — NOT yet verified, so the
+   *  rider acts are still ahead of us. */
+  async function armedOnly(mf: Miniflare, order: string, pkg: string): Promise<void> {
+    expect((await call(mf, 'POST', '/ops/order/open', OPS, {
+      orderId: order, taskId: 't', packageId: pkg, correlationId: 'c', supplierId: SUPPLIER,
+    })).status).toBe(200);
+    for (const [kind, secret] of [
+      ['pickup_verification_code', PICKUP_CODE], ['custody_seal', SEAL_CODE],
+    ] as const) {
+      expect((await call(mf, 'POST', '/ops/secrets/arm', OPS, {
+        orderId: order, command_id: `arm-${kind}`, kind, secret,
+      })).status).toBe(200);
+    }
+  }
+
+  it('refuses every route that is not one of the two rider acts', async () => {
+    const dir = freshDir('allowlist');
+    const mf = boot(dir, logisticsStub({ known: known() }));
+    await armedOnly(mf, ORDER, PKG);
+
+    // Every OTHER route the object exposes, asked for with a code logistics
+    // resolves. If the allowlist is removed, each of these reaches the object.
+    const shut: ReadonlyArray<readonly [string, string]> = [
+      ['POST', '/rider/order/open'],
+      ['POST', '/rider/secrets/arm'],
+      ['GET', `/rider/ledger?orderId=${ORDER}`],
+      ['GET', `/rider/ledger/verify?orderId=${ORDER}`],
+      ['GET', `/rider/attestations?orderId=${ORDER}`],
+      ['GET', `/rider/events?orderId=${ORDER}`],
+      // The two live acts, asked for with the WRONG METHOD — the allowlist
+      // pins the verb too, not just the path.
+      ['GET', `/rider/verification?orderId=${ORDER}`],
+      ['GET', `/rider/custody/begin?orderId=${ORDER}`],
+    ];
+    for (const [method, path] of shut) {
+      const res = await call(mf, method, path, RIDER_CODE, method === 'POST' ? { orderId: ORDER } : undefined);
+      expect(`${method} ${path} -> ${res.status}`).toBe(`${method} ${path} -> 404`);
+      expect(res.json['reason']).toBe('not_found');
+    }
+    await mf.dispose();
+  });
+
+  it('cannot substitute the four secrets: the founder’s armed code still verifies, the rider’s does not', async () => {
+    const dir = freshDir('secrets');
+    const mf = boot(dir, logisticsStub({ known: known() }));
+    await armedOnly(mf, ORDER, PKG);
+
+    // The attack: re-arm the pickup code with a value the caller chose.
+    const arm = await call(mf, 'POST', '/rider/secrets/arm', RIDER_CODE, {
+      orderId: ORDER, command_id: 'arm-substituted', kind: 'pickup_verification_code', secret: 'RIDER-CHOSE-THIS',
+    });
+    expect(arm.status).toBe(404);
+
+    // THE PROOF IT CHANGED NOTHING — the substituted code does not verify…
+    const withSubstituted = await call(mf, 'POST', '/rider/verification', RIDER_CODE, {
+      orderId: ORDER, command_id: 'verify-substituted', presentedPickupCode: 'RIDER-CHOSE-THIS',
+      evidenceBundleId: 'ev-x', dwellSec: 150, checkResults: ALL_PASS, at: T,
+    });
+    expect(withSubstituted.status).toBe(409);
+
+    // …and the code the FOUNDER armed still does. Law 3: « the four secrets
+    // are never substituted ». If the allowlist goes, this call fails instead,
+    // because the real rider's code was overwritten out from under her.
+    const withReal = await call(mf, 'POST', '/rider/verification', RIDER_CODE, {
+      orderId: ORDER, command_id: 'verify-real', presentedPickupCode: PICKUP_CODE,
+      evidenceBundleId: 'ev-y', dwellSec: 150, checkResults: ALL_PASS, at: T,
+    });
+    expect(withReal.status).toBe(200);
+    expect(withReal.json['kind']).toBe('accepted');
+    await mf.dispose();
+  });
+
+  it('cannot squat a package claim and lock the honest order out forever', async () => {
+    const dir = freshDir('squat');
+    const mf = boot(dir, logisticsStub({ known: known() }));
+
+    // The attack: open a decoy order over a package the founder has not
+    // reached yet. The claim is write-once and nothing in this service
+    // releases it, so a win here is permanent.
+    const squat = await call(mf, 'POST', '/rider/order/open', RIDER_CODE, {
+      orderId: 'ord-decoy', taskId: 't', packageId: PKG, correlationId: 'c', supplierId: SUPPLIER,
+    });
+    expect(squat.status).toBe(404);
+
+    // THE PROOF: the honest order still gets its custody file over that
+    // package. Without the allowlist this answers `package_claimed_by_other_order`.
+    const honest = await call(mf, 'POST', '/ops/order/open', OPS, {
+      orderId: ORDER, taskId: 't', packageId: PKG, correlationId: 'c', supplierId: SUPPLIER,
+    });
+    expect(honest.status).toBe(200);
+    await mf.dispose();
+  });
+
+  it('cannot read another order’s custody file', async () => {
+    const dir = freshDir('crossread');
+    const mf = boot(dir, logisticsStub({ known: known() }));
+    await armedOnly(mf, 'ord-someone-else', 'pkg-someone-else');
+
+    for (const path of [
+      '/rider/ledger?orderId=ord-someone-else',
+      '/rider/attestations?orderId=ord-someone-else',
+      '/rider/events?orderId=ord-someone-else',
+    ]) {
+      const res = await call(mf, 'GET', path, RIDER_CODE);
+      expect(res.status).toBe(404);
+      // Nothing about the order leaks in the refusal — no custodian, no chain.
+      expect(Object.keys(res.json).sort()).toEqual(['ok', 'reason']);
+    }
+    await mf.dispose();
+  });
+});
+
+/**
+ * ═══ VERIFIER BLOCKER A2 (4b round 1) — WHOSE NAME GOES IN THE RECORD ═══
+ *
+ * `/verification` read `riderId` from the BODY on both doors and
+ * `/attestations` labelled every row `founder_attested`. So an authenticated
+ * rider's own act was recorded under whatever name the caller typed, and then
+ * attributed to the founder. Both directions of laundering, in one call.
+ */
+describe('a verification names the hand that actually presented the code', () => {
+  it('ignores a riderId in the body and records logistics’ answer, attributed to the rider', async () => {
+    const dir = freshDir('a2-rider');
+    const mf = boot(dir, logisticsStub({ known: known() }));
+    expect((await call(mf, 'POST', '/ops/order/open', OPS, {
+      orderId: ORDER, taskId: 't', packageId: PKG, correlationId: 'c', supplierId: SUPPLIER,
+    })).status).toBe(200);
+    expect((await call(mf, 'POST', '/ops/secrets/arm', OPS, {
+      orderId: ORDER, command_id: 'arm-p', kind: 'pickup_verification_code', secret: PICKUP_CODE,
+    })).status).toBe(200);
+
+    // Mallory's real code, Aïcha's name in the body.
+    const res = await call(mf, 'POST', '/rider/verification', RIDER_CODE, {
+      orderId: ORDER, command_id: 'verify-laundered', riderId: 'rider-SOMEONE-ELSE',
+      presentedPickupCode: PICKUP_CODE, evidenceBundleId: 'ev-1',
+      dwellSec: 150, checkResults: ALL_PASS, at: T,
+    });
+    expect(res.status).toBe(200);
+
+    const att = (await call(mf, 'GET', `/ops/attestations?orderId=${ORDER}`, OPS)).json;
+    const rows = att['attestations'] as ReadonlyArray<Record<string, unknown>>;
+    expect(rows).toHaveLength(1);
+    // The code's owner, NOT the body's claim.
+    expect(rows[0]?.['riderId']).toBe(RIDER);
+    expect(rows[0]?.['riderId']).not.toBe('rider-SOMEONE-ELSE');
+    // …and recorded as the rider's own hand, not the founder's word.
+    expect(rows[0]?.['attribution']).toBe('rider_authenticated');
+    // The blanket response-level label is gone: there is no single true value.
+    expect(att['attribution']).toBeUndefined();
+    await mf.dispose();
+  });
+
+  it('still records the founder’s own door as his attestation', async () => {
+    const dir = freshDir('a2-ops');
+    const mf = boot(dir, logisticsStub({ known: known() }));
+    await readyForSeal(mf);
+
+    const rows = (await call(mf, 'GET', `/ops/attestations?orderId=${ORDER}`, OPS))
+      .json['attestations'] as ReadonlyArray<Record<string, unknown>>;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.['riderId']).toBe(RIDER);
+    expect(rows[0]?.['attribution']).toBe('founder_attested');
+    await mf.dispose();
+  });
+});

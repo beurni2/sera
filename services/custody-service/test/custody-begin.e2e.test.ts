@@ -394,10 +394,17 @@ describe('the custody record says who actually took the package', () => {
 
     const att = await hit(mf, 'GET', `/ops/attestations?orderId=${ORDER}`);
     expect(att.status).toBe(200);
-    expect(att.json).toMatchObject({ attribution: 'founder_attested' });
+    // Per act, not per response (4b round-1 blocker A2): the blanket label is
+    // gone, and BOTH lists now say for themselves whose hand each act was.
+    expect(att.json['attribution']).toBeUndefined();
+    const verifications = att.json['attestations'] as Record<string, unknown>[];
+    expect(verifications).toHaveLength(1);
+    expect(verifications[0]).toMatchObject({ riderId: RIDER, attribution: 'founder_attested' });
     const taken = att.json['custodyTaken'] as Record<string, unknown>[];
     expect(taken).toHaveLength(1);
-    expect(taken[0]).toMatchObject({ riderId: RIDER, outcome: 'custody_with_courier', recorded: true });
+    expect(taken[0]).toMatchObject({
+      riderId: RIDER, attribution: 'founder_attested', outcome: 'custody_with_courier', recorded: true,
+    });
     // The seal itself is never surfaced — not the plaintext, not the digest.
     const text = JSON.stringify(att.json);
     expect(text).not.toContain(SEAL_CODE);
