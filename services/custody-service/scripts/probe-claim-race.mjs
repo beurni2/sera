@@ -12,10 +12,18 @@
  * winner can then DO with the shared package (arm a custody seal), which is the
  * part that makes the defect matter rather than merely exist.
  *
- * THREE THINGS THE RACE NEEDS, all measured: a warm runtime, a sweep of trials,
- * and THE RESPONSE BODIES READ. The third is the one that hides: an earlier cut
- * of this probe checked only status codes and reported « no multi-winner » on
- * the very worker that produced eight of them.
+ * ⚠ WHAT THE RACE ACTUALLY NEEDS — corrected after round 4 measured it.
+ * An earlier version of this header said THREE things were needed « all
+ * measured »: a warm runtime, a sweep of trials, and the response bodies read.
+ * That was wrong, and it is the belief that let a defective gate ship. Measured
+ * across four arms x 3 runs x 100 eight-way trials against the round-1 worker,
+ * EVERY arm reproduces: reading the bodies raises the rate roughly 2.4x
+ * (26/600 trials vs 11/600), and neither the bodies nor the warm-up is
+ * necessary. **Only the sweep of trials is load-bearing** — the event is rare
+ * (~1-4 % of trials), so one round of eight proves nothing either way.
+ *
+ * The warm-up and the body reads are kept because they raise the hit rate, not
+ * because they are required.
  *
  * RECORDED RESULTS (JOURNAL.md carries the same numbers):
  *   before the fix: 8 of 8 orders opened a custody file over one package,
@@ -47,9 +55,9 @@ const mf = new Miniflare({
   bindings: { SERA_CUSTODY_OPS_SECRET: OPS },
 });
 
-// NB: the body is READ, not just the status. Leaving eight response bodies
-// unconsumed changes how the requests overlap — the first cut of this probe
-// skipped the read and stopped reproducing the very defect it was written for.
+// NB: the body is read, not just the status. Measured at ~2.4x the hit rate —
+// an amplifier, not a precondition. An earlier comment here claimed skipping
+// the read « stopped reproducing » the defect; round 4 disproved that.
 const open = async (orderId, packageId) => {
   const res = await mf.dispatchFetch('http://custody/ops/order/open', {
     method: 'POST',
@@ -59,8 +67,8 @@ const open = async (orderId, packageId) => {
   return { status: res.status, text: await res.text() };
 };
 
-// The race needs a warm, busy isolate — on a cold one the requests serialise
-// and the window never opens. This warm-up is load-bearing.
+// Warms the isolate. This RAISES the hit rate; it is not required — the defect
+// reproduces without it in about half of runs (see the header).
 await Promise.all(Array.from({ length: 20 }, (_, i) => open(`ord-warm-${i}`, `pkg-warm-${i}`)));
 
 let hit = null;

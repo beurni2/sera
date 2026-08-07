@@ -27,13 +27,21 @@ import { afterAll, describe, expect, it } from 'vitest';
  * SO THESE TESTS DO NOT COUNT OUTCOMES. They storm the doors, then ASK THE
  * OBJECTS what state they are in: every order, does it have a custody file;
  * every package, who holds its claim. Two files over one package, or a claim
- * held by an order that is not carrying that package, are FACTS ON DISK — they
- * do not depend on catching an interleaving in the act. That makes the pin
- * deterministic, and it is why the storm needs only a handful of rounds.
+ * held by an order that is not carrying that package, are FACTS ON DISK.
  *
- * POSITIVE CONTROLS, recorded in JOURNAL.md: this detector finds two-files and
- * orphaned-claim states on the workers that had those defects, and finds none
- * here.
+ * ⚠ WHAT THAT BUYS, AND WHAT IT DOES NOT — round 4 caught me conflating these.
+ * Reading state makes OBSERVING a violation reliable; it does not make
+ * PRODUCING one reliable. The interleaving still has to happen. So the storm is
+ * sized for it: 32 rivals over one package, eight rounds. At the 8-way width
+ * this file first shipped with, the two-files check NEVER fired on the round-1
+ * worker in eight runs — every one of those failures came from the ORPHAN
+ * check, i.e. the round-2 defect that worker also carries, and the two-files
+ * pin was standing only because full-suite CPU pressure happened to widen the
+ * window. A pin that works because the box is busy is not a pin.
+ *
+ * POSITIVE CONTROLS, recorded in JOURNAL.md: each check is verified against a
+ * worker carrying ONLY the defect it names, so neither can be credited to the
+ * other.
  */
 
 const OPS = 'test-custody-ops-secret-0004';
@@ -75,6 +83,41 @@ function bootWithThrowingClaims(dir: string): Miniflare {
     compatibilityDate: '2025-07-05',
     compatibilityFlags: ['nodejs_compat'],
     durableObjects: { CUSTODY: 'CustodyDO', PACKAGE_CLAIM: 'ThrowingPackageClaimDO' },
+    durableObjectsPersist: dir,
+    bindings: { SERA_CUSTODY_OPS_SECRET: OPS },
+  });
+}
+
+/**
+ * The shipped bundle with `CustodyDO.fetch` replaced by a thrower. TEST
+ * SCAFFOLDING ONLY.
+ *
+ * This is the ROUTER catch's own reproduction, and it needs one: `CustodyDO`
+ * has an internal catch-all, so the only failures that reach `index.ts` are the
+ * ones that escape the object entirely — a rejection inside
+ * `blockConcurrencyWhile` (which aborts the object before its catch-all runs)
+ * and workerd's ~30 s cancellation of an over-long block. Throwing from `fetch`
+ * reproduces that shape in milliseconds instead of thirty seconds.
+ */
+function bootWithThrowingCustody(dir: string): Miniflare {
+  const wrapper = `
+    import worker, { CustodyDO, PackageClaimDO } from './worker.mjs';
+    export { PackageClaimDO };
+    export class ThrowingCustodyDO extends CustodyDO {
+      async fetch() { throw new Error('custody object exploded'); }
+    }
+    export default worker;
+  `;
+  return new Miniflare({
+    modules: [
+      { type: 'ESModule', path: '/throwing-custody.mjs', contents: wrapper },
+      { type: 'ESModule', path: '/worker.mjs', contents: BUNDLE },
+    ],
+    modulesRoot: '/',
+    scriptPath: '/throwing-custody.mjs',
+    compatibilityDate: '2025-07-05',
+    compatibilityFlags: ['nodejs_compat'],
+    durableObjects: { CUSTODY: 'ThrowingCustodyDO', PACKAGE_CLAIM: 'PackageClaimDO' },
     durableObjectsPersist: dir,
     bindings: { SERA_CUSTODY_OPS_SECRET: OPS },
   });
@@ -126,6 +169,27 @@ function bootWithSlowClaims(dir: string, delayMs: number): Miniflare {
 }
 
 /**
+ * ⚠ EVERY FETCH IS DRAINED HERE, AT THE CALL SITE, and nothing below ever holds
+ * a `Response`. Under a 32-way storm the old shape — pass Responses around,
+ * read their bodies later — produced `TypeError: Body is unusable: Body has
+ * already been read` and FAILED THE STORM ON HEALTHY CODE. That is the same
+ * « wrong in both directions » defect round 3 raised as a BLOCKER, reappearing
+ * in the test harness instead of the assertion. Draining on arrival removes the
+ * class rather than the symptom.
+ */
+async function hit(mf: Miniflare, method: string, path: string, body?: unknown): Promise<{ status: number; json: Json }> {
+  const res = await mf.dispatchFetch(`http://custody${path}`, {
+    method,
+    headers: opsAuth,
+    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+  });
+  const text = await res.text();
+  let json: Json = {};
+  try { json = JSON.parse(text) as Json; } catch { json = { __raw: text.slice(0, 200) }; }
+  return { status: res.status, json };
+}
+
+/**
  * Who holds a package, asked of the claim object itself.
  *
  * NB: read through the RUNTIME, never off the disk. Durable Object values are
@@ -140,12 +204,16 @@ async function holderOf(mf: Miniflare, packageId: string): Promise<string | null
     method: 'GET',
     headers: { 'X-Package-Object': packageId },
   });
-  const body = JSON.parse(await res.text()) as Record<string, unknown>;
+  const text = await res.text();
+  const body = JSON.parse(text) as Record<string, unknown>;
   if (res.status === 404) {
     expect(body).toMatchObject({ reason: 'package_unclaimed' });
     return null;
   }
-  expect(res.status).toBe(200);
+  // Anything other than 200/404 is a broken read, NOT « unclaimed ». Scoring it
+  // as unclaimed would quietly narrow the detector; scoring it as an orphan
+  // would fail honest code. It is surfaced instead.
+  expect({ packageId, status: res.status, body }).toMatchObject({ packageId, status: 200 });
   return (body['claim'] as Record<string, unknown>)['orderId'] as string;
 }
 
@@ -153,10 +221,13 @@ async function holderOf(mf: Miniflare, packageId: string): Promise<string | null
 async function custodyFiles(mf: Miniflare, orders: string[]): Promise<Map<string, string>> {
   const files = new Map<string, string>();
   for (const o of orders) {
-    const res = await mf.dispatchFetch(`http://custody/ops/ledger?orderId=${o}`, { headers: opsAuth });
-    if (res.status !== 200) { await res.text(); continue; }
-    const body = JSON.parse(await res.text()) as Record<string, unknown>;
-    files.set(o, body['packageId'] as string);
+    const { status, json } = await hit(mf, 'GET', `/ops/ledger?orderId=${o}`);
+    if (status === 200) { files.set(o, json['packageId'] as string); continue; }
+    // « No file » means the object SAID so. A 503 from a busy object is not the
+    // same statement, and treating it as one would silently shrink the very
+    // check this function feeds.
+    expect({ order: o, status, reason: json['reason'] })
+      .toMatchObject({ order: o, status: 409, reason: 'order_not_open' });
   }
   return files;
 }
@@ -179,22 +250,18 @@ describe('storming every door leaves no package double-filed and no claim orphan
     const dir = freshDir('storm');
     const mf = boot(dir);
 
-    for (let round = 0; round < 6; round += 1) {
+    for (let round = 0; round < 8; round += 1) {
       const shared = `pkg-storm-${round}-shared`;
-      const rivals = Array.from({ length: 8 }, (_, i) => `ord-storm-${round}-rival-${i}`);
+      const rivals = Array.from({ length: 32 }, (_, i) => `ord-storm-${round}-rival-${i}`);
       const splitter = `ord-storm-${round}-splitter`;
       const split = Array.from({ length: 6 }, (_, i) => `pkg-storm-${round}-split-${i}`);
       const twin = `ord-storm-${round}-twin`;
       const twinPkg = `pkg-storm-${round}-twin`;
 
       const open = (orderId: string, packageId: string) =>
-        mf.dispatchFetch('http://custody/ops/order/open', {
-          method: 'POST',
-          headers: opsAuth,
-          body: JSON.stringify({
-            orderId, taskId: `task-${orderId}`, packageId,
-            correlationId: `corr-${orderId}`, supplierId: 'sup-storm-0001',
-          }),
+        hit(mf, 'POST', '/ops/order/open', {
+          orderId, taskId: `task-${orderId}`, packageId,
+          correlationId: `corr-${orderId}`, supplierId: 'sup-storm-0001',
         });
 
       // Everything at once: eight orders duelling for one package, one order
@@ -203,7 +270,7 @@ describe('storming every door leaves no package double-filed and no claim orphan
         ...rivals.map((o) => open(o, shared)),
         ...split.map((p) => open(splitter, p)),
         ...Array.from({ length: 4 }, () => open(twin, twinPkg)),
-      ]).then((rs) => Promise.all(rs.map((r) => r.text())));
+      ]);
 
       const allOrders = [...rivals, splitter, twin];
       const files = await custodyFiles(mf, allOrders);
@@ -229,7 +296,6 @@ describe('storming every door leaves no package double-filed and no claim orphan
         if ([...files.values()].includes(pkg)) continue;
         const honest = await open(`ord-storm-honest-${pkg}`, pkg);
         expect({ pkg, status: honest.status }).toEqual({ pkg, status: 200 });
-        await honest.text();
       }
     }
 
@@ -251,7 +317,7 @@ describe('storming every door leaves no package double-filed and no claim orphan
  * at-least-once producer delivering twice.
  */
 describe('an order cannot claim more packages than the one custody file it opens', () => {
-  it('six simultaneous opens of one order over six packages leave exactly one claim', async () => {
+  it('six simultaneous opens of one order over six packages leave exactly one claim', { timeout: 120_000 }, async () => {
     const dir = freshDir('orphan');
     // 50 ms stands in for the real hop — cross-object, and a cold object create
     // on a package's first open.
@@ -262,16 +328,12 @@ describe('an order cannot claim more packages than the one custody file it opens
       const packages = [0, 1, 2, 3, 4, 5].map((n) => `pkg-orphan-${round}-${n}`);
       const results = await Promise.all(
         packages.map((pkg) =>
-          mf.dispatchFetch('http://custody/ops/order/open', {
-            method: 'POST',
-            headers: opsAuth,
-            body: JSON.stringify({
-              orderId: ORDER,
-              taskId: `task-${ORDER}`,
-              packageId: pkg,
-              correlationId: `corr-${ORDER}`,
-              supplierId: 'sup-orphan-0001',
-            }),
+          hit(mf, 'POST', '/ops/order/open', {
+            orderId: ORDER,
+            taskId: `task-${ORDER}`,
+            packageId: pkg,
+            correlationId: `corr-${ORDER}`,
+            supplierId: 'sup-orphan-0001',
           }),
         ),
       );
@@ -280,8 +342,7 @@ describe('an order cannot claim more packages than the one custody file it opens
       expect(results.map((r) => r.status).filter((c) => c === 200)).toHaveLength(1);
 
       // Which package the surviving custody file actually carries.
-      const led = await mf.dispatchFetch(`http://custody/ops/ledger?orderId=${ORDER}`, { headers: opsAuth });
-      const carried = (JSON.parse(await led.text()) as Record<string, unknown>)['packageId'] as string;
+      const carried = (await hit(mf, 'GET', `/ops/ledger?orderId=${ORDER}`)).json['packageId'] as string;
       expect(packages).toContain(carried);
 
       /**
@@ -296,18 +357,11 @@ describe('an order cannot claim more packages than the one custody file it opens
       // And the user-facing cost, stated as a test: an honest, unrelated order
       // for any other package must still be able to open.
       for (const pkg of packages.filter((p) => p !== carried)) {
-        const honest = await mf.dispatchFetch('http://custody/ops/order/open', {
-          method: 'POST',
-          headers: opsAuth,
-          body: JSON.stringify({
-            orderId: `ord-honest-${pkg}`,
-            taskId: 't',
-            packageId: pkg,
-            correlationId: 'c',
-            supplierId: 'sup-orphan-0001',
-          }),
+        const honest = await hit(mf, 'POST', '/ops/order/open', {
+          orderId: `ord-honest-${pkg}`, taskId: 't', packageId: pkg,
+          correlationId: 'c', supplierId: 'sup-orphan-0001',
         });
-        expect(honest.status).toBe(200);
+        expect({ pkg, status: honest.status }).toEqual({ pkg, status: 200 });
       }
     }
 
@@ -343,7 +397,11 @@ describe('a claim object that throws is answered, not crashed through', () => {
 
     // Structured, like every other refusal this door gives.
     expect(JSON.parse(text)).toMatchObject({ ok: false });
-    expect(JSON.parse(text)['reason']).toMatch(/package_claim_unreachable|custody_object_unavailable/);
+    // ⚠ ONE LAYER, NAMED (verifier MAJOR, round 4). This assertion used to be a
+    // disjunction over both catches, which by construction could not tell them
+    // apart: deleting EITHER layer alone left the whole suite green. This is
+    // the OBJECT's catch — the hop inside `blockConcurrencyWhile`.
+    expect(JSON.parse(text)).toMatchObject({ reason: 'package_claim_unreachable' });
     // And it does not hand an operator a stack trace to read.
     expect(text).not.toContain('at async');
     expect(text).not.toContain('exploded');
@@ -367,5 +425,44 @@ describe('a claim object that throws is answered, not crashed through', () => {
     expect(again.status).toBe(200);
     await again.text();
     await healthy.dispose();
+  });
+});
+
+/**
+ * ⚠ THE ROUTER CATCH, PINNED ON ITS OWN (verifier MAJOR, round 4). The object's
+ * catch and the router's catch were pinned only as a pair by a disjunctive
+ * assertion, so either could be deleted silently. The router's is the one that
+ * covers what the object cannot cover itself — a rejection inside
+ * `blockConcurrencyWhile`, and workerd cancelling an over-long block at ~30 s
+ * with « the Durable Object was reset ». That is the layer the comment calls
+ * « the layer that cannot be bypassed by whatever the next slice adds inside
+ * it », and it must be able to fail on its own.
+ */
+describe('a custody object that escapes its own catch is still answered by the door', () => {
+  it('the router refuses by name and leaks no stack trace', async () => {
+    const dir = freshDir('throwing-custody');
+    const mf = bootWithThrowingCustody(dir);
+
+    const res = await mf.dispatchFetch('http://custody/ops/order/open', {
+      method: 'POST',
+      headers: opsAuth,
+      body: JSON.stringify({
+        orderId: 'ord-door-throw', taskId: 't', packageId: 'pkg-door-throw',
+        correlationId: 'c', supplierId: 'sup-door-0001',
+      }),
+    });
+    const text = await res.text();
+
+    expect(res.status).toBe(503);
+    expect(JSON.parse(text)).toMatchObject({ ok: false, reason: 'custody_object_unavailable' });
+    expect(text).not.toContain('at async');
+    expect(text).not.toContain('exploded');
+    expect(text).not.toContain('blockConcurrencyWhile');
+
+    // /health is not routed through a custody object, so it stays honest.
+    const health = await mf.dispatchFetch('http://custody/health');
+    expect(health.status).toBe(200);
+    await health.text();
+    await mf.dispose();
   });
 });
