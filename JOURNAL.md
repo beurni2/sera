@@ -1186,3 +1186,38 @@ The two custody ACTS are built, tested and mutation-proven as ports (4c-iii/iv) 
 - the seal screen shows a **hardcoded demo constant** (`SEAL_ID = SC-77 412`), not a real `custodySealId`, and captures no `sealPhotoRefs`.
 
 **These are real-world flow questions, not plumbing, and they are the founder's:** how does the rider receive the pickup code (spoken by the seller? printed on the pick slip?), and does the seal id get typed or scanned off the physical seal? Both are custody secrets under Law 3, so inventing the flow here would be exactly the « interpret rather than ask » failure. **Asked, not assumed.**
+
+## 2026-08-07 · SE-LIVE-4c — VERIFIER ROUND · **6 BLOCKERS, ALL FIXED**
+A fresh-context verifier reviewed 4c end to end (`210f813..677a8ec`) against the quoted spec. It found six list-(A) findings. **All six are real — I reproduced the two most serious myself before touching anything** — and all six are closed, each pinned by a test that dies when the fix is removed.
+
+**⚠ A1 — THE FIELD DESTROYED THE CODE. The worst bug I have shipped in this project.** `value={<formatter>(typed)}` with `onChangeText={setTyped}` is a controlled mask that re-applies its formatter to *its own output*: React Native returns « what is displayed + the new character », so the `SR-` the mask prepends was fed back as body text on every keystroke. Simulated against the real loop:
+
+```
+types  SR-ABCD-EFGH-JKMN   (exactly as printed on the slip)
+shows  SR-SRAB-CDEF-GHJK   ← the rider's own S and R, absorbed into the body
+sends  SR-SRAB-CDEF-GHJK   ← well-formed, and WRONG, so it is SENT
+gets   401 → « Ce code ne marche pas. Demandez un nouveau code à Séra. »
+```
+
+**That is the exact harm this slice was written to prevent** — a rider riding across Ouaga about a code that was never broken — and my own screen caused it, while `normalizeRiderCode` (which I had tested hard) was innocent. Only body-only entry worked; the placeholder *and* the paper slip both teach the broken way. **The masking helper is DELETED, not fixed**: a formatter on a credential field is a trap, and the next person to reach for one finds the reasoning instead. The field now shows exactly what was typed; grouping is read-only confirmation *below* it.
+
+**⚠ A4 — A RECORDED REFUSAL COUNTED AS CUSTODY.** Custody records a refused pickup as a first-class fact (« no generic failed terminal »), so `custody-do.ts:1219` answers a **REFUSED** verification with `200 {ok:true, kind:'refused'}` — same status, same `ok:true` as an accepted one. Reading only `ok` made `custodyBegan()` **true for goods the rider had just refused**: conformity failed, the fault signal emitted, and custody would have begun (SE-I05; Law 3). Now `verificationAccepted()` reads `kind`, and `custodyBegan()` requires `status === 'custody_with_courier'` **by name**. Latent — no screen calls it yet — but the wrong call was already demonstrated as legitimate in my own test, which is how it would have shipped.
+
+**⚠ A3 — A SIGNED-IN RIDER SAW THE DEMO WORLD.** My gate covered the SIGN-IN only; the success arm fell straight into the demo tree. A rider with a real, server-verified session could walk verify → seal → drop → « Course validée » with **no ledger recording any of it** — and the 4c-v journal entry claimed exactly this was impossible (« a build that can reach Séra must never show demo courses beside real ones »). §9.8 on the custody path, and a JOURNAL overstatement of mine that the verifier caught. A wired build now shows **only what a server said**, and says the verification and seal are still to come rather than offering a button that records nothing.
+
+**⚠ A2 — THE APP PROMISED AN ALERT NOBODY RECEIVES.** There is **no SOS route on any Worker** (grepped: neither logistics nor custody has one). The raise goes to the demo store, drains through the sandbox sender that always answers `applied`, and the banner clears as if delivered — while the sheet says « Alerte envoyée. / On cherche quelqu'un pour vous. » On a build a real rider signs into with a real credential that is a **false safety promise**, and it was the one string in the app not labelled demo. A wired build now says the alert is on the phone and Séra must be called directly. **The gesture, the hold and the disc are untouched.**
+> **⏳ FOUNDER: SÉRA HAS NO SOS WIRE.** SE7.1 requires « SOS from every rider flow; ack within SLA ». The app has the gesture; there is no server to receive it. That is a real gap in the live stack, not a 4c regression — naming it here so it is scheduled rather than discovered by a rider who needs it.
+
+**⚠ A6 — THE DOOR ASSERTED ANOTHER RIDER'S IDENTITY.** « Moussa K. · Séra 2026 » rendered directly above « Votre code ». Now the subtitle is the rider logistics actually named, and claims nothing before sign-in; the demo tab dock and the demo footer no longer render on a wired build.
+
+**⚠ A5 — A STALLED SOCKET HUNG THE ONLY DOOR.** RN `fetch` has no default timeout, connectivity can read « online » while nothing completes (captive portal, 2G, or the async seed race in `expoConnectivity`), and the screen locks **both** field and button while working — so the rider's only exit was force-quitting. Both ports now bound every request (15 s, **injectable** so the deadline is testable in milliseconds rather than by making the suite wait it out) and surface an abort as `unreachable`.
+
+**B4, and why A1 shipped green:** the two code functions were each tested in isolation and their **runtime composition** — the controlled-input loop where A1 lived — was tested nowhere. `rider-code.test.ts` even pinned the silent truncation that *was* the mechanism. That path is now covered directly, for every realistic way a rider types the printed code.
+
+**⚠ THREE SELF-INFLICTED SCAN FAILURES, all my prose, none my code:** my comment quoting `<ScrollView>` broke the one-scroll-surface scan; my comment quoting Law 3's « auto-releases » broke `no-evidence-release`; and my *explanation* of that then tripped the same gate's second pattern by naming the scanner. Each time the gate was right and the code was right — reworded, never weakened.
+
+**MUTATION EVIDENCE — seven mutations, each isolated, tree verified clean after each:** re-introducing the mask → 1 kill · `custodyBegan` widened → 2 · `verificationAccepted` widened → 1 · wired build falling through to demo → 1 · SOS promising delivery → 1 · demo identity back on the door → 1 · deadline removed → 1.
+
+**Evidence:** typecheck 0 · rider-app **224/224** (was 210; +14) · copy-lint 0 violations at 183 entries · `run-gates.sh` exit 0 ALL GATES GREEN.
+
+**LIST (B) carried, not fixed** (8 findings, none reachable-through-a-door risk): comments in the resolver and the workflow claiming an unwired build « says so » on screen when that branch is unreachable (B1) and a test that covers those dead strings (B2); refusals vs door-level 4xx conflated (B5); act types permitting payloads the server rejects (B6); no base-URL scheme validation (B7); no sign-out and `reset()` leaving `signInState` (B8); the verifier's own note that the JOURNAL 4c-v mutation prose outran the code (B3).
