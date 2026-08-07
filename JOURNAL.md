@@ -1111,3 +1111,24 @@ The last one answering **401 rather than 404** is the whole proof: the allowlist
 **MUTATION EVIDENCE — four mutations, each killed by exactly the test that claims to catch it** (run against committed code, restored from HEAD after; tree verified clean): conflating 5xx with 401 → 1 fail · accepting a whitespace `riderId` → 1 fail · removing the offline pre-check → 1 fail · demo port fabricating a session → 2 fails.
 
 **Evidence:** typecheck 0 · rider-app **151/151** (was 136; +15) · `run-gates.sh` exit 0 ALL GATES GREEN.
+
+## 2026-08-07 · SE-LIVE-4c-ii — the rider signs in with their own code
+The sign-in screen, its state model and the code reader, wired to 4c-i's port. **No custody act moves yet** (4c-iii/iv). App.tsx is untouched — the screen is a component, so the wiring stays a small reviewable branch.
+
+**⚠ THE DROP-CODE KEYPAD CANNOT BE REUSED, and finding that out changed the design.** `mintRiderCode` (`logistics-do.ts:117`) issues `SR-XXXX-XXXX-XXXX` over `ABCDEFGHJKMNPQRSTVWXYZ23456789` — **I, L, O, U, 0 and 1 are deliberately absent** so a handwritten code cannot be misread. The buyer's drop-code keypad is digits-only, so it cannot take a rider code; this is the app's one text field.
+
+**FORGIVING ABOUT FORM, STRICT ABOUT THE CREDENTIAL.** Lowercase, missing dashes, missing prefix, stray spaces — all the RIGHT code typed by someone reading paper in the sun, and all accepted. A character outside the alphabet is refused **locally** as unreadable and **never sent**; we do not guess substitutions, because guessing at a credential is how you tell a rider their good code is dead.
+
+**⚠ THE PREFIX IS DROPPED AT LENGTH 14 ONLY, never by pattern.** `S` and `R` are both IN the alphabet, so a code BODY may itself begin « SR » — a pattern-based strip would silently truncate such a code and refuse a rider forever. Length disambiguates completely (14 = prefix+body, 12 = body). Pinned by its own test; the mutation that strips by pattern kills exactly that test.
+
+**FOUR OUTCOMES, FOUR SENTENCES — the reason this slice exists.** `unreadable` (nothing sent) · `bad_code` (dead — go to Séra) · `offline` (the phone knows; nothing is broken) · `unreachable` (**Séra is down, and the words say out loud « Ce n'est pas votre code »**). Telling a rider the wrong one costs a morning: a ride across Ouaga about a code that was never broken, or a wait at a stall for a code that is genuinely dead. Only `unauthorized` may become « your code is dead », and a test asserts the four headlines are four distinct strings.
+
+**THE CREDENTIAL NEVER LEAVES MEMORY.** It opens the custody seal. Scanned across all six files on the code path: no document store, no outbox, no AsyncStorage, no SecureStore, no file write, **no `console.*` anywhere**, and it travels in the `Authorization` header — never a query string, where a proxy or an access log would keep it. This is the app-side twin of the repo's `no-rider-asserted-payment` source gate.
+
+**THE FIELD IS BUILT FOR PAPER.** `autoCorrect`/`spellCheck`/`autoComplete` all OFF — a keyboard that "helpfully" rewrites a credential is a refusal the rider cannot see or explain. Field and button both lock while a sign-in is in flight, so a second tap on a slow network cannot fire a second request. ≥44px target, centred, and the code uses the **house treatment for a code** (`sealCode`: display face 800, tabular numerals, .1em tracking) rather than an invented one — my first attempt used type roles that do not exist in `ty()`, caught by typecheck.
+
+**STRINGS:** 16 catalog entries with register tags, copy-lint **0 violations at 175 entries**. (Two entries first shipped `register: "label"` — `label` is a screenClass, not a register; copy-lint caught it.)
+
+**MUTATION EVIDENCE — five mutations, each run in ISOLATION against committed code, tree verified clean after each.** Prefix stripped by pattern → 1 kill (the SR-body test). Every refusal forced to `bad_code` → 1 kill. Unreadable code sent to the network → 1 kill. Autocorrect on + double-submit allowed → 2 kills. Credential moved into the URL → 1 kill. ⚠ **My first attempt at this measurement was WRONG and I redid it**: the restore path was relative to the wrong directory, so the mutations stacked and every run after the first showed inherited failures. Only the isolated re-run is load-bearing — a cumulative kill count is not evidence about the mutation that produced it.
+
+**Evidence:** typecheck 0 · rider-app **179/179** (was 151; +28) · copy-lint 0 violations · `run-gates.sh` exit 0 at 4c-i and unaffected here (no gate reads these files yet).
