@@ -107,6 +107,14 @@ const HEAD_KEY = 'custody:ledger-head:v1';
  */
 const CLAIM_HELD_KEY = 'custody:package-claim-held:v1';
 
+/** This object's record that it won the claim on the package its chain names.
+ *  `packageId` is here so the marker can be CORROBORATED rather than trusted —
+ *  see `ensureLoaded`. */
+interface ClaimHeldMarker {
+  packageId: string;
+  at: string;
+}
+
 /** The one binding this object reaches outward for: the per-package claim
  *  namespace. Nothing else — a custody file talks to no other service. */
 export interface CustodyObjectEnv {
@@ -238,6 +246,16 @@ const MAX_CHECKS = 64;
 const isBoundedStr = (v: unknown, max: number): v is string =>
   typeof v === 'string' && v.trim().length > 0 && v.length <= max;
 
+/** Written as a scan, not a character-class regex, so the control bytes it
+ *  bans never have to appear literally in this file. */
+function hasControlChar(v: string): boolean {
+  for (let i = 0; i < v.length; i += 1) {
+    const c = v.charCodeAt(i);
+    if (c < 0x20 || c === 0x7f) return true;
+  }
+  return false;
+}
+
 /**
  * ⚠ VERIFIER MINOR (round 2) — STRICT ISO-8601 UTC, nothing looser. The first
  * cut asked only that `Date.parse` return a finite number, which accepted
@@ -324,9 +342,12 @@ export class CustodyDO {
    * Idempotent for the same order (a retry after a failed chain write is not a
    * lock-out), and SELF-HEALING for a file opened before this slice existed: a
    * chain with no claim recorded re-attempts on the next `/order/open`.
+   *
+   * Returns the MARKER to persist, or a Response refusing. It does not write:
+   * on the open path the marker must land in the SAME `put` as the chain and
+   * the head (verifier MAJOR, round 1 — see `CLAIM_HELD_KEY`).
    */
-  private async winPackageClaim(chain: OrderChain, at: string): Promise<Response | null> {
-    if (this.claimHeld) return null;
+  private async winPackageClaim(chain: OrderChain, at: string): Promise<Response | ClaimHeldMarker> {
     const stub = this.env.PACKAGE_CLAIM.get(this.env.PACKAGE_CLAIM.idFromName(chain.package_id));
     const res = await stub.fetch(
       new Request('https://package/claim', {
@@ -349,9 +370,7 @@ export class CustodyDO {
         { status: res.status === 200 ? 409 : res.status },
       );
     }
-    await this.state.storage.put(CLAIM_HELD_KEY, { packageId: chain.package_id, at });
-    this.claimHeld = true;
-    return null;
+    return { packageId: chain.package_id, at };
   }
 
   /** Rebuild from the durable log. The spine is NEVER mutated outside this
@@ -361,9 +380,21 @@ export class CustodyDO {
   private async ensureLoaded(): Promise<void> {
     if (this.loaded) return;
     this.chain = (await this.state.storage.get<OrderChain>(CHAIN_KEY)) ?? null;
-    // The claim is re-read, never assumed: a file opened before SE-LIVE-4a has
-    // no marker, and must re-attempt the claim rather than act as if it won.
-    this.claimHeld = (await this.state.storage.get(CLAIM_HELD_KEY)) !== undefined;
+    /**
+     * ⚠ VERIFIER MAJOR (round 1) — THE MARKER IS CORROBORATED, NOT COUNTED.
+     * The first cut asked only whether the key EXISTED, so a marker naming one
+     * package let this object open a chain naming a DIFFERENT one without ever
+     * claiming it — and a rival then opened a second file over that package.
+     * The marker must agree with the chain it sits beside, or this object does
+     * not consider itself the holder and re-attempts on the next open.
+     *
+     * With the marker now written in the SAME `put` as the chain, the open path
+     * can no longer produce a disagreement; this check is what stops a
+     * half-written or damaged marker from being read as a claim, and it is one
+     * comparison.
+     */
+    const marker = (await this.state.storage.get<ClaimHeldMarker>(CLAIM_HELD_KEY)) ?? null;
+    this.claimHeld = marker !== null && this.chain !== null && marker.packageId === this.chain.package_id;
     // Keyed rows, read in key order — which IS arrival order (see logKey).
     const rows = await this.state.storage.list<LoggedCommand>({ prefix: LOG_PREFIX });
     this.log = [...rows.values()];
@@ -708,6 +739,17 @@ export class CustodyDO {
       }
       // (The name guard that used to live here now runs for every route, at
       // the top of `route` — see the block there.)
+      /**
+       * ⚠ VERIFIER MINOR (round 1) — `packageId` NOW TRAVELS IN A HEADER, so it
+       * needs the bound the ORDER id already got. `isBoundedStr` allows control
+       * characters; header grammar does not, so `new Request(...)` in
+       * `winPackageClaim` threw and the catch-all answered a raw
+       * `500 internal_error` where every sibling answers structured JSON.
+       * Nothing was written and it failed closed — but « a door that can be
+       * made to crash is not a door that can be reasoned about » (index.ts, the
+       * round-5 finding this repeats for a different id).
+       */
+      if (hasControlChar(body['packageId'] as string)) return malformed('package_id_not_usable');
       const mode = body['paymentMode'] ?? 'FULL_PREPAY';
       if (mode !== 'FULL_PREPAY' && mode !== 'DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR') return malformed('unknown_payment_mode');
       const chain: OrderChain = {
@@ -731,11 +773,31 @@ export class CustodyDO {
         if (!same) {
           return Response.json({ ok: false, reason: 'chain_already_open_with_other_ids' }, { status: 409 });
         }
-        // SE-LIVE-4a self-heal: a file opened before the claim existed gets
-        // one here. `winPackageClaim` returns immediately when already held,
-        // so the normal re-open costs nothing.
-        const refusal = await this.winPackageClaim(this.chain, new Date().toISOString());
-        if (refusal !== null) return refusal;
+        /**
+         * SE-LIVE-4a self-heal: a file opened before the claim existed gets one
+         * here. Skipped outright once the marker corroborates the chain, so the
+         * normal re-open costs nothing.
+         *
+         * ⚠ THE LIMIT, STATED PLAINLY (verifier MAJOR, round 1 — my first
+         * disclosure was narrower than the truth). Healing happens on
+         * `/order/open` and nowhere else, so a file opened before this slice
+         * and never re-opened stays unclaimed — and a NEW order naming that
+         * same package will win the free claim. Then there really are two
+         * custody files over one package, and the legitimate older holder is
+         * refused on its own honest re-open, correctly but painfully.
+         *
+         * It is bounded, not harmless: no route transitions custody yet, so
+         * neither file has a custodian and SE-I04 is not yet violable. SE-LIVE-4b
+         * is what closes it, by making a held claim a precondition of every
+         * transition — an unclaimed legacy file will then be unable to take
+         * custody at all.
+         */
+        if (!this.claimHeld) {
+          const won = await this.winPackageClaim(this.chain, new Date().toISOString());
+          if (won instanceof Response) return won;
+          await this.state.storage.put(CLAIM_HELD_KEY, won);
+          this.claimHeld = true;
+        }
         return Response.json({ ok: true, status: 'already_open', chain: this.chain });
       }
       /**
@@ -757,8 +819,8 @@ export class CustodyDO {
        * it had lost. Losing here means no chain row, no head, no object state
        * at all: the file simply never opens.
        */
-      const refusal = await this.winPackageClaim(chain, new Date().toISOString());
-      if (refusal !== null) return refusal;
+      const won = await this.winPackageClaim(chain, new Date().toISOString());
+      if (won instanceof Response) return won;
       this.chain = chain;
       this.spine = this.replay(chain, this.log);
       /**
@@ -767,7 +829,21 @@ export class CustodyDO {
        * would be unbound for exactly as long as it took the first act to
        * arrive, and that window is the whole vulnerability.
        */
-      await this.state.storage.put({ [CHAIN_KEY]: chain, [HEAD_KEY]: this.currentHeadFor(this.log) });
+      /**
+       * ⚠ VERIFIER MAJOR (round 1) — THE MARKER RIDES THIS WRITE. It used to be
+       * its own awaited `put` inside `winPackageClaim`, so marker-lands-and-
+       * chain-does-not was reachable — and an object holding a marker for one
+       * package then opened a chain naming another without claiming it. This
+       * file already learned the lesson at the commit path (« ONE WRITE, NOT
+       * TWO », round 3 of SE-LIVE-3) and the slice re-introduced the pattern.
+       * All three keys commit together or not at all.
+       */
+      await this.state.storage.put({
+        [CHAIN_KEY]: chain,
+        [HEAD_KEY]: this.currentHeadFor(this.log),
+        [CLAIM_HELD_KEY]: won,
+      });
+      this.claimHeld = true;
       // The spine changed, so the recorded head must be re-checked against it —
       // otherwise `/ledger/verify` answers off a stale flag for the rest of the
       // session (round 3 proved that too).

@@ -139,6 +139,33 @@ function deleteRows(dir: string, match: (key: string) => boolean): number {
   return removed;
 }
 
+/** Same-length rewrite inside ONE named row. Same-length because a length
+ *  change corrupts the stored value; one named row because the package id also
+ *  lives in the chain, and rewriting it there would trip the integrity head
+ *  instead of the guard under test. */
+function forgeInRow(dir: string, keyMatch: (k: string) => boolean, from: string, to: string): number {
+  if (from.length !== to.length) throw new Error('a forgery must not change length');
+  let forged = 0;
+  for (const file of filesUnder(dir)) {
+    if (!file.endsWith('.sqlite') || file.includes('metadata')) continue;
+    const db = new DatabaseSync(file);
+    try {
+      const rows = db.prepare('select key, value from _cf_KV').all() as unknown as { key: Uint8Array; value: Uint8Array }[];
+      for (const row of rows) {
+        if (!keyMatch(Buffer.from(row.key).toString('latin1'))) continue;
+        const text = Buffer.from(row.value).toString('latin1');
+        if (!text.includes(from)) continue;
+        db.prepare('update _cf_KV set value = ? where key = ?')
+          .run(Buffer.from(text.split(from).join(to), 'latin1'), row.key);
+        forged += 1;
+      }
+    } finally {
+      db.close();
+    }
+  }
+  return forged;
+}
+
 describe('a package belongs to exactly one custody file (SE-I04, Build Spec:79)', () => {
   it('refuses the second order over the same package — and leaves it NO custody file at all', async () => {
     const dir = freshDir('two-orders');
@@ -201,6 +228,35 @@ describe('a package belongs to exactly one custody file (SE-I04, Build Spec:79)'
     await mf.dispose();
   });
 
+  /**
+   * ⚠ VERIFIER MINOR (round 1) — `packageId` now travels in a request header on
+   * the way to the claim object, and header grammar rejects control bytes, so
+   * `new Request(...)` threw and the door answered a raw `500 internal_error`
+   * where every sibling answers structured JSON. Nothing was written and it
+   * failed closed, but « a door that can be made to crash is not a door that
+   * can be reasoned about » — the round-5 finding, repeated for a new id.
+   */
+  it('a packageId carrying control bytes is refused by name, never with a 500', async () => {
+    const dir = freshDir('control-bytes');
+    const mf = boot(dir);
+    // NUL and DEL are built rather than typed: a literal control byte in a
+    // source file is invisible in review and turns the file binary to grep.
+    const NUL = String.fromCharCode(0);
+    const DEL = String.fromCharCode(127);
+    for (const bad of ['pkg\r\nbad', 'pkg\nbad', 'pkg' + NUL + 'bad', 'pkg' + DEL + 'bad', 'pkg\tbad']) {
+      const res = await call(mf, 'POST', '/ops/order/open', {
+        ...chainFor('ord-control', 'placeholder'),
+        packageId: bad,
+      });
+      expect(res.status).toBe(400);
+      expect(res.json).toMatchObject({ ok: false, reason: 'package_id_not_usable' });
+    }
+    // Nothing was opened by any of them.
+    expect((await call(mf, 'GET', '/ops/ledger?orderId=ord-control')).json)
+      .toMatchObject({ reason: 'order_not_open' });
+    await mf.dispose();
+  });
+
   it('a DIFFERENT package opens normally — the guard is not just refusing everything', async () => {
     const dir = freshDir('anchor');
     const mf = boot(dir);
@@ -240,6 +296,71 @@ describe('a package belongs to exactly one custody file (SE-I04, Build Spec:79)'
     // And the winner's own file came back intact across the same death.
     expect((await call(mf, 'GET', '/ops/ledger/verify?orderId=ord-restart-A')).json)
       .toMatchObject({ ok: true, headMatches: true });
+    await mf.dispose();
+  });
+});
+
+/**
+ * ⚠ VERIFIER BLOCKER (round 1) — « WRITE-ONCE » WAS A TOCTOU, AND IT LOST.
+ *
+ * The claim object read its stored row at the top of `fetch`, then awaited
+ * `request.json()`, then decided using the value read BEFORE that await. A
+ * Durable Object's input gate serialises around STORAGE operations and reopens
+ * across an ordinary await, so every concurrent claim saw an empty row, every
+ * one decided « free », and every one wrote. Measured on the shipped bundle:
+ *
+ *     *** 8 of 8 DIFFERENT orders opened a custody file over pkg-repro-7 ***
+ *       each one: arm custody_seal -> 200 {"ok":true,"status":"armed"}
+ *     custody files on disk whose chain names pkg-repro-7: 8
+ *
+ * Eight ledgers over one physical package, each able to arm a custody seal —
+ * exactly the defect this object exists to prevent, through the front door,
+ * with no attacker. Sequential tests could never see it; only this one can.
+ */
+describe('the contest is decided ONCE, even when every order arrives at the same instant', () => {
+  it('exactly one of eight simultaneous orders gets a custody file over the package', async () => {
+    const dir = freshDir('race');
+    const mf = boot(dir);
+
+    for (const round of [1, 2, 3, 4, 5]) {
+      const PKG = `pkg-race-000${round}`;
+      const orders = [0, 1, 2, 3, 4, 5, 6, 7].map((n) => `ord-race-${round}-${n}`);
+
+      // All eight in flight together — no await between them.
+      const results = await Promise.all(
+        orders.map((o) => call(mf, 'POST', '/ops/order/open', chainFor(o, PKG))),
+      );
+      const opened = results.filter((r) => r.status === 200);
+      const refused = results.filter((r) => r.status === 409);
+      expect(opened).toHaveLength(1);
+      expect(refused).toHaveLength(7);
+      for (const r of refused) {
+        expect(r.json).toMatchObject({ ok: false, reason: 'package_claimed_by_other_order' });
+      }
+
+      /**
+       * THE INVARIANT, checked against the objects themselves rather than the
+       * status codes: exactly one of the eight has a custody file. A refusal
+       * that still left a chain behind would satisfy the counts above and
+       * violate SE-I04 all the same.
+       */
+      const withFiles: string[] = [];
+      for (const o of orders) {
+        const led = await call(mf, 'GET', `/ops/ledger?orderId=${o}`);
+        if (led.status === 200) withFiles.push(o);
+        else expect(led.json).toMatchObject({ reason: 'order_not_open' });
+      }
+      expect(withFiles).toHaveLength(1);
+
+      // …and the claim row names that same one — not a later writer.
+      const ns = await mf.getDurableObjectNamespace('PACKAGE_CLAIM');
+      const res = await ns.get(ns.idFromName(PKG)).fetch('https://package/claim', {
+        method: 'GET',
+        headers: { 'X-Package-Object': PKG },
+      });
+      expect(JSON.parse(await res.text())).toMatchObject({ ok: true, claim: { orderId: withFiles[0] } });
+    }
+
     await mf.dispose();
   });
 });
@@ -296,6 +417,89 @@ describe('a custody file opened before this slice existed claims its package on 
  * a second caller of it looks like, because SE-LIVE-4 adds the rider's own
  * door and « a gate added later is a gate that already let something through ».
  */
+/**
+ * ⚠ VERIFIER MAJOR (round 1) — THE MARKER IS CORROBORATED, NOT COUNTED.
+ * `ensureLoaded` asked only whether the marker key EXISTED, so an object
+ * holding a marker for one package opened a chain naming ANOTHER without ever
+ * claiming it, and a rival then opened a second file over that package. The
+ * marker now has to agree with the chain beside it.
+ *
+ * The disagreement is manufactured through storage here because, since the
+ * marker began riding the chain's own single `put`, that is the only way left
+ * to produce it. This is not a claim about defeating a storage attacker (the
+ * founder ruled that out of scope): it pins that an uncorroborated marker is
+ * never read as a claim — the defence-in-depth the round-3 « ONE WRITE, NOT
+ * TWO » lesson says to keep, because two writes creep back.
+ */
+describe('a claim marker that does not name this file’s package is not a claim', () => {
+  it('the file re-attempts, and loses honestly to the order that really holds the package', async () => {
+    const dir = freshDir('marker');
+    let mf = boot(dir);
+    const PKG = 'pkg-marker-0001';
+    expect((await call(mf, 'POST', '/ops/order/open', chainFor('ord-marker-A', PKG))).status).toBe(200);
+    await mf.dispose();
+
+    // The marker now names a DIFFERENT package (same length, so the row is
+    // rewritten rather than corrupted), and the real claim row is gone.
+    expect(forgeInRow(dir, (k) => k === 'custody:package-claim-held:v1', PKG, 'pkg-marker-0002')).toBe(1);
+    expect(deleteRows(dir, (k) => k === 'custody:package-claim:v1')).toBe(1);
+
+    mf = boot(dir);
+    // A rival reaches the free package first and legitimately takes it.
+    expect((await call(mf, 'POST', '/ops/order/open', chainFor('ord-marker-B', PKG))).status).toBe(200);
+
+    /**
+     * THE DISCRIMINATING ASSERTION. Counting the marker instead of reading it
+     * makes A believe it still holds PKG: it answers `already_open`, and two
+     * files now carry one package. Corroborating it makes A re-attempt and
+     * lose — refused, and told who holds it.
+     */
+    const reopen = await call(mf, 'POST', '/ops/order/open', chainFor('ord-marker-A', PKG));
+    expect(reopen.status).toBe(409);
+    expect(reopen.json).toMatchObject({ ok: false, reason: 'package_claimed_by_other_order' });
+    expect(reopen.json['claim']).toMatchObject({ orderId: 'ord-marker-B' });
+
+    await mf.dispose();
+  });
+});
+
+/**
+ * ⚠ VERIFIER MAJOR (round 1) — DoD 5's RECOVERY BRANCH WAS UNTESTED. « The same
+ * order re-opening is absorbed » passed entirely through the in-object
+ * `claimHeld` short-circuit and never reached the claim object at all, so
+ * deleting the `already_claimed` branch left all 164 tests green. That branch is
+ * what the code calls « a retry after a failed chain write is not a permanent
+ * lock-out » — the recovery path itself.
+ */
+describe('an order that holds the claim but lost its marker recovers, and only that order does', () => {
+  it('re-opening rewrites the marker through the claim object, and a rival is still refused', async () => {
+    const dir = freshDir('recover');
+    let mf = boot(dir);
+    const PKG = 'pkg-recover-0001';
+    expect((await call(mf, 'POST', '/ops/order/open', chainFor('ord-recover-A', PKG))).status).toBe(200);
+    await mf.dispose();
+
+    // Marker gone, claim row KEPT — the state a failed marker write leaves.
+    expect(deleteRows(dir, (k) => k === 'custody:package-claim-held:v1')).toBe(1);
+    expect(storedKeys(dir)).toContain('custody:package-claim:v1');
+
+    mf = boot(dir);
+    // The claim object must ABSORB this as `already_claimed`. If it refused a
+    // same-order re-claim, the honest holder would be locked out of its own file.
+    const reopen = await call(mf, 'POST', '/ops/order/open', chainFor('ord-recover-A', PKG));
+    expect(reopen.status).toBe(200);
+    expect(reopen.json).toMatchObject({ ok: true, status: 'already_open' });
+    // The marker is back — the recovery actually wrote, it did not merely pass.
+    expect(storedKeys(dir)).toContain('custody:package-claim-held:v1');
+
+    // And nobody else got in along the way.
+    const rival = await call(mf, 'POST', '/ops/order/open', chainFor('ord-recover-B', PKG));
+    expect(rival.status).toBe(409);
+    expect(rival.json).toMatchObject({ reason: 'package_claimed_by_other_order' });
+    await mf.dispose();
+  });
+});
+
 describe('the claim object refuses to answer about a package it has not been told it is', () => {
   it('a caller that omits X-Package-Object is refused, and a body naming another package is refused', async () => {
     const dir = freshDir('anchor-claim');

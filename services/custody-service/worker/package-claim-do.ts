@@ -40,6 +40,31 @@
  * be reached by that door at all — no prefix ban to write, no prefix ban to
  * forget.
  *
+ * ═══ ⚠ VERIFIER BLOCKER (round 1) — « WRITE-ONCE » WAS A TOCTOU, AND IT LOST ═══
+ *
+ * The first cut read the stored claim at the TOP of `fetch`, then `await`ed
+ * `request.json()`, then decided and wrote using the value read BEFORE that
+ * await. A Durable Object's input gate serialises around STORAGE operations; it
+ * REOPENS across an ordinary await like a body parse. So concurrent claims all
+ * observed `held === null`, all decided « free », and all wrote — the last one
+ * overwriting the rest. Measured on the shipped bundle, eight concurrent orders
+ * over one package:
+ *
+ *     *** 8 of 8 DIFFERENT orders opened a custody file over pkg-repro-7 ***
+ *       each one: arm custody_seal -> 200 {"ok":true,"status":"armed"}
+ *       claim row says: {"orderId":"ord-repro-7-7"}
+ *     custody files on disk whose chain names pkg-repro-7: 8
+ *
+ * That is precisely the defect this object was written to prevent, reached
+ * through the front door with no attacker — and the production window is WIDER
+ * than the local one, because there the body parse is a real network read.
+ *
+ * The body is now parsed FIRST, and the read-decide-write runs inside
+ * `blockConcurrencyWhile` with no non-storage await anywhere in it. The input
+ * gate alone would in fact suffice once the parse is hoisted out; the explicit
+ * block is here because this file just proved that reasoning about gate
+ * subtleties on a custody path is how the hole got in.
+ *
  * WHAT THIS DOES NOT DEFEND. The claim row is ordinary DO storage, outside the
  * `custody:ledger-head:v1` integrity head (which covers one object's chain,
  * command log and ledger — it cannot bind a row in a different object). Someone
@@ -73,6 +98,13 @@ function hasControlChar(v: string): boolean {
 const isBoundedId = (v: unknown): v is string =>
   typeof v === 'string' && v.trim() !== '' && v.trim().length <= MAX_ID && !hasControlChar(v);
 
+/** What the critical section decided, so the Response is built OUTSIDE it —
+ *  nothing but storage work happens between the read and the write. */
+type ClaimOutcome =
+  | { kind: 'claimed'; claim: PackageClaim }
+  | { kind: 'already_claimed'; claim: PackageClaim }
+  | { kind: 'taken'; claim: PackageClaim };
+
 export class PackageClaimDO {
   constructor(private readonly state: DurableObjectState) {}
 
@@ -92,10 +124,6 @@ export class PackageClaimDO {
     if (!isBoundedId(objectName)) {
       return Response.json({ ok: false, reason: 'package_object_not_named' }, { status: 400 });
     }
-    const held = (await this.state.storage.get<PackageClaim>(CLAIM_KEY)) ?? null;
-    if (held !== null && held.packageId !== objectName) {
-      return Response.json({ ok: false, reason: 'claim_does_not_name_this_object' }, { status: 409 });
-    }
 
     /** FIRST-WINS, WRITE-ONCE. The package belongs to the order that claimed
      *  it; a re-claim by the SAME order is absorbed (so a retry after a failed
@@ -103,28 +131,53 @@ export class PackageClaimDO {
      *  refused with the holder named, because « refused » with no reason
      *  leaves an operator guessing at the one moment he must not. */
     if (request.method === 'POST' && pathname === '/claim') {
+      // ⚠ THE BODY IS PARSED HERE, BEFORE THE CRITICAL SECTION. This await is
+      // the one that reopened the input gate and let eight orders win one
+      // package (see the header block). Everything it yields on is done now.
       const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
       if (body === null || !isBoundedId(body['packageId']) || !isBoundedId(body['orderId']) || !isBoundedId(body['at'])) {
         return Response.json({ ok: false, reason: 'malformed' }, { status: 400 });
       }
       const packageId = (body['packageId'] as string).trim();
       const orderId = (body['orderId'] as string).trim();
+      const at = (body['at'] as string).trim();
       if (packageId !== objectName) {
         return Response.json({ ok: false, reason: 'package_id_does_not_name_this_object' }, { status: 400 });
       }
-      if (held !== null) {
-        return held.orderId === orderId
-          ? Response.json({ ok: true, status: 'already_claimed', claim: held })
-          : Response.json({ ok: false, reason: 'package_claimed_by_other_order', claim: held }, { status: 409 });
+
+      // ── CRITICAL SECTION: read, decide, write. No non-storage await. ──────
+      const outcome = await this.state.blockConcurrencyWhile<ClaimOutcome | 'misfiled'>(async () => {
+        const held = (await this.state.storage.get<PackageClaim>(CLAIM_KEY)) ?? null;
+        if (held !== null && held.packageId !== objectName) return 'misfiled';
+        if (held !== null) {
+          return held.orderId === orderId
+            ? { kind: 'already_claimed', claim: held }
+            : { kind: 'taken', claim: held };
+        }
+        const claim: PackageClaim = { packageId, orderId, at };
+        await this.state.storage.put(CLAIM_KEY, claim);
+        return { kind: 'claimed', claim };
+      });
+
+      if (outcome === 'misfiled') {
+        return Response.json({ ok: false, reason: 'claim_does_not_name_this_object' }, { status: 409 });
       }
-      const claim: PackageClaim = { packageId, orderId, at: (body['at'] as string).trim() };
-      await this.state.storage.put(CLAIM_KEY, claim);
-      return Response.json({ ok: true, status: 'claimed', claim });
+      if (outcome.kind === 'taken') {
+        return Response.json(
+          { ok: false, reason: 'package_claimed_by_other_order', claim: outcome.claim },
+          { status: 409 },
+        );
+      }
+      return Response.json({ ok: true, status: outcome.kind, claim: outcome.claim });
     }
 
     /** The operator read: who holds this package. No custody content, no
      *  secrets — one row saying which order's file is the real one. */
     if (request.method === 'GET' && pathname === '/claim') {
+      const held = (await this.state.storage.get<PackageClaim>(CLAIM_KEY)) ?? null;
+      if (held !== null && held.packageId !== objectName) {
+        return Response.json({ ok: false, reason: 'claim_does_not_name_this_object' }, { status: 409 });
+      }
       return held === null
         ? Response.json({ ok: false, reason: 'package_unclaimed' }, { status: 404 })
         : Response.json({ ok: true, claim: held });
