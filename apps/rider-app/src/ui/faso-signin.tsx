@@ -1,0 +1,127 @@
+import { useState } from 'react';
+import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { C, GEO, rad, ty } from './faso';
+import { displayFace, textFace } from './faso-fonts';
+import { Body, Card, PrimaryButton, ScreenTitle } from './faso-kit';
+import { displayRiderCode } from '../net/rider-code';
+
+/**
+ * SE-LIVE-4c-ii · THE SIGN-IN SCREEN — the rider's own code, and nothing else
+ * on the screen.
+ *
+ * THE 5-SECOND TEST: one field, one button, one sentence saying where the code
+ * came from. There is no password, no email, no account to create — a rider who
+ * has a slip of paper from Séra can start working, and a rider who does not
+ * cannot. That is the whole model, and it is why this screen is almost empty.
+ *
+ * THE TRUST TEST: the refusal is as dignified as the success. A refusal here
+ * says what happened and what to do next, in that order, and never blames the
+ * rider for a network that died. The four refusals are four different
+ * sentences (see `signin-model.ts`) precisely because « go and see Séra » and
+ * « wait a moment » cost a rider very different mornings.
+ *
+ * TYPE AND TOUCH: the code renders at display size with wide tracking, because
+ * it is read off paper, in the sun, and compared character by character. The
+ * field is `characters`-capitalised and autocorrect is OFF — a keyboard that
+ * "helpfully" rewrites a credential is worse than no keyboard.
+ *
+ * SKIN ONLY — tokens for every colour, radius and type role; no custody, no
+ * franc, no network. It receives strings and a submit callback; the model and
+ * the port live outside it.
+ */
+export function FasoSignIn({
+  strings,
+  onSubmit,
+  working,
+  refusal,
+}: {
+  readonly strings: {
+    readonly title: string;
+    readonly hint: string;
+    readonly action: string;
+    readonly working: string;
+    readonly placeholder: string;
+  };
+  readonly onSubmit: (typed: string) => void;
+  readonly working: boolean;
+  /** Present only after a refusal: headline + what to do next, already
+   *  resolved from the catalog by the caller. */
+  readonly refusal?: { readonly title: string; readonly hint: string } | undefined;
+}) {
+  const [typed, setTyped] = useState('');
+
+  return (
+    <View style={styles.wrap}>
+      <ScreenTitle>{strings.title}</ScreenTitle>
+      <Body>{strings.hint}</Body>
+
+      <Card>
+        <TextInput
+          style={styles.field}
+          // The rider sees the canonical grouping form as they type, so the
+          // shape on screen matches the shape on the paper slip.
+          value={displayRiderCode(typed)}
+          onChangeText={setTyped}
+          placeholder={strings.placeholder}
+          placeholderTextColor={C.sub}
+          autoCapitalize="characters"
+          autoCorrect={false}
+          // No spell-check, no autocomplete, no password manager: this is a
+          // credential read off paper, and every "helpful" rewrite is a
+          // refusal the rider cannot explain.
+          spellCheck={false}
+          autoComplete="off"
+          editable={!working}
+          accessibilityLabel={strings.title}
+          returnKeyType="go"
+          onSubmitEditing={() => onSubmit(typed)}
+        />
+      </Card>
+
+      {/* The refusal sits directly under the field, where the eye already is —
+          never a modal, never an alert. Honest states are designed states. */}
+      {refusal !== undefined && !working ? (
+        <View style={styles.refusal} accessibilityLiveRegion="polite">
+          <Text style={styles.refusalTitle}>{refusal.title}</Text>
+          <Text style={styles.refusalHint}>{refusal.hint}</Text>
+        </View>
+      ) : null}
+
+      <PrimaryButton
+        label={working ? strings.working : strings.action}
+        onPress={() => onSubmit(typed)}
+        // Disabled while a sign-in is in flight: on a slow network a second
+        // tap must not fire a second request.
+        disabled={working}
+      />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  wrap: { gap: GEO.paddingPx, paddingHorizontal: GEO.paddingPx },
+  field: {
+    // THE HOUSE TREATMENT FOR A CODE, matched to `sealCode` rather than
+    // invented: display face at 800, tabular numerals, .1em tracking. This
+    // string is compared character by character against a slip of paper, at
+    // arm's length, in bright sun — the same job the seal mark does.
+    fontFamily: displayFace(800),
+    fontSize: 21,
+    fontWeight: '800',
+    letterSpacing: 21 * 0.1,
+    fontVariant: ['tabular-nums'],
+    color: C.ink,
+    paddingVertical: 12,
+    textAlign: 'center',
+    // ≥44px touch target by construction — the field is the tap target.
+    minHeight: 56,
+  },
+  refusal: {
+    gap: 4,
+    padding: 12,
+    borderRadius: rad('card'),
+    backgroundColor: C.paper,
+  },
+  refusalTitle: { ...ty('body'), fontFamily: textFace(700), color: C.ink },
+  refusalHint: { ...ty('body', 'min'), fontFamily: textFace(400), color: C.sub },
+});

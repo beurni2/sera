@@ -952,5 +952,101 @@
     "fr": "Fermer",
     "register": "neutral",
     "screenClass": "general"
+  },
+  {
+    "key": "signin.title",
+    "fr": "Votre code",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "signin.hint",
+    "fr": "Le code que Séra vous a donné.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "signin.action",
+    "fr": "Entrer",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "signin.working",
+    "fr": "Un instant…",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "signin.bad_code",
+    "fr": "Ce code ne marche pas.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "signin.bad_code_hint",
+    "fr": "Demandez un nouveau code à Séra.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "signin.offline",
+    "fr": "Pas de réseau.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "signin.offline_hint",
+    "fr": "Réessayez quand le réseau revient.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "signin.unreachable",
+    "fr": "Séra ne répond pas.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "signin.unreachable_hint",
+    "fr": "Ce n'est pas votre code. Réessayez dans un moment.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "signin.unreadable",
+    "fr": "Vérifiez le code.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "signin.unreadable_hint",
+    "fr": "Le code a douze signes.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "signin.not_wired",
+    "fr": "Cette version ne peut pas joindre Séra.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "signin.not_wired_hint",
+    "fr": "Parlez-en à Séra.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "signin.greeting",
+    "fr": "Votre course",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "signin.placeholder",
+    "fr": "SR-....-....-....",
+    "register": "neutral",
+    "screenClass": "label"
   }
 ]
