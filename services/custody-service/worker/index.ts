@@ -77,6 +77,19 @@ async function authorized(request: Request, secret: string | undefined): Promise
 
 /** The order this request concerns — it names the object, so it is required
  *  on every custody route and is never inferred. */
+const MAX_ORDER_ID = 256;
+/**
+ * ⚠ VERIFIER MINOR (round 5) — THE OUTER DOOR BOUNDS IT TOO. The order id is
+ * put into a REQUEST HEADER on the way to the object, and header grammar
+ * rejects CR/LF/NUL — so `new Request(...)` threw before any of the object's
+ * own `MAX_ID` checks could run, and the door answered a raw, uncaught
+ * `TypeError` 500 instead of the structured `{ok:false, reason}` it returns
+ * everywhere else. Nothing was written and it still failed closed, but a door
+ * that can be made to crash is not a door that can be reasoned about.
+ */
+const isUsableOrderId = (v: string): boolean =>
+  v.length <= MAX_ORDER_ID && !/[\u0000-\u001f\u007f]/.test(v);
+
 function orderIdOf(url: URL, body: unknown): string | null {
   const fromQuery = url.searchParams.get('orderId');
   if (fromQuery !== null && fromQuery.trim() !== '') return fromQuery.trim();
@@ -123,6 +136,9 @@ export default {
     const orderId = orderIdOf(url, parsed);
     if (orderId === null) {
       return Response.json({ ok: false, reason: 'order_id_required' }, { status: 400 });
+    }
+    if (!isUsableOrderId(orderId)) {
+      return Response.json({ ok: false, reason: 'order_id_not_usable' }, { status: 400 });
     }
 
     const stub = env.CUSTODY.get(env.CUSTODY.idFromName(orderId));

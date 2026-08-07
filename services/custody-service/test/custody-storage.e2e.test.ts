@@ -115,6 +115,36 @@ function deleteRows(dir: string, match: (key: string) => boolean): number {
   return removed;
 }
 
+/** Copy every stored row from one persist dir into another — how a custody
+ *  record gets MOVED to an address that is not its own. */
+function copyAllRows(fromDir: string, toDir: string): number {
+  const rows: { key: Uint8Array; value: Uint8Array }[] = [];
+  for (const file of filesUnder(fromDir)) {
+    if (!file.endsWith('.sqlite') || file.includes('metadata')) continue;
+    const db = new DatabaseSync(file);
+    try {
+      // NB: pass the key column through EXACTLY as SQLite returned it —
+      // wrapping it in a Buffer changes its storage class, so the insert adds
+      // a second row instead of replacing, and the copy silently does nothing.
+      for (const r of db.prepare('select key, value from _cf_KV').all() as unknown as { key: Uint8Array; value: Uint8Array }[]) {
+        rows.push({ key: r.key, value: r.value });
+      }
+    } finally { db.close(); }
+  }
+  let written = 0;
+  for (const file of filesUnder(toDir)) {
+    if (!file.endsWith('.sqlite') || file.includes('metadata')) continue;
+    const db = new DatabaseSync(file);
+    try {
+      for (const r of rows) {
+        db.prepare('insert or replace into _cf_KV (key, value) values (?, ?)').run(r.key, r.value);
+        written += 1;
+      }
+    } finally { db.close(); }
+  }
+  return written;
+}
+
 const dirs: string[] = [];
 function freshDir(tag: string): string {
   const d = mkdtempSync(join(tmpdir(), `custody-storage-${tag}-`));
@@ -482,6 +512,75 @@ describe('the chain row is bound by the head — the ids cannot be rewritten und
     expect(res.json).toMatchObject({ packageId: 'pkg-VICTIM' });
     expect((await call(mf, 'GET', '/ops/ledger/verify?orderId=ord-chain-clean')).json)
       .toMatchObject({ valid: true, headMatches: true });
+    await mf.dispose();
+  });
+});
+
+/**
+ * ⚠ SE-LIVE-3 VERIFIER, ROUND 5 (BLOCKER) — A RECORD MUST NAME THE OBJECT IT
+ * LIVES IN. Round 4 bound the chain's CONTENT; nothing bound it to WHICH
+ * OBJECT held it. Copying one order's rows into another order's storage
+ * produced a decoy that SERVED the victim's record, attested
+ * `headMatches: true` over it, ACCEPTED a new act onto it, and refused the
+ * honest recovery — the decoy's own custody record gone, every event it
+ * emitted carrying the victim's order id. No hash was recomputed.
+ */
+describe('a custody record cannot be served from an object that is not its own', () => {
+  const CODE = 'PICKUP-COPY-9600';
+  const AT = '2026-08-07T09:00:00.000Z';
+
+  it('refuses to serve, attest, or accept an act on a record copied in from another order', async () => {
+    const victimDir = freshDir('copy-victim');
+    const decoyDir = freshDir('copy-decoy');
+
+    // A real custody record on VICTIM.
+    let mf = boot(victimDir);
+    expect((await call(mf, 'POST', '/ops/order/open', {
+      orderId: 'VICTIM', taskId: 't', packageId: 'pkg-V', correlationId: 'c', supplierId: 's',
+    })).status).toBe(200);
+    expect((await call(mf, 'POST', '/ops/secrets/arm', {
+      orderId: 'VICTIM', command_id: 'arm-v', kind: 'pickup_verification_code', secret: CODE,
+    })).status).toBe(200);
+    expect((await call(mf, 'POST', '/ops/verification', {
+      orderId: 'VICTIM', command_id: 'v-v', riderId: 'rider-1', presentedPickupCode: CODE,
+      checkResults: ALL_PASS, dwellSec: 120, evidenceBundleId: 'ev-v', at: AT,
+    })).status).toBe(200);
+    await mf.dispose();
+
+    // A separate, legitimate order — DECOY.
+    mf = boot(decoyDir);
+    expect((await call(mf, 'POST', '/ops/order/open', {
+      orderId: 'DECOY', taskId: 't2', packageId: 'pkg-X', correlationId: 'c2', supplierId: 's2',
+    })).status).toBe(200);
+    await mf.dispose();
+
+    // THE MOVE: victim's rows written into the decoy's object storage.
+    expect(copyAllRows(victimDir, decoyDir)).toBeGreaterThan(0);
+
+    mf = boot(decoyDir);
+    // It must not SERVE the record…
+    const ledger = await call(mf, 'GET', '/ops/ledger?orderId=DECOY');
+    expect(ledger.status).toBe(409);
+    expect(ledger.json).toMatchObject({ reason: 'chain_does_not_name_this_object' });
+    expect(JSON.stringify(ledger.json)).not.toContain('pkg-V');
+
+    // …must not ATTEST it…
+    const verify = await call(mf, 'GET', '/ops/ledger/verify?orderId=DECOY');
+    expect(verify.json).toMatchObject({ ok: false, headMatches: false, reason: 'chain_does_not_name_this_object' });
+
+    // …and must not accept a new act that would seal the substitution.
+    const act = await call(mf, 'POST', '/ops/secrets/arm', {
+      orderId: 'DECOY', command_id: 'arm-after-copy', kind: 'custody_seal', secret: 'X',
+    });
+    expect(act.status).toBe(409);
+    expect(act.json).toMatchObject({ reason: 'chain_does_not_name_this_object' });
+    await mf.dispose();
+
+    // The victim's own object is untouched and still healthy.
+    mf = boot(victimDir);
+    const victim = await call(mf, 'GET', '/ops/ledger?orderId=VICTIM');
+    expect(victim.status).toBe(200);
+    expect(victim.json).toMatchObject({ packageId: 'pkg-V' });
     await mf.dispose();
   });
 });

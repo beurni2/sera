@@ -201,8 +201,6 @@ export interface OrderChain extends ChainIds {
   paymentMode: 'FULL_PREPAY' | 'DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR';
 }
 
-const isStr = (v: unknown): v is string => typeof v === 'string' && v.trim().length > 0;
-
 /**
  * ⚠ VERIFIER BLOCKER (round 4) — AN IDENTIFIER HAS A LENGTH. Fields were
  * checked for « non-empty string » and nothing else, so a 3 MiB `riderId`
@@ -415,6 +413,14 @@ export class CustodyDO {
    * BEFORE the spine sees it, so a consumption can never happen and then be
    * thrown away. The ceiling is far under the 2 MiB per-value limit; the
    * outcome added at commit time is small and bounded.
+   *
+   * MEASURED, and stated so nobody mistakes it for a live defence: the largest
+   * command the door currently permits — 256-char ids throughout, a 4096-char
+   * secret, 64 check names of 256 chars — writes an 18 KB row, so this guard
+   * has never fired and cannot fire as the fields stand. It stays because it
+   * makes the invariant hold for a field someone adds LATER without noticing
+   * the per-value cap; unlike a dead branch, it is the thing that keeps a
+   * future mistake from reaching the spine.
    */
   private tooLargeToCommit(cmd: CustodyCommand): boolean {
     return canonicalJson(cmd).length > 64 * 1024;
@@ -472,7 +478,15 @@ export class CustodyDO {
         return c.kind === 'arm_secret' && c.secretKind === cmd.secretKind && row.outcome.httpStatus === 200;
       });
       const latest = armsOfKind[armsOfKind.length - 1];
-      if (latest !== undefined && latest.cmd.command_id !== cmd.command_id) body['superseded'] = true;
+      // ⚠ ROUND 5 (NOTE) — a later arm of the SAME value replaces nothing, and
+      // reporting it as superseded was a false alarm on a code that still works.
+      if (
+        latest !== undefined
+        && latest.cmd.command_id !== cmd.command_id
+        && (latest.cmd as Extract<CustodyCommand, { kind: 'arm_secret' }>).secretDigest !== cmd.secretDigest
+      ) {
+        body['superseded'] = true;
+      }
       /**
        * ⚠ VERIFIER MINOR (round 4) — AND « SPENT » IS DEADER THAN « SUPERSEDED ».
        * The flag above only noticed a LATER ARM. A code that had been used was
@@ -546,22 +560,50 @@ export class CustodyDO {
      * must be reachable precisely when integrity is broken. It exposes a
      * verdict, never custody content.
      */
-    if (this.integrityFailure !== null) {
+    const objectName = request.headers.get('X-Custody-Object');
+
+    /**
+     * ⚠ VERIFIER BLOCKER (round 5) — A RECORD MUST NAME THE OBJECT IT LIVES IN.
+     * Round 4 bound the chain row's CONTENT. Nothing bound the chain to WHICH
+     * OBJECT held it, and `/order/open` enforced that only at open time. So
+     * copying one order's four rows into another order's storage produced a
+     * DECOY object that SERVED the victim's record, attested
+     * `headMatches: true` over it, ACCEPTED a new act onto it, and refused the
+     * honest recovery with `chain_already_open_with_other_ids` — the decoy's
+     * own custody record gone, and every event it emitted carrying the
+     * victim's `order_id`. No hash was recomputed; the rows were simply moved.
+     *
+     * The object is told its own name by the router on every request (a fresh
+     * header object — a caller cannot supply it), so the check is one
+     * comparison against a value already in hand. It is treated as an
+     * INTEGRITY failure, not a request error: the file is misfiled, whoever is
+     * asking.
+     */
+    const misfiled = objectName !== null && this.chain !== null && this.chain.order_id !== objectName;
+
+    const failure = this.integrityFailure ?? (misfiled ? 'chain_does_not_name_this_object' : null);
+    if (failure !== null) {
       if (request.method === 'GET' && pathname === '/ledger/verify') {
         // A REAL verdict, not a refusal — and answered HERE, before the
         // « order not open » guard, because a file whose chain row is gone is
         // exactly a file someone needs a verdict on.
+        /**
+         * ⚠ ROUND 5 (MINOR) — `ok: false`. Answering rather than refusing was
+         * right, but `ok` is this API's success marker everywhere else, so a
+         * bricked custody file replying `200 {"ok":true}` reads as healthy to
+         * any operator script keyed on it. The verdict is the payload; `ok`
+         * reports the file.
+         */
         return Response.json({
-          ok: true,
+          ok: false,
           valid: this.spine === null ? false : this.spine.ledger.verifyChain().valid,
           headMatches: false,
-          reason: this.integrityFailure,
+          reason: failure,
         });
       }
-      return Response.json({ ok: false, reason: this.integrityFailure }, { status: 409 });
+      return Response.json({ ok: false, reason: failure }, { status: 409 });
     }
 
-    const objectName = request.headers.get('X-Custody-Object');
     if (objectName !== null && request.method !== 'GET') {
       const peek = (await request.clone().json().catch(() => null)) as Record<string, unknown> | null;
       const claimed = peek?.['orderId'];
@@ -839,6 +881,45 @@ export class CustodyDO {
       // Reached only when integrity holds — the damaged verdict is returned
       // earlier, above the « order not open » guard.
       return Response.json({ ok: true, ...this.spine.ledger.verifyChain(), headMatches: true });
+    }
+
+    /**
+     * ⚠ VERIFIER MINOR (round 5) — THE ATTESTATION MUST BE READABLE. Round 3
+     * chained the command log specifically to protect WHO verified — and under
+     * the founder's ruling `riderId` is the only attestation this slice ships.
+     * It was durable, tamper-bound, and reachable through NO route: the ledger
+     * payload carries `{result, orderId, attempt}`, the events carry the order,
+     * task, result and failed checks, and nothing returned the rider or the
+     * evidence bundle. Protecting something nobody can read is not shipping it.
+     *
+     * Derived from the log, read-only, and it returns NO secret — the log holds
+     * digests, and this route does not surface even those.
+     */
+    if (request.method === 'GET' && pathname === '/attestations') {
+      const attestations = this.log
+        .filter((row) => row.cmd.kind === 'verify_pickup')
+        .map((row) => {
+          const cmd = row.cmd as Extract<CustodyCommand, { kind: 'verify_pickup' }>;
+          return {
+            command_id: cmd.command_id,
+            at: cmd.at,
+            riderId: cmd.input.riderId,
+            evidenceBundleId: cmd.input.evidenceBundleId,
+            dwellSec: cmd.input.dwellSec,
+            checkResults: { ...cmd.input.checkResults },
+            outcome: row.outcome.body['kind'] ?? row.outcome.body['reason'] ?? 'unknown',
+            recorded: row.outcome.httpStatus === 200,
+          };
+        });
+      return Response.json({
+        ok: true,
+        // Stated on the response itself, so it is never read as more than it
+        // is (founder ruling, 2026-08-06): until the rider app authenticates
+        // its own hand in SE-LIVE-4, this is the FOUNDER's attestation of who
+        // verified, not the rider's own credential.
+        attribution: 'founder_attested',
+        attestations,
+      });
     }
 
     /** The events the spine has emitted for this order (canonical shapes) —

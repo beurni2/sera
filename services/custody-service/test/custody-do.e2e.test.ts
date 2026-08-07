@@ -128,6 +128,35 @@ describe('the custody door — fail-closed, and it opens for exactly one key', (
   });
 });
 
+/**
+ * ⚠ SE-LIVE-3 VERIFIER, ROUND 5 (MINOR) — the OUTER door bounds the order id
+ * too. It is placed into a request header on the way to the object, and header
+ * grammar rejects CR/LF/NUL — so `new Request(...)` threw before any of the
+ * object's own bounds could run, and the door answered a raw uncaught
+ * TypeError 500 instead of the structured refusal it gives everywhere else.
+ */
+describe('the outer door refuses an order id it cannot carry', () => {
+  for (const [label, bad] of [
+    ['newline', 'ORD-a\nb'],
+    ['carriage return', 'ORD-a\rb'],
+    ['null byte', 'ORD-a\u0000b'],
+  ] as const) {
+    it(`a ${label} in the order id is a structured 400, never a crash`, async () => {
+      const res = await call('POST', '/ops/secrets/arm', opsAuth, {
+        orderId: bad, command_id: 'c-bad', kind: 'custody_seal', secret: 'X',
+      });
+      expect(res.status).toBe(400);
+      expect(res.json).toMatchObject({ ok: false, reason: 'order_id_not_usable' });
+    });
+  }
+
+  it('an over-long order id is refused by the outer door as well', async () => {
+    const res = await call('GET', `/ops/ledger?orderId=${'z'.repeat(300)}`, opsAuth);
+    expect(res.status).toBe(400);
+    expect(res.json).toMatchObject({ reason: 'order_id_not_usable' });
+  });
+});
+
 describe('the custody file — opened once, and its chain ids are not rewritable', () => {
   it('opens with its chain ids', async () => {
     const res = await call('POST', '/ops/order/open', opsAuth, CHAIN);
@@ -571,6 +600,15 @@ describe('a duplicate is the ORIGINAL answer, verbatim, plus one honest marker',
     expect(replayFirst.status).toBe(200);
     expect(replayFirst.json).toMatchObject({ ok: true, status: 'armed', duplicate: true, superseded: true });
 
+    // Re-arming the SAME value replaces nothing, so it raises no false alarm.
+    expect((await call('POST', '/ops/secrets/arm', opsAuth, {
+      orderId: order, command_id: 'arm-same-value', kind: 'buyer_drop_code', secret: 'DROP-BBB',
+    })).status).toBe(200);
+    const replaySecondAgain = await call('POST', '/ops/secrets/arm', opsAuth, {
+      orderId: order, command_id: 'arm-second', kind: 'buyer_drop_code', secret: 'DROP-BBB',
+    });
+    expect(replaySecondAgain.json['superseded']).toBeUndefined();
+
     // The LATEST arm replays without the flag — it is still the live one.
     const replaySecond = await call('POST', '/ops/secrets/arm', opsAuth, {
       orderId: order, command_id: 'arm-second', kind: 'buyer_drop_code', secret: 'DROP-BBB',
@@ -775,6 +813,50 @@ describe('a duplicate arm says when the code has been spent, not only when it wa
     const afterUse = await call('POST', '/ops/secrets/arm', opsAuth, arm);
     expect(afterUse.status).toBe(200);
     expect(afterUse.json).toMatchObject({ ok: true, status: 'armed', duplicate: true, spent: true });
+  });
+});
+
+/**
+ * ⚠ SE-LIVE-3 VERIFIER, ROUND 5 (MINOR) — the attestation this slice ships must
+ * be READABLE. Round 3 chained the command log specifically to protect WHO
+ * verified, and under the founder's ruling `riderId` is the only attestation
+ * this slice ships — but no route returned it. Protected and unreadable is not
+ * shipped.
+ */
+describe('the founder-attested rider identity can be read back', () => {
+  const order = 'ord-attest';
+  const code = 'PICKUP-ATTEST-0013';
+
+  it('records and returns the rider, the evidence bundle and the dwell — labelled for what it is', async () => {
+    expect((await call('POST', '/ops/order/open', opsAuth, {
+      orderId: order, taskId: 'task-at', packageId: 'pkg-at', correlationId: 'corr-at', supplierId: 'sup-at',
+    })).status).toBe(200);
+    expect((await call('POST', '/ops/secrets/arm', opsAuth, {
+      orderId: order, command_id: 'arm-at', kind: 'pickup_verification_code', secret: code,
+    })).status).toBe(200);
+    expect((await call('POST', '/ops/verification', opsAuth, {
+      orderId: order, command_id: 'v-at', riderId: 'RIDER-XYZ-ATTESTED', presentedPickupCode: code,
+      checkResults: ALL_PASS, dwellSec: 137, evidenceBundleId: 'ev-REAL-PHOTOS-01', at: T,
+    })).status).toBe(200);
+
+    await restart(); // it comes back from the log like everything else
+
+    const res = await call('GET', `/ops/attestations?orderId=${order}`, opsAuth);
+    expect(res.status).toBe(200);
+    // Labelled on the response so it is never read as more than it is.
+    expect(res.json).toMatchObject({ ok: true, attribution: 'founder_attested' });
+    const rows = res.json['attestations'] as Json[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      command_id: 'v-at',
+      riderId: 'RIDER-XYZ-ATTESTED',
+      evidenceBundleId: 'ev-REAL-PHOTOS-01',
+      dwellSec: 137,
+      outcome: 'accepted',
+      recorded: true,
+    });
+    // And it still leaks no secret.
+    expect(JSON.stringify(res.json)).not.toContain(code);
   });
 });
 
