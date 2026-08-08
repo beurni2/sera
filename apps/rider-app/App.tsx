@@ -408,19 +408,45 @@ export default function App() {
     if (issue === null || issue.ok) return undefined;
     if (issue.reason === 'offline') return 'photo.offline';
     if (issue.reason === 'rejected') return 'photo.refused';
+    // « Réessayez » would be false advice: this build has no bucket at all.
+    if (issue.reason === 'unconfigured') return 'photo.unconfigured';
     return 'photo.lost';
   };
+  /** Generous — the rider is framing a parcel, not filling a form — but finite.
+   *  Beyond this the screen unlocks and says the photo did not arrive. */
+  const CAPTURE_DEADLINE_MS = 120_000;
   const [capturing, setCapturing] = useState(false);
   const takePhoto = useCallback(
     (keep: (ref: string) => void) => {
       setCaptureIssue(null);
       setCapturing(true);
+      /**
+       * ⚠ A CAMERA THAT NEVER ANSWERS MUST NOT LOCK THE SCREEN. While
+       * `capturing` is true both the photo button and the send are disabled —
+       * so a `launchCameraAsync` that never settles (a killed camera app, a
+       * permission dialog the OS loses) left the rider with a screen they could
+       * not use and no way out. Every other network call in this app is
+       * bounded; this one was not.
+       */
+      let settled = false;
+      const giveUp = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        setCapturing(false);
+        setCaptureIssue({ ok: false, reason: 'unreachable' });
+      }, CAPTURE_DEADLINE_MS);
       void evidence.captureAndUpload().then((outcome) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(giveUp);
         setCapturing(false);
         if (outcome.ok) keep(outcome.ref);
         // Cancelled is the rider's own decision — say nothing about it.
         else if (outcome.reason !== 'cancelled') setCaptureIssue(outcome);
       }, () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(giveUp);
         setCapturing(false);
         setCaptureIssue({ ok: false, reason: 'unreachable' });
       });
@@ -512,13 +538,10 @@ export default function App() {
     if (stage === null) return;
     setRemembered(stage);
     void rememberAct(asActMemoryStore(outboxStore), {
+      // ORDER AND STAGE ONLY. The pickup code, the seal id and the rider's own
+      // code are deliberately not here — a test scans the persisted bytes.
       orderId: dwellOrderId,
       stage,
-      // IDS ONLY. The pickup code, the seal id and the rider's code are
-      // deliberately absent — a test scans the persisted bytes for them.
-      attemptIds: Object.fromEntries(
-        [...attempts.current.entries()].map(([key, held]) => [key.split('|')[0] as string, held.id]),
-      ),
     }).catch(() => setPersistFailed(true));
   }, [dwellOrderId, verifyPhase, sealPhase, outboxStore]);
 
@@ -1078,8 +1101,18 @@ export default function App() {
                   {packageIsHeld(sealPhase, remembered) ? (
                     <FasoCard>
                       <ProofLine label={t('acts.custody_taken')} />
+                      {/* « What-happens-next always stated » — this was the
+                          slice's terminal screen and it was a single line with
+                          no next step at all. */}
+                      <FasoBody>{t('acts.custody_next')}</FasoBody>
                     </FasoCard>
                   ) : sealScreenIsDue(verifyPhase, remembered) ? (
+                    <>
+                    {/* The same omission on the seal arm — « La garde commence
+                        au scellé. Pas une seconde avant. » is the whole point
+                        of the act the rider is about to perform. */}
+                    <FasoPosterTitle>{t('seal.title')}</FasoPosterTitle>
+                    <FasoBody>{t('seal.body')}</FasoBody>
                     <FasoActCode
                       strings={{
                         title: t('seal.id_title'),
@@ -1114,6 +1147,7 @@ export default function App() {
                       }
                       onSubmit={sendSeal}
                     />
+                    </>
                   ) : (
                     <>
                       {/* SE4.2 — objective conformity only (SE-I12). The
@@ -1129,6 +1163,19 @@ export default function App() {
                         * became a REFUSAL, which permanently records the
                         * supplier at fault. Neither can happen by omission now.
                         */}
+                      {/**
+                        * ⚠ VERIFIER BLOCKER A5 — THE WIRED SCREEN HAD NO TITLE
+                        * AND NO BOUNDARY. A rider on a real build saw a
+                        * landmark, a chip, then NINE unheaded questions. The
+                        * demo screen has always carried both lines; the wired
+                        * arm dropped them. « Vérifiez ce qui se voit. Pas la
+                        * qualité, pas le vrai ou le faux. » is not decoration —
+                        * it is SE-I12 in one sentence, and without it a rider
+                        * reading « C'est le bon produit » as « is it genuine »
+                        * answers Non and records a supplier at fault for ever.
+                        */}
+                      <FasoPosterTitle>{t('verify.title')}</FasoPosterTitle>
+                      <FasoBody>{t('verify.body')}</FasoBody>
                       {POLICY_CHECK_IDS.map((id) => (
                         <FasoCheckAnswer
                           key={id}
@@ -1793,8 +1840,30 @@ export default function App() {
                 ? t('sos.not_wired_hint')
                 : t('sos.sending_hint')
             : t('sos.raised_hint'),
-          escalated: t('sos.escalated'),
-          escalatedHint: t('sos.escalated_hint'),
+          /**
+           * ⚠ GATED FOR THE SAME REASON `raised` IS. « on alerte le
+           * responsable / On prévient le responsable pour vous » is true in the
+           * demo world and FALSE on a wired build: `ESCALATION_TRANSPORT` has
+           * no channel bound, so nothing rings out of hours. It is unreachable
+           * today only because `SANDBOX_DISPATCH_HOURS` is `'in_hours'` — one
+           * constant away from re-arming blocker A2's false safety promise on
+           * the most dangerous screen in the app. A wired build says what the
+           * server actually has, exactly as the raised path does.
+           */
+          escalated: WIRED
+            ? sosDelivered === 'reached'
+              ? t('sos.reached')
+              : sosDelivered === 'owed'
+                ? t('sos.not_wired')
+                : t('sos.sending')
+            : t('sos.escalated'),
+          escalatedHint: WIRED
+            ? sosDelivered === 'reached'
+              ? t('sos.reached_hint')
+              : sosDelivered === 'owed'
+                ? t('sos.not_wired_hint')
+                : t('sos.sending_hint')
+            : t('sos.escalated_hint'),
           transportPending: t('sos.transport_pending'),
           acknowledged: t('sos.acknowledged'),
           acknowledgedHint: t('sos.acknowledged_hint'),

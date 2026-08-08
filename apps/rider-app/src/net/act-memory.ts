@@ -16,9 +16,18 @@ import type { OutboxStore } from '../offline/outbox';
  *
  * ═══ ⚠ WHAT IS REMEMBERED, AND WHAT IS DELIBERATELY FORGOTTEN ═══
  *
- * REMEMBERED: which order, which stage was reached, and the `command_id` of
- * each attempt. That is enough to put the rider back where they were and to
- * make a retry idempotent at custody.
+ * REMEMBERED: which order, and which stage was reached. That is enough to put
+ * the rider back where they were.
+ *
+ * ⚠ `attemptIds` WAS HERE AND IS GONE (verifier blocker A4, round three). It was
+ * persisted, round-tripped, documented as « so a retry after a relaunch is still
+ * the SAME command to custody and replays rather than re-applying » — and never
+ * read back by anything. Worse, it could not have worked: `attemptFor` keys an
+ * attempt by its CONTENT, and that content includes the pickup code (which is a
+ * secret this file must never hold) and the photo ref (which changes the moment
+ * the rider retakes it). A restored id could never match a rebuilt key. A field
+ * whose stated purpose is impossible is worse than no field: it reads like the
+ * problem is handled.
  *
  * **NEVER WRITTEN: the pickup code, the seal id, or the rider's own code.**
  * They are two of the four secrets and a live credential. The whole reason the
@@ -38,9 +47,6 @@ export type ActStage = 'none' | 'verification_accepted' | 'custody_taken';
 export interface ActMemory {
   readonly orderId: string;
   readonly stage: ActStage;
-  /** The attempt ids already used, so a retry after a relaunch is still the
-   *  SAME command to custody and replays rather than re-applying. */
-  readonly attemptIds: Readonly<Record<string, string>>;
 }
 
 const KEY = 'custody-act-memory.v1';
@@ -76,10 +82,6 @@ export async function loadActMemory(store: ActMemoryStore, orderId: string): Pro
   return {
     orderId,
     stage: stage === 'verification_accepted' || stage === 'custody_taken' ? stage : 'none',
-    attemptIds:
-      m['attemptIds'] !== null && typeof m['attemptIds'] === 'object'
-        ? (m['attemptIds'] as Record<string, string>)
-        : {},
   };
 }
 
@@ -87,9 +89,9 @@ export async function loadActMemory(store: ActMemoryStore, orderId: string): Pro
  * Remember a stage. Read-modify-write on one key so this never clobbers
  * whatever else shares the store.
  *
- * ⚠ THE CALLER MUST PASS ONLY IDS. This function cannot police what a future
- * caller puts in `attemptIds`, so the guard is the test that scans what
- * actually lands on disk — the same shape as the credential scans elsewhere.
+ * ⚠ THE GUARD IS THE TEST THAT SCANS WHAT ACTUALLY LANDS ON DISK — the same
+ * shape as the credential scans elsewhere. This function cannot police what a
+ * future caller hands it.
  */
 export async function rememberAct(store: ActMemoryStore, memory: ActMemory): Promise<void> {
   const raw = await store.read();

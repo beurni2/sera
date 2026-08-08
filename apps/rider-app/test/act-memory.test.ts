@@ -28,19 +28,23 @@ const RIDER_CODE = 'SR-ABCD-EFGH-JKMN';
 describe('a killed app puts the rider back where they were', () => {
   it('remembers that the LEDGER accepted the verification', async () => {
     const store = fakeStore();
-    await rememberAct(store, { orderId: 'ord-1', stage: 'verification_accepted', attemptIds: { verify: 'cmd-1' } });
+    await rememberAct(store, { orderId: 'ord-1', stage: 'verification_accepted' });
     const back = await loadActMemory(store, 'ord-1');
     expect(back?.stage).toBe('verification_accepted');
-    // The attempt id survives, so a retry after the relaunch is still the SAME
-    // command to custody — it replays rather than re-applying.
-    expect(back?.attemptIds['verify']).toBe('cmd-1');
+    // ⚠ `attemptIds` USED TO BE ASSERTED HERE, with a comment claiming a retry
+    // after relaunch replayed the same command. It never could: `attemptFor`
+    // keys an attempt by CONTENT, and that content includes the pickup code
+    // (which this file must never hold) and the photo ref (which changes the
+    // moment the rider retakes it). Nothing ever read the field back either.
+    // The field is gone; what a relaunched rider gets is the STAGE, which is
+    // the thing that actually puts them back where they were.
   });
 
   it('⚠ never restores one order’s stage onto another', async () => {
     // Showing a seal screen for goods the rider never verified would be the
     // worst possible use of a memory.
     const store = fakeStore();
-    await rememberAct(store, { orderId: 'ord-1', stage: 'verification_accepted', attemptIds: {} });
+    await rememberAct(store, { orderId: 'ord-1', stage: 'verification_accepted' });
     expect(await loadActMemory(store, 'ord-2')).toBeNull();
   });
 
@@ -59,14 +63,14 @@ describe('a killed app puts the rider back where they were', () => {
 
   it('shares the store without clobbering what else lives there', async () => {
     const store = fakeStore('{"other":"kept"}');
-    await rememberAct(store, { orderId: 'ord-1', stage: 'custody_taken', attemptIds: {} });
+    await rememberAct(store, { orderId: 'ord-1', stage: 'custody_taken' });
     expect(JSON.parse(store.bytes() ?? '{}')['other']).toBe('kept');
     expect((await loadActMemory(store, 'ord-1'))?.stage).toBe('custody_taken');
   });
 
   it('signing out forgets the acts but leaves the rest of the store alone', async () => {
     const store = fakeStore('{"other":"kept"}');
-    await rememberAct(store, { orderId: 'ord-1', stage: 'custody_taken', attemptIds: {} });
+    await rememberAct(store, { orderId: 'ord-1', stage: 'custody_taken' });
     await forgetActs(store);
     expect(await loadActMemory(store, 'ord-1')).toBeNull();
     expect(JSON.parse(store.bytes() ?? '{}')['other']).toBe('kept');
@@ -83,15 +87,15 @@ describe('⚠ what is written to the phone contains NO secret', () => {
     await rememberAct(store, {
       orderId: 'ord-1',
       stage: 'verification_accepted',
-      attemptIds: { verify: 'cmd-1', seal: 'cmd-2' },
     });
     const bytes = store.bytes() ?? '';
     expect(bytes).not.toContain(PICKUP_CODE);
     expect(bytes).not.toContain(SEAL_ID);
     expect(bytes).not.toContain(RIDER_CODE);
-    // Positively: it holds the order, the stage and the ids, and that is all.
+    // Positively: the order and the stage, and NOTHING else. Stated as an
+    // exact key set so a future field cannot be added to the phone quietly.
     expect(Object.keys(JSON.parse(bytes)['custody-act-memory.v1']).sort())
-      .toEqual(['attemptIds', 'orderId', 'stage']);
+      .toEqual(['orderId', 'stage']);
   });
 
   it('the module cannot reach a persistence surface of its own', async () => {

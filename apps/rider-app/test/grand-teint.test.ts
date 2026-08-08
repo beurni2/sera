@@ -123,6 +123,17 @@ describe('the approved dependencies — nothing else', () => {
      * bundled version, like every other pin here.
      */
     expect(pkg.dependencies['expo-image-picker']).toBe('~17.0.11');
+    /**
+     * ⚠ AND expo-image-manipulator, WITHOUT WHICH THE PICKER IS USELESS HERE
+     * (verifier blocker A1, round three). `quality` is JPEG compression, not a
+     * resize, and the picker offers no resize at all — so every capture went up
+     * at the sensor's native size and media-service refused it outright
+     * (`bad_dimensions` above a 2048 box; its own comment says « the app
+     * resizes on device »). Every phone in this market shoots wider than that,
+     * so every proof photo was rejected and the seal could never be sent.
+     * Boutik+ has always honoured this — `studio/normalization.ts`. Same pin.
+     */
+    expect(pkg.dependencies['expo-image-manipulator']).toBe('~14.0.8');
     // the only deps beyond the pre-WO set are exactly these six. @platform/*
     // are baseline canon infra (not third-party capabilities): SERA-S1 adds
     // @platform/contracts as the home of the canon `mintCommandId` helper, consumed
@@ -131,6 +142,6 @@ describe('the approved dependencies — nothing else', () => {
       '@platform/contracts', '@platform/ui-tokens', 'expo', 'expo-status-bar', 'expo-updates', 'react', 'react-native',
     ]);
     const added = Object.keys(pkg.dependencies).filter((d) => !before.has(d));
-    expect(added.sort()).toEqual(['expo-crypto', 'expo-file-system', 'expo-font', 'expo-haptics', 'expo-image-picker', 'expo-network', 'react-native-svg']);
+    expect(added.sort()).toEqual(['expo-crypto', 'expo-file-system', 'expo-font', 'expo-haptics', 'expo-image-manipulator', 'expo-image-picker', 'expo-network', 'react-native-svg']);
   });
 });

@@ -34,6 +34,13 @@
             "./assets/fonts/Bricolage-800.ttf"
           ]
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Séra utilise l'appareil photo pour la photo de preuve du colis.",
+          "photosPermission": "Séra n'ouvre vos photos que si vous choisissez d'en envoyer une comme preuve."
+        }
       ]
     ]
   }

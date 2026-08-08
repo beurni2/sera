@@ -238,6 +238,34 @@ describe('⚠ the SOS does not promise what no server receives (blocker A2)', ()
     expect(app).toMatch(/stillPending\(outboxStore, commandId\)/);
   });
 
+  it('⚠ the ESCALATED path cannot promise a channel that is not bound', () => {
+    // Unreachable today only because SANDBOX_DISPATCH_HOURS is 'in_hours'. One
+    // constant flip and a wired build would say « on alerte le responsable »
+    // while ESCALATION_TRANSPORT has no channel — blocker A2's false safety
+    // promise, re-armed. It follows the same delivery fact as `raised`.
+    const sheet = app.slice(app.indexOf('<SosSheet'), app.indexOf('previewAck:'));
+    const escalated = sheet.slice(sheet.indexOf('escalated: WIRED'), sheet.indexOf('transportPending'));
+    expect(escalated.length, 'the escalated arm was found').toBeGreaterThan(50);
+    expect(escalated).toMatch(/sosDelivered === 'reached'/);
+    expect(escalated, 'a flat wired promise').not.toMatch(/^\s*escalated: t\('sos\.escalated'\)/m);
+  });
+
+  it('⚠ a camera that never answers cannot lock the screen for ever', () => {
+    // While `capturing` is true BOTH the photo button and the send are
+    // disabled. An unsettled launchCameraAsync left the rider with a screen
+    // they could not use and no way out.
+    const body = app.slice(app.indexOf('const takePhoto = useCallback'), app.indexOf('const attempts = useRef'));
+    expect(body).toMatch(/CAPTURE_DEADLINE_MS/);
+    expect(body).toMatch(/setCapturing\(false\)/);
+    expect(app).toMatch(/const CAPTURE_DEADLINE_MS = \d[\d_]*;/);
+  });
+
+  it('⚠ a build with no bucket says so, instead of blaming the network', () => {
+    // 'unreachable' reads « La photo n'est pas partie. Réessayez. » — false
+    // advice when no retry can ever work and the camera never even opened.
+    expect(app).toMatch(/issue\.reason === 'unconfigured'\) return 'photo\.unconfigured'/);
+  });
+
   it('⚠ the alert is SENT when it is raised, not only on the next reconnect (A5)', () => {
     // `fireSos` only appended to the outbox, and the sole caller of the sender
     // was a reconnect effect whose deps `fireSos` changes NONE of. A rider in
@@ -328,6 +356,42 @@ describe('⚠ the ports are CALLED, not merely present (blockers A1 + A2, round 
    *
    * So these assert CALL SITES, and each one is mutation-checked.
    */
+  it('⚠ BOTH ACTS ARE MOUNTED — the send button is wired to the sender', () => {
+    /**
+     * ⚠ THE HOLE THE ROUND-TWO TESTS LEFT (verifier blocker A2, round three).
+     * Those assertions proved the photo port and the memory port had callers.
+     * They did not prove the ACTS were reachable. Mutation, verified applied:
+     * replacing `onSubmit={sendVerification}` with an empty arrow left
+     * **274/274 passing and typecheck 0** — the rider answers nine checks,
+     * takes the photo, types the dispatcher's code, taps the enabled primary
+     * button, and nothing happens for ever. Byte-for-byte the round-two
+     * blocker, through a hole in the test written to prevent it.
+     *
+     * `noUnusedLocals` is off, so the compiler is silent about the orphaned
+     * sender too. Only this can catch it.
+     */
+    expect(app, 'the verification act').toMatch(/onSubmit=\{sendVerification\}/);
+    expect(app, 'the seal act').toMatch(/onSubmit=\{sendSeal\}/);
+    // And the senders really call the ports, in the arm that renders them.
+    expect(app).toMatch(/const sendVerification = useCallback\(/);
+    expect(app).toMatch(/const sendSeal = useCallback\(/);
+    expect(app).toMatch(/custodyActs\.verifyPickup\(/);
+    expect(app).toMatch(/custodyActs\.beginCustody\(/);
+  });
+
+  it('⚠ a captured ref actually reaches the state the act reads', () => {
+    // Second mutation that survived round two: `if (false && outcome.ok)
+    // keep(outcome.ref)` — camera opens, bytes upload, bucket returns a ref,
+    // and the send stays disabled for ever. The keep() call is the whole
+    // bridge between the port and the payload.
+    const takePhotoBody = app.slice(app.indexOf('const takePhoto = useCallback'), app.indexOf('const attempts = useRef'));
+    expect(takePhotoBody).toMatch(/if \(outcome\.ok\) keep\(outcome\.ref\)/);
+    expect(takePhotoBody, 'a short-circuited keep').not.toMatch(/if \(false|&& outcome\.ok\) keep/);
+    // …and the two keeps are the two act states, not a shared scratch value.
+    expect(app).toMatch(/evidenceBundleId: verifyBundleId/);
+    expect(app).toMatch(/sealPhotoRefs/);
+  });
+
   it('the photo is actually taken — takePhoto has a caller on both acts', () => {
     // Declaration alone is what shipped. Demand a real invocation.
     // `takePhoto(` matches call sites only — the declaration reads

@@ -60,7 +60,11 @@ export type CaptureOutcome =
    *  too_large · bad_dimensions) — the rider can act on that. */
   | { readonly ok: false; readonly reason: 'rejected'; readonly detail: string }
   /** The upload did not complete. The photo is not stored, so there is no ref. */
-  | { readonly ok: false; readonly reason: 'unreachable' };
+  | { readonly ok: false; readonly reason: 'unreachable' }
+  /** This BUILD has no media bucket configured, so no photo can ever be stored
+   *  here. Distinct from 'unreachable' because « réessayez » is false advice:
+   *  retrying cannot work, and the camera never even opened. */
+  | { readonly ok: false; readonly reason: 'unconfigured' };
 
 export interface EvidenceCapturePort {
   captureAndUpload(): Promise<CaptureOutcome>;
@@ -84,6 +88,10 @@ const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 export function bytesFromBase64(input: string): Uint8Array | null {
   const s = input.replace(/[\r\n\s]/g, '');
   if (s === '' || /[^A-Za-z0-9+/=]/.test(s) || s.length % 4 !== 0) return null;
+  // '=' is padding and may only sit at the very end. An interior one is a
+  // malformed encoding, and decoding it anyway would silently produce bytes
+  // that are not the photo the rider took.
+  if (/=[^=]/.test(s)) return null;
   const pad = s.endsWith('==') ? 2 : s.endsWith('=') ? 1 : 0;
   const out = new Uint8Array((s.length / 4) * 3 - pad);
   let o = 0;
@@ -167,7 +175,10 @@ export function httpEvidenceCapture(
  *  cannot produce a ledger-grade ref — and must not pretend to. Every capture
  *  refuses, which stops the seal rather than faking its proof. */
 export function unwiredEvidenceCapture(): EvidenceCapturePort {
-  return { async captureAndUpload(): Promise<CaptureOutcome> { return { ok: false, reason: 'unreachable' }; } };
+  // ⚠ NOT 'unreachable'. That reads « La photo n'est pas partie. Réessayez. »,
+  // which sends a rider tapping a button that cannot ever work — and the camera
+  // did not even open, so nothing about the screen matched what happened.
+  return { async captureAndUpload(): Promise<CaptureOutcome> { return { ok: false, reason: 'unconfigured' }; } };
 }
 
 export function resolveEvidenceCapture(

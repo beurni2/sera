@@ -1294,5 +1294,17 @@
     "fr": "Restez où vous êtes si c'est sûr. On vous dit dès que c'est parti.",
     "register": "neutral",
     "screenClass": "status"
+  },
+  {
+    "key": "acts.custody_next",
+    "fr": "Allez chez le client. Le code de remise vous sera demandé à l'arrivée.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "photo.unconfigured",
+    "fr": "Cette version ne peut pas enregistrer de photo. Prévenez Séra.",
+    "register": "neutral",
+    "screenClass": "status"
   }
 ]
