@@ -26,7 +26,7 @@ import { httpCustodyActs, type CustodyActsPort, type CustodyAnswer } from './cus
  *  into. Deliberately not a fake success — see the header block. */
 export function unwiredCustodyActs(): CustodyActsPort {
   const refuse = async (): Promise<CustodyAnswer> => ({ kind: 'unreachable', reason: 'not_configured' });
-  return { verifyPickup: refuse, beginCustody: refuse };
+  return { verifyPickup: refuse, beginCustody: refuse, submitDeliveryEvidence: refuse, confirmDrop: refuse };
 }
 
 export function isCustodyWired(
