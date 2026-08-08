@@ -58,6 +58,17 @@ describe('⚠ the proof photo fits the bucket, on the device (A1)', () => {
     expect(src).toMatch(/context\.resize\(resize\)/);
     // The resize must happen BEFORE the bytes are produced.
     expect(src.indexOf('context.resize(resize)')).toBeLessThan(src.indexOf('saveAsync'));
+    /**
+     * ⚠ NO TOP-LEVEL NATIVE IMPORT. `runtimeVersion.policy` is `sdkVersion`, so
+     * adding a native module does not change the runtime version and an
+     * `eas update` reaches preview clients built BEFORE it existed. `App.tsx`
+     * imports this file at module scope, so a top-level import would throw
+     * during bundle load and kill the app on launch for anyone on the older
+     * binary. Required lazily, the miss lands on the photo tap instead.
+     */
+    expect(src, 'a top-level native import').not.toMatch(/^import .*expo-image-(picker|manipulator)/m);
+    expect(src).toMatch(/require\('expo-image-picker'\)/);
+    expect(src).toMatch(/require\('expo-image-manipulator'\)/);
     // base64 is asked of the DERIVATIVE, never of the full-size original — a
     // 48 MP original as a JS string is how a 1 GB phone dies.
     expect(src).not.toMatch(/launchCameraAsync\([\s\S]{0,200}base64: true/);

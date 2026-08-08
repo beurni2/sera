@@ -1,7 +1,39 @@
-import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
-import * as ImagePicker from 'expo-image-picker';
 import { bytesFromBase64, type PhotoSource } from './evidence-capture';
 import { EVIDENCE_MAX_EDGE, resizeForEvidence } from './photo-bounds';
+
+/**
+ * ⚠ LOADED ON FIRST USE, NEVER AT IMPORT — and this is not style, it is what
+ * keeps an already-installed build alive.
+ *
+ * `runtimeVersion.policy` is `sdkVersion`, so adding a NATIVE module does not
+ * change the runtime version: an `eas update` publishes this JS to preview
+ * clients that were built BEFORE these modules existed and have no native code
+ * for them. `App.tsx` imports this file at module scope, so a top-level
+ * `import 'expo-image-picker'` would throw while the bundle is loading and
+ * **kill the app on launch** for anyone holding the older binary.
+ *
+ * Required lazily, the miss lands on the « Prendre la photo » tap instead: the
+ * port answers `unreachable`, the screen says the photo did not go, and every
+ * other screen still works. **The real fix is a new native build** (`eas build`
+ * after `expo-image-picker` + `expo-image-manipulator` were added); this is
+ * what keeps the app usable until that build is installed.
+ *
+ * Boutik+ settled this exact question in `studio/pick-native.ts`; this is the
+ * same pattern, and departing from it was my mistake.
+ */
+type PickerModule = typeof import('expo-image-picker');
+type ManipulatorModule = typeof import('expo-image-manipulator');
+declare const require: (id: string) => unknown;
+let pickerModule: PickerModule | null = null;
+let manipulatorModule: ManipulatorModule | null = null;
+function imagePicker(): PickerModule {
+  pickerModule ??= require('expo-image-picker') as PickerModule;
+  return pickerModule;
+}
+function imageManipulator(): ManipulatorModule {
+  manipulatorModule ??= require('expo-image-manipulator') as ManipulatorModule;
+  return manipulatorModule;
+}
 
 /**
  * SE-LIVE-4c-vii · the DEVICE binding for the proof photo — the same thin-I/O
@@ -44,10 +76,10 @@ import { EVIDENCE_MAX_EDGE, resizeForEvidence } from './photo-bounds';
  */
 export const expoPhotoSource: PhotoSource = {
   async capture(): Promise<Uint8Array | null> {
-    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    const permission = await imagePicker().requestCameraPermissionsAsync();
     if (!permission.granted) return null;
 
-    const result = await ImagePicker.launchCameraAsync({
+    const result = await imagePicker().launchCameraAsync({
       mediaTypes: ['images'],
       // No EXIF: it carries GPS, and the rider's location is not this act's to
       // record. The custody ledger binds the photo by its own chain ids.
@@ -62,6 +94,7 @@ export const expoPhotoSource: PhotoSource = {
     // ⚠ DOWNSCALE FIRST — see the header. `manipulate()` decodes once and the
     // decoded image is handed straight to the encode step (the Boutik+
     // precedent), which matters while a low-end phone is holding the bitmap.
+    const { ImageManipulator, SaveFormat } = imageManipulator();
     const context = ImageManipulator.manipulate(asset.uri);
     const resize = resizeForEvidence(asset.width, asset.height);
     if (resize !== null) context.resize(resize);
