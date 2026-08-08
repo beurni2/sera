@@ -78,6 +78,7 @@ import { FasoSignIn } from './src/ui/faso-signin';
 import { IDLE, refusalKeys, submit as submitSignIn, type SignInState } from './src/net/signin-model';
 import { isWired, resolveRiderSession } from './src/net/resolveRiderSession';
 import { assignmentStateKey, landmarkLines, onShiftFromSession } from './src/net/rider-session';
+import { refusServiceKey, resolveShiftActs } from './src/net/shift-acts';
 import { resolveCustodyActs } from './src/net/resolveCustodyActs';
 import { httpSosSender } from './src/net/sos-wire';
 import { resolveEvidenceCapture, type CaptureOutcome } from './src/net/evidence-capture';
@@ -525,6 +526,7 @@ export default function App() {
   }, []);
 
   const riderCode = signInState.kind === 'signed_in' ? signInState.code : null;
+  const liveSession = signInState.kind === 'signed_in' ? signInState.session : null;
   const liveAssignment = signInState.kind === 'signed_in' ? signInState.session.assignment : null;
   const assignmentLines = liveAssignment === null ? null : landmarkLines(liveAssignment.location);
   const dwellOrderId = liveAssignment?.orderId ?? null;
@@ -736,6 +738,72 @@ export default function App() {
       );
     },
     [sessionPort],
+  );
+  /**
+   * ═══ COURSIER-EN-SERVICE — the three service acts (founder report
+   * 2026-08-08: his rider could NEVER become « libre ») ═══
+   *
+   * The screen state afterwards is always the SERVER'S word: a shift act's 200
+   * carries the registry's own new `state` and THAT is patched into the
+   * session; the privacy ack patches only the flag its 200 confirmed; the
+   * stale-screen refusals (`already_on_shift` / `not_on_shift`) re-ask
+   * `/rider/moi` rather than guessing. Nothing here marks a rider on-shift
+   * because a button was tapped (Law 7: queued = pending, never done — an
+   * offline act answers `offline` and changes NOTHING).
+   */
+  const shiftActs = useMemo(() => resolveShiftActs(net), [net]);
+  const [serviceBusy, setServiceBusy] = useState(false);
+  const [serviceAvis, setServiceAvis] = useState<string | null>(null);
+  const refreshSession = useCallback(() => {
+    if (riderCode === null) return;
+    void submitSignIn(sessionPort, riderCode).then((next) => {
+      // Only a full session replaces the session — a transient refusal must
+      // not sign the rider out mid-repair; the act's own sentence stands.
+      if (next.kind === 'signed_in') setSignInState(next);
+    }, () => void 0);
+  }, [sessionPort, riderCode]);
+  const accepterPrivacy = useCallback(() => {
+    if (riderCode === null || serviceBusy) return;
+    setServiceBusy(true);
+    setServiceAvis(null);
+    void shiftActs.ackPrivacy(riderCode).then((r) => {
+      setServiceBusy(false);
+      if (r.ok) {
+        setSignInState((prev) =>
+          prev.kind === 'signed_in'
+            ? { ...prev, session: { ...prev.session, privacyAckOk: true } }
+            : prev,
+        );
+        return;
+      }
+      setServiceAvis(r.reason === 'offline' ? 'signin.offline' : 'service.act_failed');
+    });
+  }, [shiftActs, riderCode, serviceBusy]);
+  const acteService = useCallback(
+    (quel: 'start' | 'end') => {
+      if (riderCode === null || serviceBusy) return;
+      setServiceBusy(true);
+      setServiceAvis(null);
+      const act = quel === 'start' ? shiftActs.startShift(riderCode) : shiftActs.endShift(riderCode);
+      void act.then((r) => {
+        setServiceBusy(false);
+        if (r.ok) {
+          setSignInState((prev) =>
+            prev.kind === 'signed_in' ? { ...prev, session: { ...prev.session, shift: r.shift } } : prev,
+          );
+          return;
+        }
+        if (r.reason === 'refused') {
+          setServiceAvis(refusServiceKey(r.refus));
+          // « The screen was stale » — fetch the true state; the sentence
+          // above explains the jump.
+          if (r.refus === 'already_on_shift' || r.refus === 'not_on_shift') refreshSession();
+          return;
+        }
+        setServiceAvis(r.reason === 'offline' ? 'signin.offline' : 'service.act_failed');
+      });
+    },
+    [shiftActs, riderCode, serviceBusy, refreshSession],
   );
   const screen = stack[stack.length - 1] ?? START;
   const active = world.courses.find((c) => c.id === activeId) ?? null;
@@ -1184,7 +1252,55 @@ export default function App() {
              */
             <FpIn style={styles.stackGap}>
               <FasoScreenTitle>{t('signin.greeting')}</FasoScreenTitle>
-              {liveAssignment !== null ? (
+              {/**
+                * ═══ COURSIER-EN-SERVICE (founder report 2026-08-08) ═══
+                *
+                * The wired arm showed identity and assignment and NOTHING of
+                * the road that makes assignment possible: SE1's ladder —
+                * certified (Séra's act) → privacy ack → « Commencer service »
+                * (the spec's own Travail tab) — had no surface, so every
+                * wired rider was off-shift for ever and the founder's
+                * dispatch screen honestly said « aucun coursier libre » with
+                * no way anywhere to change it. The ladder renders here, one
+                * rung at a time, one primary action per screen; every state
+                * shown is the SERVER'S answer, never a tap's echo.
+                */}
+              {serviceAvis !== null ? (
+                <FasoCard>
+                  <FasoBody>{t(serviceAvis)}</FasoBody>
+                </FasoCard>
+              ) : null}
+              {liveSession !== null && !liveSession.certified ? (
+                /* Only Séra can certify — honest, with the person to ask. */
+                <FasoCard>
+                  <FasoBody>{t('service.non_certifie')}</FasoBody>
+                </FasoCard>
+              ) : liveSession !== null && !liveSession.privacyAckOk ? (
+                <>
+                  <FasoPosterTitle>{t('privacy.title')}</FasoPosterTitle>
+                  <FasoCard>
+                    <FasoBody>{t('privacy.body')}</FasoBody>
+                  </FasoCard>
+                  <FasoPrimaryButton
+                    label={t(serviceBusy ? 'acts.sending' : 'privacy.accept')}
+                    disabled={serviceBusy}
+                    onPress={accepterPrivacy}
+                  />
+                </>
+              ) : liveSession !== null && onShiftFromSession(liveSession.shift) === false ? (
+                <>
+                  <FasoPosterTitle>{t('service.off_title')}</FasoPosterTitle>
+                  <FasoBody>{t('service.off_body')}</FasoBody>
+                  <FasoCard>
+                    <FasoBody>{t('service.location_note')}</FasoBody>
+                  </FasoCard>
+                  <FasoPrimaryButton
+                    label={t(serviceBusy ? 'acts.sending' : 'shift.start_action')}
+                    disabled={serviceBusy}
+                    onPress={() => acteService('start')}
+                  />
+                </>
+              ) : liveAssignment !== null ? (
                 <>
                   {/**
                     * ⚠ LANDMARK-FIRST, NOT IDENTIFIERS (verifier blocker A10).
@@ -1442,12 +1558,26 @@ export default function App() {
                   )}
                 </>
               ) : (
-                /* Honest empty state — encouraging, truthful, never a fake count. */
-                <FasoEmptyState
-                  Icon={IconColis}
-                  title={t('assignment.none_title')}
-                  hint={t('assignment.none_hint')}
-                />
+                <>
+                  {onShiftFromSession(liveSession?.shift ?? null) === true ? (
+                    <FasoStatusChip tone="ok" label={t('shift.on')} />
+                  ) : null}
+                  {/* Honest empty state — encouraging, truthful, never a fake count. */}
+                  <FasoEmptyState
+                    Icon={IconColis}
+                    title={t('assignment.none_title')}
+                    hint={t('assignment.none_hint')}
+                  />
+                  {onShiftFromSession(liveSession?.shift ?? null) === true ? (
+                    /* Ending the day is offered only with no course in hand —
+                       the registry would refuse a custody-holding end anyway
+                       (SE3.2); this just keeps the trap off the screen. */
+                    <FasoSecondaryButton
+                      label={t(serviceBusy ? 'acts.sending' : 'shift.end_action')}
+                      onPress={() => acteService('end')}
+                    />
+                  ) : null}
+                </>
               )}
             </FpIn>
           ) : (

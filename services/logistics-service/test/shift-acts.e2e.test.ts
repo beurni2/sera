@@ -1,0 +1,165 @@
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { Miniflare } from 'miniflare';
+import { afterEach, describe, expect, it } from 'vitest';
+import { createManualConnectivity } from '../../../apps/rider-app/src/offline/connectivity';
+import { httpShiftActs } from '../../../apps/rider-app/src/net/shift-acts';
+import { httpRiderSession } from '../../../apps/rider-app/src/net/httpRiderSession';
+import { onShiftFromSession } from '../../../apps/rider-app/src/net/rider-session';
+
+/**
+ * ═══ COURSIER-EN-SERVICE — the road to an ASSIGNABLE rider, end to end ═══
+ *
+ * ⚠ WHY THIS EXISTS (founder report, 2026-08-08). He registered a real rider,
+ * gave them a code, opened « Confier à un coursier » and hit « Aucun coursier
+ * libre » — for ever. SE1's ladder (certified → privacy ack → shift start,
+ * server-confirmed) was fully built on this Worker and CLIMBABLE BY NOBODY:
+ * `/ops/riders/certify` had no client anywhere, and the rider app carried no
+ * call site for `/rider/ack-privacy` or `/rider/shift/start`. Every green test
+ * on both sides proved every part while the whole was dead — the exact
+ * « a port that exists is not a port that is called » failure.
+ *
+ * So this drives the RIDER APP'S OWN PORTS (`httpShiftActs`,
+ * `httpRiderSession`) against the REAL Worker, climbs the whole ladder, and
+ * asks the BOARD — the same `assignable` field the founder's confier screen
+ * filters on — for the outcome. The console's certify act is exercised against
+ * its real route contract (`POST /ops/riders/certify`); its client lives in
+ * the Boutik+ repo with its own tests.
+ */
+
+const OPS = 'test-ops-shift-acts';
+const INTAKE = 'test-intake-shift-acts';
+const VERIFY = 'test-verify-shift-acts';
+
+let live: Miniflare[] = [];
+afterEach(async () => {
+  await Promise.all(live.map((m) => m.dispose()));
+  live = [];
+});
+
+function spawn(): Miniflare {
+  const mf = new Miniflare({
+    modules: true,
+    scriptPath: 'dist-worker/worker.mjs',
+    durableObjects: { LOGISTICS: 'LogisticsDO' },
+    durableObjectsPersist: mkdtempSync(join(tmpdir(), 'shift-acts-')),
+    bindings: { SERA_OPS_SECRET: OPS, SERA_INTAKE_SECRET: INTAKE, SERA_RIDER_VERIFY_SECRET: VERIFY },
+  });
+  live.push(mf);
+  return mf;
+}
+
+async function ops(mf: Miniflare, path: string, body: unknown): Promise<Record<string, unknown>> {
+  const res = await mf.dispatchFetch(`http://logistics${path}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${OPS}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return (await res.json()) as Record<string, unknown>;
+}
+
+/** The board as the founder's dispatch screen reads it. */
+async function boardRider(mf: Miniflare, riderId: string): Promise<Record<string, unknown>> {
+  const res = await mf.dispatchFetch('http://logistics/ops/board', {
+    headers: { Authorization: `Bearer ${OPS}` },
+  });
+  const json = (await res.json()) as { board: { riders: Record<string, unknown>[] } };
+  const rider = json.board.riders.find((r) => r['riderId'] === riderId);
+  expect(rider, `rider ${riderId} missing from the board`).toBeDefined();
+  return rider as Record<string, unknown>;
+}
+
+/** The app's ports, pointed at the Worker exactly as the app points them. */
+function appPorts(mf: Miniflare) {
+  const fetchFn = ((url: string, init?: RequestInit) => mf.dispatchFetch(url, init as never)) as never;
+  const net = createManualConnectivity('online');
+  return {
+    acts: httpShiftActs('http://logistics', net, fetchFn),
+    session: httpRiderSession('http://logistics', net, fetchFn),
+    net,
+  };
+}
+
+describe('⚠ the whole ladder, through the app’s own ports, judged by the BOARD', () => {
+  it('register → certify (console contract) → ack → start → the board says assignable: true', async () => {
+    const mf = spawn();
+    await ops(mf, '/ops/riders', { riderId: 'rider-boss', displayName: 'boss', phoneAlias: 'bossy' });
+    const code = (await ops(mf, '/ops/rider-code/mint', { riderId: 'rider-boss' }))['code'] as string;
+    const { acts, session } = appPorts(mf);
+
+    // The founder's exact starting point: registered, coded — and the board
+    // already says why nothing can be confided to them.
+    expect(await boardRider(mf, 'rider-boss')).toMatchObject({ certified: false, assignable: false });
+
+    // Rung 0 — the app SEES the missing certification (the screen's honest card).
+    const before = await session.signIn(code);
+    if (!before.ok) throw new Error('sign-in refused');
+    expect(before.session.certified).toBe(false);
+
+    // Rung 1 — certification, the founder's console act, on its real route.
+    const certified = await ops(mf, '/ops/riders/certify', { riderId: 'rider-boss', certified: true });
+    expect(certified['ok']).toBe(true);
+
+    // Rung 2 — the privacy ack, from the rider's own hand.
+    expect(await acts.ackPrivacy(code)).toEqual({ ok: true });
+
+    // Rung 3 — « Prendre la route ». The 200 carries the REGISTRY'S state and
+    // the app's own reader calls it on-shift.
+    const started = await acts.startShift(code);
+    if (!started.ok) throw new Error(`start refused: ${JSON.stringify(started)}`);
+    expect(onShiftFromSession(started.shift)).toBe(true);
+
+    // THE VERDICT belongs to the board — the very field confier filters on.
+    expect(await boardRider(mf, 'rider-boss')).toMatchObject({ certified: true, assignable: true });
+
+    // And /rider/moi tells the app the same truth on its next refresh.
+    const after = await session.signIn(code);
+    if (!after.ok) throw new Error('refresh refused');
+    expect(onShiftFromSession(after.session.shift)).toBe(true);
+
+    // « Finir la route » undoes exactly the shift — never the certification.
+    const ended = await acts.endShift(code);
+    if (!ended.ok) throw new Error('end refused');
+    expect(onShiftFromSession(ended.shift)).toBe(false);
+    expect(await boardRider(mf, 'rider-boss')).toMatchObject({ certified: true, assignable: false });
+  });
+
+  it('every rung refuses BY NAME below its prerequisite — the ladder cannot be skipped', async () => {
+    const mf = spawn();
+    await ops(mf, '/ops/riders', { riderId: 'rider-awa', displayName: 'Awa', phoneAlias: 'a-1' });
+    const code = (await ops(mf, '/ops/rider-code/mint', { riderId: 'rider-awa' }))['code'] as string;
+    const { acts } = appPorts(mf);
+
+    // Uncertified: the start refuses with the certification's own name.
+    expect(await acts.startShift(code)).toEqual({ ok: false, reason: 'refused', refus: 'not_certified' });
+
+    // Certified but no privacy ack: refused by ITS name — never a generic no.
+    await ops(mf, '/ops/riders/certify', { riderId: 'rider-awa', certified: true });
+    expect(await acts.startShift(code)).toEqual({
+      ok: false, reason: 'refused', refus: 'privacy_notice_not_acknowledged',
+    });
+
+    // Ended without being on shift: the stale-screen refusal, named.
+    await ops(mf, '/ops/riders/certify', { riderId: 'rider-awa', certified: true });
+    expect(await acts.endShift(code)).toEqual({ ok: false, reason: 'refused', refus: 'not_on_shift' });
+
+    // A dead code is the ONE « unauthorized » — never confused with a refusal.
+    expect(await acts.startShift('SR-AAAA-BBBB-CCCC')).toEqual({ ok: false, reason: 'unauthorized' });
+  });
+
+  it('offline sends NOTHING and changes nothing — queued = pending, never done', async () => {
+    const mf = spawn();
+    await ops(mf, '/ops/riders', { riderId: 'rider-off', displayName: 'Off', phoneAlias: 'o-1' });
+    await ops(mf, '/ops/riders/certify', { riderId: 'rider-off', certified: true });
+    const code = (await ops(mf, '/ops/rider-code/mint', { riderId: 'rider-off' }))['code'] as string;
+    const { acts, net } = appPorts(mf);
+    await acts.ackPrivacy(code);
+
+    net.set('offline');
+    expect(await acts.startShift(code)).toEqual({ ok: false, reason: 'offline' });
+    net.set('online');
+    // The registry never saw the offline tap: still off shift, still unassignable.
+    expect(await boardRider(mf, 'rider-off')).toMatchObject({ assignable: false });
+  });
+});

@@ -642,6 +642,42 @@
     "screenClass": "status"
   },
   {
+    "key": "service.non_certifie",
+    "fr": "Votre profil n'est pas encore certifié. Séra doit l'activer — parlez-en au dispatch.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "service.refus_certif",
+    "fr": "Votre profil n'est pas encore certifié. Parlez-en au dispatch.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "service.refus_privacy",
+    "fr": "Acceptez d'abord la note sur votre position.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "service.refus_deja",
+    "fr": "L'écran n'était plus à jour. Le voici à jour.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "service.refus_garde",
+    "fr": "Vous portez encore un colis. Finissez la course d'abord.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "service.act_failed",
+    "fr": "Pas de réponse. Réessayez dans un moment.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
     "key": "courses.overline",
     "fr": "Mes courses",
     "register": "neutral",
@@ -1414,5 +1450,23 @@
     "fr": "La preuve est envoyée. Patientez un instant, puis réessayez le code.",
     "register": "neutral",
     "screenClass": "instruction"
+  },
+  {
+    "key": "privacy.title",
+    "fr": "Avant de prendre la route",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "privacy.body",
+    "fr": "Séra suit votre position en service seulement, jamais en dehors. Vos livraisons sont enregistrées pour vous protéger. D'accord ?",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "privacy.accept",
+    "fr": "J'accepte et je continue",
+    "register": "neutral",
+    "screenClass": "label"
   }
 ]
