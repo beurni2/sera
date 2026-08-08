@@ -34,6 +34,22 @@ jobs:
       # against the live Workers.
       EXPO_PUBLIC_SERA_LOGISTICS_BASE: ${{ vars.LOGISTICS_BASE }}
       EXPO_PUBLIC_SERA_CUSTODY_BASE: ${{ vars.CUSTODY_BASE }}
+      # ═══ THE MEDIA BUCKET — ONE URL AND THE ONE KEY THAT MAY BE BUNDLED ═══
+      #
+      # The proof photo is uploaded here, and the ref the bucket returns is what
+      # the custody ledger records. Without BOTH of these the app cannot produce
+      # a ledger-grade ref, so the seal refuses rather than inventing one —
+      # correct, but it means the rider cannot take custody at all. Set them.
+      #
+      # ⚠ MEDIA_WRITE_KEY IS A SECRET IN GITHUB AND PUBLIC IN THE BUNDLE, AND
+      # THAT IS THE RULED DESIGN, NOT AN OVERSIGHT. MEDIA-KEY-SPLIT separated
+      # the WRITE key — which the media-service's own comments say « ships in
+      # app bundles » — from the founder-only MEDIA_REVOKE_SECRET. A write key
+      # can ADD bytes; it cannot read, list, revoke or delete. It is stored as a
+      # secret only so it is not printed in logs and can be rotated in one
+      # place. No other key belongs in this block, ever.
+      EXPO_PUBLIC_SERA_MEDIA_BASE: ${{ vars.MEDIA_BASE }}
+      EXPO_PUBLIC_SERA_MEDIA_WRITE_KEY: ${{ secrets.MEDIA_WRITE_KEY }}
     steps:
       - name: Check EXPO_TOKEN presence (skip gracefully when absent)
         id: token
@@ -69,6 +85,14 @@ jobs:
           else
             echo "logistics: $EXPO_PUBLIC_SERA_LOGISTICS_BASE"
             echo "custody:   $EXPO_PUBLIC_SERA_CUSTODY_BASE"
+          fi
+          # The photo is not optional equipment: no bucket ⇒ no ref ⇒ the seal
+          # cannot be registered, so custody never begins on this build. Warn
+          # in the same voice, and never print the key itself.
+          if [ -z "$EXPO_PUBLIC_SERA_MEDIA_BASE" ] || [ -z "$EXPO_PUBLIC_SERA_MEDIA_WRITE_KEY" ]; then
+            echo "::warning title=Aperçu sans photo de preuve::MEDIA_BASE (Variables) et/ou MEDIA_WRITE_KEY (Secrets) ne sont pas configurés. La photo ne peut pas être enregistrée, donc le scellé ne part pas et la garde ne commence pas — l'écran le dit clairement."
+          else
+            echo "media:     $EXPO_PUBLIC_SERA_MEDIA_BASE"
           fi
       - name: Publish rider-app preview update (EAS, non-interactive)
         if: steps.token.outputs.present == 'true'

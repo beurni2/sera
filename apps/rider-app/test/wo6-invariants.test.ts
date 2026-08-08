@@ -41,7 +41,14 @@ describe('R14 — SOS is reachable in one gesture from every screen', () => {
   it('opening the SOS only reveals the sheet; FIRING requires a deliberate hold (not accidental, not missable)', () => {
     // the button opens (reveals) — it does not fire
     expect(app).toMatch(/<SosButton label=\{t\('sos\.label'\)\} onOpen=\{openSos\}/);
-    expect(app).toMatch(/const openSos = useCallback\(\(\) => setSos\('confirm'\)/);
+    // The INVARIANT is « opening reveals, it never raises » — not the exact
+    // shape of the callback. It now also clears the previous alert's delivery
+    // fact, so a fresh raise cannot inherit « Séra a reçu l'alerte » from the
+    // last one; that must not be allowed to look like a violation, and a real
+    // one must still fail. So: it sets 'confirm', and it fires nothing.
+    const openBody = app.slice(app.indexOf('const openSos = useCallback('), app.indexOf('const cancelSos'));
+    expect(openBody).toMatch(/setSos\('confirm'\)/);
+    expect(openBody, 'opening must never raise').not.toMatch(/fireSos|raiseSos|setSos\('raised'\)/);
     // firing is a HOLD: onPressIn arms a timer, onPressOut cancels it
     expect(kit).toMatch(/onPressIn=\{onHoldStart\}/);
     expect(kit).toMatch(/onPressOut=\{onHoldEnd\}/);

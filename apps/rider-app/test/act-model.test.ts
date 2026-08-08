@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { t } from '../src/i18n';
-import { ACT_IDLE, holdsPackage, maySeal, sealOutcome, verifyOutcome } from '../src/net/act-model';
+import { ACT_IDLE, holdsPackage, maySeal, packageIsHeld, sealScreenIsDue, sealOutcome, verifyOutcome } from '../src/net/act-model';
 import { assignmentStateKey, landmarkLines } from '../src/net/rider-session';
 import type { CustodyAnswer } from '../src/net/custody-acts';
 
@@ -168,5 +168,44 @@ describe('⚠ the assignment projection (A10)', () => {
     for (const unknown of ['ack_pending_offline', 'something_new_v2', '']) {
       expect(t(assignmentStateKey(unknown))).toBe('En attente');
     }
+  });
+});
+
+describe('⚠ what the screen shows after an OS kill (A2 · founder ruling ③)', () => {
+  const accepted: CustodyAnswer = { kind: 'recorded', duplicate: false, body: { ok: true, kind: 'accepted' } };
+  const refused: CustodyAnswer = { kind: 'recorded', duplicate: false, body: { ok: true, kind: 'refused' } };
+  const custody: CustodyAnswer = { kind: 'recorded', duplicate: false, body: { status: 'custody_with_courier' } };
+  const answered = (a: CustodyAnswer) => ({ kind: 'answered', answer: a }) as const;
+
+  it('puts a relaunched rider back on the seal instead of the spent checklist', () => {
+    // The harm: an Android kill between an accepted verification and the seal
+    // dropped the rider onto the checklist against a pickup code the spine had
+    // already consumed — `secret_already_used`, permanently, no way back.
+    expect(sealScreenIsDue(ACT_IDLE, 'verification_accepted')).toBe(true);
+    expect(packageIsHeld(ACT_IDLE, 'custody_taken')).toBe(true);
+    // A rider who had taken custody is past the seal, not back at it.
+    expect(sealScreenIsDue(ACT_IDLE, 'custody_taken')).toBe(true);
+  });
+
+  it('remembers nothing when nothing was reached', () => {
+    expect(sealScreenIsDue(ACT_IDLE, 'none')).toBe(false);
+    expect(packageIsHeld(ACT_IDLE, 'none')).toBe(false);
+    expect(packageIsHeld(ACT_IDLE, 'verification_accepted')).toBe(false);
+  });
+
+  it('⚠ a LIVE ledger answer always outranks the phone’s memory', () => {
+    // This is the safety property. If the ledger has spoken in this session,
+    // memory must never override it — otherwise a stale « accepted » would
+    // walk a rider past a refusal, or a stale « custody » would claim goods
+    // the server says are still the seller's.
+    expect(sealScreenIsDue(answered(refused), 'verification_accepted')).toBe(false);
+    expect(packageIsHeld(answered(refused), 'custody_taken')).toBe(false);
+    // …and it does not suppress a live acceptance either.
+    expect(sealScreenIsDue(answered(accepted), 'none')).toBe(true);
+    expect(packageIsHeld(answered(custody), 'none')).toBe(true);
+  });
+
+  it('a request still in flight is not an answer, so memory fills the gap', () => {
+    expect(sealScreenIsDue({ kind: 'working' }, 'verification_accepted')).toBe(true);
   });
 });

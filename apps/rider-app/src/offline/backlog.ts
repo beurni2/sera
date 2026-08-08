@@ -24,3 +24,16 @@ export async function drainOnReconnect(store: OutboxStore, send: OutboxSender): 
   await flush(store, send);
   return pendingCount(store);
 }
+
+/**
+ * Is this exact write still undelivered?
+ *
+ * ⚠ WRITTEN FOR THE SOS (verifier blocker A4). `drainOnReconnect` answers « how
+ * many remain », which cannot tell a rider whether THEIR alert got out — and
+ * « Séra a reçu l'alerte » is a sentence that must never be shown on a guess.
+ * `flush` drops what settled, so an entry that is gone from the queue is one
+ * the server acknowledged, and one still present is one still owed.
+ */
+export async function stillPending(store: OutboxStore, commandId: string): Promise<boolean> {
+  return (await restore(store)).some((entry) => entry.commandId === commandId);
+}

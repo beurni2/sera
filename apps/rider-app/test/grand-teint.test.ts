@@ -112,6 +112,17 @@ describe('the approved dependencies — nothing else', () => {
     // a port (the CTO-authorized substrate), retiring the compile-time CONNECTIVITY
     // constant. SDK-54 bundled version.
     expect(pkg.dependencies['expo-network']).toBe('~8.0.8');
+    /**
+     * ⚠ SE-LIVE-4c-vii · expo-image-picker — the PROOF PHOTO, on the founder's
+     * ruling « build the photo capture » (2026-08-07). This allowlist is why a
+     * new native capability cannot appear by accident, so it is named here
+     * deliberately rather than let through: `launchCameraAsync` is one system
+     * sheet (no preview surface of ours to hold at 60 fps on a 1 GB phone),
+     * and without it there are no bytes, no ref, and the seal cannot go — which
+     * is exactly the dead-button state verifier blocker A1 found. SDK-54
+     * bundled version, like every other pin here.
+     */
+    expect(pkg.dependencies['expo-image-picker']).toBe('~17.0.11');
     // the only deps beyond the pre-WO set are exactly these six. @platform/*
     // are baseline canon infra (not third-party capabilities): SERA-S1 adds
     // @platform/contracts as the home of the canon `mintCommandId` helper, consumed
@@ -120,6 +131,6 @@ describe('the approved dependencies — nothing else', () => {
       '@platform/contracts', '@platform/ui-tokens', 'expo', 'expo-status-bar', 'expo-updates', 'react', 'react-native',
     ]);
     const added = Object.keys(pkg.dependencies).filter((d) => !before.has(d));
-    expect(added.sort()).toEqual(['expo-crypto', 'expo-file-system', 'expo-font', 'expo-haptics', 'expo-network', 'react-native-svg']);
+    expect(added.sort()).toEqual(['expo-crypto', 'expo-file-system', 'expo-font', 'expo-haptics', 'expo-image-picker', 'expo-network', 'react-native-svg']);
   });
 });

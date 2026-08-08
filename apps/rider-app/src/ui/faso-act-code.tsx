@@ -39,6 +39,7 @@ export function FasoActCode({
   working,
   outcome,
   canSend,
+  photo,
 }: {
   readonly strings: {
     readonly title: string;
@@ -61,14 +62,64 @@ export function FasoActCode({
    * which has no checklist.
    */
   readonly canSend?: boolean | undefined;
+  /**
+   * ⚠ THE PROOF PHOTO, WHICH IS A PREREQUISITE AND NOT A SECOND PRIMARY ACTION
+   * (verifier blocker A1, second round). The capture machinery existed, was
+   * tested, and was wired to NOTHING — so the send returned on its first line
+   * and the rider tapped an enabled button that did nothing, for ever.
+   *
+   * It renders as a quiet step ABOVE the send: one line saying what to
+   * photograph, one secondary button, and — once the bucket has the bytes — a
+   * settled « Photo enregistrée. » The send stays the one primary action and is
+   * DISABLED until the photo is held, because without a ref the act cannot go
+   * and a live button would be the same lie again.
+   *
+   * Omitted entirely (undefined) ⇒ no photo step and no gate.
+   */
+  readonly photo?:
+    | {
+        readonly hint: string;
+        readonly takeLabel: string;
+        readonly retakeLabel: string;
+        readonly takenLabel: string;
+        readonly neededLabel: string;
+        /** The bucket has the bytes and named them. Never « the camera opened ». */
+        readonly taken: boolean;
+        readonly busy: boolean;
+        /** Already resolved from the catalog by the caller; absent = nothing wrong. */
+        readonly issue?: string | undefined;
+        readonly onPress: () => void;
+      }
+    | undefined;
 }) {
   const [typed, setTyped] = useState('');
-  const ready = typed.trim() !== '' && !working && canSend !== false;
+  const photoReady = photo === undefined || photo.taken;
+  const ready = typed.trim() !== '' && !working && canSend !== false && photoReady && photo?.busy !== true;
 
   return (
     <View style={styles.wrap}>
       <ScreenTitle>{strings.title}</ScreenTitle>
       <Body>{strings.hint}</Body>
+
+      {photo !== undefined ? (
+        <Card>
+          <Text style={styles.photoHint}>{photo.hint}</Text>
+          {photo.taken ? <Text style={styles.photoDone}>{photo.takenLabel}</Text> : null}
+          {photo.issue !== undefined ? (
+            <Text style={styles.photoIssue} accessibilityLiveRegion="polite">
+              {photo.issue}
+            </Text>
+          ) : null}
+          <Text
+            accessibilityRole="button"
+            accessibilityState={{ disabled: photo.busy }}
+            onPress={() => !photo.busy && photo.onPress()}
+            style={styles.photoAction}
+          >
+            {photo.taken ? photo.retakeLabel : photo.takeLabel}
+          </Text>
+        </Card>
+      ) : null}
 
       <Card>
         <TextInput
@@ -101,11 +152,15 @@ export function FasoActCode({
         </View>
       ) : null}
 
+      {/* A disabled button must always say what is missing — « one primary
+          action per screen » is not « one silent action ». */}
+      {photo !== undefined && !photo.taken ? <Body>{photo.neededLabel}</Body> : null}
       <PrimaryButton
         label={working ? strings.working : strings.action}
         onPress={() => onSubmit(typed.trim())}
         // Locked while in flight: a second tap on a slow network must not send
-        // a second act, and an empty field must not send at all.
+        // a second act, and an empty field must not send at all. Locked too
+        // until the bucket holds the photo — no ref, no act.
         disabled={!ready}
       />
     </View>
@@ -126,6 +181,21 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     textAlign: 'center',
     minHeight: 56,
+  },
+  photoHint: { ...ty('body'), fontFamily: textFace(400), color: C.ink },
+  photoDone: { ...ty('body'), fontFamily: textFace(700), color: C.okFg },
+  photoIssue: { ...ty('body', 'min'), fontFamily: textFace(400), color: C.warnFg },
+  photoAction: {
+    ...ty('body'),
+    fontFamily: textFace(700),
+    color: C.ink,
+    // Secondary to the send, but still a real target for a thumb in the sun.
+    minHeight: 44,
+    lineHeight: 44,
+    textAlign: 'center',
+    borderRadius: rad('card'),
+    backgroundColor: C.paper,
+    overflow: 'hidden',
   },
   outcome: { gap: 4, padding: 12, borderRadius: rad('card') },
   outcomeOk: { backgroundColor: C.okBg },

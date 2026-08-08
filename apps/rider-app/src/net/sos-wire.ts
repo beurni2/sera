@@ -1,4 +1,3 @@
-import type { ConnectivityPort } from '../offline/connectivity';
 import type { OutboxEntry, FlushOutcome } from '../offline/outbox';
 import { SOS_RAISE_KIND, type SosRaiseIntent } from '../offline/sos';
 
@@ -103,20 +102,12 @@ export function httpSosSender(
 }
 
 /**
- * What the rider may honestly be told once a raise has settled at the server.
- * Deliberately NOT « on cherche quelqu'un » — the server has received the
- * alert; nobody has necessarily seen it, and no phone has rung.
+ * ⚠ `sosReachedSera` AND `canSendSos` LIVED HERE AND NOTHING CALLED THEM. They
+ * were written to gate « Séra a reçu l'alerte » and were never wired, which is
+ * the same failure as the capture port: a safety check that reads as present
+ * and does not run. Delivery is now decided by the only thing that actually
+ * knows — `stillPending(outbox, commandId)`: `flush` drops what the server
+ * settled, so an entry gone from the queue is one that arrived, and one still
+ * there is one still owed. Nothing infers delivery from « the request did not
+ * throw ».
  */
-export function sosReachedSera(outcome: FlushOutcome): boolean {
-  return outcome === 'applied' || outcome === 'idempotentReplay';
-}
-
-/** True when this build can deliver an SOS at all. An app with no logistics
- *  base cannot send one, and must say so rather than appear to. */
-export function canSendSos(
-  base: string | undefined,
-  code: string | null,
-  connectivity: ConnectivityPort,
-): boolean {
-  return typeof base === 'string' && base.trim() !== '' && code !== null && connectivity.current() === 'online';
-}

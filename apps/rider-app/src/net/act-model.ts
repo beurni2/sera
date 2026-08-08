@@ -1,4 +1,5 @@
 import { custodyBegan, verificationAccepted, type CustodyAnswer } from './custody-acts';
+import type { ActStage } from './act-memory';
 
 /**
  * ═══ SE-LIVE-4c-vi · WHAT THE RIDER IS TOLD AFTER A CUSTODY ACT ═══
@@ -99,4 +100,32 @@ export function maySeal(phase: ActPhase): boolean {
  *  the screen may ask, and only the ledger answers it. */
 export function holdsPackage(phase: ActPhase): boolean {
   return phase.kind === 'answered' && custodyBegan(phase.answer);
+}
+
+/**
+ * ═══ WHAT THE SCREEN SHOWS AFTER THE OS KILLED THE APP (blocker A2) ═══
+ *
+ * FOUNDER RULING (2026-08-07): « persisting act on the phone ».
+ *
+ * The two above read a LIVE ledger answer, which is the only real authority —
+ * and after an OS kill there isn't one, because the app performs no custody
+ * read (the rider door deliberately opens none). So a rider whose phone was
+ * killed between an accepted verification and the seal was dropped back onto
+ * the checklist, against a pickup code the spine had already consumed:
+ * `secret_already_used` for ever, and no route to recover the package.
+ *
+ * ⚠ MEMORY NEVER OUTRANKS AN ANSWER. When this session has heard from the
+ * ledger, that answer decides — the remembered stage only fills the gap where
+ * there is nothing, which is exactly the relaunch case. Nothing here fabricates
+ * a `CustodyAnswer`; the phone is allowed to remember what it was told, not to
+ * invent what it was not.
+ */
+export function sealScreenIsDue(phase: ActPhase, remembered: ActStage): boolean {
+  if (phase.kind === 'answered') return maySeal(phase);
+  return remembered === 'verification_accepted' || remembered === 'custody_taken';
+}
+
+export function packageIsHeld(phase: ActPhase, remembered: ActStage): boolean {
+  if (phase.kind === 'answered') return holdsPackage(phase);
+  return remembered === 'custody_taken';
 }

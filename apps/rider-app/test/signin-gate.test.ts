@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest';
 
 const appDir = join(import.meta.dirname, '..');
 const app = readFileSync(join(appDir, 'App.tsx'), 'utf8');
+const kit = readFileSync(join(appDir, 'src/ui/faso-act-code.tsx'), 'utf8');
 
 describe('the sign-in gate', () => {
   it('shows the door only on a WIRED build, and only until a session exists', () => {
@@ -124,10 +125,35 @@ describe('⚠ a WIRED build shows only what a server said (blocker A3)', () => {
     // rider as « Séra a refusé ». Measured on the shipped Worker: correcting a
     // mistyped code, and even a byte-identical retry after a timeout, both
     // conflicted — the second while the ledger had ACCEPTED.
-    expect(app).toMatch(/attemptFor\(`verify\|/);
-    expect(app).toMatch(/attemptFor\(`seal\|/);
-    // The key must cover every field that enters the fingerprint.
-    expect(app).toMatch(/attemptFor\(`verify\|\$\{liveAssignment\.orderId\}\|\$\{pickupCode\}\|\$\{JSON\.stringify\(checks\)\}`\)/);
+    expect(app).toMatch(/attemptFor\(\s*`verify\|/);
+    expect(app).toMatch(/attemptFor\(\s*`seal\|/);
+    /**
+     * ⚠ DERIVED FROM THE PAYLOAD, NOT PINNED TO A LITERAL. This assertion used
+     * to be the exact key string — comment claiming « covers every field »,
+     * regex pinning a key that was MISSING `evidenceBundleId`. It did not just
+     * fail to catch the hole, it would have failed anyone who closed it. A test
+     * that must be edited to fix the bug it names is worse than no test.
+     *
+     * So it now reads the call site: every value the app SENDS must appear in
+     * the key, because custody's `fingerprint()` excludes only `command_id` and
+     * `at`. `dwellSec` is the one exemption, and it is exempt by construction —
+     * `attemptFor` mints it TOGETHER with the id and freezes both, so it cannot
+     * vary for a given key. Add a field to the payload and forget the key, and
+     * this fails.
+     */
+    const verifySite = app.slice(app.indexOf('custodyActs.verifyPickup'), app.indexOf('riderCode,\n        ),\n      );', app.indexOf('custodyActs.verifyPickup')));
+    const keyExpr = (/attemptFor\(\s*`verify\|([^`]*)`/.exec(app) ?? [])[1];
+    expect(keyExpr, 'the verify attempt key').toBeTypeOf('string');
+    const sent = [...verifySite.matchAll(/^\s{12}(\w+):\s*(.+?),\s*$/gm)].map(([, field, expr]) => ({
+      field: field as string,
+      expr: (expr as string).trim(),
+    }));
+    // The call site really was parsed — an empty list must never pass silently.
+    expect(sent.map((f) => f.field)).toContain('evidenceBundleId');
+    for (const { field, expr } of sent) {
+      if (field === 'commandId' || field === 'dwellSec') continue;
+      expect(keyExpr, `${field} enters custody's fingerprint, so it must key the attempt`).toContain(expr);
+    }
     // …and the id must NOT be re-minted per mount any more.
     expect(app).not.toMatch(/verifyActId = useRef\(mintActId\(\)\)/);
     expect(app).not.toMatch(/sealActId = useRef\(mintActId\(\)\)/);
@@ -187,13 +213,40 @@ describe('⚠ the door claims no identity it has not been given (blocker A6)', (
 });
 
 describe('⚠ the SOS does not promise what no server receives (blocker A2)', () => {
-  it('a wired build does not say « Alerte envoyée »', () => {
-    // There is NO SOS route on any Worker. In the demo world the raise drains
-    // through a sandbox sender that always answers `applied`, so the banner
-    // clears as if delivered — a false safety promise on a build a real rider
-    // signs into, and the one string here not labelled demo.
-    expect(app).toMatch(/raised: WIRED \? t\('sos\.not_wired'\) : t\('sos\.raised'\)/);
-    expect(app).toMatch(/raisedHint: WIRED \? t\('sos\.not_wired_hint'\)/);
+  it('a wired build claims delivery only when the outbox settled it (A2 → A5)', () => {
+    /**
+     * The premise changed between rounds and the test had to change with it.
+     * A2: there was NO SOS route, the sandbox sender answered `applied` for
+     * everything, and the sheet said « Alerte envoyée. / On cherche quelqu'un
+     * pour vous. » — a false safety promise. A5: 4d built `POST /rider/sos`,
+     * and the A2 fix's « le téléphone n'a pas encore de lien direct » became
+     * its own lie, sending a rider in danger off to find a phone number.
+     *
+     * The invariant under both: **the words follow the DELIVERY FACT, never
+     * the build flag and never the gesture.**
+     */
+    const sheet = app.slice(app.indexOf('<SosSheet'), app.indexOf('escalated: t('));
+    // Three distinct states, and « reçu » is reachable only from 'reached'.
+    expect(sheet).toMatch(/sosDelivered === 'reached'\s*\?\s*t\('sos\.reached'\)/);
+    expect(sheet).toMatch(/sosDelivered === 'owed'/);
+    expect(sheet).toMatch(/t\('sos\.sending'\)/);
+    // The demo's « on cherche quelqu'un pour vous » must never reach a wired
+    // rider: it is only ever the !WIRED arm of the ternary.
+    expect(sheet).toMatch(/:\s*t\('sos\.raised'\)/);
+    expect(sheet, 'a flat wired claim').not.toMatch(/raised: WIRED \? t\('sos\.raised'\)/);
+    // And the fact itself is read from the outbox, not from « it did not throw ».
+    expect(app).toMatch(/stillPending\(outboxStore, commandId\)/);
+  });
+
+  it('⚠ the alert is SENT when it is raised, not only on the next reconnect (A5)', () => {
+    // `fireSos` only appended to the outbox, and the sole caller of the sender
+    // was a reconnect effect whose deps `fireSos` changes NONE of. A rider in
+    // danger, online and signed in, held the disc — and the raise sat on the
+    // handset until the device happened to bounce offline→online.
+    const fire = app.slice(app.indexOf('const fireSos = useCallback'), app.indexOf('const sosHoldStart'));
+    expect(fire).toMatch(/appendSosRaise/);
+    expect(fire, 'the raise must leave the phone now').toMatch(/drainOnReconnect\(outboxStore, reconnectSender\)/);
+    expect(fire).toMatch(/setSosDelivered/);
   });
 
   it('but the gesture itself is untouched — SOS still reaches every screen', () => {
@@ -259,5 +312,67 @@ describe('⚠ a rider reads places and words, never enums or UUIDs (A10)', () =>
   it('says so honestly when the server sent no landmark', () => {
     // Never an invented address, and never a raw id as a fallback.
     expect(app).toMatch(/assignment\.no_landmark/);
+  });
+});
+
+describe('⚠ the ports are CALLED, not merely present (blockers A1 + A2, round two)', () => {
+  /**
+   * THE FAILURE THIS EXISTS FOR. `evidence-capture.ts` and `act-memory.ts` were
+   * both written, both well tested, and both wired to NOTHING. The verifier
+   * deleted the entire capture machinery from App.tsx, replaced it with
+   * `const verifyBundleId = null`, and the suite still reported 260/260 with
+   * typecheck 0 — because every assertion checked that the GUARDS existed, and
+   * a guard is most perfectly satisfied when the thing it guards can never
+   * happen. A port nothing calls is worse than a port that is missing: it reads
+   * as done, and every gate stays green over it.
+   *
+   * So these assert CALL SITES, and each one is mutation-checked.
+   */
+  it('the photo is actually taken — takePhoto has a caller on both acts', () => {
+    // Declaration alone is what shipped. Demand a real invocation.
+    // `takePhoto(` matches call sites only — the declaration reads
+    // `const takePhoto = useCallback(`. Exactly two acts, exactly two calls.
+    expect(app.match(/takePhoto\(/g)).toHaveLength(2);
+    expect(app, 'the verification photo').toMatch(/onPress: \(\) => takePhoto\(setVerifyBundleId\)/);
+    expect(app, 'the seal photo').toMatch(/onPress: \(\) => takePhoto\(\(ref\) => setSealPhotoRefs\(\[ref\]\)\)/);
+    // …and it is mounted on the screens, not just defined near them.
+    expect(app.match(/photo=\{\{/g)).toHaveLength(2);
+  });
+
+  it('the send stays shut until the BUCKET holds the photo, and says why', () => {
+    // `taken` must read the ref the bucket returned — never « the camera
+    // opened », which would re-admit the fabricated-ref bug (A7).
+    expect(app).toMatch(/taken: verifyBundleId !== null/);
+    expect(app).toMatch(/taken: sealPhotoRefs\.length > 0/);
+    expect(kit).toMatch(/const photoReady = photo === undefined \|\| photo\.taken/);
+    expect(kit).toMatch(/ready =[^;]*photoReady/);
+    // A disabled primary action must always name what is missing.
+    expect(kit).toMatch(/photo !== undefined && !photo\.taken \? <Body>\{photo\.neededLabel\}/);
+  });
+
+  it('the act memory is loaded and written, not merely defined', () => {
+    expect(app, 'ruling ③ load').toMatch(/loadActMemory\(asActMemoryStore\(outboxStore\), dwellOrderId\)/);
+    expect(app, 'ruling ③ write').toMatch(/rememberAct\(asActMemoryStore\(outboxStore\), \{/);
+    // And the screen consults it, so a relaunched rider is put back.
+    expect(app).toMatch(/packageIsHeld\(sealPhase, remembered\)/);
+    expect(app).toMatch(/sealScreenIsDue\(verifyPhase, remembered\)/);
+  });
+
+  it('⚠ the phone remembers only what the LEDGER said', () => {
+    // Writing a stage the server never confirmed would put a rider on a seal
+    // screen for goods nobody accepted.
+    const remember = app.slice(app.indexOf('const stage: ActStage | null'), app.indexOf('}).catch(() => setPersistFailed(true));'));
+    expect(remember).toMatch(/holdsPackage\(sealPhase\)/);
+    expect(remember).toMatch(/maySeal\(verifyPhase\)/);
+    expect(remember, 'a stage written from a mere send').not.toMatch(
+      /kind === 'working'|\bdidSend\b|\bwasSent\b|\bjustSent\b/,
+    );
+  });
+
+  it('⚠ and it never writes a secret to the phone', () => {
+    const remember = app.slice(app.indexOf('void rememberAct('), app.indexOf('}).catch(() => setPersistFailed(true));'));
+    for (const secret of ['pickupCode', 'sealId', 'riderCode', 'signInState.code']) {
+      expect(remember, `${secret} must never be persisted`).not.toContain(secret);
+    }
   });
 });

@@ -1063,13 +1063,13 @@
   },
   {
     "key": "sos.not_wired",
-    "fr": "Alerte gardée sur ce téléphone.",
+    "fr": "Alerte pas encore partie.",
     "register": "neutral",
     "screenClass": "status"
   },
   {
     "key": "sos.not_wired_hint",
-    "fr": "Appelez Séra tout de suite. Le téléphone n'a pas encore de lien direct.",
+    "fr": "Elle part dès que le réseau revient. Si c'est urgent, appelez Séra.",
     "register": "neutral",
     "screenClass": "instruction"
   },
@@ -1226,6 +1226,72 @@
   {
     "key": "assignment.no_landmark",
     "fr": "Le repère arrive bientôt.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "photo.take",
+    "fr": "Prendre la photo",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "photo.retake",
+    "fr": "Reprendre la photo",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "photo.taken",
+    "fr": "Photo enregistrée.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "verify.photo_hint",
+    "fr": "Photographiez le colis avant d'envoyer.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "seal.photo_hint",
+    "fr": "Photographiez le scellé posé sur le colis.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "photo.needed",
+    "fr": "La photo est nécessaire pour envoyer.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "photo.refused",
+    "fr": "Cette photo n'a pas été acceptée. Reprenez-la.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "photo.offline",
+    "fr": "Pas de réseau : la photo ne part pas. Réessayez ici même.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "photo.lost",
+    "fr": "La photo n'est pas partie. Réessayez.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "sos.sending",
+    "fr": "Alerte en cours d'envoi…",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "sos.sending_hint",
+    "fr": "Restez où vous êtes si c'est sûr. On vous dit dès que c'est parti.",
     "register": "neutral",
     "screenClass": "status"
   }

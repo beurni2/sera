@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { bytesFromBase64 } from '../src/net/evidence-capture';
 import { createManualConnectivity } from '../src/offline/connectivity';
 import { custodyBegan, httpCustodyActs, mintActId, verificationAccepted, type CustodyAnswer } from '../src/net/custody-acts';
 
@@ -303,5 +304,40 @@ describe('one act, one identity', () => {
     // Custody dedupes on command_id and replays its recorded answer, so a
     // retry can never produce a second custody transition.
     expect(sent).toEqual([act.commandId, act.commandId]);
+  });
+});
+
+describe('⚠ base64 → bytes, because the bucket sniffs MAGIC BYTES (A1)', () => {
+  // The camera hands back base64 and the media-service identifies the format
+  // from the first bytes. A decoder that is wrong at the head turns every
+  // upload into `unsupported_type` on the device only — invisible in CI, fatal
+  // at the stall. So it is decoded here, in the file with no native import,
+  // and checked against real magic numbers.
+  const b64 = (bytes: number[]): string => Buffer.from(Uint8Array.from(bytes)).toString('base64');
+
+  it('reproduces the bytes exactly, at every padding length', () => {
+    for (const bytes of [[1], [1, 2], [1, 2, 3], [1, 2, 3, 4], [0, 255, 128, 64, 32]]) {
+      expect([...(bytesFromBase64(b64(bytes)) ?? [])], `${bytes.length} bytes`).toEqual(bytes);
+    }
+  });
+
+  it('gets a JPEG and a PNG header byte-exact', () => {
+    const jpeg = [0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10];
+    const png = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+    expect([...(bytesFromBase64(b64(jpeg)) ?? [])]).toEqual(jpeg);
+    expect([...(bytesFromBase64(b64(png)) ?? [])]).toEqual(png);
+  });
+
+  it('refuses anything malformed rather than uploading rubbish as proof', () => {
+    // A photo we cannot decode is no photo — which stops the act, exactly as
+    // « no photo, no seal » requires. It must never return partial bytes.
+    for (const bad of ['', 'a', 'ab@=', '====', 'AAAA!', 'A']) {
+      expect(bytesFromBase64(bad), bad).toBeNull();
+    }
+  });
+
+  it('tolerates the line breaks some encoders insert', () => {
+    const bytes = [1, 2, 3, 4, 5, 6];
+    expect([...(bytesFromBase64(b64(bytes).replace(/(.{4})/g, '$1\n')) ?? [])]).toEqual(bytes);
   });
 });

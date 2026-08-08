@@ -66,6 +66,42 @@ export interface EvidenceCapturePort {
   captureAndUpload(): Promise<CaptureOutcome>;
 }
 
+/**
+ * Base64 → bytes, written out rather than leaning on a global `atob`.
+ *
+ * The camera hands back base64 (asking the picker for it avoids a file read on
+ * a phone that may be low on space), and the media-service sniffs the real
+ * format from MAGIC BYTES — so a decoder that is wrong in the first few bytes
+ * turns every upload into `unsupported_type` on the device only. Keeping it
+ * here, in the file with no native import, is what makes it testable at all;
+ * `expoPhotoSource` cannot be loaded under vitest.
+ *
+ * Returns null on anything malformed — a photo we cannot decode is no photo,
+ * which stops the act rather than uploading rubbish that becomes ledger proof.
+ */
+const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+export function bytesFromBase64(input: string): Uint8Array | null {
+  const s = input.replace(/[\r\n\s]/g, '');
+  if (s === '' || /[^A-Za-z0-9+/=]/.test(s) || s.length % 4 !== 0) return null;
+  const pad = s.endsWith('==') ? 2 : s.endsWith('=') ? 1 : 0;
+  const out = new Uint8Array((s.length / 4) * 3 - pad);
+  let o = 0;
+  for (let i = 0; i < s.length; i += 4) {
+    const a = B64.indexOf(s[i] as string);
+    const b = B64.indexOf(s[i + 1] as string);
+    const c = s[i + 2] === '=' ? 0 : B64.indexOf(s[i + 2] as string);
+    const d = s[i + 3] === '=' ? 0 : B64.indexOf(s[i + 3] as string);
+    // '=' is only legal in the last group; anything else unmapped is malformed.
+    if (a < 0 || b < 0 || c < 0 || d < 0) return null;
+    const n = (a << 18) | (b << 12) | (c << 6) | d;
+    if (o < out.length) out[o++] = (n >> 16) & 0xff;
+    if (o < out.length) out[o++] = (n >> 8) & 0xff;
+    if (o < out.length) out[o++] = n & 0xff;
+  }
+  return out;
+}
+
 const UPLOAD_PATH = '/media';
 const UPLOAD_TIMEOUT_MS = 30_000;
 

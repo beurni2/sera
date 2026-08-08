@@ -20,7 +20,7 @@ import { appendEvidence } from './src/offline/evidence';
 import { createDocumentOutboxStore } from './src/offline/documentStore';
 import { createManualConnectivity, type Connectivity } from './src/offline/connectivity';
 import { bindDeviceConnectivity } from './src/offline/expoConnectivity';
-import { pendingCount, drainOnReconnect } from './src/offline/backlog';
+import { pendingCount, drainOnReconnect, stillPending } from './src/offline/backlog';
 import type { FlushOutcome } from './src/offline/outbox';
 import {
   acceptInspection,
@@ -83,7 +83,17 @@ import { httpSosSender } from './src/net/sos-wire';
 import { resolveEvidenceCapture, type CaptureOutcome } from './src/net/evidence-capture';
 import { expoPhotoSource } from './src/net/expoPhotoSource';
 import { mintActId, type CustodyAnswer } from './src/net/custody-acts';
-import { ACT_IDLE, holdsPackage, maySeal, sealOutcome, verifyOutcome, type ActPhase } from './src/net/act-model';
+import {
+  ACT_IDLE,
+  holdsPackage,
+  maySeal,
+  packageIsHeld,
+  sealScreenIsDue,
+  sealOutcome,
+  verifyOutcome,
+  type ActPhase,
+} from './src/net/act-model';
+import { asActMemoryStore, loadActMemory, rememberAct, type ActStage } from './src/net/act-memory';
 import { FasoActCode, FasoCheckAnswer } from './src/ui/faso-act-code';
 import { FpIn, FpPulseDot, QuoteRule as FasoQuoteRule, CornerTicks as FasoCornerTicks } from './src/ui/signature';
 import { C as FASO } from './src/ui/faso';
@@ -295,6 +305,14 @@ export default function App() {
   const [codeStr, setCodeStr] = useState('');
   const [celebrate, setCelebrate] = useState(false);
   const [sos, setSos] = useState<SosState>('closed');
+  /**
+   * ⚠ DID THIS ALERT ACTUALLY LEAVE THE PHONE? (verifier blockers A4 + A5.)
+   * The sheet's own state says what the rider DID; this says what the SERVER
+   * has. They are different facts and the screen must not conflate them:
+   * `null` = not yet known, 'reached' = the outbox settled it against a real
+   * 200, 'owed' = it is still queued and still undelivered.
+   */
+  const [sosDelivered, setSosDelivered] = useState<'reached' | 'owed' | null>(null);
   const [key1, setKey1] = useState(false);
   const [key2, setKey2] = useState(false);
   const [oneKeyMsg, setOneKeyMsg] = useState(false);
@@ -343,6 +361,18 @@ export default function App() {
   const [verifyPhase, setVerifyPhase] = useState<ActPhase>(ACT_IDLE);
   const [sealPhase, setSealPhase] = useState<ActPhase>(ACT_IDLE);
   /**
+   * ⚠ WHAT THIS PHONE REMEMBERS THE LEDGER SAID (verifier blocker A2, founder
+   * ruling ③ « persisting act on the phone »). `act-memory.ts` was written,
+   * tested and imported by NOBODY, so the harm it was built to prevent was
+   * still live: an Android kill between an accepted verification and the seal
+   * — routine on the 1 GB target class — put the rider back on the checklist
+   * against a pickup code the spine had already spent, with no way back.
+   *
+   * It carries the ORDER, the STAGE and the attempt ids. Never the pickup
+   * code, never the seal id, never the rider's own code.
+   */
+  const [remembered, setRemembered] = useState<ActStage>('none');
+  /**
    * ⚠ VERIFIER BLOCKER A3 — MY RETRY REASONING WAS WRONG, AND IT POISONED THE
    * ACT. I minted the id once per mount and said that made retries safe.
    * Custody's idempotency is CONTENT-KEYED: `fingerprint()` hashes everything
@@ -374,19 +404,46 @@ export default function App() {
   const [verifyBundleId, setVerifyBundleId] = useState<string | null>(null);
   const [sealPhotoRefs, setSealPhotoRefs] = useState<readonly string[]>([]);
   const [captureIssue, setCaptureIssue] = useState<CaptureOutcome | null>(null);
+  const captureIssueKey = (issue: CaptureOutcome | null): string | undefined => {
+    if (issue === null || issue.ok) return undefined;
+    if (issue.reason === 'offline') return 'photo.offline';
+    if (issue.reason === 'rejected') return 'photo.refused';
+    return 'photo.lost';
+  };
+  const [capturing, setCapturing] = useState(false);
   const takePhoto = useCallback(
     (keep: (ref: string) => void) => {
       setCaptureIssue(null);
+      setCapturing(true);
       void evidence.captureAndUpload().then((outcome) => {
+        setCapturing(false);
         if (outcome.ok) keep(outcome.ref);
         // Cancelled is the rider's own decision — say nothing about it.
         else if (outcome.reason !== 'cancelled') setCaptureIssue(outcome);
-      }, () => setCaptureIssue({ ok: false, reason: 'unreachable' }));
+      }, () => {
+        setCapturing(false);
+        setCaptureIssue({ ok: false, reason: 'unreachable' });
+      });
     },
     [evidence],
   );
 
   const attempts = useRef(new Map<string, { id: ReturnType<typeof mintActId>; dwellSec: number }>());
+  /**
+   * ⚠ VERIFIER BLOCKER A6 — THIS CLOCK STARTED AT THE WRONG MOMENT. It was
+   * `useRef(Date.now())`, initialised on FIRST RENDER — app launch, which on a
+   * wired build is before the rider has even signed in — and never reset. A
+   * rider who opened the app at 08:00, rode to the stall and verified at 08:25
+   * after a careful three-minute inspection recorded `dwellSec ≈ 1500`, and
+   * `PICKUP_VERIFICATION_POLICY_V1` (targets 120–240 s) wrote `withinTarget:
+   * false` permanently against them; a relaunch just before verifying recorded
+   * ~30 s. The number measured nothing, and it goes into a hash-chained ledger.
+   *
+   * It now starts when the rider can first SEE the package — the verification
+   * screen becoming reachable — which is what a dwell is. Still frozen with the
+   * attempt, because it is part of custody's fingerprint and a moving number
+   * makes every retry a conflict.
+   */
   const dwellStart = useRef<number>(Date.now());
   const attemptFor = useCallback((key: string) => {
     const held = attempts.current.get(key);
@@ -405,6 +462,65 @@ export default function App() {
   const riderCode = signInState.kind === 'signed_in' ? signInState.code : null;
   const liveAssignment = signInState.kind === 'signed_in' ? signInState.session.assignment : null;
   const assignmentLines = liveAssignment === null ? null : landmarkLines(liveAssignment.location);
+  const dwellOrderId = liveAssignment?.orderId ?? null;
+  useEffect(() => {
+    // Keyed on the ORDER: a second course starts its own clock, and the clock
+    // does NOT restart under a rider who is mid-inspection of this one.
+    if (dwellOrderId !== null) dwellStart.current = Date.now();
+  }, [dwellOrderId]);
+
+  /**
+   * ⚠ THE THREE HALVES OF RULING ③ — LOAD, REMEMBER, FORGET.
+   *
+   * LOAD: when this rider's order becomes known, ask the phone what stage the
+   * LEDGER had reached for THAT order. `loadActMemory` refuses to hand back
+   * another order's stage, so a new course can never inherit a seal screen.
+   */
+  useEffect(() => {
+    if (dwellOrderId === null) {
+      setRemembered('none');
+      return;
+    }
+    let live = true;
+    void loadActMemory(asActMemoryStore(outboxStore), dwellOrderId).then(
+      (memory) => {
+        if (live) setRemembered(memory?.stage ?? 'none');
+      },
+      // Unreadable memory is no memory — never a crash on a rider's launch.
+      () => {
+        if (live) setRemembered('none');
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [dwellOrderId, outboxStore]);
+
+  /**
+   * REMEMBER: only ever what the LEDGER answered, never what was merely sent.
+   * `sealScreenIsDue`/`packageIsHeld` read `phase.kind === 'answered'` first,
+   * so writing a stage the server did not confirm would put a rider on a seal
+   * screen for goods nobody accepted.
+   */
+  useEffect(() => {
+    if (dwellOrderId === null) return;
+    const stage: ActStage | null = holdsPackage(sealPhase)
+      ? 'custody_taken'
+      : maySeal(verifyPhase)
+        ? 'verification_accepted'
+        : null;
+    if (stage === null) return;
+    setRemembered(stage);
+    void rememberAct(asActMemoryStore(outboxStore), {
+      orderId: dwellOrderId,
+      stage,
+      // IDS ONLY. The pickup code, the seal id and the rider's code are
+      // deliberately absent — a test scans the persisted bytes for them.
+      attemptIds: Object.fromEntries(
+        [...attempts.current.entries()].map(([key, held]) => [key.split('|')[0] as string, held.id]),
+      ),
+    }).catch(() => setPersistFailed(true));
+  }, [dwellOrderId, verifyPhase, sealPhase, outboxStore]);
 
   const runAct = useCallback(
     (set: (p: ActPhase) => void, act: () => Promise<CustodyAnswer>) => {
@@ -425,8 +541,20 @@ export default function App() {
       // ⚠ NO PHOTO, NO VERIFICATION (A7). The bundle ref must name bytes the
       // media bucket actually stored; there is no synthetic fallback.
       if (verifyBundleId === null) return;
-      // Keyed by everything that enters custody's fingerprint for this act.
-      const attempt = attemptFor(`verify|${liveAssignment.orderId}|${pickupCode}|${JSON.stringify(checks)}`);
+      /**
+       * ⚠ KEYED BY EVERY FIELD CUSTODY FINGERPRINTS — INCLUDING THE PHOTO.
+       * `evidenceBundleId` was missing here while the seal key already carried
+       * its refs, and custody's `fingerprint()` excludes only `command_id` and
+       * `at`. So: send → 15 s deadline → « Séra ne répond pas. Réessayez. » →
+       * the rider retakes the photo as part of retrying → new ref, same held
+       * command_id → `409 command_id_reused_with_other_content` → the app says
+       * « Séra a refusé. » If the first attempt HAD reached the ledger and been
+       * accepted, the rider is now told their accepted goods were refused.
+       * A new photo is a new attempt, not a retry of the old one.
+       */
+      const attempt = attemptFor(
+        `verify|${liveAssignment.orderId}|${pickupCode}|${verifyBundleId}|${JSON.stringify(checks)}`,
+      );
       runAct(setVerifyPhase, () =>
         custodyActs.verifyPickup(
           {
@@ -647,7 +775,10 @@ export default function App() {
 
   // SOS — one gesture from any screen; opening only reveals the sheet, firing
   // requires a deliberate HOLD (neither accidental nor missable).
-  const openSos = useCallback(() => setSos('confirm'), []);
+  const openSos = useCallback(() => {
+    setSosDelivered(null);
+    setSos('confirm');
+  }, []);
   const cancelSos = useCallback(() => {
     clearHold();
     setSos('closed');
@@ -692,13 +823,33 @@ export default function App() {
       onShift: shift === 'on',
       activeCourseId: sosCourseId,
       raisedAt: raised.raisedAt,
-    }).then(refreshBacklog, () => setPersistFailed(true));
+    })
+      .then(async () => {
+        /**
+         * ⚠ VERIFIER BLOCKER A4 — THE ALERT WAS NOT SENT WHEN IT WAS RAISED.
+         * Appending to the outbox was the whole of `fireSos`, and the only
+         * caller of the sender is the reconnect effect, whose deps
+         * (`connectivity`, `outboxStore`, `reconnectSender`, `refreshBacklog`)
+         * this function changes NONE of. So a rider in danger, online, signed
+         * in, held the disc — and the raise sat on the handset until the
+         * device happened to bounce offline→online. The wire built in 4d was
+         * never reached on the one path it exists for.
+         *
+         * It is sent HERE, now, and the entry keeps its persisted command_id,
+         * so the reconnect drain remains the safety net rather than the plan.
+         */
+        if (connectivity === 'online') await drainOnReconnect(outboxStore, reconnectSender);
+        // Delivered = the outbox no longer owes it. Never inferred from « the
+        // request did not throw ».
+        setSosDelivered((await stillPending(outboxStore, commandId)) ? 'owed' : 'reached');
+        await refreshBacklog();
+      }, () => setPersistFailed(true));
     const status = raised.status;
     if (status === 'queued') setSos('queued');
     else if (status === 'escalated') setSos('escalated');
     else if (status === 'acknowledged') setSos('acknowledged');
     else setSos('raised');
-  }, [world, shift, activeId, connectivity, outboxStore, refreshBacklog, WIRED, signInState, liveAssignment]);
+  }, [world, shift, activeId, connectivity, outboxStore, refreshBacklog, reconnectSender, WIRED, signInState, liveAssignment]);
   const sosHoldStart = useCallback(() => {
     if (holdTimer.current) clearTimeout(holdTimer.current);
     holdTimer.current = setTimeout(fireSos, 650);
@@ -924,11 +1075,11 @@ export default function App() {
                     * worked ». A refused package stops here, with the seller
                     * keeping it, which is the correct and safe end.
                     */}
-                  {holdsPackage(sealPhase) ? (
+                  {packageIsHeld(sealPhase, remembered) ? (
                     <FasoCard>
                       <ProofLine label={t('acts.custody_taken')} />
                     </FasoCard>
-                  ) : maySeal(verifyPhase) ? (
+                  ) : sealScreenIsDue(verifyPhase, remembered) ? (
                     <FasoActCode
                       strings={{
                         title: t('seal.id_title'),
@@ -938,6 +1089,21 @@ export default function App() {
                         working: t('acts.sending'),
                       }}
                       working={sealPhase.kind === 'working'}
+                      photo={{
+                        hint: t('seal.photo_hint'),
+                        takeLabel: t('photo.take'),
+                        retakeLabel: t('photo.retake'),
+                        takenLabel: t('photo.taken'),
+                        neededLabel: t('photo.needed'),
+                        // The BUCKET holds it — not « the camera opened ».
+                        taken: sealPhotoRefs.length > 0,
+                        busy: capturing,
+                        issue: (() => {
+                          const key = captureIssueKey(captureIssue);
+                          return key === undefined ? undefined : t(key);
+                        })(),
+                        onPress: () => takePhoto((ref) => setSealPhotoRefs([ref])),
+                      }}
                       outcome={
                         sealPhase.kind === 'answered'
                           ? (() => {
@@ -982,6 +1148,20 @@ export default function App() {
                           working: t('acts.sending'),
                         }}
                         working={verifyPhase.kind === 'working'}
+                        photo={{
+                          hint: t('verify.photo_hint'),
+                          takeLabel: t('photo.take'),
+                          retakeLabel: t('photo.retake'),
+                          takenLabel: t('photo.taken'),
+                          neededLabel: t('photo.needed'),
+                          taken: verifyBundleId !== null,
+                          busy: capturing,
+                          issue: (() => {
+                            const key = captureIssueKey(captureIssue);
+                            return key === undefined ? undefined : t(key);
+                          })(),
+                          onPress: () => takePhoto(setVerifyBundleId),
+                        }}
                         outcome={
                           verifyPhase.kind === 'answered'
                             ? (() => {
@@ -1577,24 +1757,42 @@ export default function App() {
           queued: t('sos.queued'),
           queuedHint: t('sos.queued_hint'),
           /**
-           * ⚠ VERIFIER BLOCKER A2 — THE APP PROMISED AN ALERT NOBODY RECEIVES.
-           * « Alerte envoyée. / On cherche quelqu'un pour vous. » is TRUE in
-           * the demo world and FALSE on a wired build: there is no SOS route on
-           * any Worker (grepped — logistics and custody have none), so the
-           * raise goes to the local demo store, drains through the sandbox
-           * sender that always answers `applied`, and the banner clears as if
-           * it had been delivered. On a build a real rider signs into with a
-           * real credential, that is a false safety promise — the most
-           * dangerous string in the app, and the one thing here NOT labelled
-           * demo.
+           * ⚠ THREE DIFFERENT TRUTHS, AND THE SCREEN MUST PICK THE RIGHT ONE
+           * (verifier blockers A2, then A5).
            *
-           * Until an SOS wire exists (named for the founder in JOURNAL.md), a
-           * wired build says what is actually true: the alert is on this phone,
-           * and Séra must be called directly. The gesture, the hold and the
-           * disc are untouched — Building Plan l.88 still holds.
+           * A2 was « Alerte envoyée. / On cherche quelqu'un pour vous. » on a
+           * build with no SOS route at all — a false safety promise, the most
+           * dangerous string in the app. The fix then was to say the alert was
+           * stuck on the phone.
+           *
+           * A5 is that same sentence AFTER 4d built the route: `POST /rider/sos`
+           * exists, `httpSosSender` posts to it, and telling a rider in danger
+           * « le téléphone n'a pas encore de lien direct » now sends them off to
+           * find a phone number for no reason.
+           *
+           * So the words follow the DELIVERY FACT, not the build flag:
+           *   · 'reached' — the outbox settled it against a real 200. « Séra a
+           *     reçu l'alerte. » and NOT « quelqu'un arrive » — the server has
+           *     recorded it; nobody has necessarily seen it, and no phone has
+           *     rung (the escalation channel is still unbound).
+           *   · 'owed'   — it is queued and undelivered. Say so, and say to
+           *     call, because that is the rider's real fallback.
+           *   · null     — in flight. The honest in-between, never a claim.
            */
-          raised: WIRED ? t('sos.not_wired') : t('sos.raised'),
-          raisedHint: WIRED ? t('sos.not_wired_hint') : t('sos.raised_hint'),
+          raised: WIRED
+            ? sosDelivered === 'reached'
+              ? t('sos.reached')
+              : sosDelivered === 'owed'
+                ? t('sos.not_wired')
+                : t('sos.sending')
+            : t('sos.raised'),
+          raisedHint: WIRED
+            ? sosDelivered === 'reached'
+              ? t('sos.reached_hint')
+              : sosDelivered === 'owed'
+                ? t('sos.not_wired_hint')
+                : t('sos.sending_hint')
+            : t('sos.raised_hint'),
           escalated: t('sos.escalated'),
           escalatedHint: t('sos.escalated_hint'),
           transportPending: t('sos.transport_pending'),

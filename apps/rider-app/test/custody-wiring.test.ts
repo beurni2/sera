@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createManualConnectivity } from '../src/offline/connectivity';
@@ -49,22 +49,50 @@ describe('an unwired build never pretends to hold a package', () => {
   });
 });
 
+/** Every .ts/.tsx under the app, so a coverage claim cannot be a hand-picked
+ *  subset. */
+function allSourceFiles(root: string): string[] {
+  const out: string[] = [];
+  const walk = (rel: string): void => {
+    for (const entry of readdirSync(join(root, rel), { withFileTypes: true })) {
+      const next = rel === '' ? entry.name : `${rel}/${entry.name}`;
+      if (entry.isDirectory()) {
+        if (entry.name === 'node_modules' || entry.name === 'test' || entry.name.startsWith('.')) continue;
+        walk(next);
+      } else if (/\.tsx?$/.test(entry.name)) {
+        out.push(next);
+      }
+    }
+  };
+  walk('');
+  return out;
+}
+
 describe('the bundle carries URLs, never keys', () => {
   const repoRoot = join(import.meta.dirname, '..', '..', '..');
   const appDir = join(import.meta.dirname, '..');
 
-  it('the app reads only the two public base URLs from the environment', () => {
-    const files = [
-      'src/net/resolveRiderSession.ts',
-      'src/net/resolveCustodyActs.ts',
-      'src/net/httpRiderSession.ts',
-      'src/net/custody-acts.ts',
-      'src/preview.ts',
-    ];
+  it('the app reads only the named public vars from the environment', () => {
+    /**
+     * ⚠ THE FILE LIST WAS A LIE ABOUT ITS OWN COVERAGE. It was five hardcoded
+     * paths, and `evidence-capture.ts` — which reads two further
+     * `EXPO_PUBLIC_*` — was not among them, so the headline « the app reads
+     * only… » was asserted over a subset chosen by hand. A new file reading a
+     * new variable was invisible to it by construction. It now walks EVERY
+     * source file, so adding one cannot slip past.
+     */
+    const files = allSourceFiles(appDir);
+    // The sweep really ran — an empty list must never pass silently.
+    expect(files.length).toBeGreaterThan(20);
+    expect(files).toContain('src/net/evidence-capture.ts');
     const allowed = new Set([
       'EXPO_PUBLIC_SERA_LOGISTICS_BASE',
       'EXPO_PUBLIC_SERA_CUSTODY_BASE',
       'EXPO_PUBLIC_PROFILE',
+      // MEDIA-KEY-SPLIT: the media bucket's address, and the ONE key that may
+      // ship in a bundle — write-only, cannot read, list, revoke or delete.
+      'EXPO_PUBLIC_SERA_MEDIA_BASE',
+      'EXPO_PUBLIC_SERA_MEDIA_WRITE_KEY',
     ]);
     for (const f of files) {
       const src = readFileSync(join(appDir, f), 'utf8');
@@ -89,10 +117,18 @@ describe('the bundle carries URLs, never keys', () => {
       'PROGRESS_WRITE_SECRET',
       'PROTECTION_OPS_SECRET',
     ];
+    /**
+     * ⚠ THIS SCANNED THREE CONFIG FILES AND NO SOURCE, so the two guards in
+     * this file were not independent: widen the allowlist above and a source
+     * file reading `EXPO_PUBLIC_SERA_OPS_SECRET` passed BOTH. Proven by
+     * mutation. The founder's keys must be unbundleable by more than one
+     * route, so the source tree is scanned here too.
+     */
     const targets = [
       join(appDir, 'app.json'),
       join(appDir, 'package.json'),
       join(repoRoot, '.github/workflows/expo-preview.yml'),
+      ...allSourceFiles(appDir).map((f) => join(appDir, f)),
     ];
     for (const t of targets) {
       const src = readFileSync(t, 'utf8');
