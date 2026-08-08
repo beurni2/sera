@@ -142,11 +142,11 @@ No app holds funds/computes others' amounts · **money model reconciles; commiss
 ## 6. Buyer payment, inspection, refusal & related-party rules (NORMATIVE — Shop+ surfaces)
 
 ### 6.1 Two-option checkout
-Both options shown; **Option A labeled « recommandé »**. Before choosing, buyer sees two bold lines: **« À payer maintenant : X F »** / **« À payer à la livraison : Y F »** with total = X+Y once. Copy:
+Both options shown; **Option A labeled « recommandé »**. Before choosing, buyer sees two bold lines: **« À payer maintenant : X FCFA »** / **« À payer à la livraison : Y FCFA »** with total = X+Y once. Copy:
 - **A « Tout payer maintenant — recommandé » —** « Votre paiement est protégé auprès de notre partenaire de paiement jusqu'à la confirmation de votre livraison. Le vendeur n'est payé qu'après validation. »
-- **B « Payer le produit à la livraison » —** « Payez seulement les frais de livraison ({D} F) maintenant. À l'arrivée du livreur, vérifiez votre article, puis payez le montant du produit de manière sécurisée **avant de le recevoir**. » + warning « Frais de livraison non remboursables si vous annulez ou êtes absent(e). »
-**« séquestre »/"escrow" MUST NOT appear** in customer copy. A one-line replay before payment (« Vous payez X F maintenant et Y F à la livraison — d'accord ? »); per-option **audio note**; lock/scooter icons. Comprehension-tested with first-time buyers.
-**Option-B gate (evaluated at quote):** seller tier ≥ verified · category inspectable · order ≤ price cap (pilot ~25,000 F) · network-reliable zone · `PayAtDoorEligibility.state = allowed`.
+- **B « Payer le produit à la livraison » —** « Payez seulement les frais de livraison ({D} FCFA) maintenant. À l'arrivée du livreur, vérifiez votre article, puis payez le montant du produit de manière sécurisée **avant de le recevoir**. » + warning « Frais de livraison non remboursables si vous annulez ou êtes absent(e). »
+**« séquestre »/"escrow" MUST NOT appear** in customer copy. A one-line replay before payment (« Vous payez X FCFA maintenant et Y FCFA à la livraison — d'accord ? »); per-option **audio note**; lock/scooter icons. Comprehension-tested with first-time buyers.
+**Option-B gate (evaluated at quote):** seller tier ≥ verified · category inspectable · order ≤ price cap (pilot ~25,000 FCFA) · network-reliable zone · `PayAtDoorEligibility.state = allowed`.
 
 ### 6.2 Category inspection matrix (buyer-facing outcome; policy owned by Séra/Evidence, versioned)
 | Category | Allowed at door | Valid rejection | Buyer-risk (not valid) |

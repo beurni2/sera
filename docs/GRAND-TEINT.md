@@ -1,7 +1,7 @@
 # GRAND TEINT — the design system
 ### Boutik+ × Shop+ × Séra · v1.0.0 · direction 1b, locked 2026-07
 
-> **The idea in one line:** the confidence of a hand-painted market poster, printed with the precision of a bank receipt — instant on a 40 000 F phone, legible in full sun.
+> **The idea in one line:** the confidence of a hand-painted market poster, printed with the precision of a bank receipt — instant on a 40 000 FCFA phone, legible in full sun.
 
 **Artifacts in this project**
 - `Directions visuelles.dc.html` — the exploration that produced this system (1a/1b/1c; 1b chosen)

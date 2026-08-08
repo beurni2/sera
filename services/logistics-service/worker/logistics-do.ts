@@ -480,12 +480,13 @@ export class LogisticsDO {
     /**
      * ═══ SE-LIVE-2c — THE FOUNDER COMPOSES THE DELIVERY TASK ═══
      *
-     * FOUNDER RULING (2026-08-06, option 1): the canonical DeliveryTask
-     * REQUIRES a GPS pin, and the buyer gives Shop+ only phone + quartier +
-     * repère (BC-1a). No producer can compose a canonical task without
-     * INVENTING coordinates, so no producer composes one: the founder does,
-     * here, from what he can actually see. Nothing is fabricated and no canon
-     * shape was weakened.
+     * FOUNDER RULING (2026-08-06, option 1): the buyer gives Shop+ only
+     * phone + quartier + repère (BC-1a), so no producer can compose a task
+     * without inventing an address it never had — the founder composes it,
+     * here, from what he can actually see. Nothing is fabricated.
+     * Canon v3.11.0 (founder ruling 2026-08-08) made the PIN optional too:
+     * absence is representable, so even the founder no longer types a
+     * coordinate he does not have.
      *
      * FOUNDER REPORT (2026-08-08): « it asks more useless additional
      * information. » What canon actually demands (kernel LocationSchema) is
@@ -512,18 +513,21 @@ export class LogisticsDO {
       const pin = loc?.['pin'] as Record<string, unknown> | undefined;
       if (
         loc == null ||
-        pin == null ||
-        typeof pin['lat'] !== 'number' ||
-        typeof pin['lng'] !== 'number' ||
-        !Number.isFinite(pin['lat']) ||
-        !Number.isFinite(pin['lng']) ||
-        // A pin outside the globe is a slip of the thumb, and it would reach a
+        // Canon v3.11.0 (founder ruling 2026-08-08): the pin is OPTIONAL —
+        // absence is representable, a fabricated coordinate is not required.
+        // When PRESENT it must still be a real, on-the-globe pair: a pin
+        // outside the globe is a slip of the thumb, and it would reach a
         // rider unchallenged (verifier NOTE 10). Bounds, not geography: Séra
         // does not decide where Ouagadougou is.
-        (pin['lat'] as number) < -90 ||
-        (pin['lat'] as number) > 90 ||
-        (pin['lng'] as number) < -180 ||
-        (pin['lng'] as number) > 180 ||
+        (pin !== undefined &&
+          (typeof pin['lat'] !== 'number' ||
+            typeof pin['lng'] !== 'number' ||
+            !Number.isFinite(pin['lat']) ||
+            !Number.isFinite(pin['lng']) ||
+            (pin['lat'] as number) < -90 ||
+            (pin['lat'] as number) > 90 ||
+            (pin['lng'] as number) < -180 ||
+            (pin['lng'] as number) > 180)) ||
         !isStr(loc['zone']) ||
         !isStr(loc['landmark']) ||
         // Canon's own line (kernel LocationSchema): directions and maskedRelay
@@ -602,7 +606,8 @@ export class LogisticsDO {
         id: `task-${crypto.randomUUID()}`,
         orderId,
         location: {
-          pin: { lat: pin['lat'] as number, lng: pin['lng'] as number },
+          // An absent pin stays ABSENT — never a zeroed coordinate.
+          ...(pin !== undefined ? { pin: { lat: pin['lat'] as number, lng: pin['lng'] as number } } : {}),
           zone: (loc['zone'] as string).trim(),
           landmark: (loc['landmark'] as string).trim(),
           directions: (loc['directions'] as string).trim(),

@@ -86,43 +86,43 @@ platformRevenue = (0.05 × B) + (0.20 × (C + M))
 
 | Line | Value |
 |---|---|
-| Seller base (B) | 10 000 F |
-| Seller commission (C) | 1 000 F |
-| Reseller markup (M) | 1 500 F |
-| Delivery (D) | 1 000 F |
-| **Buyer product subtotal (B+M)** | **11 500 F** |
-| **Buyer total (B+M+D)** | **12 500 F** |
-| Seller fee (5% × B) | 500 F |
-| **Seller net (B − C − fee)** | **8 500 F** |
-| Reseller gross (C+M) | 2 500 F |
-| Reseller fee (20% × gross) | 500 F |
-| **Reseller net** | **2 000 F** |
-| **Platform revenue** | **1 000 F** |
-| **Séra funding** | **1 000 F** |
+| Seller base (B) | 10 000 FCFA |
+| Seller commission (C) | 1 000 FCFA |
+| Reseller markup (M) | 1 500 FCFA |
+| Delivery (D) | 1 000 FCFA |
+| **Buyer product subtotal (B+M)** | **11 500 FCFA** |
+| **Buyer total (B+M+D)** | **12 500 FCFA** |
+| Seller fee (5% × B) | 500 FCFA |
+| **Seller net (B − C − fee)** | **8 500 FCFA** |
+| Reseller gross (C+M) | 2 500 FCFA |
+| Reseller fee (20% × gross) | 500 FCFA |
+| **Reseller net** | **2 000 FCFA** |
+| **Platform revenue** | **1 000 FCFA** |
+| **Séra funding** | **1 000 FCFA** |
 
 **The reconciliation:** `11 500 = 8 500 + 2 000 + 1 000` ✓ (product side) — and the delivery leg `1 000` sits beside it, untouched by fees. If any screen, any test, any ledger entry fails this identity, the build is broken. This is a CI gate in all three repos.
 
 ## 2.4 What the reseller sees — **net, always** (SP-I04, SP-I12)
 
-She sees **2 000 F**, never "2 500 F gross (minus fees)". Gross-first display is *prohibited*. The 20% fee is real from launch and shown honestly. **Rationale:** a reseller who discovers a fee after the sale never trusts the platform again.
+She sees **2 000 FCFA**, never "2 500 FCFA gross (minus fees)". Gross-first display is *prohibited*. The 20% fee is real from launch and shown honestly. **Rationale:** a reseller who discovers a fee after the sale never trusts the platform again.
 
 ## 2.5 The two payment options (this is the buyer's real choice)
 
 `paymentMode ∈ {FULL_PREPAY, DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR}`
 
 ### **Option A — FULL_PREPAY**
-- Buyer pays **12 500 F now** (product + delivery), held at the licensed provider.
+- Buyer pays **12 500 FCFA now** (product + delivery), held at the licensed provider.
 - Available to **everyone, always**. The only option for provisional sellers.
 - At the door: buyer inspects, accepts, gives the drop code. No money moves at the door.
 
 ### **Option B — DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR** *(the trust-builder)*
-- Buyer pays **1 000 F delivery now**; pays **11 500 F product at the door**, after inspecting.
-- Option B is available only when **all five** hold: seller tier ≥ **verified** · category **inspectable** · order ≤ the price cap (pilot ~25 000 F) · **network-reliable zone** · `PayAtDoorEligibility.state = allowed`.
+- Buyer pays **1 000 FCFA delivery now**; pays **11 500 FCFA product at the door**, after inspecting.
+- Option B is available only when **all five** hold: seller tier ≥ **verified** · category **inspectable** · order ≤ the price cap (pilot ~25 000 FCFA) · **network-reliable zone** · `PayAtDoorEligibility.state = allowed`.
 - **The hard rule (SE-I11):** custody does **not** transfer until the door payment is **authoritatively confirmed by the provider**. Not the rider's word. Not a screenshot. The webhook.
 - **Why it exists:** in a market where nobody trusts a stranger's link, "you pay when you see it" is the single most powerful conversion lever available — and it is *safe* only because the custody chain makes it safe.
 
 ### The one derived rule (Cercle-related, gated)
-**A campaign that makes delivery fully free (customer pays 0 F) forces FULL_PREPAY.** Otherwise a buyer could summon a rider at zero personal cost and refuse at the door — free sabotage. (SP-I16)
+**A campaign that makes delivery fully free (customer pays 0 FCFA) forces FULL_PREPAY.** Otherwise a buyer could summon a rider at zero personal cost and refuse at the door — free sabotage. (SP-I16)
 
 ## 2.6 Who never touches money
 - **Boutik+:** no wallet, no balance, no withdrawal button. It *reads* `SettlementObligation` and shows it.
@@ -230,7 +230,7 @@ Guided capture: hero shot, detail shots, scale reference, defect honesty. **Dete
 
 The supplier sets **B** and **C**, and sees the whole waterfall before committing:
 
-> *Prix de base 10 000 · Commission revendeuse 1 000 · Frais Boutik+ 500 · **Votre net : 8 500 F***
+> *Prix de base 10 000 · Commission revendeuse 1 000 · Frais Boutik+ 500 · **Votre net : 8 500 FCFA***
 
 **Options:** raise C to attract more resellers (it costs *his* margin, not the buyer's price) · lower C to protect margin · change either at will.
 
@@ -280,7 +280,7 @@ Hold funds · compute another domain's amounts · sell directly to a buyer · ex
 ### SP2 — Opportunity discovery *(« Opportunités »)*
 Every product card leads with **her net earning**, not the price.
 
-> Robe wax · Prix client **11 500 F** · **Vous gagnez 2 000 F net**
+> Robe wax · Prix client **11 500 FCFA** · **Vous gagnez 2 000 FCFA net**
 
 **Options per product:** choose it · adjust markup (M) · see the seller's tier and reliability · see stock · see delivery eligibility.
 **SP-I05:** discovery returns **reseller stores, not a cross-reseller product pool** — the platform never turns her customers into a commodity pool other resellers can fish in.
@@ -336,7 +336,7 @@ Every other participant has an account, an app, and a relationship with the plat
 She taps Aïcha's link. **The attribution token is decoded and locked to Aïcha** (SP-I09) — before she has done anything. A tampered token **fails closed**: it pays nobody and raises an alert; it never silently pays a different reseller.
 
 ### 2. The product page
-**She sees:** photos (canonical, price-free, never AI-generated) · the facts · **Aïcha's price — 11 500 F** · « Livré par Séra » · « Paiement protégé » · « Vérifiez avant d'accepter ».
+**She sees:** photos (canonical, price-free, never AI-generated) · the facts · **Aïcha's price — 11 500 FCFA** · « Livré par Séra » · « Paiement protégé » · « Vérifiez avant d'accepter ».
 **She never sees:** the supplier's name, the supplier's contact, the base price, or **the commission** (SP-I03 — a violation if breached).
 **Options:** choose variant/size · open the inspection explainer · *(gated: view Aïcha's Cercle)*.
 
@@ -349,22 +349,22 @@ Ouagadougou does not run on street addresses, so **the system never asks for one
 ### 4. Delivery — priced by Séra alone
 | Option | Price | When it appears |
 |---|---|---|
-| **Standard** (today, 16h–18h) | **1 000 F** | Always |
+| **Standard** (today, 16h–18h) | **1 000 FCFA** | Always |
 Delivery is priced by **Séra alone** via `DeliveryFeeQuote`. Zone fee tables, any free-delivery thresholds, and delivery windows are an **open Decision (⏳ D6)** — every figure or window that appears in examples here is illustrative, never canon.
-| *(gated)* **Cercle campaign** (« Samedi à Tampouy — 400 F ») | reseller-funded | Only if a live campaign covers her zone and budget remains |
+| *(gated)* **Cercle campaign** (« Samedi à Tampouy — 400 FCFA ») | reseller-funded | Only if a live campaign covers her zone and budget remains |
 
 The price comes from Séra's `DeliveryFeeQuote`. **No other party may invent it.**
 
 ### 5. Payment — her real choice (the conversion moment)
 | | **Option A — FULL_PREPAY** | **Option B — pay the product at the door** |
 |---|---|---|
-| Pays now | **12 500 F** (product + delivery) | **1 000 F** (delivery only) |
-| Pays at the door | — | **11 500 F** (the product) |
-| Who can use it | **Everyone, always** | Option B is available only when **all five** hold: seller tier ≥ **verified** · category **inspectable** · order ≤ the price cap (pilot ~25 000 F) · **network-reliable zone** · `PayAtDoorEligibility.state = allowed`. |
+| Pays now | **12 500 FCFA** (product + delivery) | **1 000 FCFA** (delivery only) |
+| Pays at the door | — | **11 500 FCFA** (the product) |
+| Who can use it | **Everyone, always** | Option B is available only when **all five** hold: seller tier ≥ **verified** · category **inspectable** · order ≤ the price cap (pilot ~25 000 FCFA) · **network-reliable zone** · `PayAtDoorEligibility.state = allowed`. |
 | Her protection | Held at the licensed provider until validated delivery | **She sees the product before she pays for it** |
 
 **When Option B is unavailable, it is shown disabled — with the honest reason**, never hidden:
-> *« Indisponible — vendeur en période d'essai (prépaiement uniquement) »* · *« Indisponible au-delà de 25 000 F »*
+> *« Indisponible — vendeur en période d'essai (prépaiement uniquement) »* · *« Indisponible au-delà de 25 000 FCFA »*
 
 **The screen states plainly what is paid now and what is due at delivery** (SP-I13). No confirmed order without the funded legs for its mode. **A retry never charges her twice.**
 
@@ -381,7 +381,7 @@ right item · right variant/colour/size label · right quantity · pieces presen
 ### 8. Her decision — the fork
 | She chooses | What happens | What it costs her |
 |---|---|---|
-| **Accept** | *(Option B)* she pays 11 500 F → **the provider confirms** → `HandoffAuthorization` → **custody transfers** → she enters her **drop code, last** → delivery validated | Nothing beyond the price |
+| **Accept** | *(Option B)* she pays 11 500 FCFA → **the provider confirms** → `HandoffAuthorization` → **custody transfers** → she enters her **drop code, last** → delivery validated | Nothing beyond the price |
 | **Refuse — justified** (wrong item, damaged, seal broken) | Structured reason + evidence. She is **protected and refunded**. The package returns under custody. | **Nothing** — the Protection Fund absorbs it |
 | **Refuse — changed her mind** | The package returns. | **The delivery fee** (Séra genuinely did the work). Recorded on her `PayAtDoorEligibility`. |
 | **Cannot pay (Option B)** | **No handoff.** Custody stays with the rider. Retry / reschedule / return. | Delivery fee |
@@ -571,13 +571,13 @@ A place where a human can: pay someone early · forgive a fee · fabricate a del
 | # | Where | What happens | The rule enforcing it |
 |---|---|---|---|
 | 1 | **Boutik+** | Ousmane publishes a wax dress: **B 10 000**, **C 1 000**. Studio photos approved, price-free, contact-free. | B+I-01, B+I-02, B+I-11 |
-| 2 | **Boutik+** | He sees his math *before* committing: net **8 500 F** after the 500 F fee. No deposit asked. | B+I-12 |
-| 3 | **Shop+** | Aïcha sees it in Opportunités: « **Vous gagnez 2 000 F net** ». She adds **M 1 500** and lists it. | SP-I04, SP-I12 |
-| 4 | **Shop+** | She taps « Partager » → a WhatsApp card with **her price (11 500 F)**, her name, her **signed attribution link**. Commission is nowhere on it. | SP-I03, SP-I09 |
-| 5 | **Buyer PWA** | Awa opens the link. Sees the dress, 11 500 F, « Livré par Séra », « Paiement protégé ». | SP-I03 |
+| 2 | **Boutik+** | He sees his math *before* committing: net **8 500 FCFA** after the 500 FCFA fee. No deposit asked. | B+I-12 |
+| 3 | **Shop+** | Aïcha sees it in Opportunités: « **Vous gagnez 2 000 FCFA net** ». She adds **M 1 500** and lists it. | SP-I04, SP-I12 |
+| 4 | **Shop+** | She taps « Partager » → a WhatsApp card with **her price (11 500 FCFA)**, her name, her **signed attribution link**. Commission is nowhere on it. | SP-I03, SP-I09 |
+| 5 | **Buyer PWA** | Awa opens the link. Sees the dress, 11 500 FCFA, « Livré par Séra », « Paiement protégé ». | SP-I03 |
 | 6 | **Buyer PWA** | She drops a pin, picks her zone, names a landmark, records a voice note of directions. **No street address is ever requested.** | Kernel `Location` |
-| 7 | **Buyer PWA** | Delivery: **Standard 1 000 F** (Séra's quote — the only price authority). | Séra owns D |
-| 8 | **Buyer PWA** | She chooses **Option B**: pays **1 000 F now**, **11 500 F at the door**. (Allowed: Ousmane is *verified*, order ≤ 25 000 F.) | SP-I13, tiers |
+| 7 | **Buyer PWA** | Delivery: **Standard 1 000 FCFA** (Séra's quote — the only price authority). | Séra owns D |
+| 8 | **Buyer PWA** | She chooses **Option B**: pays **1 000 FCFA now**, **11 500 FCFA at the door**. (Allowed: Ousmane is *verified*, order ≤ 25 000 FCFA.) | SP-I13, tiers |
 | 9 | **Ledger** | Quote locked & immutable: 8 500 / 2 000 / 1 000 / 1 000. `reseller_id` locked to Aïcha. | SP-I01, B+I-04 |
 | 10 | **Boutik+** | Ousmane packs, confirms **« Produit prêt »** with readiness evidence. *(No drop code in it — ever.)* | B+I-06 |
 | 11 | **Séra** | Task enters the queue — **funded (delivery leg) + ready + not cancelled**. Dispatcher assigns Moussa via a single atomic lease. | SE-I02, SE-I01 |
@@ -585,7 +585,7 @@ A place where a human can: pay someone early · forgive a fee · fabricate a del
 | 13 | **Séra** | **Seal registered → custody begins.** Ousmane could not have declared this himself. | SE-I05, B+I-07 |
 | 14 | **Séra** | Transit. One current stop. One custodian. Awa sees coarse progress, not a live dot. | SE-I03, SE-I04, SE-I08 |
 | 15 | **At the door** | Awa inspects (2–4 min): right item, right size, undamaged, seal intact. | Inspection matrix |
-| 16 | **At the door** | She pays **11 500 F** → **the provider confirms** → `HandoffAuthorization` → **custody transfers**. Moussa's word alone would not have sufficed. | **SE-I11** |
+| 16 | **At the door** | She pays **11 500 FCFA** → **the provider confirms** → `HandoffAuthorization` → **custody transfers**. Moussa's word alone would not have sufficed. | **SE-I11** |
 | 17 | **At the door** | Awa enters her **drop code** — last. `ValidationDecision` recorded. | Four secrets |
 | 18 | **Ledger** | Settlement eligible. **Ousmane 8 500** (same/next-day) · **Aïcha 2 000 net** · **Séra funded 1 000** · **platform 1 000**. | Waterfall |
 | 19 | **All three** | `11 500 = 8 500 + 2 000 + 1 000` ✓ | The CI gate |
@@ -653,7 +653,7 @@ These are enforced by **CI gates in every repo**, not by good intentions.
 ### 10.3 The French Voice Standard *(Execution Contract §10.5)*
 > *« Le français de l'écosystème : celui d'une commerçante qui réussit — clair quand il s'agit d'argent, chaleureux quand il s'agit de vendre, jamais celui d'un bureau. »*
 
-- **Money & trust moments → calm, precise, reassuring.** *« Vous payez 1 000 F maintenant, en sécurité — et 11 500 F à la livraison. »*
+- **Money & trust moments → calm, precise, reassuring.** *« Vous payez 1 000 FCFA maintenant, en sécurité — et 11 500 FCFA à la livraison. »*
 - **Selling & community moments → warm, familiar, captivating.** *« Séra livre — et votre gain net vous revient. »*
 - **6th-grade reading level.** Many resellers did not finish school. No administrative French. No « séquestre ». No word a market seller wouldn't say out loud.
 - French-first, with **Mooré/Dioula** and **voice notes** — because many people sell and buy *by voice*.

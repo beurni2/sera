@@ -202,7 +202,7 @@ Real public money does not flow until **every** item is proven true:
 ### The register split (the core rule)
 Every string belongs to one of two registers by **what moment it serves**:
 
-- **MONEY & TRUST moments → calm, precise, reassuring.** Anything about paying, being paid, refusing at the door, what someone earns, custody, or a failure. Zero cleverness, zero ambiguity — doubt here loses the sale or breaks trust. *Ex: « Vous payez X F maintenant, en sécurité — et Y F à la livraison. » · « La cliente est remboursée automatiquement. »*
+- **MONEY & TRUST moments → calm, precise, reassuring.** Anything about paying, being paid, refusing at the door, what someone earns, custody, or a failure. Zero cleverness, zero ambiguity — doubt here loses the sale or breaks trust. *Ex: « Vous payez X FCFA maintenant, en sécurité — et Y FCFA à la livraison. » · « La cliente est remboursée automatiquement. »*
 - **SELLING & COMMUNITY moments → warm, familiar, captivating.** Campaign cards, the Cercle, sharing, discovery, celebrations, onboarding encouragement. The voice of a confident Burkinabè merchant talking to her *clientes*, not a catalog. *Ex: « C'est arrivé — regardez ça. » · « Votre gain net vous revient. »*
 
 ### Level & reach (locality dial)

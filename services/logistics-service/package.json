@@ -17,7 +17,7 @@
   },
   "dependencies": {
     "@sera/observability": "workspace:*",
-    "@platform/contracts": "git+https://github.com/beurni2/platform-contracts.git#f23407ce51e074f7afead5c8e475a692056498e8&path:packages/contracts"
+    "@platform/contracts": "git+https://github.com/beurni2/platform-contracts.git#eee9d198d89d2a219c73ec72f682e6c8c8a9b7bf&path:packages/contracts"
   },
   "devDependencies": {
     "typescript": "^5.9.2",

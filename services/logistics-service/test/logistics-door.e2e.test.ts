@@ -612,10 +612,12 @@ describe('SE-LIVE-2c — the founder composes the task, and the gate still gover
     expect(forOrder).toHaveLength(1);
   });
 
-  it('A HALF-GIVEN ADDRESS IS REFUSED 400 — canon’s required trio (pin, zone, landmark) is not optional', async () => {
+  it('A HALF-GIVEN ADDRESS IS REFUSED 400 — canon’s required pair (zone, landmark) is not optional, and a PRESENT pin must be real', async () => {
     const cases: Json[] = [
-      { ...LOCATION, pin: undefined },
+      // Canon v3.11.0: an ABSENT pin is lawful (see the allégé positive
+      // below) — but a present one that is not a coordinate pair never is.
       { ...LOCATION, pin: { lat: 'douze', lng: -1.5 } },
+      { ...LOCATION, pin: { lat: 12.37, lng: 512 } },
       { ...LOCATION, zone: '   ' },
       { ...LOCATION, landmark: '' },
       // Non-strings are still malformed even where '' is lawful.
@@ -642,16 +644,16 @@ describe('SE-LIVE-2c — the founder composes the task, and the gate still gover
     ).toBe(400);
   });
 
-  it('CONFIER-ALLEGE (founder report 2026-08-08): empty directions and relay are LAWFUL — canon makes them optional, and the composed task still parses canon-strict', async () => {
+  it('CONFIER-ALLEGE + canon v3.11.0: NO pin, empty directions and relay — what the founder actually has is a lawful, canon-strict task', async () => {
     const ORDER_ALLEGE = 'order-compose-allege';
     await fundOrder(mf, ORDER_ALLEGE);
     await readyOrder(mf, ORDER_ALLEGE);
     const res = await call(mf, 'POST', '/ops/task', opsAuth, {
       command_id: 'cmd-compose-allege',
       orderId: ORDER_ALLEGE,
-      // What the founder actually has: the buyer's quartier + repère and a
-      // pin from his maps app. No invented « relais-1 », no forced directions.
-      location: { ...LOCATION, directions: '', maskedRelay: '' },
+      // What the founder actually has: the buyer's quartier + repère. No
+      // pasted coordinate, no invented « relais-1 », no forced directions.
+      location: { zone: LOCATION.zone, landmark: LOCATION.landmark, directions: '', maskedRelay: '' },
       window: WINDOW,
     });
     expect(res.status).toBe(200);
@@ -660,13 +662,15 @@ describe('SE-LIVE-2c — the founder composes the task, and the gate still gover
     const board = await call(mf, 'GET', '/ops/board', opsAuth);
     const queued = ((board.json['board'] as Json)['queued'] as Json[]).find((q) => q['taskId'] === taskId);
     expect(queued).toBeDefined();
-    // The absences survive as honest empty strings — never back-filled.
+    // The absences survive as honest absences — never back-filled: no pin
+    // key at all, empty strings for the optional words.
     expect(queued?.['location']).toMatchObject({
       zone: 'Gounghin',
       landmark: 'Face à la pharmacie du marché',
       directions: '',
       maskedRelay: '',
     });
+    expect('pin' in (queued?.['location'] as Record<string, unknown>)).toBe(false);
   });
 
   it('the ops door gates it: composing without the founder’s key is the uniform 401', async () => {
