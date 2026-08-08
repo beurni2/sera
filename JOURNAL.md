@@ -1311,3 +1311,35 @@ I confirmed both by my own reading before accepting either. **This is the same f
 **Evidence:** typecheck 0 · rider-app **274/274 across 35 files** (was 260) · gate board `ALL GATES GREEN` run under `EVIDENCE_DIR` with all **82** gate outputs captured to file — the standing correction from the previous entry, now in use.
 
 **⚠ STILL NOT MERGED, AND NOT YET RE-VERIFIED.** The verifier that found these six has not seen the fixes. Nothing goes to main until it has.
+
+
+## 2026-08-08 · SE-LIVE-4c/4d — ROUND THREE: the fix moved the bug instead of removing it
+
+A second fresh-context verifier, given only the specs, the diff and the DoD, found **five more blockers**. I confirmed each by reading the code and by reproducing the mutations myself before changing anything.
+
+**⚠ A1 — EVERY PROOF PHOTO WAS REFUSED BY THE BUCKET, SO CUSTODY STILL COULD NOT BEGIN.** Round two closed « the port is called by nothing ». Round three found « the port is called and can never succeed » — the same outcome for Aïcha, and the same failure for me. I added `expo-image-picker` and stopped: **`quality` is JPEG compression, not a resize**, and the picker exposes no resize at all. So every capture went up at the sensor's native resolution, and `media-service` refuses anything outside a 2048 box — its own comment states the contract I did not read: *« The stored image must already be within this box (the app resizes on device). »* Every phone in this market since about 2012 shoots wider than 2048.
+
+The lived sequence: rider taps « Prendre la photo » → shoots → `400 bad_dimensions` → « Cette photo n'a pas été acceptée. **Reprenez-la.** » → the rider does exactly what the copy says → identical refusal → **for ever**, with the send disabled the whole time. **Boutik+ has honoured this contract since B1.1** (`studio/normalization.ts` resizes to `DERIVATIVE_SPEC_V1.maxEdgePx`). I shipped the rider half without it. *Read the consumer's bounds before writing the producer — the other repo had already solved this and said so in a comment.*
+
+**⚠ A2 — MY ROUND-TWO TESTS LEFT OPEN THE EXACT HOLE THEY EXISTED TO CLOSE.** They asserted the photo port and the memory port had callers. They never asserted the **acts** were reachable. Replacing `onSubmit={sendVerification}` with an empty arrow left **274/274 passing and typecheck 0** — byte-for-byte the round-two blocker, walking through a gap in the test written to prevent it. (`noUnusedLocals` is off, so the compiler was silent about the orphaned sender too.) **Three rounds, one pattern: I assert the thing next to the bug instead of the bug.**
+
+| | |
+|---|---|
+| **A3** | The app would have **crashed on iOS**. `requestCameraPermissionsAsync` with no `NSCameraUsageDescription` terminates the process, and only the config plugin writes it; `ios` is a declared platform. Now in `app.json`, with **French** permission copy rather than the plugin's English default — that sentence is the first thing a rider reads about this feature (Law 6). |
+| **A4** | `attemptIds` was persisted, documented as *« so a retry after a relaunch is still the SAME command to custody »*, and **never read back**. It could not have worked either: attempts are keyed by CONTENT, which includes the pickup code (never persisted, by design) and the photo ref (changes on retake). Removed, with the comment that promised it. **A field whose stated purpose is impossible is worse than no field — it reads like the problem is handled.** |
+| **A5** | The wired screens had **lost their titles and the SE-I12 boundary**. A rider saw a landmark, a chip, then nine unheaded questions — and not « Vérifiez ce qui se voit. Pas la qualité, pas le vrai ou le faux. », which is SE-I12 in one sentence. Reading « C'est le bon produit » as *is it genuine* makes a rider answer Non and record a supplier at fault permanently. The strings existed and passed copy-lint; the wired arm simply did not render them. Restored on both acts, plus a next step on the terminal custody state, which was one line with nowhere to go. |
+
+### Rider-facing fixes taken from list B, because each can hurt someone
+- **The escalated SOS strings were not `WIRED`-gated.** Unreachable today only because `SANDBOX_DISPATCH_HOURS` is `'in_hours'` — **one constant** from re-arming blocker A2's false safety promise on the most dangerous screen in the app.
+- **The camera had no deadline.** While `capturing` is true both the photo button and the send are disabled, so an unsettled picker locked the screen with no way out.
+- A build with **no media bucket** said « Réessayez » when no retry could ever work and the camera never opened; it now names the real cause.
+- Interior `=` in base64 is refused rather than silently decoded to the wrong bytes.
+
+### Method notes worth keeping
+- **Eight mutations this round, and I verified every anchor actually matched before drawing a conclusion.** Last round one of my mutations silently did not apply and I nearly recorded it as a pass.
+- The verifier independently **fuzzed `bytesFromBase64` against `Buffer.from` over 3000 random buffers** and found it correct, including the magic-byte head. That is the one thing this round it could not break.
+
+### ⚠ OPEN — FOR THE FOUNDER, NOT FOR ME (§7)
+**A lost seal answer can strand a package.** Rider registers the seal → the answer is lost (deadline, or the OS kills the app) while custody actually recorded `custody_with_courier`. On relaunch the phone still remembers `verification_accepted`, so the rider is shown the seal screen again; re-sending mints a new `command_id` against a consumed seal digest → `409` → « Séra a refusé. » about a package **in their own custody**, with no way forward. Fixing it properly needs the rider door to open a **third route — a custody read** (« what stage is this order at? »). The 4b allowlist deliberately opens exactly two, and widening it is a custody-surface decision, so I am not taking it. **Recommendation:** add a read-only `GET /rider/order/{id}/stage` to the rider allowlist, returning stage only, no secrets. Until then this failure mode is live and journalled.
+
+**Evidence:** typecheck 0 · rider-app **284/284 across 36 files** (was 274) · gate board `ALL GATES GREEN` under `EVIDENCE_DIR`.
