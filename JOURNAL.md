@@ -1343,3 +1343,38 @@ The lived sequence: rider taps « Prendre la photo » → shoots → `400 bad_di
 **A lost seal answer can strand a package.** Rider registers the seal → the answer is lost (deadline, or the OS kills the app) while custody actually recorded `custody_with_courier`. On relaunch the phone still remembers `verification_accepted`, so the rider is shown the seal screen again; re-sending mints a new `command_id` against a consumed seal digest → `409` → « Séra a refusé. » about a package **in their own custody**, with no way forward. Fixing it properly needs the rider door to open a **third route — a custody read** (« what stage is this order at? »). The 4b allowlist deliberately opens exactly two, and widening it is a custody-surface decision, so I am not taking it. **Recommendation:** add a read-only `GET /rider/order/{id}/stage` to the rider allowlist, returning stage only, no secrets. Until then this failure mode is live and journalled.
 
 **Evidence:** typecheck 0 · rider-app **284/284 across 36 files** (was 274) · gate board `ALL GATES GREEN` under `EVIDENCE_DIR`.
+
+
+## 2026-08-08 · FOUNDER: « I do not want to be doing this loop over and over — it's unproductive »
+
+**He is right, and the loop was never the problem: my building was.** Three verifier rounds each found a real blocker that would have shipped. That is the loop working. But needing three rounds is a *building* failure, and running a fourth would have been treating the symptom.
+
+**THE DIAGNOSIS, and it is one sentence: nothing in this repo ever walked the rider's path.** Measured, not assumed —
+
+- `apps/rider-app/test/*` drives the ports with an **injected fake fetch**. It never touches a Worker.
+- `services/*/test/*.e2e.test.ts` calls the Workers with **raw `fetch`**. It never touches the app's ports.
+- `App.tsx` was only ever checked by **source scan**.
+
+So « the port works » was proven, « the Worker works » was proven, and **« the rider can take custody » was proven by nobody.** Every blocker of rounds two and three lived precisely in that gap:
+
+| Round | What shipped | Green tests over it |
+|---|---|---|
+| 2 | the ports were **called by nothing** — an enabled button that did nothing, for ever | 260 |
+| 3 | the photo port was called and **every upload was refused** (camera-native px vs a 2048 ceiling) | 274 |
+
+A verifier was doing an integration test's job, one blocker per round, at enormous cost in his time.
+
+### The fix: `services/custody-service/test/rider-path.e2e.test.ts`
+The app's **own** `httpCustodyActs` and `httpEvidenceCapture`, against the **real** custody Worker in miniflare, with a **contract-certified** bucket stub (Execution Contract §3) mirroring media-service's actual validation — magic-byte sniff, SOF0 dimension parse, the 2048 ceiling, the 200 floor, the 5 MB cap — constants named, because that service lives in the boutik-plus repo and cannot be imported. **The mock is written to be harsher than the app expects, not kinder.** Photo → verification → seal → custody, and then the **LEDGER** is asked who the custodian is rather than the response being believed.
+
+**It caught one while it was being written.** My first draft invented nine plausible check names and the Worker answered `check_not_in_policy`. The app renders its checklist from `POLICY_CHECK_IDS`; the service judges against `PICKUP_VERIFICATION_POLICY_V1.checks`. Two independent literals, in two packages, that **nothing compared** — and any drift refuses every verification a rider ever sends. They agree today; they are now asserted to.
+
+**Proven against the actual history** (each anchor verified as applied before concluding anything):
+- drop the device resize → **the walk fails** (round three's blocker)
+- drift the checklist → **three tests fail**
+- read HTTP 200 as accepted → **the refusal test fails** (Law 3)
+
+### The standing change to how I work
+**A slice that crosses a seam is not done until one test crosses that seam end to end.** Source scans and fake-fetch unit tests are necessary and they are not sufficient; they proved every part of this slice while the whole of it was broken, twice. The verifier stays as the last gate, but it must stop being the *first* place a wired path is ever exercised.
+
+**Evidence:** workspace typecheck 11/11 tasks · custody-service 16 files · rider-app 36 files · gate board `ALL GATES GREEN` under `EVIDENCE_DIR`.
