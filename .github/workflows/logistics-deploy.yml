@@ -32,7 +32,12 @@ name: logistics-deploy
 #     not exist yet: the deploy still runs, the assertion fails red with
 #     instructions — set the variable and re-dispatch.
 #   · SERA_CONSOLE_ORIGIN (variable — origins are public) — exact-origin CORS
-#     allowlist for the browser surfaces (SE-LIVE-4). Empty ⇒ no CORS.
+#     allowlist for the browser surfaces (SE-LIVE-4), comma-separated. Empty ⇒
+#     no CORS at all, which means NO BROWSER can call this Worker: the Boutik+
+#     console's « Coursiers » zone (rider roster + code mint) goes dark. Set it
+#     to the console's EXACT origin — https://boutik-plus-web.pages.dev — not
+#     to a per-deployment Pages URL (https://<hash>.boutik-plus-web.pages.dev
+#     changes on every deploy and can never be allowlisted ahead of time).
 #
 # FAIL-CLOSED BY CONSTRUCTION: a Worker deployed before its secrets are set
 # refuses every gated request with the one identical 401. That is correct,
@@ -90,9 +95,23 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CONSOLE_ORIGIN: ${{ vars.SERA_CONSOLE_ORIGIN }}
         run: |
+          # THE SILENT ELSE COST A LIVE DEBUGGING ROUND (2026-08-08, journaled):
+          # this step deployed with CONSOLE_ORIGIN empty, said nothing, and the
+          # founder's « Coursiers » zone in the Boutik+ console then failed on
+          # every read — the browser preflight gets a 204 with no
+          # Access-Control-Allow-Origin, `fetch` rejects, and the zone can only
+          # say « la liste n'est pas arrivée ». Correct behaviour, unreadable
+          # cause. A Worker with no CORS is not broken, but it IS invisible to
+          # every browser surface, and that fact must be stated at deploy time.
+          #
+          # Not a hard guard: the rider app is native and the intake producers
+          # are server-to-server — neither needs CORS, so an empty allowlist is
+          # a legitimate deploy. It is only the BROWSER surfaces that die.
           if [ -n "$CONSOLE_ORIGIN" ]; then
+            echo "CORS armed for: $CONSOLE_ORIGIN"
             npx --yes wrangler@4 deploy --var SERA_CONSOLE_ORIGIN:"$CONSOLE_ORIGIN"
           else
+            echo "::warning title=CORS NON armé::the repo VARIABLE SERA_CONSOLE_ORIGIN is empty — this Worker will refuse EVERY browser call. The Boutik+ console's « Coursiers » zone cannot list riders or mint a code until it is set to the console's exact origin (e.g. https://boutik-plus-web.pages.dev) and this workflow is re-dispatched. Native apps and server-to-server intake are unaffected."
             npx --yes wrangler@4 deploy
           fi
       # Secrets are set AFTER the first deploy (wrangler cannot put a secret
