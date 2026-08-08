@@ -50,8 +50,13 @@ export interface PhotoSource {
 }
 
 export type CaptureOutcome =
-  /** The bucket accepted the bytes and named them. This ref is ledger-grade. */
-  | { readonly ok: true; readonly ref: string }
+  /** The bucket accepted the bytes and named them. This ref is ledger-grade.
+   *  RIDER-DELIVERY-SCREEN adds the artifact's other two canon facts: the
+   *  content hash MEASURED HERE over the very bytes that were uploaded
+   *  (null when this device has no SHA-256 road — an honest absence the
+   *  delivery act must refuse on, never a fabricated hex), and the mimeType
+   *  the BUCKET derived by sniffing (never claimed by this side). */
+  | { readonly ok: true; readonly ref: string; readonly sha256: string | null; readonly mimeType: string }
   /** The rider backed out. Not an error — nothing is said, nothing is sent. */
   | { readonly ok: false; readonly reason: 'cancelled' }
   /** The device knows it has no network. Nothing was attempted. */
@@ -113,6 +118,27 @@ export function bytesFromBase64(input: string): Uint8Array | null {
 const UPLOAD_PATH = '/media';
 const UPLOAD_TIMEOUT_MS = 30_000;
 
+/** SHA-256 as lowercase hex, or null. The device digest port: injectable for
+ *  tests, defaulting to the ambient WebCrypto (Node and browsers carry it;
+ *  a bare Hermes may not — `ensureSha256` installs the expo-crypto shim on
+ *  device, and where nothing provides one the answer is an honest null). */
+export type DigestFn = (bytes: Uint8Array) => Promise<string | null>;
+
+export async function subtleSha256Hex(bytes: Uint8Array): Promise<string | null> {
+  const subtle = (globalThis as { crypto?: { subtle?: { digest(alg: string, data: ArrayBuffer): Promise<ArrayBuffer> } } })
+    .crypto?.subtle;
+  if (subtle === undefined || typeof subtle.digest !== 'function') return null;
+  try {
+    const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+    const hash = new Uint8Array(await subtle.digest('SHA-256', buf));
+    let hex = '';
+    for (const b of hash) hex += b.toString(16).padStart(2, '0');
+    return hex;
+  } catch {
+    return null;
+  }
+}
+
 export function httpEvidenceCapture(
   base: string,
   writeKey: string,
@@ -120,6 +146,7 @@ export function httpEvidenceCapture(
   connectivity: ConnectivityPort,
   fetchFn: FetchFn = globalThis.fetch,
   timeoutMs: number = UPLOAD_TIMEOUT_MS,
+  digest: DigestFn = subtleSha256Hex,
 ): EvidenceCapturePort {
   const root = base.replace(/\/+$/, '');
   return {
@@ -150,11 +177,16 @@ export function httpEvidenceCapture(
         if (res.status === 201) {
           const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
           const ref = body?.['ref'];
-          // Corroborated, not counted: a 201 that does not name a ref is not a
-          // stored photo, and must never become a ledger entry.
-          return typeof ref === 'string' && ref.trim() !== ''
-            ? { ok: true, ref: ref.trim() }
-            : { ok: false, reason: 'unreachable' };
+          const contentType = body?.['contentType'];
+          // Corroborated, not counted: a 201 that does not name a ref AND the
+          // type the bucket itself derived is not a stored photo, and must
+          // never become a ledger entry.
+          if (typeof ref !== 'string' || ref.trim() === '' || typeof contentType !== 'string' || contentType === '') {
+            return { ok: false, reason: 'unreachable' };
+          }
+          // The hash is measured over the VERY bytes that were uploaded —
+          // null where this device has no SHA-256 road, never an invention.
+          return { ok: true, ref: ref.trim(), sha256: await digest(bytes), mimeType: contentType };
         }
         if (res.status === 400) {
           const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;

@@ -1472,7 +1472,23 @@ export class CustodyDO {
       // `beginCustody` CONSUMES the seal before it can fail downstream, exactly
       // as `verifyPickup` consumes the pickup code (SE-LIVE-3 round-1 blocker).
       const recorded: RecordedOutcome = outcome.ok
-        ? { httpStatus: 200, body: { ok: true, status: 'custody_with_courier', riderId: cmd.riderId } }
+        ? {
+            httpStatus: 200,
+            body: {
+              ok: true,
+              status: 'custody_with_courier',
+              riderId: cmd.riderId,
+              // RIDER-DELIVERY-SCREEN — the moment custody begins, the phone
+              // that now HOLDS the package learns WHICH task and package it
+              // holds: the delivery-evidence bundle (canon EvidenceBundle)
+              // must name both, bound by equality to this very chain, and no
+              // other rider-reachable answer carries them. IDENTIFIERS ONLY —
+              // never a code, never a seal, never an amount.
+              ...(this.chain !== null
+                ? { chain: { task_id: this.chain.task_id, package_id: this.chain.package_id } }
+                : {}),
+            },
+          }
         : { httpStatus: 409, body: { ok: false, reason: outcome.reason ?? 'refused' } };
       await this.commit(cmd, recorded);
       return Response.json(recorded.body, { status: recorded.httpStatus });

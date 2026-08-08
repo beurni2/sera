@@ -82,9 +82,19 @@ import { resolveCustodyActs } from './src/net/resolveCustodyActs';
 import { httpSosSender } from './src/net/sos-wire';
 import { resolveEvidenceCapture, type CaptureOutcome } from './src/net/evidence-capture';
 import { expoPhotoSource } from './src/net/expoPhotoSource';
-import { mintActId, type CustodyAnswer } from './src/net/custody-acts';
+import { ensureSha256 } from './src/offline/ensureSha256';
+
+// RIDER-DELIVERY-SCREEN — the handoff photo's content hash is measured on
+// this device; a bare Hermes carries no WebCrypto digest, so the expo-crypto
+// shim installs one (no-op wherever the runtime already provides it).
+ensureSha256();
+import { deliveryChainOf, mintActId, type CustodyAnswer } from './src/net/custody-acts';
 import {
   ACT_IDLE,
+  dropDone,
+  dropOutcome,
+  evidenceIsHeld,
+  evidenceOutcome,
   holdsPackage,
   maySeal,
   packageIsHeld,
@@ -369,6 +379,27 @@ export default function App() {
   const [verifyPhase, setVerifyPhase] = useState<ActPhase>(ACT_IDLE);
   const [sealPhase, setSealPhase] = useState<ActPhase>(ACT_IDLE);
   /**
+   * ═══ RIDER-DELIVERY-SCREEN — what the delivery act needs, kept from the
+   * moments that produced it (live-session state, deliberately) ═══
+   *
+   * The canon EvidenceBundle names the task, the package and the seal. The
+   * SEAL is what the rider themself typed at the seal act; the TASK and
+   * PACKAGE ids arrive on the BEGIN answer's `chain` — the moment this phone
+   * starts holding the package is the moment it learns which one. None of it
+   * is persisted (act memory keeps order + stage only, by design — a test
+   * scans the persisted bytes), so an app killed mid-course loses the ids and
+   * the screen says so honestly instead of inventing them.
+   */
+  const [sealSaisi, setSealSaisi] = useState<string | null>(null);
+  const [livraisonIds, setLivraisonIds] = useState<{ taskId: string; packageId: string } | null>(null);
+  const [dropArt, setDropArt] = useState<{ ref: string; sha256: string | null; mimeType: string } | null>(null);
+  const [evidencePhase, setEvidencePhase] = useState<ActPhase>(ACT_IDLE);
+  const [dropPhase, setDropPhase] = useState<ActPhase>(ACT_IDLE);
+  /** `capturedAt` is part of the bundle custody FINGERPRINTS, so it is minted
+   *  once per attempt and reused on retry — a moving clock would turn every
+   *  retry into `command_id_reused_with_other_content`. */
+  const capturedAtFor = useRef(new Map<string, string>());
+  /**
    * ⚠ WHAT THIS PHONE REMEMBERS THE LEDGER SAID (verifier blocker A2, founder
    * ruling ③ « persisting act on the phone »). `act-memory.ts` was written,
    * tested and imported by NOBODY, so the harm it was built to prevent was
@@ -425,7 +456,7 @@ export default function App() {
   const CAPTURE_DEADLINE_MS = 120_000;
   const [capturing, setCapturing] = useState(false);
   const takePhoto = useCallback(
-    (keep: (ref: string) => void) => {
+    (keep: (art: { ref: string; sha256: string | null; mimeType: string }) => void) => {
       setCaptureIssue(null);
       setCapturing(true);
       /**
@@ -448,7 +479,7 @@ export default function App() {
         settled = true;
         clearTimeout(giveUp);
         setCapturing(false);
-        if (outcome.ok) keep(outcome.ref);
+        if (outcome.ok) keep({ ref: outcome.ref, sha256: outcome.sha256, mimeType: outcome.mimeType });
         // Cancelled is the rider's own decision — say nothing about it.
         else if (outcome.reason !== 'cancelled') setCaptureIssue(outcome);
       }, () => {
@@ -618,6 +649,11 @@ export default function App() {
       // ⚠ NO PHOTO, NO SEAL (A7) — the spine refuses `no_evidence_refs`, and
       // sending a fabricated ref to dodge that guard is what shipped before.
       if (sealPhotoRefs.length === 0) return;
+      // RIDER-DELIVERY-SCREEN — the seal id the rider typed is ALSO the one
+      // the delivery-evidence bundle must present at the door. Kept here, on
+      // the phone, for that later act; it is only ever USED once the ledger
+      // said custody began.
+      setSealSaisi(sealId);
       const attempt = attemptFor(`seal|${liveAssignment.orderId}|${sealId}|${sealPhotoRefs.join(',')}`);
       runAct(setSealPhase, () =>
         custodyActs.beginCustody(
@@ -634,6 +670,60 @@ export default function App() {
       );
     },
     [custodyActs, riderCode, liveAssignment, runAct, attemptFor, sealPhotoRefs],
+  );
+
+  /** RIDER-DELIVERY-SCREEN — the BEGIN answer names the chain this phone now
+   *  holds (task + package, identifiers only); keep it for the delivery act.
+   *  An answer without it (an old Worker, a replayed pre-upgrade command)
+   *  keeps null, and the delivery act refuses to compose rather than guess. */
+  useEffect(() => {
+    if (sealPhase.kind !== 'answered') return;
+    const chain = deliveryChainOf(sealPhase.answer);
+    if (chain !== null) setLivraisonIds(chain);
+  }, [sealPhase]);
+
+  const sendDeliveryEvidence = useCallback(() => {
+    if (riderCode === null || liveAssignment === null) return;
+    if (livraisonIds === null || sealSaisi === null) return;
+    // ⚠ NO PHOTO, NO EVIDENCE — and no HASH, no evidence either: the canon
+    // artifact carries the content hash, and a fabricated hex would be the
+    // exact fiction A7 banned. A device with no SHA-256 road is told so.
+    if (dropArt === null || dropArt.sha256 === null) return;
+    // Captured OUTSIDE the closure so the null-guard's narrowing holds.
+    const artifact = { ref: dropArt.ref, sha256: dropArt.sha256, mimeType: dropArt.mimeType };
+    const attempt = attemptFor(`delivery-evidence|${liveAssignment.orderId}|${artifact.ref}`);
+    const held = capturedAtFor.current.get(attempt.id) ?? new Date().toISOString();
+    capturedAtFor.current.set(attempt.id, held);
+    runAct(setEvidencePhase, () =>
+      custodyActs.submitDeliveryEvidence(
+        {
+          commandId: attempt.id,
+          orderId: liveAssignment.orderId,
+          custodySealId: sealSaisi,
+          taskId: livraisonIds.taskId,
+          packageId: livraisonIds.packageId,
+          artifacts: [artifact],
+          capturedAt: held,
+        },
+        riderCode,
+      ),
+    );
+  }, [custodyActs, riderCode, liveAssignment, livraisonIds, sealSaisi, dropArt, runAct, attemptFor]);
+
+  const sendDrop = useCallback(
+    (dropCode: string) => {
+      if (riderCode === null || liveAssignment === null) return;
+      // The buyer's code is a custody secret: same no-offline-queue law as
+      // the pickup code — the port refuses offline, nothing rests here.
+      const attempt = attemptFor(`drop|${liveAssignment.orderId}|${dropCode}`);
+      runAct(setDropPhase, () =>
+        custodyActs.confirmDrop(
+          { commandId: attempt.id, orderId: liveAssignment.orderId, dropCode },
+          riderCode,
+        ),
+      );
+    },
+    [custodyActs, riderCode, liveAssignment, runAct, attemptFor],
   );
 
   const signIn = useCallback(
@@ -1134,13 +1224,106 @@ export default function App() {
                     * keeping it, which is the correct and safe end.
                     */}
                   {packageIsHeld(sealPhase, remembered) ? (
-                    <FasoCard>
-                      <ProofLine label={t('acts.custody_taken')} />
-                      {/* « What-happens-next always stated » — this was the
-                          slice's terminal screen and it was a single line with
-                          no next step at all. */}
-                      <FasoBody>{t('acts.custody_next')}</FasoBody>
-                    </FasoCard>
+                    /**
+                     * ═══ RIDER-DELIVERY-SCREEN (founder order 2026-08-08) ═══
+                     *
+                     * The road §63 fixes, on the proven port: the handoff
+                     * PHOTO (evidence — it SUPPORTS, never releases) → the
+                     * BUYER'S CODE, entered LAST, on this device → done, by
+                     * the LEDGER's word (`custody_with_customer`), never by a
+                     * tap. Validation is the FOUNDER'S act on his own door —
+                     * a carrier never validates their own delivery, so a
+                     * too-early code is answered with the honest waiting
+                     * sentence, not an error wall.
+                     */
+                    dropDone(dropPhase) ? (
+                      <FasoCard>
+                        <FasoCelebration label={t('delivery.done')} sublabel={t('delivery.done_next')} onDone={() => void 0} />
+                      </FasoCard>
+                    ) : (
+                      <>
+                        <FasoCard>
+                          <ProofLine label={t('acts.custody_taken')} />
+                        </FasoCard>
+                        {!evidenceIsHeld(evidencePhase) ? (
+                          <>
+                            <FasoPosterTitle>{t('delivery.title')}</FasoPosterTitle>
+                            <FasoBody>{t('delivery.body')}</FasoBody>
+                            {livraisonIds === null || sealSaisi === null ? (
+                              /* The ids the bundle must name are gone (an app
+                                 killed mid-course, or a Worker that predates
+                                 the chain answer). Honest, and never guessed. */
+                              <FasoCard>
+                                <FasoBody>{t('delivery.ids_missing')}</FasoBody>
+                              </FasoCard>
+                            ) : (
+                              <>
+                                <FasoCard>
+                                  <FasoBody>{t('delivery.photo_hint')}</FasoBody>
+                                  {dropArt !== null ? <FasoBody>{t('photo.taken')}</FasoBody> : null}
+                                  {(() => {
+                                    const key = captureIssueKey(captureIssue);
+                                    return key === undefined ? null : <FasoBody>{t(key)}</FasoBody>;
+                                  })()}
+                                  <FasoSecondaryButton
+                                    label={t(dropArt !== null ? 'photo.retake' : 'photo.take')}
+                                    onPress={() => takePhoto(setDropArt)}
+                                  />
+                                  {/* A device with no SHA-256 road cannot sign
+                                      the photo — said plainly, never a dead
+                                      button over an act that cannot go. */}
+                                  {dropArt !== null && dropArt.sha256 === null ? (
+                                    <FasoBody>{t('delivery.no_hash')}</FasoBody>
+                                  ) : null}
+                                </FasoCard>
+                                <FasoPrimaryButton
+                                  label={t(evidencePhase.kind === 'working' ? 'acts.sending' : 'delivery.evidence_send')}
+                                  disabled={
+                                    dropArt === null || dropArt.sha256 === null || capturing ||
+                                    evidencePhase.kind === 'working'
+                                  }
+                                  onPress={sendDeliveryEvidence}
+                                />
+                                {evidencePhase.kind === 'answered' ? (
+                                  (() => {
+                                    const o = evidenceOutcome(evidencePhase.answer);
+                                    return (
+                                      <FasoStatusChip
+                                        tone={o.tone === 'ok' ? 'ok' : o.tone === 'waiting' ? 'info' : 'bad'}
+                                        label={t(o.title)}
+                                      />
+                                    );
+                                  })()
+                                ) : null}
+                              </>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <FasoPosterTitle>{t('delivery.code_title')}</FasoPosterTitle>
+                            <FasoActCode
+                              strings={{
+                                title: t('delivery.code_overline'),
+                                hint: t('delivery.code_hint'),
+                                placeholder: t('delivery.code_placeholder'),
+                                action: t('delivery.code_send'),
+                                working: t('acts.sending'),
+                              }}
+                              working={dropPhase.kind === 'working'}
+                              outcome={
+                                dropPhase.kind === 'answered'
+                                  ? (() => {
+                                      const o = dropOutcome(dropPhase.answer);
+                                      return { title: t(o.title), hint: o.hint === undefined ? undefined : t(o.hint), tone: o.tone };
+                                    })()
+                                  : undefined
+                              }
+                              onSubmit={sendDrop}
+                            />
+                          </>
+                        )}
+                      </>
+                    )
                   ) : sealScreenIsDue(verifyPhase, remembered) ? (
                     <>
                     {/* The same omission on the seal arm — « La garde commence
@@ -1170,7 +1353,7 @@ export default function App() {
                           const key = captureIssueKey(captureIssue);
                           return key === undefined ? undefined : t(key);
                         })(),
-                        onPress: () => takePhoto((ref) => setSealPhotoRefs([ref])),
+                        onPress: () => takePhoto((art) => setSealPhotoRefs([art.ref])),
                       }}
                       outcome={
                         sealPhase.kind === 'answered'
@@ -1242,7 +1425,7 @@ export default function App() {
                             const key = captureIssueKey(captureIssue);
                             return key === undefined ? undefined : t(key);
                           })(),
-                          onPress: () => takePhoto(setVerifyBundleId),
+                          onPress: () => takePhoto((art) => setVerifyBundleId(art.ref)),
                         }}
                         outcome={
                           verifyPhase.kind === 'answered'

@@ -5,7 +5,7 @@ import { Miniflare } from 'miniflare';
 import { afterAll, describe, expect, it } from 'vitest';
 import { custodyWithCustomer, httpCustodyActs } from '../../../apps/rider-app/src/net/custody-acts';
 import { httpEvidenceCapture, type PhotoSource } from '../../../apps/rider-app/src/net/evidence-capture';
-import { custodyBegan, verificationAccepted } from '../../../apps/rider-app/src/net/custody-acts';
+import { custodyBegan, deliveryChainOf, evidenceHeld, verificationAccepted } from '../../../apps/rider-app/src/net/custody-acts';
 import { resizeForEvidence } from '../../../apps/rider-app/src/net/photo-bounds';
 import { POLICY_CHECK_IDS } from '../../../apps/rider-app/src/custody-flow';
 import { PICKUP_VERIFICATION_POLICY_V1 } from '../src/pickup-verification-policy';
@@ -363,10 +363,19 @@ describe('SE-LIVE-5c — the rider’s delivery acts, the real Worker, the ledge
         evidenceBundleId: 'media/tok-liv3', dwellSec: 150, checkResults: ALL_PASS },
       RIDER_CODE,
     ))).toBe(true);
-    expect(custodyBegan(await acts.beginCustody(
+    const began = await acts.beginCustody(
       { commandId: 'cmd-liv3-seal', orderId: ORDER3, custodySealId: SEAL, sealPhotoRefs: ['media/tok-liv3-seal'] },
       RIDER_CODE,
-    ))).toBe(true);
+    );
+    expect(custodyBegan(began)).toBe(true);
+    /**
+     * RIDER-DELIVERY-SCREEN — the BEGIN answer names the chain the phone now
+     * holds. This is the ONLY rider-reachable place the task and package ids
+     * exist, and the evidence bundle below is composed FROM IT — the exact
+     * road the app's screen drives, not a literal the phone could never know.
+     */
+    const chain = deliveryChainOf(began);
+    expect(chain).toEqual({ taskId: 'task-liv3', packageId: `${PKG}-liv` });
 
     // ── the rider door does NOT open the decision — 404, indistinguishable
     //    from a route that never existed (the allowlist's whole point) ──────
@@ -380,12 +389,13 @@ describe('SE-LIVE-5c — the rider’s delivery acts, the real Worker, the ledge
     // ── the handoff evidence, through the app's own port ───────────────────
     const evidence = await acts.submitDeliveryEvidence(
       { commandId: 'cmd-liv3-evidence', orderId: ORDER3, custodySealId: SEAL,
-        taskId: 'task-liv3', packageId: `${PKG}-liv`,
+        taskId: chain!.taskId, packageId: chain!.packageId,
         artifacts: [{ ref: 'media/tok-liv3-door', sha256: 'b'.repeat(64), mimeType: 'image/jpeg' }],
         capturedAt: '2026-08-08T18:00:00.000Z' },
       RIDER_CODE,
     );
     expect(evidence.kind, JSON.stringify(evidence)).toBe('recorded');
+    expect(evidenceHeld(evidence), 'the Worker’s own word: evidence_recorded').toBe(true);
 
     // ── the founder's decision, via HIS door ───────────────────────────────
     expect(await ops(m, '/ops/delivery/decide', { orderId: ORDER3, command_id: 'cmd-liv3-decide' })).toBe(200);

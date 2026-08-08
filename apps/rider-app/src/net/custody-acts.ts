@@ -315,3 +315,30 @@ export function verificationAccepted(answer: CustodyAnswer): boolean {
 export function custodyBegan(answer: CustodyAnswer): boolean {
   return answer.kind === 'recorded' && answer.body['status'] === 'custody_with_courier';
 }
+
+/**
+ * RIDER-DELIVERY-SCREEN — the chain identifiers the BEGIN answer names (the
+ * moment the phone starts holding the package, it learns which task and
+ * package it holds; no other rider-reachable answer carries them). Parsed
+ * DEFENSIVELY: an old Worker, or a replayed pre-upgrade command serving its
+ * stored body, answers without them — that is an honest null, and the
+ * delivery act must then refuse to compose rather than invent an id.
+ */
+export function deliveryChainOf(answer: CustodyAnswer): { taskId: string; packageId: string } | null {
+  if (answer.kind !== 'recorded') return null;
+  const chain = answer.body['chain'];
+  if (chain === null || typeof chain !== 'object') return null;
+  const c = chain as Record<string, unknown>;
+  const taskId = c['task_id'];
+  const packageId = c['package_id'];
+  if (typeof taskId !== 'string' || taskId === '' || typeof packageId !== 'string' || packageId === '') return null;
+  return { taskId, packageId };
+}
+
+/** Is the delivery evidence ON the ledger? The Worker's own word
+ *  (`status: 'evidence_recorded'`, custody-do `/delivery/evidence`) — and
+ *  « already submitted » is the same held truth: one bundle, held once. */
+export function evidenceHeld(answer: CustodyAnswer): boolean {
+  if (answer.kind === 'recorded' && answer.body['status'] === 'evidence_recorded') return true;
+  return answer.kind === 'refused' && answer.reason === 'evidence_already_submitted';
+}

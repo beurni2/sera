@@ -385,21 +385,26 @@ describe('⚠ the ports are CALLED, not merely present (blockers A1 + A2, round 
     // and the send stays disabled for ever. The keep() call is the whole
     // bridge between the port and the payload.
     const takePhotoBody = app.slice(app.indexOf('const takePhoto = useCallback'), app.indexOf('const attempts = useRef'));
-    expect(takePhotoBody).toMatch(/if \(outcome\.ok\) keep\(outcome\.ref\)/);
+    // RIDER-DELIVERY-SCREEN evolved the keep to the FULL artifact — ref plus
+    // the measured hash and the bucket's own mimeType — same bridge, richer.
+    expect(takePhotoBody).toMatch(/if \(outcome\.ok\) keep\(\{ ref: outcome\.ref, sha256: outcome\.sha256, mimeType: outcome\.mimeType \}\)/);
     expect(takePhotoBody, 'a short-circuited keep').not.toMatch(/if \(false|&& outcome\.ok\) keep/);
     // …and the two keeps are the two act states, not a shared scratch value.
     expect(app).toMatch(/evidenceBundleId: verifyBundleId/);
     expect(app).toMatch(/sealPhotoRefs/);
   });
 
-  it('the photo is actually taken — takePhoto has a caller on both acts', () => {
+  it('the photo is actually taken — takePhoto has a caller on all THREE acts', () => {
     // Declaration alone is what shipped. Demand a real invocation.
     // `takePhoto(` matches call sites only — the declaration reads
-    // `const takePhoto = useCallback(`. Exactly two acts, exactly two calls.
-    expect(app.match(/takePhoto\(/g)).toHaveLength(2);
-    expect(app, 'the verification photo').toMatch(/onPress: \(\) => takePhoto\(setVerifyBundleId\)/);
-    expect(app, 'the seal photo').toMatch(/onPress: \(\) => takePhoto\(\(ref\) => setSealPhotoRefs\(\[ref\]\)\)/);
-    // …and it is mounted on the screens, not just defined near them.
+    // `const takePhoto = useCallback(`. Three acts now: verification, seal,
+    // and RIDER-DELIVERY-SCREEN's handoff proof.
+    expect(app.match(/takePhoto\(/g)).toHaveLength(3);
+    expect(app, 'the verification photo').toMatch(/onPress: \(\) => takePhoto\(\(art\) => setVerifyBundleId\(art\.ref\)\)/);
+    expect(app, 'the seal photo').toMatch(/onPress: \(\) => takePhoto\(\(art\) => setSealPhotoRefs\(\[art\.ref\]\)\)/);
+    expect(app, 'the handoff photo').toMatch(/onPress=\{\(\) => takePhoto\(setDropArt\)\}/);
+    // …and the two FasoActCode photo folds are still mounted (the delivery
+    // photo rides its own card, not the act-code component).
     expect(app.match(/photo=\{\{/g)).toHaveLength(2);
   });
 

@@ -1,4 +1,4 @@
-import { custodyBegan, verificationAccepted, type CustodyAnswer } from './custody-acts';
+import { custodyBegan, custodyWithCustomer, evidenceHeld, verificationAccepted, type CustodyAnswer } from './custody-acts';
 import type { ActStage } from './act-memory';
 
 /**
@@ -63,6 +63,47 @@ export function sealOutcome(answer: CustodyAnswer): ActOutcomeKeys {
       : { title: 'acts.refused', tone: 'refused' };
   }
   return sharedOutcome(answer);
+}
+
+/** RIDER-DELIVERY-SCREEN — what to show after the HANDOFF-PROOF submit. */
+export function evidenceOutcome(answer: CustodyAnswer): ActOutcomeKeys {
+  // « already submitted » is the same held truth as a fresh acceptance — one
+  // bundle, held once; a rider who resends after a doubt is told it is held.
+  if (evidenceHeld(answer)) return { title: 'delivery.evidence_held', tone: 'ok' };
+  if (answer.kind === 'recorded' || answer.kind === 'refused') {
+    return { title: 'acts.refused', tone: 'refused' };
+  }
+  return sharedOutcome(answer);
+}
+
+/** RIDER-DELIVERY-SCREEN — what to show after the buyer's code was presented. */
+export function dropOutcome(answer: CustodyAnswer): ActOutcomeKeys {
+  if (custodyWithCustomer(answer)) return { title: 'delivery.done', tone: 'ok' };
+  if (answer.kind === 'refused') {
+    // The two refusals a rider can ACT on get their own true sentences; a
+    // wrong code is NOT burned (the spine refuses without consuming), so
+    // « redemandez-le » is honest advice, not a consolation.
+    if (answer.reason === 'drop_code_refused') {
+      return { title: 'delivery.wrong_code', hint: 'delivery.wrong_code_hint', tone: 'refused' };
+    }
+    if (answer.reason === 'not_validated' || answer.reason === 'validation_before_evidence') {
+      return { title: 'delivery.not_validated', hint: 'delivery.not_validated_hint', tone: 'waiting' };
+    }
+    return { title: 'acts.refused', tone: 'refused' };
+  }
+  if (answer.kind === 'recorded') return { title: 'acts.refused', tone: 'refused' };
+  return sharedOutcome(answer);
+}
+
+/** Delivered, from the phase — the delivery screen's one terminal question. */
+export function dropDone(phase: ActPhase): boolean {
+  return phase.kind === 'answered' && custodyWithCustomer(phase.answer);
+}
+
+/** Evidence held, from the phase — gates the code entry the way `maySeal`
+ *  gates the seal: on the LEDGER's word, never on « the request worked ». */
+export function evidenceIsHeld(phase: ActPhase): boolean {
+  return phase.kind === 'answered' && evidenceHeld(phase.answer);
 }
 
 /** The three non-ledger answers read the same for both acts. */

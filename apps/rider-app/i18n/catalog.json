@@ -1306,5 +1306,113 @@
     "fr": "Cette version ne peut pas enregistrer de photo. Prévenez Séra.",
     "register": "neutral",
     "screenClass": "status"
+  },
+  {
+    "key": "delivery.title",
+    "fr": "La remise",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "delivery.body",
+    "fr": "Vous êtes chez la cliente. D'abord la photo de remise, ensuite son code.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "delivery.photo_hint",
+    "fr": "Prenez le colis en photo, chez la cliente. C'est la preuve de la remise.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "delivery.no_hash",
+    "fr": "Ce téléphone ne peut pas signer la photo. Prévenez Séra.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "delivery.evidence_send",
+    "fr": "Envoyer la preuve",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "delivery.evidence_held",
+    "fr": "Preuve reçue par Séra.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "delivery.ids_missing",
+    "fr": "Cette course a été reprise en route et il manque des repères. Appelez Séra pour finir la remise.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "delivery.code_title",
+    "fr": "Le code de la cliente",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "delivery.code_overline",
+    "fr": "Dernière étape",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "delivery.code_hint",
+    "fr": "Demandez son code à la cliente. C'est elle qui l'a reçu.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "delivery.code_placeholder",
+    "fr": "Le code reçu par la cliente",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "delivery.code_send",
+    "fr": "Confirmer la remise",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "delivery.done",
+    "fr": "Livré. Merci.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "delivery.done_next",
+    "fr": "La commande est remise. Séra fait le reste.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "delivery.wrong_code",
+    "fr": "Ce n'est pas le bon code.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "delivery.wrong_code_hint",
+    "fr": "Redemandez le code à la cliente. Rien n'est perdu.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "delivery.not_validated",
+    "fr": "Séra n'a pas encore validé la livraison.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "delivery.not_validated_hint",
+    "fr": "La preuve est envoyée. Patientez un instant, puis réessayez le code.",
+    "register": "neutral",
+    "screenClass": "instruction"
   }
 ]
