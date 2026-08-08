@@ -1489,3 +1489,20 @@ The deploy step took a **silent `else`**: no variable, no `--var`, no word. Bout
 Set repo variable `SERA_CONSOLE_ORIGIN` in `beurni2/sera` to `https://boutik-plus-web.pages.dev`, then re-dispatch `logistics-deploy`. That deploys byte-identical Worker source plus the var.
 
 **And browse the production URL, not the deployment one.** The Pages deploy printed `https://6b9bc180.boutik-plus-web.pages.dev` — a per-deployment hostname that changes on every deploy and therefore can never be allowlisted ahead of time. Exact-origin means exact: the stable `https://boutik-plus-web.pages.dev` is the one that works.
+
+---
+
+## 2026-08-08 · SE-LIVE-5 — GROUNDED DESIGN (founder order: « Do RB-4 then SE-LIVE 5 ») · BUILD STARTING
+
+**Spec authority, re-read:** SE-I05 (verify→seal→custody; delivery requires assigned session + `buyerDropCode` + seal + evidence) · SE-I11 (Option-B payment-before-handoff — NOT exercised by the FULL_PREPAY skeleton) · Build-Spec §63 boundary chain (… arrival + inspection → custody→customer, `buyerDropCode` entered LAST → ValidationDecision → settlement **eligible**) · §115 delivery flow · canon events already named: `delivery.evidence_submitted.v1`, `delivery.validated.v1`, `custody.transferred_to_customer.v1` — **no contract change needed, no §7 stop**.
+
+**What exists (read, not remembered):** the spine (`custody-spine.ts`) already carries the WHOLE delivery machine — `submitDeliveryEvidence` (offline = pending, no custody effect) · `decideValidation` (policy from evidence; held → `resolveHoldAsRejected`) · `confirmDropAndEmitEligibility` (code consumed LAST; requires decision=validated + custody-with-courier + no return in flight; Option-B guards; emits the two canon events exactly once; closes courier custody) · door inspection/refusal ladder for Option B. The custody DO exposes NONE of it: routes today are arm/open/verify/begin + reads. The DO has NO outbox — `emit`ted events are only served on `GET /events`.
+
+**The build, three slices:**
+- **5a (this repo):** custody DO grows THREE commands + routes on the existing command-log discipline (priorFor/conflict/commit; digest-at-the-door; two doors with `X-Rider-Authenticated` winning over the body): `POST /delivery/evidence` (rider+ops) → `submitDeliveryEvidence` server_confirmed · `POST /delivery/decide` (**ops only** — a carrier must not validate their own delivery) → `decideValidation` · `POST /delivery/drop` (rider+ops) → `confirmDropAndEmitEligibility`. `RIDER_ROUTES` allowlist grows exactly `/delivery/evidence` + `/delivery/drop` — a deliberate opening, each SE-I05's own words. Plus an OUTBOX on the DO (alarm, at-least-once, mirroring shop's ORDER-PAID-WIRE-1b): on the drop's success, deliver `delivery.validated.v1` to Shop+.
+- **5b (shop-plus):** `/fulfillment/progress` (existing `PROGRESS_WRITE_SECRET` door, canon-parse-on-receipt) grows `DeliveryValidatedEventSchema` → OrderDO `/entry/delivery` fact (first-wins) → spine state `delivered` → **SettlementObligations recorded at that fold, COPIED from the frozen quote** — the E1 happy-journey fixture pins the layout: `supplier:… sellerNet (8 500)` + `reseller:… resellerNet (2 000)`, state `Eligible` — served on `/entry/gains`.
+- **5c (surfaces):** rider-app drop-code screen (rider door) · logistics assignment completion so the board clears and the rider frees · Boutik+ Gains shows « livrée ».
+
+**Custody worker deploy prerequisites (founder, when 5a merges):** `wrangler secret put` on custody-service — `SHOP_PROGRESS_SECRET` (= shop's `PROGRESS_WRITE_SECRET`) — plus the shop Worker base as config. Named here so the deploy note cannot surprise him.
+
+**Sequencing note:** shop deploys `/fulfillment/progress`'s grown acceptance BEFORE the custody outbox ships events at it (deploy-order law, consumer-first this time: the RECEIVER must understand the event before the sender fires).
