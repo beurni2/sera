@@ -408,6 +408,12 @@ export class CustodySpine {
       validation_id: `val-${this.chain.order_id}`,
       result: 'validated',
       settlement_eligibility: true,
+      // SE-LIVE-5 — THE SIGNAL CARRIES THE SUPPLIER (SE-I09 kept intact: an
+      // IDENTITY, never an amount — Séra still computes no proceeds). Shop+'s
+      // OrderOrigin left its supplierRef deliberately empty with the words
+      // « it must carry the supplier with it rather than find a guess here »;
+      // this chain is the one place that provably knows who held the goods.
+      supplier_ref: this.supplierId,
     }, at);
     this.eligibilityEmittedForOrder.add(this.chain.order_id);
     // Verifier blocking finding (WO-2.2): delivery CLOSES courier custody —

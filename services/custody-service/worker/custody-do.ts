@@ -115,11 +115,34 @@ interface ClaimHeldMarker {
   at: string;
 }
 
-/** The one binding this object reaches outward for: the per-package claim
- *  namespace. Nothing else — a custody file talks to no other service. */
+/**
+ * What this object reaches outward for: the per-package claim namespace —
+ * and, since SE-LIVE-5a, ONE outbound wire: the settlement-eligibility
+ * signal to the Shop+ Worker's `/fulfillment/progress` door (at-least-once,
+ * alarm-driven). The doctrine « a custody file talks to no other service »
+ * is amended by exactly that wire and nothing else: no reads, no queries,
+ * one event, one direction.
+ */
 export interface CustodyObjectEnv {
   readonly PACKAGE_CLAIM: DurableObjectNamespace;
+  /** Shop+ Worker base URL — config (wrangler var), not a credential. */
+  readonly SHOP_PROGRESS_BASE?: string;
+  /** = Shop+'s PROGRESS_WRITE_SECRET; `wrangler secret put`, the founder's alone. */
+  readonly SHOP_PROGRESS_SECRET?: string;
 }
+
+/**
+ * SE-LIVE-5a — the eligibility outbox: ONE event per custody file (the spine
+ * emits `delivery.validated.v1` exactly once per order), delivered
+ * at-least-once to Shop+. `unsendable_no_config` is an honest resting state,
+ * not a terminal: a replayed drop command re-arms it once the config exists.
+ */
+interface EligibilityOutbox {
+  status: 'pending' | 'delivered' | 'unsendable_no_config';
+  attempts: number;
+  event: unknown;
+}
+const ELIGIBILITY_OUTBOX_KEY = 'custody:eligibility-outbox:v1';
 
 interface CustodyHead {
   /**
@@ -222,6 +245,32 @@ export type CustodyCommand =
        * that cannot say which of the two it was cannot settle a dispute about
        * who was actually standing there.
        */
+      attribution: 'founder_attested' | 'rider_authenticated';
+      at: string;
+    }
+  | {
+      kind: 'delivery_evidence';
+      command_id: string;
+      /** The canon EvidenceBundle, its custodySealId ALREADY DIGESTED at the
+       *  door — the registry compares digests, and the seal plaintext dies
+       *  with the request that carried it. */
+      evidence: unknown;
+      attribution: 'founder_attested' | 'rider_authenticated';
+      at: string;
+    }
+  | {
+      /** OPS ONLY — a carrier must never validate their own delivery. The
+       *  decision is POLICY FROM EVIDENCE (GPS-only can never validate),
+       *  not an operator's free choice; this command only asks for it. */
+      kind: 'decide_validation';
+      command_id: string;
+      at: string;
+    }
+  | {
+      kind: 'confirm_drop';
+      command_id: string;
+      /** HASHED AT THE DOOR — the buyer's code plaintext dies with the request. */
+      dropCodeDigest: string;
       attribution: 'founder_attested' | 'rider_authenticated';
       at: string;
     };
@@ -630,6 +679,17 @@ export class CustodyDO {
           at: cmd.at,
         });
       }
+      // ── SE-LIVE-5a — the delivery acts. Every rule lives in the spine
+      // (custody-with-courier, one evidence, chain/seal binding by equality,
+      // GPS-never-sole-proof, validated-before-drop, code consumed LAST,
+      // Option-B guards, exactly-once eligibility); these arms hand it the
+      // command and nothing else.
+      case 'delivery_evidence':
+        return spine.submitDeliveryEvidence(cmd.evidence, 'server_confirmed', cmd.at);
+      case 'decide_validation':
+        return spine.decideValidation(cmd.at);
+      case 'confirm_drop':
+        return spine.confirmDropAndEmitEligibility(cmd.dropCodeDigest, cmd.at);
     }
   }
 
@@ -645,6 +705,55 @@ export class CustodyDO {
       return Response.json({ ok: false, reason: 'internal_error' }, { status: 500 });
     }
     return response;
+  }
+
+  /**
+   * SE-LIVE-5a — the eligibility wire fires from here, at-least-once. A 4xx
+   * from Shop+ is a producer bug and stays a REPEATING refusal in both
+   * Workers' logs (the taxonomy Shop+'s own door sets); an outage retries the
+   * same way. Backoff is bounded (30 s → 1 h), never gives up: the signal is
+   * settlement truth and silence would be a lie about money.
+   */
+  async alarm(): Promise<void> {
+    const outbox = await this.state.storage.get<EligibilityOutbox>(ELIGIBILITY_OUTBOX_KEY);
+    if (outbox === undefined || outbox.status !== 'pending') return;
+    const base = (this.env.SHOP_PROGRESS_BASE ?? '').replace(/\/+$/, '');
+    const secret = this.env.SHOP_PROGRESS_SECRET ?? '';
+    if (base === '' || secret === '') {
+      // HONEST resting state — visible in storage, revived by a replayed
+      // drop command once the founder sets the config. Never a silent drop.
+      await this.state.storage.put(ELIGIBILITY_OUTBOX_KEY, {
+        ...outbox,
+        status: 'unsendable_no_config',
+      } satisfies EligibilityOutbox);
+      return;
+    }
+    let delivered = false;
+    try {
+      const res = await fetch(`${base}/fulfillment/progress`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${secret}` },
+        body: JSON.stringify(outbox.event),
+      });
+      delivered = res.ok;
+    } catch {
+      delivered = false;
+    }
+    const attempts = outbox.attempts + 1;
+    if (delivered) {
+      await this.state.storage.put(ELIGIBILITY_OUTBOX_KEY, {
+        ...outbox,
+        status: 'delivered',
+        attempts,
+      } satisfies EligibilityOutbox);
+      return;
+    }
+    await this.state.storage.put(ELIGIBILITY_OUTBOX_KEY, {
+      ...outbox,
+      attempts,
+    } satisfies EligibilityOutbox);
+    const backoffMs = Math.min(30_000 * 2 ** Math.min(attempts, 7), 3_600_000);
+    await this.state.storage.setAlarm(Date.now() + backoffMs).catch(() => undefined);
   }
 
   /** Persist the log ATOMICALLY WITH nothing else — the log IS the state.
@@ -1366,6 +1475,168 @@ export class CustodyDO {
         ? { httpStatus: 200, body: { ok: true, status: 'custody_with_courier', riderId: cmd.riderId } }
         : { httpStatus: 409, body: { ok: false, reason: outcome.reason ?? 'refused' } };
       await this.commit(cmd, recorded);
+      return Response.json(recorded.body, { status: recorded.httpStatus });
+    }
+
+    /**
+     * ═══ SE-LIVE-5a — THE DELIVERY ACTS (SE-I05 · Build-Spec §63/§115) ═══
+     *
+     * Three doors on the same command-log discipline as every act above
+     * (priorFor/conflict/commit; digest-at-the-door; the rider header wins
+     * over the body). The RULES all live in the spine — custody-with-courier,
+     * one evidence bundle bound by equality to the chain and the registered
+     * seal, GPS-never-sole-proof, validated-before-drop, the buyer's code
+     * consumed LAST, Option-B payment-before-handoff, eligibility exactly
+     * once. These routes carry commands and answers, nothing else.
+     *
+     * `/delivery/decide` is OPS ONLY — it is deliberately absent from the
+     * rider allowlist: a carrier must never validate their own delivery
+     * (evidence supports, never releases; §63).
+     */
+    if (request.method === 'POST' && pathname === '/delivery/evidence') {
+      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      const bundle = body?.['bundle'] as Record<string, unknown> | undefined;
+      if (
+        body === null ||
+        !isBoundedStr(body['command_id'], MAX_ID) ||
+        bundle === null || typeof bundle !== 'object' ||
+        !isBoundedStr(bundle['taskId'], MAX_ID) ||
+        !isBoundedStr(bundle['packageId'], MAX_ID) ||
+        !isBoundedStr(bundle['custodySealId'], MAX_SECRET) ||
+        !Array.isArray(bundle['artifacts']) ||
+        (bundle['artifacts'] as unknown[]).length > MAX_CHECKS ||
+        (body['at'] !== undefined && !isIso(body['at']))
+      ) {
+        return malformed();
+      }
+      const doorRider = request.headers.get('X-Rider-Authenticated');
+      const cmd: CustodyCommand = {
+        kind: 'delivery_evidence',
+        command_id: (body['command_id'] as string).trim(),
+        // The SEAL ID IS DIGESTED HERE and the rest of the bundle passes
+        // through untouched — the spine's canon parse judges its shape, and
+        // the registered seal it compares against is itself a digest.
+        evidence: { ...bundle, custodySealId: digestSecret(bundle['custodySealId'] as string) },
+        attribution: doorRider !== null && doorRider !== '' ? 'rider_authenticated' : 'founder_attested',
+        at: (body['at'] as string | undefined) ?? new Date().toISOString(),
+      };
+      const prior = this.priorFor(cmd);
+      if (prior.kind === 'duplicate') return this.replayOutcome(prior.outcome, cmd);
+      if (prior.kind === 'conflict') {
+        return Response.json({ ok: false, reason: 'command_id_reused_with_other_content' }, { status: 409 });
+      }
+      if (this.tooLargeToCommit(cmd)) {
+        return Response.json({ ok: false, reason: 'command_too_large' }, { status: 413 });
+      }
+      const applied = this.apply(this.spine!, cmd) as { ok: boolean; reason?: string };
+      const recorded: RecordedOutcome = applied.ok
+        ? { httpStatus: 200, body: { ok: true, status: 'evidence_recorded' } }
+        : { httpStatus: 409, body: { ok: false, reason: applied.reason ?? 'refused' } };
+      await this.commit(cmd, recorded);
+      return Response.json(recorded.body, { status: recorded.httpStatus });
+    }
+
+    if (request.method === 'POST' && pathname === '/delivery/decide') {
+      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      if (
+        body === null ||
+        !isBoundedStr(body['command_id'], MAX_ID) ||
+        (body['at'] !== undefined && !isIso(body['at']))
+      ) {
+        return malformed();
+      }
+      const cmd: CustodyCommand = {
+        kind: 'decide_validation',
+        command_id: (body['command_id'] as string).trim(),
+        at: (body['at'] as string | undefined) ?? new Date().toISOString(),
+      };
+      const prior = this.priorFor(cmd);
+      if (prior.kind === 'duplicate') return this.replayOutcome(prior.outcome, cmd);
+      if (prior.kind === 'conflict') {
+        return Response.json({ ok: false, reason: 'command_id_reused_with_other_content' }, { status: 409 });
+      }
+      if (this.tooLargeToCommit(cmd)) {
+        return Response.json({ ok: false, reason: 'command_too_large' }, { status: 413 });
+      }
+      const applied = this.apply(this.spine!, cmd) as
+        | { ok: true; decision: { result: string; reasons: string[] } }
+        | { ok: false; reason?: string };
+      const recorded: RecordedOutcome = applied.ok
+        ? {
+            httpStatus: 200,
+            body: { ok: true, result: applied.decision.result, reasons: applied.decision.reasons },
+          }
+        : { httpStatus: 409, body: { ok: false, reason: applied.reason ?? 'refused' } };
+      await this.commit(cmd, recorded);
+      return Response.json(recorded.body, { status: recorded.httpStatus });
+    }
+
+    if (request.method === 'POST' && pathname === '/delivery/drop') {
+      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      if (
+        body === null ||
+        !isBoundedStr(body['command_id'], MAX_ID) ||
+        !isBoundedStr(body['dropCode'], MAX_SECRET) ||
+        (body['at'] !== undefined && !isIso(body['at']))
+      ) {
+        return malformed();
+      }
+      const doorRider = request.headers.get('X-Rider-Authenticated');
+      const cmd: CustodyCommand = {
+        kind: 'confirm_drop',
+        command_id: (body['command_id'] as string).trim(),
+        dropCodeDigest: digestSecret(body['dropCode'] as string),
+        attribution: doorRider !== null && doorRider !== '' ? 'rider_authenticated' : 'founder_attested',
+        at: (body['at'] as string | undefined) ?? new Date().toISOString(),
+      };
+      const prior = this.priorFor(cmd);
+      if (prior.kind === 'duplicate') {
+        // The at-least-once recovery hook (the shop outbox's own precedent):
+        // a redelivered drop is the one moment that can re-arm a stranded or
+        // config-starved outbox without inventing a scheduler.
+        const stranded = await this.state.storage.get<EligibilityOutbox>(ELIGIBILITY_OUTBOX_KEY);
+        if (
+          stranded !== undefined &&
+          stranded.status !== 'delivered' &&
+          (await this.state.storage.getAlarm()) === null
+        ) {
+          await this.state.storage.put(ELIGIBILITY_OUTBOX_KEY, { ...stranded, status: 'pending' });
+          await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
+        }
+        return this.replayOutcome(prior.outcome, cmd);
+      }
+      if (prior.kind === 'conflict') {
+        return Response.json({ ok: false, reason: 'command_id_reused_with_other_content' }, { status: 409 });
+      }
+      if (this.tooLargeToCommit(cmd)) {
+        return Response.json({ ok: false, reason: 'command_too_large' }, { status: 413 });
+      }
+      const applied = this.apply(this.spine!, cmd) as
+        | { ok: true; duplicate: boolean }
+        | { ok: false; reason?: string };
+      const recorded: RecordedOutcome = !applied.ok
+        ? { httpStatus: 409, body: { ok: false, reason: applied.reason ?? 'refused' } }
+        : applied.duplicate
+          ? { httpStatus: 200, body: { ok: true, status: 'deja_livree' } }
+          : { httpStatus: 200, body: { ok: true, status: 'custody_with_customer' } };
+      await this.commit(cmd, recorded);
+      if (applied.ok && !applied.duplicate) {
+        // The spine emitted the ONE eligibility signal for this order — put
+        // it on the wire, at-least-once. The put is AFTER commit: a crash
+        // between the two loses only the outbox row, and the duplicate-drop
+        // recovery hook above re-arms it from the redelivery.
+        const event = this.spine!
+          .allEvents()
+          .find((e) => e.name === 'delivery.validated.v1');
+        if (event !== undefined) {
+          await this.state.storage.put(ELIGIBILITY_OUTBOX_KEY, {
+            status: 'pending',
+            attempts: 0,
+            event,
+          } satisfies EligibilityOutbox);
+          await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
+        }
+      }
       return Response.json(recorded.body, { status: recorded.httpStatus });
     }
 

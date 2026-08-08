@@ -107,7 +107,21 @@ const BEARER_PREFIX = 'Bearer ';
  * allowlist contains is not a secret (this repo is public and the set is right
  * here) — the credential is, and that is still answered by one identical 401.
  */
-const RIDER_ROUTES: ReadonlySet<string> = new Set(['POST /verification', 'POST /custody/begin']);
+/**
+ * SE-LIVE-5a — the allowlist opens TWO more routes, deliberately, each with
+ * its clause: `/delivery/evidence` (SE-I05: delivery requires « evidence » —
+ * the rider photographs the handoff moment) and `/delivery/drop` (§63: the
+ * buyer enters `buyerDropCode` LAST, on the rider's device). What stays
+ * closed matters more: `/delivery/decide` is NOT here — a carrier must never
+ * validate their own delivery (evidence supports, never releases) — and
+ * `/secrets/arm`, `/order/open` and every read stay founder-only as before.
+ */
+const RIDER_ROUTES: ReadonlySet<string> = new Set([
+  'POST /verification',
+  'POST /custody/begin',
+  'POST /delivery/evidence',
+  'POST /delivery/drop',
+]);
 
 async function timingSafeEqual(a: string, b: string): Promise<boolean> {
   const enc = new TextEncoder();

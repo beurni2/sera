@@ -38,6 +38,10 @@ describe('commerce-core eligibility-consumer mock — certified by the pinned §
     const spine = spineThroughEligibility();
     const signal = spine.allEvents().find((e) => e.name === 'delivery.validated.v1')!;
     const consumer = new CommerceEligibilityConsumerMock();
+    // SE-LIVE-5a — the signal CARRIES THE SUPPLIER (an identity, never an
+    // amount): Shop+'s real consumer names the supplier obligation from this
+    // very field, because its own domain never learns one.
+    expect((signal.payload as Record<string, unknown>)['supplier_ref']).toBe('sup-1');
     expect(consumer.consumeEligibilitySignal(signal)).toEqual({ accepted: true, duplicate: false });
     // At-least-once delivery: the SAME signal redelivered thrice absorbs.
     for (let i = 0; i < 3; i += 1) {

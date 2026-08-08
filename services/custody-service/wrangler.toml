@@ -20,6 +20,13 @@ main = "dist-worker/worker.mjs"
 compatibility_date = "2025-07-05"
 compatibility_flags = ["nodejs_compat"]
 
+# SE-LIVE-5a — the eligibility wire's TARGET. The base is CONFIG (a public
+# workers.dev URL, same class as every EXPO_PUBLIC_* base); the credential
+# beside it (SHOP_PROGRESS_SECRET = Shop+'s PROGRESS_WRITE_SECRET) is set via
+# `wrangler secret put`, piped, the founder's alone — never here.
+[vars]
+SHOP_PROGRESS_BASE = "https://storefront-service.ilboudobernard2.workers.dev"
+
 [[durable_objects.bindings]]
 name = "CUSTODY"
 class_name = "CustodyDO"

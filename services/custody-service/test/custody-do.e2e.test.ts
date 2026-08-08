@@ -1,3 +1,4 @@
+import { createServer, type Server } from 'node:http';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -50,7 +51,7 @@ const ALL_PASS = {
 const persist = mkdtempSync(join(tmpdir(), 'custody-do-'));
 const persistB = mkdtempSync(join(tmpdir(), 'custody-do-b-'));
 
-function boot(dir: string): Miniflare {
+function boot(dir: string, extra: Record<string, string> = {}): Miniflare {
   return new Miniflare({
     modules: true,
     scriptPath: SCRIPT,
@@ -61,7 +62,7 @@ function boot(dir: string): Miniflare {
     compatibilityFlags: ['nodejs_compat'],
     durableObjects: { CUSTODY: 'CustodyDO', PACKAGE_CLAIM: 'PackageClaimDO' },
     durableObjectsPersist: dir,
-    bindings: { SERA_CUSTODY_OPS_SECRET: OPS },
+    bindings: { SERA_CUSTODY_OPS_SECRET: OPS, ...extra },
   });
 }
 
@@ -1027,4 +1028,174 @@ describe('DURABILITY — the whole point of this slice, across a real process de
     expect(b.json['packageId']).toBe('pkg-r');
     expect(a.json['entries']).not.toEqual(b.json['entries']);
   });
+});
+
+/**
+ * ═══ SE-LIVE-5a — THE DELIVERY ACTS, AND THE SIGNAL CROSSES TO SHOP+ ═══
+ *
+ * SE-I05: « Delivery requires assigned session + `buyerDropCode` + same
+ * custody seal + evidence » · §63: « buyer enters `buyerDropCode` LAST »,
+ * « evidence supports, never releases » · SE-I09: the signal carries an
+ * IDENTITY (supplier_ref), never an amount.
+ *
+ * The receiver below is a CONTRACT-CERTIFIED stand-in for Shop+'s
+ * `/fulfillment/progress` door, certified against the REAL door's proven
+ * behavior (shop-plus `sandbox-payment-confirm.e2e.test.ts`, SE-LIVE-5b
+ * describe): Bearer PROGRESS_WRITE_SECRET or a uniform 401; a canonical
+ * `delivery.validated.v1` answers `200 {ok, status:'recorded'}`. Any drift
+ * in the real door must be mirrored here BY HAND, eyes open.
+ */
+describe('SE-LIVE-5a — evidence → decision → drop code LAST → the signal is DELIVERED', () => {
+  const D_ORDER = 'ord-custody-livraison';
+  const D_CHAIN = {
+    orderId: D_ORDER, taskId: 'task-liv', packageId: 'pkg-liv',
+    correlationId: `corr-${D_ORDER}`, supplierId: 'supplier-liv-1',
+  };
+  const PICKUP2 = 'PICKUP-LIV-0001';
+  const SEAL = 'SEAL-LIV-0001';
+  const DROP = 'DROP-LIV-9042';
+  const SHOP_SECRET = 'test-progress-write-secret-sp001';
+  const bundle = {
+    taskId: 'task-liv', packageId: 'pkg-liv', custodySealId: SEAL,
+    artifacts: [{ ref: 'photo-liv-1', sha256: 'a'.repeat(64), mimeType: 'image/jpeg' }],
+    capturedAt: T,
+  };
+  const received: { auth: string | null; body: Json }[] = [];
+  let server: Server | null = null;
+
+  afterAll(() => {
+    server?.close();
+  });
+
+  it('walks the whole road on the REAL Worker; every refusal is BY NAME; the eligibility event reaches the certified door with the supplier on it', async () => {
+    server = createServer((req, res) => {
+      let raw = '';
+      req.on('data', (c: Buffer) => { raw += String(c); });
+      req.on('end', () => {
+        const auth = req.headers.authorization ?? null;
+        if (auth !== `Bearer ${SHOP_SECRET}`) {
+          res.writeHead(401, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ error: 'unauthorized' }));
+          return;
+        }
+        let body: Json = {};
+        try { body = JSON.parse(raw) as Json; } catch { /* keep {} */ }
+        received.push({ auth, body });
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, status: 'recorded' }));
+      });
+    });
+    await new Promise<void>((resolve) => server!.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (address === null || typeof address === 'string') throw new Error('no port');
+    await mf.dispose();
+    mf = boot(persist, {
+      SHOP_PROGRESS_BASE: `http://127.0.0.1:${address.port}`,
+      SHOP_PROGRESS_SECRET: SHOP_SECRET,
+    });
+
+    // ── the custody file, armed and in courier custody ─────────────────────
+    expect((await call('POST', '/ops/order/open', opsAuth, D_CHAIN)).status).toBe(200);
+    for (const [kind, secret, cid] of [
+      ['pickup_verification_code', PICKUP2, 'cmd-liv-arm-p'],
+      ['custody_seal', SEAL, 'cmd-liv-arm-s'],
+      ['buyer_drop_code', DROP, 'cmd-liv-arm-d'],
+    ] as const) {
+      const armed = await call('POST', '/ops/secrets/arm', opsAuth, {
+        orderId: D_ORDER, command_id: cid, kind, secret,
+      });
+      expect(armed.status, kind).toBe(200);
+    }
+    expect((await call('POST', '/ops/verification', opsAuth, {
+      orderId: D_ORDER, command_id: 'cmd-liv-verify', riderId: 'rider-liv',
+      presentedPickupCode: PICKUP2, checkResults: ALL_PASS, dwellSec: 150,
+      evidenceBundleId: 'ev-liv', at: T,
+    })).status).toBe(200);
+    expect((await call('POST', '/ops/custody/begin', opsAuth, {
+      orderId: D_ORDER, command_id: 'cmd-liv-begin', riderId: 'rider-liv',
+      custodySealId: SEAL, sealPhotoRefs: ['seal-photo-liv-1'], at: T,
+    })).status).toBe(200);
+
+    // ── ORDER OF OPERATIONS, refused by name at every early door ───────────
+    const earlyDrop = await call('POST', '/ops/delivery/drop', opsAuth, {
+      orderId: D_ORDER, command_id: 'cmd-liv-drop-early', dropCode: DROP, at: T,
+    });
+    expect(earlyDrop.status).toBe(409);
+    expect(earlyDrop.json).toMatchObject({ reason: 'not_validated' });
+    const earlyDecide = await call('POST', '/ops/delivery/decide', opsAuth, {
+      orderId: D_ORDER, command_id: 'cmd-liv-decide-early', at: T,
+    });
+    expect(earlyDecide.status).toBe(409);
+    expect(earlyDecide.json).toMatchObject({ reason: 'validation_before_evidence' });
+
+    // ── evidence (bound to chain + seal), once ─────────────────────────────
+    const ev = await call('POST', '/ops/delivery/evidence', opsAuth, {
+      orderId: D_ORDER, command_id: 'cmd-liv-evidence', bundle, at: T,
+    });
+    expect(ev.status).toBe(200);
+    expect(ev.json).toMatchObject({ ok: true, status: 'evidence_recorded' });
+    const evAgain = await call('POST', '/ops/delivery/evidence', opsAuth, {
+      orderId: D_ORDER, command_id: 'cmd-liv-evidence-2', bundle, at: T,
+    });
+    expect(evAgain.status).toBe(409);
+    expect(evAgain.json).toMatchObject({ reason: 'evidence_already_submitted' });
+
+    // ── the decision is POLICY FROM EVIDENCE ───────────────────────────────
+    const decide = await call('POST', '/ops/delivery/decide', opsAuth, {
+      orderId: D_ORDER, command_id: 'cmd-liv-decide', at: T,
+    });
+    expect(decide.status).toBe(200);
+    expect(decide.json).toMatchObject({ ok: true, result: 'validated' });
+
+    // ── the drop code, LAST — wrong refused (and not burned), right transfers
+    const wrongDrop = await call('POST', '/ops/delivery/drop', opsAuth, {
+      orderId: D_ORDER, command_id: 'cmd-liv-drop-wrong', dropCode: 'NOT-THE-CODE', at: T,
+    });
+    expect(wrongDrop.status).toBe(409);
+    expect(wrongDrop.json).toMatchObject({ reason: 'drop_code_refused' });
+    const drop = await call('POST', '/ops/delivery/drop', opsAuth, {
+      orderId: D_ORDER, command_id: 'cmd-liv-drop', dropCode: DROP, at: T,
+    });
+    expect(drop.status).toBe(200);
+    expect(drop.json).toMatchObject({ ok: true, status: 'custody_with_customer' });
+
+    // ── exactly once: the same command replays; a NEW drop says déjà ───────
+    const replay = await call('POST', '/ops/delivery/drop', opsAuth, {
+      orderId: D_ORDER, command_id: 'cmd-liv-drop', dropCode: DROP, at: T,
+    });
+    expect(replay.status).toBe(200);
+    expect(replay.json).toMatchObject({ status: 'custody_with_customer' });
+    const second = await call('POST', '/ops/delivery/drop', opsAuth, {
+      orderId: D_ORDER, command_id: 'cmd-liv-drop-again', dropCode: DROP, at: T,
+    });
+    expect(second.status).toBe(200);
+    expect(second.json).toMatchObject({ status: 'deja_livree' });
+
+    // ── ASK THE LEDGER, not the response: custody is the customer's ────────
+    const ledger = await call('GET', `/ops/ledger?orderId=${D_ORDER}`, opsAuth);
+    const entries = ledger.json['entries'] as { kind: string; payload: Json }[];
+    const transfer = entries.filter((e) => e.kind === 'custody_transition').at(-1)!;
+    expect(transfer.payload['to']).toBe('customer');
+    const verify = await call('GET', `/ops/ledger/verify?orderId=${D_ORDER}`, opsAuth);
+    expect(verify.json).toMatchObject({ headMatches: true });
+
+    // ── THE WIRE: the alarm delivers the ONE eligibility event ─────────────
+    for (let i = 0; i < 80 && received.length === 0; i += 1) {
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    expect(received.length, 'the eligibility signal must reach the Shop+ door').toBeGreaterThanOrEqual(1);
+    const wire = received[0]!;
+    expect(wire.auth).toBe(`Bearer ${SHOP_SECRET}`);
+    expect(wire.body['name']).toBe('delivery.validated.v1');
+    const payload = wire.body['payload'] as Json;
+    expect(payload['order_id']).toBe(D_ORDER);
+    expect(payload['result']).toBe('validated');
+    expect(payload['settlement_eligibility']).toBe(true);
+    // SE-I09 held: an IDENTITY rides the signal, never an amount…
+    expect(payload['supplier_ref']).toBe('supplier-liv-1');
+    expect(JSON.stringify(wire.body)).not.toMatch(/amount|fcfa|net|fee/i);
+    // …and the correlation is the ORDER'S OWN, which Shop+'s vault checks.
+    const envelope = wire.body['envelope'] as Json;
+    expect(envelope['correlation_id']).toBe(`corr-${D_ORDER}`);
+  }, 60_000);
 });
