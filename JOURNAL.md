@@ -1414,3 +1414,44 @@ Fixed in `36249df` and redeployed: both modules are `require`d lazily, so a miss
 ### ⚠ OPEN, AND HIS TO DECIDE (unchanged, still live)
 - **A lost seal answer strands a package** — needs a third route on the rider door (a custody read). The 4b allowlist opens exactly two by decision.
 - **No sign-out**, so a shared handset keeps the last rider's custody stage. `forgetActs` exists for it and has no caller.
+
+
+## 2026-08-08 · SE-LIVE-4e — the rider code desk (merged `812a894`)
+
+**FOUNDER ORDER:** « build the rider code screen in the dispatch console. » He sent a screenshot of the rider app's « Votre code » screen and asked whether a console screen existed to get one. **It did not, anywhere** — I checked both consoles. The four routes have existed on the logistics Worker since SE-LIVE-1 with **no surface at all**; the only way in was a curl carrying `SERA_OPS_SECRET`.
+
+**WHY HERE AND NOT BOUTIK+.** Founder ruling (2026-08-07): « rider identity stays in logistics; custody asks. » The Boutik+ console speaks to supply; rider identity is logistics' to hold, so its desk belongs in the dispatch console.
+
+### What it does
+Register a rider · see who holds a live code and since when · give a code · take one back. It mirrors the Boutik+ CONSOLE-3 codes model **deliberately** — same `CodesRead`/`CodesView`/`CodesUi` shapes, same grammar — because the two desks do the same job and the founder should not have to learn two.
+- **The one-time code blocks every other act.** The plaintext exists nowhere but that card; the server mints it once and never returns it. A tap that silently destroyed it mid-handover is the finding the Boutik+ desk already paid for.
+- **The mint form warns before the tap:** a rider who already holds a code loses it the instant a new one is minted, and a rider **mid-course** would be locked out of their own custody acts.
+- **A refused key escalates the whole desk** to one door and one sentence — a « failed » table under a bad key sends him looking at the service instead of his key.
+
+### Two decisions of mine, on the record
+1. **The ops key lives in memory only** — no localStorage, no URL, no log. Boutik+'s console persists its key; this one deliberately does not. `SERA_OPS_SECRET` opens the rider registry AND the SOS board for every rider in the system; this console runs on his own machine; retyping after a reload costs one line, and a secret never written cannot be read off the disk later. Reversible in one function if he wants persistence.
+2. **The base URL is build-time config** (`VITE_SERA_LOGISTICS_BASE`), never a bundled key. Unset is an honest designed state — « Cette console n'est pas reliée à Séra » — not an empty roster that reads as « no riders yet ».
+
+### ⚠ THE SEAM TEST EARNED ITSELF INSIDE AN HOUR
+This console had **never made a network call** — everything else in it is sandbox. Per the NO-LOOP law (« a slice that crosses a seam is not done until one test crosses that seam end to end ») the port is driven against the REAL Worker in miniflare. Writing it caught a live defect **before a line of UI existed**: my first draft read `hasCode` off `GET /ops/riders`, and the Worker does not send it — code state lives under its own storage prefix behind a **separate** route. The desk is a join of two reads, and a failure of either is a failed desk, because a roster showing every code as absent would tell the founder that minting is safe when it destroys a working rider's code.
+
+The test asserts what actually matters: **the minted code opens the rider door** (`/verify/rider-code`), a revoke kills it, a second mint kills the first, a typo is refused by name, and a wrong ops key is `bad_key` and never an empty roster.
+
+**This is the law working as intended** — the defect was found by the test I wrote while building, not by a review round.
+
+### Deliberate test evolution
+The shell's pinned `h2` count moves **5 → 6**, raised with its reason rather than loosened: a section must not appear or vanish unnoticed. My first e2e anchored on `.sos-alert`, which is `hidden` until an incident is raised (an always-on alert is a fake alarm) and therefore has no box to measure — corrected to the first section heading.
+
+**Evidence:** workspace typecheck 11/11 · dispatch-console 8 files (12 new decision tests) · logistics-service 14 files (6 new seam tests) · Playwright **24 passed** · copy-lint 120 entries, 0 violations · gate board `ALL GATES GREEN` under `EVIDENCE_DIR` · CI green on `812a894`, merged to main by guarded fast-forward.
+
+### ⚠ FOR THE FOUNDER — how to actually use it
+The dispatch console has **no deploy workflow**; it is a local tool, which for a founder-only ops surface is the safer shape (the ops secret never leaves his machine and no public origin is needed). To run it:
+
+```
+VITE_SERA_LOGISTICS_BASE=https://logistics-service.ilboudobernard2.workers.dev \
+  pnpm --filter @sera/dispatch-console dev
+```
+
+Then paste `SERA_OPS_SECRET` into « Votre clé d'opérateur », register himself as a rider, and tap « Donner un code ». The code shown once is what he types into the rider app.
+
+**Not done, and worth naming:** the console is not deployed, so this only runs locally; and calling the Worker from a browser needs `SERA_CONSOLE_ORIGIN` to include the dev origin (`http://localhost:5173`) or the browser's preflight will refuse — the CORS machinery exists, the origin is his to set.
