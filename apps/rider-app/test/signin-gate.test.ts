@@ -227,3 +227,37 @@ describe('⚠ an unfinished checklist can never reach the pickup code (A4 + A8)'
     expect(app).toMatch(/verify\.answer_all/);
   });
 });
+
+describe('⚠ a rider reads places and words, never enums or UUIDs (A10)', () => {
+  it('renders the assignment landmark-first, not its identifiers', () => {
+    // « État · active_unacknowledged » and « Course · task-<uuid> » were the
+    // server's own English enums and UUIDs, inline where the copy-lint cannot
+    // see them (Law 6), and useless to someone navigating by « la pharmacie du
+    // marché ». SE0.3 fixes the order for BOTH shells: landmark, then
+    // indications, then zone — the GPS pin never leads.
+    expect(app).toMatch(/<FasoLandmarkCard[\s\S]{0,200}lines=\{assignmentLines\}/);
+    expect(app).toMatch(/repereLabel=\{t\('assignment\.landmark_label'\)\}/);
+
+    // Scoped to what the rider SEES. `liveAssignment.orderId` is legitimate off
+    // screen — it addresses the custody act and keys the attempt id — so a
+    // whole-file scan here would fail on correct code and teach us to weaken
+    // the rule. The ban is on RENDERING an id or an enum, so the slice is the
+    // wired render arm alone.
+    const wiredArm = app.slice(app.indexOf(') : WIRED ? ('), app.indexOf('R1 « Service »'));
+    expect(wiredArm.length).toBeGreaterThan(500); // the slice anchors still exist
+    expect(wiredArm, 'a raw id printed on screen').not.toMatch(
+      /\{liveAssignment\.(orderId|taskId)\}/,
+    );
+    expect(wiredArm, 'an id interpolated into screen text').not.toMatch(/\$\{liveAssignment\./);
+    expect(wiredArm, 'a raw status enum on screen').not.toMatch(/\{liveAssignment\.status\}/);
+  });
+
+  it('the status becomes a catalog word, and an unknown one degrades safely', () => {
+    expect(app).toMatch(/assignmentStateKey\(liveAssignment\.status\)/);
+  });
+
+  it('says so honestly when the server sent no landmark', () => {
+    // Never an invented address, and never a raw id as a fallback.
+    expect(app).toMatch(/assignment\.no_landmark/);
+  });
+});

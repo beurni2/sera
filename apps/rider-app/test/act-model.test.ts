@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { t } from '../src/i18n';
 import { ACT_IDLE, holdsPackage, maySeal, sealOutcome, verifyOutcome } from '../src/net/act-model';
+import { assignmentStateKey, landmarkLines } from '../src/net/rider-session';
 import type { CustodyAnswer } from '../src/net/custody-acts';
 
 /**
@@ -137,5 +138,35 @@ describe('every outcome has real words behind it', () => {
 
   it('the seal hint says to read it off the seal being applied', () => {
     expect(t('seal.id_hint')).toContain('scellé');
+  });
+});
+
+describe('⚠ the assignment projection (A10)', () => {
+  it('puts the landmark first, then the indications, then the zone', () => {
+    // SE0.3, the display law both shells follow. The words a rider navigates
+    // by lead; the GPS pin never does.
+    expect(landmarkLines({ landmark: 'Face à la pharmacie', directions: 'Deuxième porte bleue', zone: 'Gounghin' }))
+      .toEqual(['Face à la pharmacie', 'Deuxième porte bleue', 'Gounghin']);
+  });
+
+  it('degrades honestly rather than crashing a rider’s only screen', () => {
+    // This arrives over the network; malformed must mean "no landmark yet".
+    for (const bad of [null, undefined, 'a string', 42, {}, { directions: 'x', zone: 'y' }, { landmark: '   ' }]) {
+      expect(`${JSON.stringify(bad)} -> ${landmarkLines(bad)}`).toBe(`${JSON.stringify(bad)} -> null`);
+    }
+  });
+
+  it('tolerates a partial location — the landmark alone still leads', () => {
+    expect(landmarkLines({ landmark: 'Chez Salif' })).toEqual(['Chez Salif', '', '']);
+  });
+
+  it('turns every status into a word, and never leaks an unknown enum', () => {
+    expect(t(assignmentStateKey('active_unacknowledged'))).toBe('Course à faire');
+    expect(t(assignmentStateKey('acknowledged'))).toBe('Course acceptée');
+    // Anything the server adds later degrades to the neutral word rather than
+    // showing a raw token to a rider.
+    for (const unknown of ['ack_pending_offline', 'something_new_v2', '']) {
+      expect(t(assignmentStateKey(unknown))).toBe('En attente');
+    }
   });
 });

@@ -1062,24 +1062,6 @@
     "screenClass": "instruction"
   },
   {
-    "key": "assignment.order_label",
-    "fr": "Commande",
-    "register": "neutral",
-    "screenClass": "label"
-  },
-  {
-    "key": "assignment.task_label",
-    "fr": "Course",
-    "register": "neutral",
-    "screenClass": "label"
-  },
-  {
-    "key": "assignment.status_label",
-    "fr": "État",
-    "register": "neutral",
-    "screenClass": "label"
-  },
-  {
     "key": "sos.not_wired",
     "fr": "Alerte gardée sur ce téléphone.",
     "register": "neutral",
@@ -1240,5 +1222,11 @@
     "fr": "En attente",
     "register": "neutral",
     "screenClass": "label"
+  },
+  {
+    "key": "assignment.no_landmark",
+    "fr": "Le repère arrive bientôt.",
+    "register": "neutral",
+    "screenClass": "status"
   }
 ]

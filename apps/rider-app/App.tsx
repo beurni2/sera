@@ -77,6 +77,7 @@ import { SosButton, SosSheet, type SosState } from './src/ui/faso-sos';
 import { FasoSignIn } from './src/ui/faso-signin';
 import { IDLE, refusalKeys, submit as submitSignIn, type SignInState } from './src/net/signin-model';
 import { isWired, resolveRiderSession } from './src/net/resolveRiderSession';
+import { assignmentStateKey, landmarkLines } from './src/net/rider-session';
 import { resolveCustodyActs } from './src/net/resolveCustodyActs';
 import { httpSosSender } from './src/net/sos-wire';
 import { resolveEvidenceCapture, type CaptureOutcome } from './src/net/evidence-capture';
@@ -403,6 +404,7 @@ export default function App() {
 
   const riderCode = signInState.kind === 'signed_in' ? signInState.code : null;
   const liveAssignment = signInState.kind === 'signed_in' ? signInState.session.assignment : null;
+  const assignmentLines = liveAssignment === null ? null : landmarkLines(liveAssignment.location);
 
   const runAct = useCallback(
     (set: (p: ActPhase) => void, act: () => Promise<CustodyAnswer>) => {
@@ -885,11 +887,33 @@ export default function App() {
               <FasoScreenTitle>{t('signin.greeting')}</FasoScreenTitle>
               {liveAssignment !== null ? (
                 <>
-                  <FasoCard>
-                    <ProofLine label={`${t('assignment.order_label')} · ${liveAssignment.orderId}`} />
-                    <ProofLine label={`${t('assignment.task_label')} · ${liveAssignment.taskId}`} />
-                    <ProofLine label={`${t('assignment.status_label')} · ${liveAssignment.status}`} />
-                  </FasoCard>
+                  {/**
+                    * ⚠ LANDMARK-FIRST, NOT IDENTIFIERS (verifier blocker A10).
+                    * This card read « État · active_unacknowledged » and
+                    * « Course · task-<uuid> »: the server's own English enums
+                    * and UUIDs, inline where the copy-lint cannot see them,
+                    * and useless to someone navigating by « la pharmacie du
+                    * marché ». SE0.3 fixed this display order for BOTH shells
+                    * — landmark, then indications, then zone; the GPS pin
+                    * never leads — and the demo screen has always rendered it
+                    * that way. The wired arm now uses the SAME card and the
+                    * SAME catalog labels; the ids stay server-side.
+                    */}
+                  {assignmentLines !== null ? (
+                    <FasoLandmarkCard
+                      zone={assignmentLines[2]}
+                      lines={assignmentLines}
+                      repereLabel={t('assignment.landmark_label')}
+                      indicationsLabel={t('repere.indications')}
+                    />
+                  ) : (
+                    /* Honest: the server has sent no usable landmark yet.
+                       Never an invented address, never a raw id instead. */
+                    <FasoCard>
+                      <ProofLine label={t('assignment.no_landmark')} />
+                    </FasoCard>
+                  )}
+                  <FasoStatusChip tone="info" label={t(assignmentStateKey(liveAssignment.status))} />
 
                   {/**
                     * ⚠ SE-I05, IN THE ORDER THE SPEC GIVES IT: « Custody begins

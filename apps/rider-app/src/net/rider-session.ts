@@ -119,3 +119,52 @@ export function riderSessionFromBody(body: unknown): RiderSession | null {
     assignment,
   };
 }
+
+/**
+ * ═══ SE-LIVE-4c-x · WHAT A RIDER READS, AND WHAT THEY NEVER SHOULD ═══
+ *
+ * ⚠ VERIFIER BLOCKER A10. The wired screen rendered the server's own vocabulary
+ * straight at the rider: « État · active_unacknowledged », « Course ·
+ * task-3f2a… », « Commande · ord-91b7… ». Three faults in one line each — they
+ * are English enums and UUIDs; they are inline template strings the copy-lint
+ * cannot see (Law 6: strings live in the catalog with register tags); and they
+ * are useless, because nobody navigates by a UUID or reads one aloud to a
+ * dispatcher.
+ *
+ * WHAT REPLACES THEM IS WHAT SE0.3 ALREADY DECIDED. `landmarkFirstLines`
+ * (logistics `delivery-location.ts`) fixes the display order for BOTH shells:
+ * **landmark, then directions, then zone — the GPS pin never leads**, because
+ * the words a rider navigates by are the landmark and the turn after it. The
+ * identifiers stay server-side, where they are useful, and off the screen of
+ * someone standing in the sun trying to find a stall.
+ *
+ * Parsed DEFENSIVELY — this arrives over the network, and a malformed location
+ * must degrade to an honest « no landmark yet », never crash a rider's only
+ * screen.
+ */
+
+/** The three lines in the canonical SE0.3 order, or null when the server sent
+ *  no usable location — an honest absence, never an invented address. */
+export function landmarkLines(location: unknown): readonly [string, string, string] | null {
+  if (location === null || typeof location !== 'object') return null;
+  const l = location as Record<string, unknown>;
+  const text = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
+  const landmark = text(l['landmark']);
+  // The landmark is the one line that must exist — it is what leads.
+  if (landmark === '') return null;
+  return [landmark, text(l['directions']), text(l['zone'])];
+}
+
+/** The catalog key for an assignment status — the rider reads words, and the
+ *  enum never reaches a screen. Anything the server adds later degrades to the
+ *  neutral « pending » rather than surfacing a raw token. */
+export function assignmentStateKey(status: string): string {
+  switch (status) {
+    case 'active_unacknowledged':
+      return 'assignment.state_active';
+    case 'acknowledged':
+      return 'assignment.state_acked';
+    default:
+      return 'assignment.state_pending';
+  }
+}
