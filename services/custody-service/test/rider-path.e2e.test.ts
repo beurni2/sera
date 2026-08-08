@@ -89,8 +89,21 @@ function dimensionsOf(bytes: Uint8Array): { width: number; height: number } | nu
 
 /** The bucket, with media-service's real refusals. Returns the same shapes. */
 let uploadCount = 0;
+const BUCKET_WRITE_KEY = 'test-write-key';
 const bucketFetch = async (_url: string, init?: RequestInit): Promise<Response> => {
   uploadCount += 1;
+  /**
+   * ⚠ THE WRITE GATE, WHICH THIS STUB OMITTED (blocker A2, round four). The
+   * real service runs `rejectUnauthorizedWrite` BEFORE it touches storage, and
+   * it is fail-closed: an unset secret 401s every upload. Deleting the
+   * `X-Write-Key` header from the app was invisible to all 284 tests and the
+   * whole gate board — and a 401 maps to « La photo n'est pas partie.
+   * Réessayez. », send disabled, no seal, no custody. Round three's failure
+   * mode on a different axis. A mock that skips the first thing the service
+   * does is §9.8, whatever its header claims.
+   */
+  const key = new Headers(init?.headers as HeadersInit | undefined).get('X-Write-Key');
+  if (key !== BUCKET_WRITE_KEY) return Response.json({ error: 'unauthorized' }, { status: 401 });
   const body = init?.body as unknown as Uint8Array;
   if (!(body instanceof Uint8Array) || body.length === 0) {
     return Response.json({ reason: 'empty' }, { status: 400 });
@@ -222,7 +235,7 @@ describe('⚠ THE RIDER TAKES CUSTODY — the app’s own ports, the real Worker
 
     // A real 8 MP rear camera — the handset class a Séra rider carries.
     const evidence = httpEvidenceCapture(
-      'https://bucket.invalid', 'test-write-key',
+      'https://bucket.invalid', BUCKET_WRITE_KEY,
       cameraOf(3264, 2448, true), online, bucketFetch as never,
     );
 
@@ -263,13 +276,27 @@ describe('⚠ THE RIDER TAKES CUSTODY — the app’s own ports, the real Worker
       .toBe(`courier:${RIDER}`);
   }, 30_000);
 
+  it('⚠ an unauthenticated upload is refused, and then no act can go', async () => {
+    // The founder rotates MEDIA_WRITE_SECRET and the repo key is not updated —
+    // or is simply never set, which is fail-closed by design. Every rider on
+    // the channel: camera opens, bytes upload, 401, « La photo n'est pas
+    // partie. Réessayez. », send disabled, custody never begins.
+    const wrongKey = httpEvidenceCapture(
+      'https://bucket.invalid', 'the-wrong-key',
+      cameraOf(3264, 2448, true), online, bucketFetch as never,
+    );
+    const shot = await wrongKey.captureAndUpload();
+    expect(shot.ok).toBe(false);
+    expect(shot.ok === false ? shot.reason : '').toBe('unreachable');
+  });
+
   it('⚠ REPRODUCES ROUND THREE: with no device resize the bucket refuses, and the seal cannot go', async () => {
     // The shipped bug, exactly. `quality` is compression, not a resize, so the
     // app uploaded 3264×2448 and media-service answered `400 bad_dimensions`.
     // The screen said « Reprenez-la. » and retaking gave the same answer for
     // ever — the send stayed disabled and custody could never begin.
     const unresized = httpEvidenceCapture(
-      'https://bucket.invalid', 'test-write-key',
+      'https://bucket.invalid', BUCKET_WRITE_KEY,
       cameraOf(3264, 2448, false), online, bucketFetch as never,
     );
     const shot = await unresized.captureAndUpload();

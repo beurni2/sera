@@ -168,3 +168,27 @@ export function assignmentStateKey(status: string): string {
       return 'assignment.state_pending';
   }
 }
+
+/**
+ * ⚠ IS THIS RIDER ON SHIFT, ACCORDING TO THE SERVER? (blocker A4, round four.)
+ *
+ * Every SOS from a wired build filed `onShift: false` — because `shift` in
+ * `App.tsx` is DEMO state whose only setters live in the `!WIRED` tree, so on a
+ * real build it is `'off'` for the process lifetime. The alert therefore named
+ * the rider's live course and denied they were working, in one object: the
+ * dispatcher's board showed an off-shift rider mid-delivery. The truthful value
+ * was already fetched and read by nothing.
+ *
+ * `shift` is deliberately opaque on `RiderSession`, so this parses only what
+ * logistics actually sends — `ShiftState.status` — and returns null for
+ * anything it does not recognise. **Null is not false.** « We do not know » and
+ * « they are off shift » are different claims, and only one of them is safe to
+ * put in a safety record.
+ */
+export function onShiftFromSession(shift: unknown): boolean | null {
+  if (shift === null || typeof shift !== 'object') return null;
+  const status = (shift as Record<string, unknown>)['status'];
+  if (status === 'on_shift') return true;
+  if (status === 'off_shift') return false;
+  return null;
+}

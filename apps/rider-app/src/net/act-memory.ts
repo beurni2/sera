@@ -1,4 +1,3 @@
-import type { OutboxStore } from '../offline/outbox';
 
 /**
  * ═══ SE-LIVE-4c-ix · WHAT THE PHONE REMEMBERS ABOUT AN ACT ═══
@@ -58,8 +57,15 @@ export interface ActMemoryStore {
   write(serialized: string): Promise<void>;
 }
 
-/** The outbox's store satisfies this too; the key namespaces them apart. */
-export const asActMemoryStore = (store: OutboxStore): ActMemoryStore => store;
+/**
+ * ⚠ `asActMemoryStore(outboxStore)` USED TO LIVE HERE, and it was blocker A1.
+ * « The key namespaces them apart » was wrong: the outbox writes a JSON ARRAY
+ * and this writes a JSON OBJECT, so sharing one file meant each destroyed the
+ * other — a dead SOS in one order, a lost custody stage in the other. The act
+ * memory now has its own file (`createDocumentActMemoryStore`). Nothing may
+ * hand it the outbox's store again, and `rememberAct` refuses an array root so
+ * that a future attempt fails loudly instead of eating the queue.
+ */
 
 export async function loadActMemory(store: ActMemoryStore, orderId: string): Promise<ActMemory | null> {
   const raw = await store.read();
@@ -99,8 +105,16 @@ export async function rememberAct(store: ActMemoryStore, memory: ActMemory): Pro
   if (raw !== null && raw !== '') {
     try {
       const parsed: unknown = JSON.parse(raw);
+      // ⚠ AN ARRAY IS SOMEONE ELSE'S FILE (blocker A1). `typeof [] === 'object'`,
+      // so this once accepted the outbox's queue as its root and then wrote it
+      // back as an object — silently deleting every pending write, an SOS
+      // among them. Refuse loudly rather than destroy what we do not own.
+      if (Array.isArray(parsed)) {
+        throw new Error('act-memory: refusing to write over a non-memory store');
+      }
       if (parsed !== null && typeof parsed === 'object') root = parsed as Record<string, unknown>;
-    } catch {
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith('act-memory:')) throw error;
       root = {};
     }
   }

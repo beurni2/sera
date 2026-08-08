@@ -17,7 +17,7 @@ import { attemptReturnHandover } from './src/two-key-return';
 import { mintCommandId } from './src/offline/commandId';
 import { appendSosRaise } from './src/offline/sos';
 import { appendEvidence } from './src/offline/evidence';
-import { createDocumentOutboxStore } from './src/offline/documentStore';
+import { createDocumentActMemoryStore, createDocumentOutboxStore } from './src/offline/documentStore';
 import { createManualConnectivity, type Connectivity } from './src/offline/connectivity';
 import { bindDeviceConnectivity } from './src/offline/expoConnectivity';
 import { pendingCount, drainOnReconnect, stillPending } from './src/offline/backlog';
@@ -77,7 +77,7 @@ import { SosButton, SosSheet, type SosState } from './src/ui/faso-sos';
 import { FasoSignIn } from './src/ui/faso-signin';
 import { IDLE, refusalKeys, submit as submitSignIn, type SignInState } from './src/net/signin-model';
 import { isWired, resolveRiderSession } from './src/net/resolveRiderSession';
-import { assignmentStateKey, landmarkLines } from './src/net/rider-session';
+import { assignmentStateKey, landmarkLines, onShiftFromSession } from './src/net/rider-session';
 import { resolveCustodyActs } from './src/net/resolveCustodyActs';
 import { httpSosSender } from './src/net/sos-wire';
 import { resolveEvidenceCapture, type CaptureOutcome } from './src/net/evidence-capture';
@@ -93,7 +93,7 @@ import {
   verifyOutcome,
   type ActPhase,
 } from './src/net/act-model';
-import { asActMemoryStore, loadActMemory, rememberAct, type ActStage } from './src/net/act-memory';
+import { loadActMemory, rememberAct, type ActStage } from './src/net/act-memory';
 import { FasoActCode, FasoCheckAnswer } from './src/ui/faso-act-code';
 import { FpIn, FpPulseDot, QuoteRule as FasoQuoteRule, CornerTicks as FasoCornerTicks } from './src/ui/signature';
 import { C as FASO } from './src/ui/faso';
@@ -282,6 +282,14 @@ export default function App() {
   // ONE durable outbox for every rider write kind (SOS raise, delivery evidence):
   // a single document-dir queue, entries discriminated by `kind`.
   const outboxStore = useMemo(() => createDocumentOutboxStore(), []);
+  /**
+   * ⚠ ITS OWN FILE, NOT THE OUTBOX'S (blocker A1). Sharing one file meant two
+   * incompatible top-level shapes — an array and an object — destroying each
+   * other: a raised SOS that was never persisted and never sent while the sheet
+   * said « Alerte en cours d'envoi… », or a custody stage silently dropped so a
+   * killed app put the rider back on a spent pickup code.
+   */
+  const actMemoryStore = useMemo(() => createDocumentActMemoryStore(), []);
   // SERA-S4: connectivity is REAL, behind a port (expo-network on device); the
   // manual port also backs the demo toggle. `offline` is DERIVED from it — the
   // retired compile-time connectivity constant is gone. `backlog` is the REAL
@@ -508,7 +516,7 @@ export default function App() {
       return;
     }
     let live = true;
-    void loadActMemory(asActMemoryStore(outboxStore), dwellOrderId).then(
+    void loadActMemory(actMemoryStore, dwellOrderId).then(
       (memory) => {
         if (live) setRemembered(memory?.stage ?? 'none');
       },
@@ -520,7 +528,7 @@ export default function App() {
     return () => {
       live = false;
     };
-  }, [dwellOrderId, outboxStore]);
+  }, [dwellOrderId, actMemoryStore]);
 
   /**
    * REMEMBER: only ever what the LEDGER answered, never what was merely sent.
@@ -537,13 +545,13 @@ export default function App() {
         : null;
     if (stage === null) return;
     setRemembered(stage);
-    void rememberAct(asActMemoryStore(outboxStore), {
+    void rememberAct(actMemoryStore, {
       // ORDER AND STAGE ONLY. The pickup code, the seal id and the rider's own
       // code are deliberately not here — a test scans the persisted bytes.
       orderId: dwellOrderId,
       stage,
     }).catch(() => setPersistFailed(true));
-  }, [dwellOrderId, verifyPhase, sealPhase, outboxStore]);
+  }, [dwellOrderId, verifyPhase, sealPhase, actMemoryStore]);
 
   const runAct = useCallback(
     (set: (p: ActPhase) => void, act: () => Promise<CustodyAnswer>) => {
@@ -829,9 +837,21 @@ export default function App() {
      */
     const sosRiderId = WIRED ? (signInState.kind === 'signed_in' ? signInState.session.riderId : '') : DEMO_RIDER_ID;
     const sosCourseId = WIRED ? (liveAssignment?.orderId ?? null) : activeId;
+    /**
+     * ⚠ FROM THE SERVER, NOT THE DEMO TOGGLE (blocker A4). `shift` is demo
+     * state whose setters all live in the `!WIRED` tree, so a wired build filed
+     * every alert as `onShift: false` WHILE NAMING THE RIDER'S LIVE COURSE —
+     * one object contradicting itself on the dispatcher's safety board. When
+     * the server's answer is unrecognisable we send the live-course fact rather
+     * than asserting a shift state nobody confirmed.
+     */
+    const sosOnShift = WIRED
+      ? (onShiftFromSession(signInState.kind === 'signed_in' ? signInState.session.shift : null)
+         ?? sosCourseId !== null)
+      : shift === 'on';
     const raised = raiseSos(world, commandId, {
       riderId: sosRiderId,
-      onShift: shift === 'on',
+      onShift: sosOnShift,
       activeCourseId: sosCourseId,
       connectivity,
       hours: SANDBOX_DISPATCH_HOURS,
@@ -843,7 +863,7 @@ export default function App() {
     void appendSosRaise(outboxStore, commandId, {
       riderId: sosRiderId,
       hours: SANDBOX_DISPATCH_HOURS,
-      onShift: shift === 'on',
+      onShift: sosOnShift,
       activeCourseId: sosCourseId,
       raisedAt: raised.raisedAt,
     })
@@ -908,7 +928,22 @@ export default function App() {
   const arriving = world.courses.find((c) => !c.closed && c.step === 'affectation') ?? null;
   const shiftAction = shift === 'off' ? t('shift.start_action') : t('shift.end_action');
 
-  const headerChip = screen === 'service' ? (shift === 'on' ? t('shift.on') : t('shift.off')) : t('assignment.title');
+  /**
+   * ⚠ THE CHIP MUST NOT ASSERT A SHIFT NOBODY CONFIRMED (blocker A4). `shift`
+   * is demo state, so a wired build stamped « Hors service » on EVERY screen —
+   * including the one where the rider is holding a sealed package. Same class
+   * as the certified-name blocker: a status claim about state this build
+   * neither owns nor confirms. On a wired build it names the screen instead,
+   * unless the server actually said the rider is on shift.
+   */
+  const wiredOnShift = WIRED
+    ? onShiftFromSession(signInState.kind === 'signed_in' ? signInState.session.shift : null)
+    : shift === 'on';
+  const headerChip = WIRED
+    ? (wiredOnShift === true ? t('shift.on') : t('assignment.title'))
+    : screen === 'service'
+      ? (shift === 'on' ? t('shift.on') : t('shift.off'))
+      : t('assignment.title');
 
   const voiceFor = () => ({
     label: playing ? t('repere.voice_playing') : t('repere.voice'),
@@ -964,7 +999,7 @@ export default function App() {
         }
         backLabel={`‹ ${t('nav.retour')}`}
         onBack={stack.length > 1 ? back : undefined}
-        right={<FasoStatusChip tone={shift === 'on' ? 'ok' : 'muted'} label={headerChip} />}
+        right={<FasoStatusChip tone={wiredOnShift === true ? 'ok' : 'muted'} label={headerChip} />}
       />
       {offline && (
         <FasoOfflineBanner

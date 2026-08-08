@@ -415,8 +415,12 @@ describe('⚠ the ports are CALLED, not merely present (blockers A1 + A2, round 
   });
 
   it('the act memory is loaded and written, not merely defined', () => {
-    expect(app, 'ruling ③ load').toMatch(/loadActMemory\(asActMemoryStore\(outboxStore\), dwellOrderId\)/);
-    expect(app, 'ruling ③ write').toMatch(/rememberAct\(asActMemoryStore\(outboxStore\), \{/);
+    expect(app, 'ruling ③ load').toMatch(/loadActMemory\(actMemoryStore, dwellOrderId\)/);
+    expect(app, 'ruling ③ write').toMatch(/rememberAct\(actMemoryStore, \{/);
+    // ⚠ AND ITS OWN STORE, NOT THE OUTBOX'S (blocker A1, round four). Sharing
+    // one file meant an array and an object destroying each other: a raised SOS
+    // that was never persisted and never sent, or a lost custody stage.
+    expect(app).toMatch(/const actMemoryStore = useMemo\(\(\) => createDocumentActMemoryStore\(\), \[\]\)/);
     // And the screen consults it, so a relaunched rider is put back.
     expect(app).toMatch(/packageIsHeld\(sealPhase, remembered\)/);
     expect(app).toMatch(/sealScreenIsDue\(verifyPhase, remembered\)/);

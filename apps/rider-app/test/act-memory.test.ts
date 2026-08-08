@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { forgetActs, loadActMemory, rememberAct, type ActMemoryStore } from '../src/net/act-memory';
+import { append, restore, type OutboxEntry, type OutboxStore } from '../src/offline/outbox';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 /**
  * SE-LIVE-4c-ix · what the phone remembers about a custody act.
@@ -105,5 +108,63 @@ describe('⚠ what is written to the phone contains NO secret', () => {
     // It takes an injected store; it must not open one, and must not log.
     expect(src).not.toMatch(/documentStore|FileSystem\.|AsyncStorage|SecureStore/);
     expect(src).not.toMatch(/\bconsole\.\w+\s*\(/);
+  });
+});
+
+
+describe('⚠ THE ACT MEMORY DOES NOT LIVE IN THE OUTBOX\'S FILE (blocker A1)', () => {
+  /**
+   * ⚠ THE REAL FAILURE, REPRODUCED BEFORE IT WAS FIXED. The memory was pointed
+   * at the OUTBOX's store, and the two write incompatible top-level shapes into
+   * one file: the outbox a JSON ARRAY, the memory a JSON OBJECT. Measured
+   * against the real modules:
+   *
+   *   memory first → `append` threw « existing is not iterable » → the SOS was
+   *     never persisted and never sent, while the sheet said « Alerte en cours
+   *     d'envoi… ». A dead safety button claiming to be in flight.
+   *   outbox first → the stage was silently discarded, no error → a killed app
+   *     put the rider back on a checklist against a spent pickup code.
+   *
+   * The old test asserted co-existence with `{"other":"kept"}` — a hypothetical
+   * object-shaped neighbour that does not exist. The only real co-tenant writes
+   * an array. The assertion landed next to the defect, not on it.
+   */
+  const shared = (): OutboxStore & { bytes: () => string | null } => {
+    let held: string | null = null;
+    return { async read() { return held; }, async write(s2) { held = s2; }, bytes: () => held };
+  };
+  const sos = { commandId: 'cmd-sos-1', kind: 'sos.raise', payload: {}, status: 'pending' } as unknown as OutboxEntry;
+
+  it('the app gives them SEPARATE durable files', () => {
+    const doc = readFileSync(join(import.meta.dirname, '..', 'src/offline/documentStore.ts'), 'utf8');
+    expect(doc).toMatch(/const OUTBOX_FILE = 'sera-outbox\.json'/);
+    expect(doc).toMatch(/const ACT_MEMORY_FILE = 'sera-act-memory\.json'/);
+    const app = readFileSync(join(import.meta.dirname, '..', 'App.tsx'), 'utf8');
+    expect(app).toMatch(/createDocumentActMemoryStore\(\)/);
+    // …and the fusing helper is gone, so nothing can re-share them by accident.
+    expect(app, 'the outbox store handed to the act memory').not.toMatch(/asActMemoryStore/);
+  });
+
+  it('⚠ refuses LOUDLY rather than eating a queue it does not own', async () => {
+    // If anyone ever re-points it at the outbox, this must fail visibly — not
+    // silently delete a rider’s pending emergency.
+    const store = shared();
+    await append(store, sos);
+    await expect(
+      rememberAct(store as ActMemoryStore, { orderId: 'ord-1', stage: 'verification_accepted' }),
+    ).rejects.toThrow(/refusing to write over a non-memory store/);
+    // The queue is intact — the SOS is still there to be sent.
+    expect((await restore(store)).map((e) => e.commandId)).toEqual(['cmd-sos-1']);
+  });
+
+  it('⚠ and an SOS raised after a remembered stage still persists', async () => {
+    // The other order of the same collision: this used to throw « existing is
+    // not iterable » inside fireSos, so the alert never left the phone.
+    const memory = shared();
+    const outbox = shared();
+    await rememberAct(memory as ActMemoryStore, { orderId: 'ord-1', stage: 'verification_accepted' });
+    await append(outbox, sos);
+    expect((await restore(outbox)).map((e) => e.commandId)).toEqual(['cmd-sos-1']);
+    expect((await loadActMemory(memory as ActMemoryStore, 'ord-1'))?.stage).toBe('verification_accepted');
   });
 });
