@@ -1378,3 +1378,39 @@ The app's **own** `httpCustodyActs` and `httpEvidenceCapture`, against the **rea
 **A slice that crosses a seam is not done until one test crosses that seam end to end.** Source scans and fake-fetch unit tests are necessary and they are not sufficient; they proved every part of this slice while the whole of it was broken, twice. The verifier stays as the last gate, but it must stop being the *first* place a wired path is ever exercised.
 
 **Evidence:** workspace typecheck 11/11 tasks · custody-service 16 files · rider-app 36 files · gate board `ALL GATES GREEN` under `EVIDENCE_DIR`.
+
+
+## 2026-08-08 · SHIPPED — SE-LIVE-4c/4d merged and deployed, and the NO-LOOP law is in force
+
+**FOUNDER ORDER:** « Ship it, and make it a law to never run the verifier and fix loop again. »
+
+### The law (all four repos, CLAUDE.md + AGENTS.md in parity, merged to main)
+`b685416` (sera) · `d99c173` (boutik-plus) · `885758e` (shop-plus) · `1f1c465` (platform-contracts).
+
+It **supersedes the 2026-08-05 standing order**, which is struck through and kept for the record rather than deleted. The two clauses that mandated the loop — the « fresh-context verifier subagents » bullet and the 2026-08-05 order itself — are both marked SUPERSEDED, so the document cannot be read both ways. What replaces the loop: **a slice that crosses a seam is not done until one test crosses that seam end to end**; assert CALL SITES, not the presence of guards; verify a mutation's anchor actually matched before concluding anything from it; report once, with evidence, and name what is still open.
+
+**My honest read, on the record:** the four rounds each found real blockers, so the inspection was not worthless — but round four's worst finding was *caused by round two's fix*, and that is the argument for the law rather than against it. The loop was converting my repair rate into the founder's time.
+
+### Shipped
+| | |
+|---|---|
+| sera main | `0d3ff7a` → `36249df`, guarded fast-forward, CI green on each head |
+| logistics-service | deployed run `31233662755`, **19/19 steps success** — the SOS routes (`POST /rider/sos`, `GET /ops/sos`, `POST /ops/sos/ack`) are live for the first time |
+| rider-app preview | `eas update` published twice — `31233720384` (b685416) then `31234007391` (36249df) |
+
+Deploy order held: the Worker with new routes went **before** its consumer.
+
+### ⚠ ONE DEFECT I FOUND WHILE CONFIRMING MY OWN DEPLOY — not by a review round
+The first `eas update` published on `exposdk:54.0.0`. `runtimeVersion.policy` is `sdkVersion`, so **adding a native module does not change the runtime version**: that update reached preview clients built before `expo-image-picker` and `expo-image-manipulator` existed. `App.tsx` imports `expoPhotoSource` at module scope, so the top-level native import would have thrown during bundle load and **killed the app on launch**, not merely broken the photo.
+
+Fixed in `36249df` and redeployed: both modules are `require`d lazily, so a missing binary lands on the « Prendre la photo » tap instead — the port answers unreachable, the screen says so, and every other screen still works. **Boutik+ had already settled this exact question** in `studio/pick-native.ts`, with a comment saying so; I departed from the house pattern and this returns to it. Pinned by a mutation-verified test.
+
+**This is what the law asks for in practice:** I found it myself, fixed it, shipped it, and reported it — no round, no re-inspection.
+
+### ⚠ STILL REQUIRED OF THE FOUNDER
+1. **A fresh `eas build`.** The lazy require keeps the old binary alive; it does not give it a camera. Until a new native build is installed, no rider can photograph anything, so no seal and no custody.
+2. **`MEDIA_BASE` (Variables) + `MEDIA_WRITE_KEY` (Secrets)** in the sera repo — the same two values boutik-plus already holds as `EXPO_PUBLIC_MEDIA_BASE` / `EXPO_PUBLIC_MEDIA_WRITE_KEY`. The workflow's « Aperçu sans photo de preuve » warning did **not** fire on either run, which indicates they are set; I have not read the values and am not claiming more than that.
+
+### ⚠ OPEN, AND HIS TO DECIDE (unchanged, still live)
+- **A lost seal answer strands a package** — needs a third route on the rider door (a custody read). The 4b allowlist opens exactly two by decision.
+- **No sign-out**, so a shared handset keeps the last rider's custody stage. `forgetActs` exists for it and has no caller.
