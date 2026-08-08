@@ -19,9 +19,13 @@ test('the console shell boots on the sera theme with catalog strings', async ({ 
   await expect(brand).toHaveCSS('color', hexToRgb(theme.colours.ink));
 
   await expect(page.locator('body')).toHaveCSS('background-color', hexToRgb(theme.colours.sand));
-  // WO-6.9-e: five sections now — the ready queue, the LIVE BOARD (D3), the
-  // EXCEPTIONS DESK (D4), the BREAK-GLASS honest shell (D5), and the follow-up.
-  await expect(page.locator('h2')).toHaveCount(5);
+  // WO-6.9-e: five sections — the ready queue, the LIVE BOARD (D3), the
+  // EXCEPTIONS DESK (D4), the BREAK-GLASS honest shell (D5), the follow-up.
+  // SE-LIVE-4e adds a SIXTH: « Codes coursiers », the only LIVE section in this
+  // console — the founder mints the code a rider types to enter Séra. The count
+  // is pinned deliberately so a section cannot appear or vanish unnoticed, so
+  // it is raised here on purpose rather than loosened.
+  await expect(page.locator('h2')).toHaveCount(6);
   await expect(page.locator('h2').first()).toHaveText('Prêt à assigner');
   await expect(page.locator('h2').nth(1)).toHaveText('Tableau en direct');
   await expect(page.locator('h2').nth(2)).toHaveText('Bureau des exceptions');

@@ -502,5 +502,221 @@
     "fr": "(aperçu) statut ≠ garde",
     "register": "neutral",
     "screenClass": "label"
+  },
+  {
+    "key": "codes.section",
+    "fr": "Codes coursiers",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "codes.intro",
+    "fr": "Le code que le coursier tape pour entrer dans Séra.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "codes.cle_titre",
+    "fr": "Votre clé d'opérateur",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "codes.cle_aide",
+    "fr": "Elle reste sur cet ordinateur, le temps de la session. Rien n'est enregistré.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "codes.cle_placeholder",
+    "fr": "Collez la clé",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "codes.cle_entrer",
+    "fr": "Ouvrir",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "codes.cle_refusee",
+    "fr": "Cette clé ne fonctionne pas.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "codes.cle_refusee_aide",
+    "fr": "Vérifiez la clé et recommencez.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "codes.chargement",
+    "fr": "Un instant…",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "codes.echec",
+    "fr": "La liste n'est pas arrivée.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "codes.echec_aide",
+    "fr": "Réessayez dans un moment.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "codes.vide",
+    "fr": "Aucun coursier inscrit pour l'instant.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "codes.vide_aide",
+    "fr": "Inscrivez le premier ci-dessous.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "codes.colonne_coursier",
+    "fr": "Coursier",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "codes.colonne_code",
+    "fr": "Code",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "codes.a_un_code",
+    "fr": "Code actif",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "codes.pas_de_code",
+    "fr": "Pas de code",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "codes.depuis",
+    "fr": "depuis le",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "codes.donner",
+    "fr": "Donner un code",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "codes.retirer",
+    "fr": "Retirer le code",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "codes.inscrire_titre",
+    "fr": "Inscrire un coursier",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "codes.champ_id",
+    "fr": "Identifiant (ex. rider-issa)",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "codes.champ_nom",
+    "fr": "Nom du coursier",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "codes.champ_tel",
+    "fr": "Téléphone (alias)",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "codes.inscrire",
+    "fr": "Inscrire",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "codes.avis_pret",
+    "fr": "Ce coursier n'a pas encore de code.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "codes.avis_remplace",
+    "fr": "Attention : ce coursier a déjà un code. Le nouveau remplace l'ancien tout de suite.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "codes.avis_inconnu",
+    "fr": "Ce coursier n'est pas inscrit. Inscrivez-le d'abord.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "codes.nouveau_titre",
+    "fr": "Le code de ce coursier",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "codes.nouveau_aide",
+    "fr": "Il ne s'affiche qu'une fois. Notez-le, puis donnez-le au coursier de vive voix.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "codes.note",
+    "fr": "C'est noté",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "codes.notez_dabord",
+    "fr": "Notez le code d'abord.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "codes.un_acte",
+    "fr": "Un instant, l'action en cours se termine.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "codes.acte_echoue",
+    "fr": "Ça n'a pas marché. Réessayez.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "codes.pas_relie",
+    "fr": "Cette console n'est pas reliée à Séra.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "codes.pas_relie_aide",
+    "fr": "Renseignez l'adresse du service pour ouvrir les codes coursiers.",
+    "register": "neutral",
+    "screenClass": "instruction"
   }
 ]

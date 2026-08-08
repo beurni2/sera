@@ -24,6 +24,19 @@ import { SANDBOX_DESK_ROUTINE, SANDBOX_DESK_WITH_INCIDENT, type DeskEntry } from
 import { deriveBreakGlassBoard } from './break-glass';
 import { SANDBOX_BREAK_GLASS, SANDBOX_BREAK_GLASS_RIDER } from './sandbox-break-glass';
 import { t } from './i18n';
+import {
+  CODES_IDLE,
+  actSettled,
+  actStart,
+  codesView,
+  dismissCode,
+  mintAvis,
+  mintAvisKey,
+  refuseAct,
+  type CodesRead,
+  type CodesUi,
+} from './rider-codes';
+import { logisticsBase, resolveRiderCodes } from './rider-codes-port';
 
 /**
  * WO-6.1 — the dispatch-console RESKINNED on Grand Teint (ui-tokens v0.9.0,
@@ -167,7 +180,44 @@ style.textContent = `
     text-transform: uppercase;
     color: var(--muted);
   }
-  .rider-row {
+  .codes-desk { display: grid; gap: var(--space-sm); }
+.codes-state { font-size: var(--type-body); color: var(--ink); margin: 0; }
+.codes-hint { font-size: var(--type-label); color: var(--muted); margin: 0; }
+.codes-notice { font-size: var(--type-label); color: var(--danger); margin: 0; }
+.codes-row {
+  display: grid; gap: var(--space-xs); padding: var(--space-sm) 0;
+  border-bottom: var(--hair) solid var(--hairline);
+}
+.codes-row-who { font-size: var(--type-row); color: var(--ink); margin: 0; }
+.codes-row-id { font-size: var(--type-label); color: var(--muted); margin: 0; }
+.codes-row-has { font-size: var(--type-label); color: var(--accent-strong); margin: 0; }
+.codes-row-none { font-size: var(--type-label); color: var(--muted); margin: 0; }
+/* The one-time code: the loudest thing on the desk, because it is on screen
+   once and the founder is copying it onto paper or reading it down a phone. */
+.codes-nouveau {
+  display: grid; gap: var(--space-xs);
+  padding: var(--space-md); background: var(--sand);
+  border: var(--hair-strong) solid var(--accent-strong);
+}
+.codes-nouveau-title { font-size: var(--type-title); color: var(--ink); margin: 0; }
+.codes-nouveau-who { font-size: var(--type-label); color: var(--muted); margin: 0; }
+.codes-nouveau-code {
+  font-size: var(--type-title-lg); color: var(--ink); margin: 0;
+  font-variant-numeric: tabular-nums; letter-spacing: 0.12em;
+  /* Read at arm's length and compared character by character. */
+  word-break: break-all;
+}
+.codes-form { display: grid; gap: var(--space-xs); padding-top: var(--space-sm); }
+.codes-form-title { font-size: var(--type-body); color: var(--ink); margin: 0; }
+.codes-avis { font-size: var(--type-label); color: var(--ink); margin: 0; }
+.codes-desk input {
+  min-height: var(--touch); padding: 0 var(--space-sm);
+  font-size: var(--type-body); color: var(--ink);
+  background: var(--paper); border: var(--hair) solid var(--hairline-strong);
+  border-radius: 0;
+}
+.codes-desk button { min-height: var(--touch); }
+.rider-row {
     display: flex;
     gap: var(--space-sm);
     align-items: center;
@@ -864,6 +914,270 @@ if (app) {
   drillStatus.className = 'drill-status';
   drillStatus.textContent = t('console.drill_status');
   main.append(drillStatus);
+
+  /* ─────────────────── SE-LIVE-4e — THE RIDER CODE DESK ────────────────────
+   *
+   * FOUNDER ORDER (2026-08-08): « build the rider code screen in the dispatch
+   * console. » He could not sign into the rider app — it asks for a code, and
+   * no screen anywhere could mint one. The routes had existed since SE-LIVE-1
+   * with no surface; the only way in was a curl carrying the ops secret.
+   *
+   * ⚠ THE ONLY LIVE SECTION IN THIS CONSOLE. Everything above is sandbox. This
+   * talks to the real logistics Worker, so it is gated behind the founder's own
+   * key and every state it can be in is designed: not-configured, key-asked,
+   * key-refused, loading, failed, empty, list.
+   *
+   * ⚠ THE KEY LIVES IN THIS VARIABLE AND NOWHERE ELSE — no localStorage, no
+   * URL, no log. It opens the rider registry and the SOS board for every rider
+   * in the system, and this console runs on his own machine, so retyping it
+   * after a reload costs one line and buys a secret that is never written down.
+   */
+  const codesHeading = document.createElement('h2');
+  codesHeading.textContent = t('codes.section');
+  const codesSection = document.createElement('section');
+  codesSection.className = 'desk codes-desk';
+
+  let opsKey: string | null = null;
+  let codesRead: CodesRead = { kind: 'loading' };
+  let codesUi: CodesUi = CODES_IDLE;
+  let notice: string | null = null;
+
+  const port = () => resolveRiderCodes(opsKey ?? '');
+
+  const refreshCodes = async (): Promise<void> => {
+    if (opsKey === null) return;
+    codesRead = { kind: 'loading' };
+    renderCodes();
+    const answer = await port().list();
+    codesRead =
+      answer.kind === 'ok'
+        ? { kind: 'ok', riders: answer.value }
+        : answer.kind === 'bad_key'
+          ? { kind: 'bad_key' }
+          : { kind: 'failed' };
+    renderCodes();
+  };
+
+  const line = (cls: string, text: string): HTMLParagraphElement => {
+    const p = document.createElement('p');
+    p.className = cls;
+    p.textContent = text;
+    return p;
+  };
+
+  const field = (cls: string, placeholder: string): HTMLInputElement => {
+    const input = document.createElement('input');
+    input.className = cls;
+    input.placeholder = placeholder;
+    input.setAttribute('aria-label', placeholder);
+    return input;
+  };
+
+  /** One act, through the reducer, so a second tap can never start a second. */
+  const runAct = async (
+    act: 'mint' | `revoke:${string}`,
+    riderId: string,
+    call: () => Promise<{ ok: boolean; code?: string | undefined; badKey?: boolean }>,
+  ): Promise<void> => {
+    const refusal = refuseAct(codesUi);
+    if (refusal !== null) {
+      notice = t(refusal);
+      renderCodes();
+      return;
+    }
+    const started = actStart(codesUi, act);
+    if (started === null) return;
+    codesUi = started;
+    notice = null;
+    renderCodes();
+    const answer = await call();
+    if (answer.badKey === true) {
+      codesUi = CODES_IDLE;
+      codesRead = { kind: 'bad_key' };
+      renderCodes();
+      return;
+    }
+    codesUi = actSettled(codesUi, act, answer.ok ? { ok: true, riderId, ...(answer.code !== undefined ? { code: answer.code } : {}) } : { ok: false });
+    renderCodes();
+    // The roster only reflects the server AFTER the server answered.
+    if (answer.ok) await refreshCodes();
+  };
+
+  function renderCodes(): void {
+    codesSection.replaceChildren();
+
+    // Not configured — an honest state, never an empty desk that reads as
+    // « no riders yet ».
+    if (logisticsBase() === '') {
+      codesSection.append(
+        line('codes-state', t('codes.pas_relie')),
+        line('codes-hint', t('codes.pas_relie_aide')),
+      );
+      return;
+    }
+
+    // The key door. One sentence about where the key goes, then the field.
+    if (opsKey === null) {
+      codesSection.append(line('codes-state', t('codes.cle_titre')), line('codes-hint', t('codes.cle_aide')));
+      const input = field('codes-key', t('codes.cle_placeholder'));
+      input.type = 'password';
+      const open = document.createElement('button');
+      open.className = 'codes-key-open';
+      open.textContent = t('codes.cle_entrer');
+      const enter = () => {
+        const typed = input.value.trim();
+        if (typed === '') return;
+        opsKey = typed;
+        input.value = '';
+        void refreshCodes();
+      };
+      open.addEventListener('click', enter);
+      input.addEventListener('keydown', (e) => {
+        if ((e as KeyboardEvent).key === 'Enter') enter();
+      });
+      codesSection.append(input, open);
+      return;
+    }
+
+    // ⚠ A REFUSED KEY ESCALATES THE WHOLE DESK — one door, one sentence. A
+    // « failed » table here would send him looking at the service instead of
+    // his key.
+    if (codesRead.kind === 'bad_key') {
+      codesSection.append(
+        line('codes-state', t('codes.cle_refusee')),
+        line('codes-hint', t('codes.cle_refusee_aide')),
+      );
+      const again = document.createElement('button');
+      again.className = 'codes-key-reset';
+      again.textContent = t('codes.cle_entrer');
+      again.addEventListener('click', () => {
+        opsKey = null;
+        codesRead = { kind: 'loading' };
+        renderCodes();
+      });
+      codesSection.appendChild(again);
+      return;
+    }
+
+    codesSection.appendChild(line('codes-hint', t('codes.intro')));
+
+    // ⚠ THE ONE-TIME CODE, AND IT BLOCKS EVERYTHING. The plaintext exists
+    // nowhere else — the server hands it over once and never again.
+    if (codesUi.nouveau !== null) {
+      const card = document.createElement('div');
+      card.className = 'codes-nouveau';
+      card.append(
+        line('codes-nouveau-title', t('codes.nouveau_titre')),
+        line('codes-nouveau-who', codesUi.nouveau.riderId),
+        line('codes-nouveau-code', codesUi.nouveau.code),
+        line('codes-hint', t('codes.nouveau_aide')),
+      );
+      const noted = document.createElement('button');
+      noted.className = 'codes-noted';
+      noted.textContent = t('codes.note');
+      noted.addEventListener('click', () => {
+        codesUi = dismissCode(codesUi);
+        notice = null;
+        renderCodes();
+      });
+      card.appendChild(noted);
+      codesSection.appendChild(card);
+    }
+
+    if (notice !== null) codesSection.appendChild(line('codes-notice', notice));
+    if (codesUi.echec !== null) codesSection.appendChild(line('codes-notice', t('codes.acte_echoue')));
+
+    const view = codesView(codesRead);
+    if (view === null) return;
+    if (view.kind !== 'liste') {
+      codesSection.appendChild(line('codes-state', t(view.message)));
+      if (view.kind === 'failed') codesSection.appendChild(line('codes-hint', t('codes.echec_aide')));
+      if (view.kind === 'empty') codesSection.appendChild(line('codes-hint', t('codes.vide_aide')));
+    } else {
+      for (const r of view.riders) {
+        const row = document.createElement('div');
+        row.className = 'codes-row';
+        row.append(
+          line('codes-row-who', r.displayName),
+          line('codes-row-id', r.riderId),
+          line(
+            r.hasCode ? 'codes-row-has' : 'codes-row-none',
+            r.hasCode
+              ? `${t('codes.a_un_code')}${r.mintedAt !== undefined ? ` · ${t('codes.depuis')} ${r.mintedAt.slice(0, 10)}` : ''}`
+              : t('codes.pas_de_code'),
+          ),
+        );
+        const give = document.createElement('button');
+        give.className = 'codes-give';
+        give.textContent = t('codes.donner');
+        give.disabled = codesUi.busy !== null || codesUi.nouveau !== null;
+        give.addEventListener('click', () => {
+          void runAct('mint', r.riderId, async () => {
+            const a = await port().mint(r.riderId);
+            return { ok: a.kind === 'ok', code: a.kind === 'ok' ? a.value : undefined, badKey: a.kind === 'bad_key' };
+          });
+        });
+        row.appendChild(give);
+        if (r.hasCode) {
+          const take = document.createElement('button');
+          take.className = 'codes-revoke';
+          take.textContent = t('codes.retirer');
+          take.disabled = codesUi.busy !== null || codesUi.nouveau !== null;
+          take.addEventListener('click', () => {
+            void runAct(`revoke:${r.riderId}`, r.riderId, async () => {
+              const a = await port().revoke(r.riderId);
+              return { ok: a.kind === 'ok', badKey: a.kind === 'bad_key' };
+            });
+          });
+          row.appendChild(take);
+        }
+        codesSection.appendChild(row);
+      }
+    }
+
+    // ── register a new rider ────────────────────────────────────────────────
+    const form = document.createElement('div');
+    form.className = 'codes-form';
+    form.appendChild(line('codes-form-title', t('codes.inscrire_titre')));
+    const idField = field('codes-new-id', t('codes.champ_id'));
+    const nameField = field('codes-new-name', t('codes.champ_nom'));
+    const phoneField = field('codes-new-phone', t('codes.champ_tel'));
+    const avisLine = line('codes-avis', '');
+    // The warning follows what he types, BEFORE he taps — « this rider already
+    // has a code and the new one kills it now » is a fact he needs first.
+    const showAvis = () => {
+      const typed = idField.value.trim();
+      const riders = codesRead.kind === 'ok' ? codesRead.riders : [];
+      avisLine.textContent = typed === '' ? '' : t(mintAvisKey(mintAvis(riders, typed)));
+    };
+    idField.addEventListener('input', showAvis);
+    const add = document.createElement('button');
+    add.className = 'codes-register';
+    add.textContent = t('codes.inscrire');
+    add.disabled = codesUi.busy !== null || codesUi.nouveau !== null;
+    add.addEventListener('click', () => {
+      const riderId = idField.value.trim();
+      const displayName = nameField.value.trim();
+      const phoneAlias = phoneField.value.trim();
+      if (riderId === '' || displayName === '' || phoneAlias === '') return;
+      void runAct('mint', riderId, async () => {
+        const reg = await port().register({ riderId, displayName, phoneAlias });
+        if (reg.kind === 'bad_key') return { ok: false, badKey: true };
+        // `already_registered` is not a failure to mint — fall through and give
+        // the existing rider a code, which is what he came here to do.
+        if (reg.kind === 'unreachable') return { ok: false };
+        const a = await port().mint(riderId);
+        return { ok: a.kind === 'ok', code: a.kind === 'ok' ? a.value : undefined, badKey: a.kind === 'bad_key' };
+      });
+    });
+    form.append(idField, nameField, phoneField, avisLine, add);
+    codesSection.appendChild(form);
+  }
+
+  renderCodes();
+  main.append(codesHeading, codesSection);
+
+
 
   // The REAL service-side deadline, ONE sweep for BOTH stores (WO-4.3).
   setInterval(() => {
