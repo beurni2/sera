@@ -1,0 +1,307 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { Miniflare } from 'miniflare';
+import { afterAll, describe, expect, it } from 'vitest';
+import { httpCustodyActs } from '../../../apps/rider-app/src/net/custody-acts';
+import { httpEvidenceCapture, type PhotoSource } from '../../../apps/rider-app/src/net/evidence-capture';
+import { custodyBegan, verificationAccepted } from '../../../apps/rider-app/src/net/custody-acts';
+import { resizeForEvidence } from '../../../apps/rider-app/src/net/photo-bounds';
+import { POLICY_CHECK_IDS } from '../../../apps/rider-app/src/custody-flow';
+import { PICKUP_VERIFICATION_POLICY_V1 } from '../src/pickup-verification-policy';
+
+/**
+ * ═══ THE RIDER'S WHOLE PATH, WALKED ONCE, THROUGH THE APP'S OWN PORTS ═══
+ *
+ * ⚠ WHY THIS FILE EXISTS. Three verifier rounds each found a blocker, and all
+ * three lived in the SAME seam, which nothing in this repo crossed:
+ *
+ *   · the rider app's tests drive its ports with an INJECTED FAKE FETCH — they
+ *     never touch a Worker;
+ *   · the Worker e2e tests call the Workers with RAW `fetch` — they never touch
+ *     the app's ports;
+ *   · and `App.tsx` was only ever checked by SOURCE SCAN.
+ *
+ * So « the port works » and « the Worker works » were both proven, and « the
+ * rider can take custody » was proven by nobody. Round two: the ports were
+ * called by nothing, and 260 tests passed over a dead button. Round three: the
+ * photo port was wired and every upload was REFUSED, because the app sent
+ * camera-native resolution to a bucket that caps at 2048 — and 274 tests passed
+ * over that too.
+ *
+ * This test walks the real thing: the app's OWN `httpCustodyActs` and
+ * `httpEvidenceCapture`, against the REAL custody Worker in miniflare, with a
+ * bucket stub that enforces the media-service's ACTUAL bounds. Both round-two
+ * and round-three blockers fail here. That is the point — the loop was catching
+ * what an integration test should have caught first.
+ *
+ * ═══ THE BUCKET STUB IS CONTRACT-CERTIFIED (Execution Contract §3) ═══
+ *
+ * media-service lives in the boutik-plus repo and is not a dependency here, so
+ * it cannot be imported. The stub therefore MIRRORS its validation exactly —
+ * magic-byte sniff, SOF0 dimension parse, the 2048 ceiling, the 200 floor, the
+ * 5 MB cap — with the constants named and pinned. « A mock that hides real
+ * timing or failure behaviour is a bug you own »: this one is written to be
+ * HARSHER than the app expects, not kinder, and the round-three bug reproduces
+ * against it.
+ */
+
+const OPS = 'test-custody-ops-rider-path';
+const VERIFY_KEY = 'test-rider-verify-rider-path';
+const RIDER_CODE = 'SR-PATH-0001-0002';
+const RIDER = 'rider-path-0001';
+const ORDER = 'ord-path-0001';
+const PKG = 'pkg-path-0001';
+const SEAL = 'SEAL-PATH-0001';
+
+/** media-service `IMAGE_STANDARD_MAX_DIM` / `IMAGE_MIN_DIM` / `IMAGE_MAX_BYTES`. */
+const BUCKET_MAX_DIM = 2048;
+const BUCKET_MIN_DIM = 200;
+const BUCKET_MAX_BYTES = 5 * 1024 * 1024;
+
+/** A byte-valid JPEG whose SOF0 declares the given size — enough for the
+ *  sniff + dimension parse the real service performs, which is all it reads. */
+function jpegOf(width: number, height: number): Uint8Array {
+  const head = [0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00];
+  const sof = [
+    0xff, 0xc0, 0x00, 0x11, 0x08,
+    (height >> 8) & 0xff, height & 0xff,
+    (width >> 8) & 0xff, width & 0xff,
+    0x03, 0x01, 0x22, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11, 0x01,
+  ];
+  return Uint8Array.from([...head, ...sof, 0xff, 0xd9]);
+}
+
+function dimensionsOf(bytes: Uint8Array): { width: number; height: number } | null {
+  let i = 2;
+  while (i + 9 < bytes.length) {
+    if (bytes[i] !== 0xff) { i += 1; continue; }
+    const marker = bytes[i + 1]!;
+    const isSof = marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc;
+    if (isSof) {
+      return { height: (bytes[i + 5]! << 8) | bytes[i + 6]!, width: (bytes[i + 7]! << 8) | bytes[i + 8]! };
+    }
+    if (marker === 0xd8 || marker === 0xd9 || (marker >= 0xd0 && marker <= 0xd7)) { i += 2; continue; }
+    i += 2 + ((bytes[i + 2]! << 8) | bytes[i + 3]!);
+  }
+  return null;
+}
+
+/** The bucket, with media-service's real refusals. Returns the same shapes. */
+let uploadCount = 0;
+const bucketFetch = async (_url: string, init?: RequestInit): Promise<Response> => {
+  uploadCount += 1;
+  const body = init?.body as unknown as Uint8Array;
+  if (!(body instanceof Uint8Array) || body.length === 0) {
+    return Response.json({ reason: 'empty' }, { status: 400 });
+  }
+  if (body.length > BUCKET_MAX_BYTES) return Response.json({ reason: 'too_large' }, { status: 400 });
+  const jpeg = body[0] === 0xff && body[1] === 0xd8 && body[2] === 0xff;
+  if (!jpeg) return Response.json({ reason: 'unsupported_type' }, { status: 400 });
+  const dims = dimensionsOf(body);
+  if (dims === null) return Response.json({ reason: 'bad_dimensions' }, { status: 400 });
+  // ⚠ THE REFUSAL THAT BROKE ROUND THREE. Every phone in this market shoots
+  // wider than 2048, and the app was uploading camera-native resolution.
+  if (dims.width > BUCKET_MAX_DIM || dims.height > BUCKET_MAX_DIM) {
+    return Response.json({ reason: 'bad_dimensions' }, { status: 400 });
+  }
+  if (dims.width < BUCKET_MIN_DIM || dims.height < BUCKET_MIN_DIM) {
+    return Response.json({ reason: 'bad_dimensions' }, { status: 400 });
+  }
+  return Response.json(
+    { ref: `media/tok-${uploadCount}`, contentType: 'image/jpeg', width: dims.width, height: dims.height, byteLength: body.length },
+    { status: 201 },
+  );
+};
+
+/**
+ * The camera, standing in for `expoPhotoSource`. It returns what a REAL handset
+ * returns — a full-resolution sensor image — and then applies the same resize
+ * decision the device binding applies. If that decision is wrong or missing,
+ * the bucket refuses, exactly as it does on a phone.
+ */
+function cameraOf(width: number, height: number, applyResize: boolean): PhotoSource {
+  return {
+    async capture(): Promise<Uint8Array | null> {
+      if (!applyResize) return jpegOf(width, height);
+      const resize = resizeForEvidence(width, height);
+      if (resize === null) return jpegOf(width, height);
+      const scale = resize.width !== undefined ? resize.width / width : (resize.height as number) / height;
+      return jpegOf(Math.round(width * scale), Math.round(height * scale));
+    },
+  };
+}
+
+const online = { current: () => 'online' as const };
+
+const PICKUP_CODE = 'PICKUP-PATH-0001';
+
+/**
+ * ⚠ THE CHECKLIST IS TAKEN FROM BOTH SIDES AND COMPARED, NOT TYPED OUT HERE.
+ * My first draft of this file invented nine plausible check names and the
+ * Worker answered `check_not_in_policy` — which is precisely the class of
+ * cross-boundary drift this file exists to catch. The app renders its checklist
+ * from `POLICY_CHECK_IDS`; the SERVICE judges against
+ * `PICKUP_VERIFICATION_POLICY_V1.checks`. If those two lists ever diverge, every
+ * verification a rider sends is refused, and nothing else in the repo compares
+ * them.
+ */
+const ALL_PASS = Object.fromEntries(POLICY_CHECK_IDS.map((id) => [id, true]));
+
+const dir = mkdtempSync(join(tmpdir(), 'sera-rider-path-'));
+let mf: Miniflare | undefined;
+
+afterAll(async () => {
+  await mf?.dispose();
+  rmSync(dir, { recursive: true, force: true });
+});
+
+/** Custody, with logistics stubbed at the SAME seam the real binding uses: it
+ *  answers « is this code this rider's, right now », over the verify key. */
+function boot(): Miniflare {
+  return new Miniflare({
+    modules: true,
+    scriptPath: 'dist-worker/worker.mjs',
+    compatibilityDate: '2025-07-05',
+    compatibilityFlags: ['nodejs_compat'],
+    durableObjects: { CUSTODY: 'CustodyDO', PACKAGE_CLAIM: 'PackageClaimDO' },
+    durableObjectsPersist: dir,
+    serviceBindings: {
+      LOGISTICS: async (request: Request): Promise<Response> => {
+        if ((request.headers.get('Authorization') ?? '') !== `Bearer ${VERIFY_KEY}`) {
+          return Response.json({ error: 'unauthorized' }, { status: 401 });
+        }
+        const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+        return String(body?.['code'] ?? '') === RIDER_CODE
+          ? Response.json({ ok: true, riderId: RIDER })
+          : Response.json({ error: 'unauthorized' }, { status: 401 });
+      },
+    },
+    bindings: { SERA_CUSTODY_OPS_SECRET: OPS, SERA_RIDER_VERIFY_SECRET: VERIFY_KEY },
+  });
+}
+
+async function ops(m: Miniflare, path: string, body: unknown): Promise<number> {
+  const res = await m.dispatchFetch(`http://custody${path}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${OPS}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return res.status;
+}
+
+/** The dispatcher's own preparation: the order opened and both secrets armed. */
+async function openOrder(m: Miniflare): Promise<void> {
+  expect(await ops(m, '/ops/order/open', {
+    orderId: ORDER, taskId: 'task-path', packageId: PKG, correlationId: 'corr-path', supplierId: 'sup-path',
+  })).toBe(200);
+  for (const [kind, secret] of [['pickup_verification_code', PICKUP_CODE], ['custody_seal', SEAL]] as const) {
+    expect(await ops(m, '/ops/secrets/arm', { orderId: ORDER, command_id: `arm-${kind}`, kind, secret })).toBe(200);
+  }
+}
+
+/** The app's ports, pointed at the real Worker through miniflare's dispatch. */
+function riderPorts(m: Miniflare) {
+  const fetchFn = ((url: string, init?: RequestInit) =>
+    m.dispatchFetch(url, init as never)) as unknown as typeof globalThis.fetch;
+  return httpCustodyActs('http://custody', online, fetchFn as never);
+}
+
+describe('⚠ THE RIDER TAKES CUSTODY — the app’s own ports, the real Worker', () => {
+  it('⚠ the app’s checklist IS the service’s policy, id for id and in order', () => {
+    // Drift here refuses every verification a rider sends, with
+    // `check_not_in_policy` — and until this line, the app's list and the
+    // service's list were two independent literals that nothing compared.
+    expect([...POLICY_CHECK_IDS]).toEqual([...PICKUP_VERIFICATION_POLICY_V1.checks]);
+  });
+
+  it('walks photo → verification → seal → custody, and the LEDGER says so', async () => {
+    mf = boot();
+    await openOrder(mf);
+    const acts = riderPorts(mf);
+
+    // A real 8 MP rear camera — the handset class a Séra rider carries.
+    const evidence = httpEvidenceCapture(
+      'https://bucket.invalid', 'test-write-key',
+      cameraOf(3264, 2448, true), online, bucketFetch as never,
+    );
+
+    const shot = await evidence.captureAndUpload();
+    expect(shot.ok, `the bucket refused the photo: ${JSON.stringify(shot)}`).toBe(true);
+    const ref = shot.ok ? shot.ref : '';
+    expect(ref).toMatch(/^media\//);
+
+    const verified = await acts.verifyPickup(
+      {
+        commandId: 'cmd-path-verify-1', orderId: ORDER,
+        presentedPickupCode: PICKUP_CODE, evidenceBundleId: ref,
+        dwellSec: 150, checkResults: ALL_PASS,
+      },
+      RIDER_CODE,
+    );
+    expect(verificationAccepted(verified), `verification not accepted: ${JSON.stringify(verified)}`).toBe(true);
+
+    const sealShot = await evidence.captureAndUpload();
+    expect(sealShot.ok).toBe(true);
+    const began = await acts.beginCustody(
+      {
+        commandId: 'cmd-path-seal-1', orderId: ORDER,
+        custodySealId: SEAL, sealPhotoRefs: sealShot.ok ? [sealShot.ref] : [],
+      },
+      RIDER_CODE,
+    );
+    // SE-I05 — « Custody begins only after rider pickup verification AND
+    // custody-seal registration. » The assertion this whole slice exists to
+    // make true, and until this file nothing in the repo made it.
+    expect(custodyBegan(began), `custody did not begin: ${JSON.stringify(began)}`).toBe(true);
+
+    // …and the LEDGER, not the response, names this rider as custodian.
+    const led = await mf.dispatchFetch(`http://custody/ops/ledger?orderId=${ORDER}`, {
+      headers: { Authorization: `Bearer ${OPS}` },
+    });
+    expect(String(((await led.json()) as Record<string, unknown>)['currentCustodian'] ?? ''))
+      .toBe(`courier:${RIDER}`);
+  }, 30_000);
+
+  it('⚠ REPRODUCES ROUND THREE: with no device resize the bucket refuses, and the seal cannot go', async () => {
+    // The shipped bug, exactly. `quality` is compression, not a resize, so the
+    // app uploaded 3264×2448 and media-service answered `400 bad_dimensions`.
+    // The screen said « Reprenez-la. » and retaking gave the same answer for
+    // ever — the send stayed disabled and custody could never begin.
+    const unresized = httpEvidenceCapture(
+      'https://bucket.invalid', 'test-write-key',
+      cameraOf(3264, 2448, false), online, bucketFetch as never,
+    );
+    const shot = await unresized.captureAndUpload();
+    expect(shot.ok).toBe(false);
+    expect(shot.ok === false ? shot.reason : '').toBe('rejected');
+    expect(shot.ok === false && shot.reason === 'rejected' ? shot.detail : '').toBe('bad_dimensions');
+  });
+
+  it('⚠ a REFUSED verification is recorded, never mistaken for an acceptance', async () => {
+    // The Worker answers a refusal with `200 {ok:true, kind:'refused'}` — the
+    // same shape as an acceptance. Anything reading HTTP 200 as « accepted »
+    // walks a rider into custody of goods the ledger leaves with the seller.
+    const m = boot();
+    const ORDER2 = `${ORDER}-refused`;
+    expect(await ops(m, '/ops/order/open', {
+      orderId: ORDER2, taskId: 't2', packageId: `${PKG}-2`, correlationId: 'c2', supplierId: 'sup-path',
+    })).toBe(200);
+    expect(await ops(m, '/ops/secrets/arm', {
+      orderId: ORDER2, command_id: 'arm-p2', kind: 'pickup_verification_code', secret: PICKUP_CODE,
+    })).toBe(200);
+
+    const acts = riderPorts(m);
+    const answer = await acts.verifyPickup(
+      {
+        commandId: 'cmd-path-verify-refused', orderId: ORDER2,
+        presentedPickupCode: PICKUP_CODE, evidenceBundleId: 'media/tok-refused',
+        dwellSec: 150, checkResults: { ...ALL_PASS, damage: false },
+      },
+      RIDER_CODE,
+    );
+    expect(answer.kind, `expected a recorded answer, got ${JSON.stringify(answer)}`).toBe('recorded');
+    expect(verificationAccepted(answer), 'a refusal must never read as accepted').toBe(false);
+    await m.dispose();
+  }, 30_000);
+});
