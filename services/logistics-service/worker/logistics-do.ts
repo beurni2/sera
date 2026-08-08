@@ -481,11 +481,20 @@ export class LogisticsDO {
      * ═══ SE-LIVE-2c — THE FOUNDER COMPOSES THE DELIVERY TASK ═══
      *
      * FOUNDER RULING (2026-08-06, option 1): the canonical DeliveryTask
-     * REQUIRES a GPS pin, `directions` and a `maskedRelay`, and the buyer
-     * gives Shop+ only phone + quartier + repère (BC-1a). No producer can
-     * compose a canonical task without INVENTING coordinates and a relay id,
-     * so no producer composes one: the founder does, here, from what he can
-     * actually see. Nothing is fabricated and no canon shape was weakened.
+     * REQUIRES a GPS pin, and the buyer gives Shop+ only phone + quartier +
+     * repère (BC-1a). No producer can compose a canonical task without
+     * INVENTING coordinates, so no producer composes one: the founder does,
+     * here, from what he can actually see. Nothing is fabricated and no canon
+     * shape was weakened.
+     *
+     * FOUNDER REPORT (2026-08-08): « it asks more useless additional
+     * information. » What canon actually demands (kernel LocationSchema) is
+     * pin + zone + landmark; `directions` and `maskedRelay` are plain
+     * `z.string()` — EMPTY IS CANON-LEGAL. This door's first cut demanded all
+     * five non-empty, which forced the founder to type a fake relay id
+     * (« relais-1 ») to satisfy a field no relay service backs yet. A fake
+     * value invented to pass a gate is worse than an honest absence: the two
+     * optional fields now accept '' and the required trio stays required.
      *
      * WHAT HE SUPPLIES: the address only. WHAT HE CANNOT DO: skip the gate.
      * The composed task goes through the SAME `onTaskReady` admission the
@@ -517,8 +526,11 @@ export class LogisticsDO {
         (pin['lng'] as number) > 180 ||
         !isStr(loc['zone']) ||
         !isStr(loc['landmark']) ||
-        !isStr(loc['directions']) ||
-        !isStr(loc['maskedRelay']) ||
+        // Canon's own line (kernel LocationSchema): directions and maskedRelay
+        // are `z.string()`, not TrimmedNonEmptyString — empty is a lawful
+        // absence, a non-string is still malformed.
+        typeof loc['directions'] !== 'string' ||
+        typeof loc['maskedRelay'] !== 'string' ||
         win == null ||
         !isIso(win['start']) ||
         !isIso(win['end']) ||

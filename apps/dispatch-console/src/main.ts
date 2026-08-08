@@ -562,7 +562,10 @@ if (app) {
       const card = document.createElement('section');
       card.className = 'task-card';
       // SE0.3: landmark-first display order — landmark, directions, zone.
+      // Directions are canon-optional ('' is a lawful absence, CONFIER-ALLEGE):
+      // an empty line renders nothing rather than a blank row.
       for (const line of landmarkFirstLines(entry.task.location)) {
+        if (line === '') continue;
         const p = document.createElement('p');
         p.className = 'location-line';
         p.textContent = line;

@@ -133,8 +133,14 @@ export function LandmarkCard({
       <View style={styles.landmarkBody}>
         <Text style={styles.landmarkLabel}>{repereLabel}</Text>
         <Text style={styles.landmarkRepere}>{lines[0]}</Text>
-        <Text style={styles.landmarkLabel}>{indicationsLabel}</Text>
-        <Text style={styles.landmarkIndications}>{lines[1]}</Text>
+        {/* Indications are canon-optional ('' is a lawful absence, CONFIER-ALLEGE);
+            a label over a blank is not an honest state, so the pair hides together. */}
+        {lines[1] !== '' && (
+          <>
+            <Text style={styles.landmarkLabel}>{indicationsLabel}</Text>
+            <Text style={styles.landmarkIndications}>{lines[1]}</Text>
+          </>
+        )}
         {voice !== undefined && <VoicePlayRow label={voice.label} time={voice.time} playing={voice.playing} onPress={voice.onPress} />}
       </View>
     </View>

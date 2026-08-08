@@ -612,12 +612,15 @@ describe('SE-LIVE-2c — the founder composes the task, and the gate still gover
     expect(forOrder).toHaveLength(1);
   });
 
-  it('A HALF-GIVEN ADDRESS IS REFUSED 400 — never a task with a guessed pin or an empty relay', async () => {
+  it('A HALF-GIVEN ADDRESS IS REFUSED 400 — canon’s required trio (pin, zone, landmark) is not optional', async () => {
     const cases: Json[] = [
       { ...LOCATION, pin: undefined },
       { ...LOCATION, pin: { lat: 'douze', lng: -1.5 } },
-      { ...LOCATION, maskedRelay: '' },
-      { ...LOCATION, directions: '   ' },
+      { ...LOCATION, zone: '   ' },
+      { ...LOCATION, landmark: '' },
+      // Non-strings are still malformed even where '' is lawful.
+      { ...LOCATION, directions: 42 },
+      { ...LOCATION, maskedRelay: null },
     ];
     for (const location of cases) {
       const res = await call(mf, 'POST', '/ops/task', opsAuth, {
@@ -637,6 +640,33 @@ describe('SE-LIVE-2c — the founder composes the task, and the gate still gover
         window: { start: 'demain', end: WINDOW.end },
       })).status,
     ).toBe(400);
+  });
+
+  it('CONFIER-ALLEGE (founder report 2026-08-08): empty directions and relay are LAWFUL — canon makes them optional, and the composed task still parses canon-strict', async () => {
+    const ORDER_ALLEGE = 'order-compose-allege';
+    await fundOrder(mf, ORDER_ALLEGE);
+    await readyOrder(mf, ORDER_ALLEGE);
+    const res = await call(mf, 'POST', '/ops/task', opsAuth, {
+      command_id: 'cmd-compose-allege',
+      orderId: ORDER_ALLEGE,
+      // What the founder actually has: the buyer's quartier + repère and a
+      // pin from his maps app. No invented « relais-1 », no forced directions.
+      location: { ...LOCATION, directions: '', maskedRelay: '' },
+      window: WINDOW,
+    });
+    expect(res.status).toBe(200);
+    expect(res.json).toMatchObject({ ok: true, admitted: true, duplicate: false });
+    const taskId = res.json['taskId'] as string;
+    const board = await call(mf, 'GET', '/ops/board', opsAuth);
+    const queued = ((board.json['board'] as Json)['queued'] as Json[]).find((q) => q['taskId'] === taskId);
+    expect(queued).toBeDefined();
+    // The absences survive as honest empty strings — never back-filled.
+    expect(queued?.['location']).toMatchObject({
+      zone: 'Gounghin',
+      landmark: 'Face à la pharmacie du marché',
+      directions: '',
+      maskedRelay: '',
+    });
   });
 
   it('the ops door gates it: composing without the founder’s key is the uniform 401', async () => {
