@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Miniflare } from 'miniflare';
 import { afterAll, describe, expect, it } from 'vitest';
-import { httpCustodyActs } from '../../../apps/rider-app/src/net/custody-acts';
+import { custodyWithCustomer, httpCustodyActs } from '../../../apps/rider-app/src/net/custody-acts';
 import { httpEvidenceCapture, type PhotoSource } from '../../../apps/rider-app/src/net/evidence-capture';
 import { custodyBegan, verificationAccepted } from '../../../apps/rider-app/src/net/custody-acts';
 import { resizeForEvidence } from '../../../apps/rider-app/src/net/photo-bounds';
@@ -329,6 +329,85 @@ describe('⚠ THE RIDER TAKES CUSTODY — the app’s own ports, the real Worker
     );
     expect(answer.kind, `expected a recorded answer, got ${JSON.stringify(answer)}`).toBe('recorded');
     expect(verificationAccepted(answer), 'a refusal must never read as accepted').toBe(false);
+    await m.dispose();
+  }, 30_000);
+});
+
+/**
+ * ═══ SE-LIVE-5c — THE RIDER DELIVERS, through the app's OWN port ═══
+ *
+ * SE-I05: « Delivery requires assigned session + `buyerDropCode` + same
+ * custody seal + evidence » · §63: the code is entered LAST, on the rider's
+ * device; « evidence supports, never releases ». The DECISION is deliberately
+ * NOT the rider's: the rider door answers 404 for it, proven below.
+ */
+describe('SE-LIVE-5c — the rider’s delivery acts, the real Worker, the ledger’s word', () => {
+  const ORDER3 = `${ORDER}-livraison`;
+  const DROP = 'DROP-PATH-9042';
+
+  it('evidence → (founder decides) → drop code LAST; the ledger hands custody to the customer', async () => {
+    const m = boot();
+    expect(await ops(m, '/ops/order/open', {
+      orderId: ORDER3, taskId: 'task-liv3', packageId: `${PKG}-liv`, correlationId: `corr-${ORDER3}`, supplierId: 'sup-path',
+    })).toBe(200);
+    for (const [kind, secret] of [
+      ['pickup_verification_code', PICKUP_CODE],
+      ['custody_seal', SEAL],
+      ['buyer_drop_code', DROP],
+    ] as const) {
+      expect(await ops(m, '/ops/secrets/arm', { orderId: ORDER3, command_id: `arm3-${kind}`, kind, secret })).toBe(200);
+    }
+    const acts = riderPorts(m);
+    expect(verificationAccepted(await acts.verifyPickup(
+      { commandId: 'cmd-liv3-verify', orderId: ORDER3, presentedPickupCode: PICKUP_CODE,
+        evidenceBundleId: 'media/tok-liv3', dwellSec: 150, checkResults: ALL_PASS },
+      RIDER_CODE,
+    ))).toBe(true);
+    expect(custodyBegan(await acts.beginCustody(
+      { commandId: 'cmd-liv3-seal', orderId: ORDER3, custodySealId: SEAL, sealPhotoRefs: ['media/tok-liv3-seal'] },
+      RIDER_CODE,
+    ))).toBe(true);
+
+    // ── the rider door does NOT open the decision — 404, indistinguishable
+    //    from a route that never existed (the allowlist's whole point) ──────
+    const decide = await m.dispatchFetch('http://custody/rider/delivery/decide', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${RIDER_CODE}` },
+      body: JSON.stringify({ orderId: ORDER3, command_id: 'cmd-liv3-rider-decide' }),
+    });
+    expect(decide.status, 'a carrier must never validate their own delivery').toBe(404);
+
+    // ── the handoff evidence, through the app's own port ───────────────────
+    const evidence = await acts.submitDeliveryEvidence(
+      { commandId: 'cmd-liv3-evidence', orderId: ORDER3, custodySealId: SEAL,
+        taskId: 'task-liv3', packageId: `${PKG}-liv`,
+        artifacts: [{ ref: 'media/tok-liv3-door', sha256: 'b'.repeat(64), mimeType: 'image/jpeg' }],
+        capturedAt: '2026-08-08T18:00:00.000Z' },
+      RIDER_CODE,
+    );
+    expect(evidence.kind, JSON.stringify(evidence)).toBe('recorded');
+
+    // ── the founder's decision, via HIS door ───────────────────────────────
+    expect(await ops(m, '/ops/delivery/decide', { orderId: ORDER3, command_id: 'cmd-liv3-decide' })).toBe(200);
+
+    // ── the buyer's code, LAST, on the rider's device ──────────────────────
+    const wrong = await acts.confirmDrop(
+      { commandId: 'cmd-liv3-drop-wrong', orderId: ORDER3, dropCode: 'PAS-LE-CODE' },
+      RIDER_CODE,
+    );
+    expect(wrong.kind).toBe('refused');
+    expect(custodyWithCustomer(wrong)).toBe(false);
+    const dropped = await acts.confirmDrop(
+      { commandId: 'cmd-liv3-drop', orderId: ORDER3, dropCode: DROP },
+      RIDER_CODE,
+    );
+    expect(custodyWithCustomer(dropped), JSON.stringify(dropped)).toBe(true);
+
+    // ── the LEDGER, not the response ───────────────────────────────────────
+    const led = await m.dispatchFetch(`http://custody/ops/ledger?orderId=${ORDER3}`, {
+      headers: { Authorization: `Bearer ${OPS}` },
+    });
+    expect(String(((await led.json()) as Record<string, unknown>)['currentCustodian'] ?? '')).toBe('customer');
     await m.dispose();
   }, 30_000);
 });

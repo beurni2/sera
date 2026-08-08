@@ -135,12 +135,41 @@ export interface BeginCustodyAct {
   readonly sealPhotoRefs: readonly string[];
 }
 
+/**
+ * SE-LIVE-5c — the handoff moment's evidence (SE-I05: delivery requires
+ * « evidence »; §63: it SUPPORTS, never releases). The seal id is one of the
+ * four secrets and dies at custody's door like every other; the photo refs
+ * are identifiers of already-uploaded media, safe at rest.
+ */
+export interface DeliveryEvidenceAct {
+  readonly commandId: CommandId;
+  readonly orderId: string;
+  readonly custodySealId: string;
+  readonly taskId: string;
+  readonly packageId: string;
+  readonly artifacts: readonly { ref: string; sha256: string; mimeType: string }[];
+  readonly capturedAt: string;
+}
+
+/**
+ * SE-LIVE-5c — the buyer's code, entered LAST, on this device (§63). A
+ * custody secret: same no-offline-queue law as the pickup code and the seal
+ * — offline, the act refuses and NOTHING rests on the phone.
+ */
+export interface ConfirmDropAct {
+  readonly commandId: CommandId;
+  readonly orderId: string;
+  readonly dropCode: string;
+}
+
 /** Mint the identity of an act ONCE, at the gesture. Every retry reuses it. */
 export const mintActId = (): CommandId => mintCommandId();
 
 export interface CustodyActsPort {
   verifyPickup(act: VerifyPickupAct, code: string): Promise<CustodyAnswer>;
   beginCustody(act: BeginCustodyAct, code: string): Promise<CustodyAnswer>;
+  submitDeliveryEvidence(act: DeliveryEvidenceAct, code: string): Promise<CustodyAnswer>;
+  confirmDrop(act: ConfirmDropAct, code: string): Promise<CustodyAnswer>;
 }
 
 /** Custody's structured refusals arrive as `{ok:false, reason}` with a 4xx.
@@ -214,7 +243,36 @@ export function httpCustodyActs(
         sealPhotoRefs: [...act.sealPhotoRefs],
       });
     },
+    async submitDeliveryEvidence(act, code) {
+      return post('/rider/delivery/evidence', code, {
+        orderId: act.orderId,
+        command_id: act.commandId,
+        bundle: {
+          taskId: act.taskId,
+          packageId: act.packageId,
+          custodySealId: act.custodySealId,
+          artifacts: act.artifacts.map((a) => ({ ...a })),
+          capturedAt: act.capturedAt,
+        },
+      });
+    },
+    async confirmDrop(act, code) {
+      return post('/rider/delivery/drop', code, {
+        orderId: act.orderId,
+        command_id: act.commandId,
+        dropCode: act.dropCode,
+      });
+    },
   };
+}
+
+/** Delivered, by the Worker's own word (`status: 'custody_with_customer'`) —
+ *  or already delivered (`deja_livree`), which is the same finished truth. */
+export function custodyWithCustomer(answer: CustodyAnswer): boolean {
+  return (
+    answer.kind === 'recorded' &&
+    (answer.body['status'] === 'custody_with_customer' || answer.body['status'] === 'deja_livree')
+  );
 }
 
 /**
