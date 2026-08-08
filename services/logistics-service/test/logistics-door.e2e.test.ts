@@ -905,3 +905,94 @@ describe('the rider-code verification door (SE-LIVE-4b-ii)', () => {
     expect((await call(mf, 'GET', '/rider/moi', codeAuth(code))).status).toBe(401);
   });
 });
+
+/**
+ * ═══ RB-2 — THE BOUTIK+ COMMANDES TAB'S DISPATCH, wire-for-wire ═══
+ *
+ * The Boutik+ « Confier à un coursier » fold sends EXACTLY these bodies
+ * (apps/supplier-app/src/commandes/sera-service.ts — deterministic command
+ * ids `cmd-boutik-tache-{orderId}` / `cmd-boutik-confier-{taskId}-{riderId}`).
+ * This suite is that port's contract-certification: the same bytes against
+ * the REAL Worker, walked to the one screen that matters at the end — the
+ * RIDER'S OWN /rider/moi carrying the founder's address verbatim.
+ */
+describe('RB-2 — the founder dispatches from Boutik+: compose → assign → the rider SEES it', () => {
+  const ORDER = 'order-rb2-boutik-1';
+  const BODY = {
+    command_id: `cmd-boutik-tache-${ORDER}`,
+    orderId: ORDER,
+    location: {
+      pin: { lat: 12.3714, lng: -1.5197 },
+      zone: 'Gounghin',
+      landmark: 'Face à la pharmacie du marché',
+      directions: 'Deuxième porte bleue après le kiosque',
+      maskedRelay: 'relais-1',
+    },
+    window: { start: T, end: '2026-08-06T14:00:00.000Z' },
+  };
+
+  it('the whole road, with the tab’s exact bytes', async () => {
+    await fundOrder(mf, ORDER);
+    await readyOrder(mf, ORDER);
+
+    // ── compose (the tab’s body) ─────────────────────────────────────────
+    const composed = await call(mf, 'POST', '/ops/task', opsAuth, BODY);
+    expect(composed.status, JSON.stringify(composed.json)).toBe(200);
+    const taskId = composed.json['taskId'] as string;
+
+    // A DOUBLE-TAP REPLAYS, never a second task: same deterministic command.
+    const again = await call(mf, 'POST', '/ops/task', opsAuth, BODY);
+    expect(again.status).toBe(200);
+    expect(again.json).toMatchObject({ duplicate: true, taskId });
+
+    // ── the board offers a FREE rider (the tab’s picker read) ────────────
+    const code = await prepRider(mf, 'rider-rb2-boutik');
+    const board = await call(mf, 'GET', '/ops/board', opsAuth);
+    const riders = (board.json['board'] as Json)['riders'] as Json[];
+    const libre = riders.find((r) => r['riderId'] === 'rider-rb2-boutik');
+    expect(libre?.['assignable'], 'on shift, unloaded — the picker must offer them').toBe(true);
+
+    // ── assign (the tab’s body) ──────────────────────────────────────────
+    const assigned = await call(mf, 'POST', '/ops/assign', opsAuth, {
+      command_id: `cmd-boutik-confier-${taskId}-rider-rb2-boutik`,
+      taskId,
+      riderId: 'rider-rb2-boutik',
+    });
+    expect(assigned.status, JSON.stringify(assigned.json)).toBe(200);
+
+    // ── ⚠ THE POINT OF THE WHOLE SLICE: the rider’s own app read carries
+    //     the mission, with the founder’s address VERBATIM ────────────────
+    const moi = await call(mf, 'GET', '/rider/moi', codeAuth(code));
+    expect(moi.status).toBe(200);
+    const mission = (moi.json['rider'] as Json)['assignment'] as Json;
+    expect(mission).not.toBeNull();
+    expect(mission['taskId']).toBe(taskId);
+    expect(mission['orderId']).toBe(ORDER);
+    expect(mission['location']).toMatchObject({
+      zone: 'Gounghin',
+      landmark: 'Face à la pharmacie du marché',
+      directions: 'Deuxième porte bleue après le kiosque',
+    });
+
+    // ── the fold's double-tap on « Confier »: the SAME deterministic command
+    //     replays as duplicate — one grant, however many taps ─────────────
+    const retap = await call(mf, 'POST', '/ops/assign', opsAuth, {
+      command_id: `cmd-boutik-confier-${taskId}-rider-rb2-boutik`,
+      taskId,
+      riderId: 'rider-rb2-boutik',
+    });
+    expect(retap.status).toBe(200);
+    expect(retap.json).toMatchObject({ duplicate: true });
+    // NOTE, journaled with the slice: a GRANTED-but-unacked rider still reads
+    // `assignable` on the board (the lease law — a grant can expire or be
+    // declined, and an invisible granted rider would strand tasks). The
+    // picker may therefore offer them; a second GRANT refuses 409 at the
+    // authority (proven above under 20-way concurrency), and the fold speaks
+    // that refusal by name. Asserted here so the UI claim matches the LAW.
+    const after = await call(mf, 'GET', '/ops/board', opsAuth);
+    const busy = ((after.json['board'] as Json)['riders'] as Json[]).find(
+      (r) => r['riderId'] === 'rider-rb2-boutik',
+    );
+    expect(busy?.['assignable'], 'granted-not-acked still reads assignable — the lease law').toBe(true);
+  }, 60_000);
+});
