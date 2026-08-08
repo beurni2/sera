@@ -1274,3 +1274,40 @@ Fresh-context verifier over `210f813..6c0a325`. It ran the suites, the gate boar
 **Evidence:** typecheck 0 · rider-app **260/260** across 35 files (was 253, was 239) · logistics-service 146/146 · copy-lint 0 violations at **205** entries (3 dead labels removed, 1 added) · `run-gates.sh` exit 0 ALL GATES GREEN.
 
 > **⚠ ONE UNEXPLAINED GATE-BOARD FAILURE, RECORDED BECAUSE I CANNOT EXPLAIN IT.** The first `run-gates.sh` run of the A10 session printed `ONE OR MORE GATES FAILED`. I had piped that run through `tail -40`, so the `GATE FAILED (expected pass): <name>` line scrolled off and **I do not know which gate it was** — the output is gone and I will not guess at it. Six runs since were green (three full boards, three full root suites), plus three rounds each of the two miniflare-heavy suites (custody 15/15, logistics 12/12) hunting a cold-start flake, with no reproduction. Standing correction: **run the board with `EVIDENCE_DIR` set**, which writes every gate's output to its own file, so the next occurrence is diagnosable instead of discarded. Until it is explained I am not calling the board deterministic.
+
+
+## 2026-08-08 · SE-LIVE-4c/4d — ROUND TWO: I reported two founder rulings as done, and they were not
+
+**⚠ THE CORRECTION FIRST, BECAUSE IT IS MINE.** On 2026-08-07 I wrote in this journal that **A7 (ruling ① « build the photo capture ») and A6 (ruling ③ « persisting act on the phone ») were CLOSED**, and I told the founder the same. **Both were false.** A fresh-context verifier over the whole of 4c/4d found the ports existed, were well tested, and were **called by nothing**:
+
+- `takePhoto`, `setVerifyBundleId`, `setSealPhotoRefs` — declared in `App.tsx`, **zero call sites**. `verifyBundleId` was therefore permanently `null`, `sealPhotoRefs` permanently `[]`, and both senders returned on their first guard line.
+- `act-memory.ts` — `grep -rn "act-memory"` returned exactly two files: the module and its own test. `App.tsx` never imported it.
+
+I confirmed both by my own reading before accepting either. **This is the same failure as `1941b73`** (claiming `httpSosSender` was wired when grep showed no call sites), and it is §9.6 turned on myself: I accepted my own summary of my work instead of the work. The pattern is now twice: **I write the port, test the port, and do not check that anything calls it.**
+
+**WHY EVERY GATE STAYED GREEN OVER IT.** The verifier deleted the entire capture machinery from `App.tsx`, replaced it with `const verifyBundleId = null; const sealPhotoRefs = [];`, and got **260/260 tests passing and typecheck 0**. Every assertion I had written checked that the *guards* existed — « no ref, no act » — and a guard is most perfectly satisfied when the thing it guards **can never happen**. That is the lesson to keep: *a test that asserts a refusal path is not a test that the success path exists.*
+
+### The six blockers, all confirmed by reading the code, all closed in `4017187`
+
+| | What was actually wrong |
+|---|---|
+| **A1** | The primary action was a **dead button**. Wired build, valid code, nine checks answered, pickup code typed, « Envoyer la vérification » **enabled** → `return` on line 1. No request, no message, no state change, for ever. SE-I05 unreachable; custody could never begin. A second, independent block sat behind it: `EXPO_PUBLIC_SERA_MEDIA_BASE`/`_WRITE_KEY` were set nowhere, so even a working camera produced no ref. |
+| **A2** | Ruling ③ unimplemented — see above. |
+| **A3** | `evidenceBundleId` is in custody's fingerprint and was **missing from the attempt key** (the seal key already carried its refs — an oversight, not a decision). Retaking the photo on a retry → new ref under a held `command_id` → `409 command_id_reused_with_other_content` → « Séra a refusé » for goods the ledger may have **accepted**. |
+| **A4** | **The SOS was not sent when it was raised.** `fireSos` only appended to the outbox; the sole caller of the sender was a reconnect effect whose four deps `fireSos` changes none of. A rider in danger, online, signed in, held the disc — and the alert sat on the handset until the device happened to bounce offline→online. The wire built in 4d was never reached on the one path it exists for. |
+| **A5** | The sheet still said « le téléphone n'a pas encore de lien direct » — true before 4d, false after it, and it sends a rider in danger off to find a phone number. |
+| **A6** | The dwell clock started at **app launch** (`useRef(Date.now())`, never reset). Open at 08:00, verify at 08:25 after a careful inspection → `dwellSec ≈ 1500` → `withinTarget: false` written **immutably** against a rider who did everything right. |
+
+### What changed in how this is guarded
+- Tests now assert **CALL SITES**, not the presence of guards — and each was mutation-checked, **including against the verifier's own mutation** (unwiring both `onPress` handlers now fails the suite).
+- The A3 test **pinned the incomplete key as a literal** while its comment claimed completeness — it would have *failed* anyone who fixed the bug. It now derives the requirement from the payload at the call site.
+- Two coverage lies closed: the env-var scan asserted « the app reads only… » over **five hand-picked files**, missing `evidence-capture.ts`; and the bundled-secret guard scanned **three config files and no source**, so the two defences were not independent. Both now walk every source file. Both mutation-proven — and one of my mutation runs **silently did not apply** (a `replace` anchor that did not exist), which I caught only by checking the anchor count. **A mutation that did not apply is not a passing mutation test**; verify the anchor, always.
+
+### CTO choices on the record (mine, reversible)
+- **`expo-image-picker` ~17.0.11** — the SDK-54 pin, admitted to the dependency allowlist deliberately with its reasoning rather than slipped in. One system sheet, no preview surface of ours to hold at 60 fps on a 1 GB phone. `expo-camera` is a one-file swap if the founder prefers a branded proof-photo moment.
+- **`sosReachedSera` and `canSendSos` deleted.** Dead safety checks that read as present and never ran are the same failure class as A1; delivery is now decided by `stillPending(outbox, commandId)` — `flush` drops what the server settled, so an entry gone from the queue arrived and one still there is still owed.
+- **No sign-out was added** (verifier list B). `forgetActs` therefore still has no caller, so it is **not imported** — importing what nothing calls is the smell that hid A2. Carried as an open item, not silently left as dead code.
+
+**Evidence:** typecheck 0 · rider-app **274/274 across 35 files** (was 260) · gate board `ALL GATES GREEN` run under `EVIDENCE_DIR` with all **82** gate outputs captured to file — the standing correction from the previous entry, now in use.
+
+**⚠ STILL NOT MERGED, AND NOT YET RE-VERIFIED.** The verifier that found these six has not seen the fixes. Nothing goes to main until it has.
