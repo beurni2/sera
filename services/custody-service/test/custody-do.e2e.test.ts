@@ -1,4 +1,3 @@
-import { createServer, type Server } from 'node:http';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -51,7 +50,11 @@ const ALL_PASS = {
 const persist = mkdtempSync(join(tmpdir(), 'custody-do-'));
 const persistB = mkdtempSync(join(tmpdir(), 'custody-do-b-'));
 
-function boot(dir: string, extra: Record<string, string> = {}): Miniflare {
+function boot(
+  dir: string,
+  extra: Record<string, string> = {},
+  services?: Record<string, (request: Request) => Promise<Response>>,
+): Miniflare {
   return new Miniflare({
     modules: true,
     scriptPath: SCRIPT,
@@ -63,6 +66,7 @@ function boot(dir: string, extra: Record<string, string> = {}): Miniflare {
     durableObjects: { CUSTODY: 'CustodyDO', PACKAGE_CLAIM: 'PackageClaimDO' },
     durableObjectsPersist: dir,
     bindings: { SERA_CUSTODY_OPS_SECRET: OPS, ...extra },
+    ...(services !== undefined ? { serviceBindings: services } : {}),
   });
 }
 
@@ -1061,37 +1065,23 @@ describe('SE-LIVE-5a — evidence → decision → drop code LAST → the signal
     capturedAt: T,
   };
   const received: { auth: string | null; body: Json }[] = [];
-  let server: Server | null = null;
-
-  afterAll(() => {
-    server?.close();
-  });
 
   it('walks the whole road on the REAL Worker; every refusal is BY NAME; the eligibility event reaches the certified door with the supplier on it', async () => {
-    server = createServer((req, res) => {
-      let raw = '';
-      req.on('data', (c: Buffer) => { raw += String(c); });
-      req.on('end', () => {
-        const auth = req.headers.authorization ?? null;
-        if (auth !== `Bearer ${SHOP_SECRET}`) {
-          res.writeHead(401, { 'content-type': 'application/json' });
-          res.end(JSON.stringify({ error: 'unauthorized' }));
-          return;
-        }
-        let body: Json = {};
-        try { body = JSON.parse(raw) as Json; } catch { /* keep {} */ }
-        received.push({ auth, body });
-        res.writeHead(200, { 'content-type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, status: 'recorded' }));
-      });
-    });
-    await new Promise<void>((resolve) => server!.listen(0, '127.0.0.1', resolve));
-    const address = server.address();
-    if (address === null || typeof address === 'string') throw new Error('no port');
+    // The receiver is a SERVICE BINDING now, exactly as the deployed wrangler
+    // binds Shop+'s Worker (the SUPPLY_BASE / error-1042 lesson: never a
+    // public-URL Worker-to-Worker fetch). Same certified clauses as before —
+    // gate first, uniform 401, canonical 200 {ok, status:'recorded'}.
     await mf.dispose();
-    mf = boot(persist, {
-      SHOP_PROGRESS_BASE: `http://127.0.0.1:${address.port}`,
-      SHOP_PROGRESS_SECRET: SHOP_SECRET,
+    mf = boot(persist, { SHOP_PROGRESS_SECRET: SHOP_SECRET }, {
+      SHOP_PROGRESS: async (request: Request) => {
+        const auth = request.headers.get('Authorization');
+        if (auth !== `Bearer ${SHOP_SECRET}`) {
+          return Response.json({ error: 'unauthorized' }, { status: 401 });
+        }
+        const body = (await request.json().catch(() => ({}))) as Json;
+        received.push({ auth, body });
+        return Response.json({ ok: true, status: 'recorded' });
+      },
     });
 
     // ── the custody file, armed and in courier custody ─────────────────────

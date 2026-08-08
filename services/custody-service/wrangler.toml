@@ -20,12 +20,17 @@ main = "dist-worker/worker.mjs"
 compatibility_date = "2025-07-05"
 compatibility_flags = ["nodejs_compat"]
 
-# SE-LIVE-5a — the eligibility wire's TARGET. The base is CONFIG (a public
-# workers.dev URL, same class as every EXPO_PUBLIC_* base); the credential
-# beside it (SHOP_PROGRESS_SECRET = Shop+'s PROGRESS_WRITE_SECRET) is set via
+# SE-LIVE-5a → RIDER-DELIVERY follow-up — the eligibility wire's TARGET is a
+# SERVICE BINDING now, not a URL var: the SUPPLY_BASE / error-1042 lesson (a
+# Worker's public-URL fetch of another Worker in this account failed closed
+# for a full day; cross-repo bindings are the proven road — shop's OFFER
+# binding to boutik's offer-service). Converted BEFORE the wire ever fired
+# live. TRANSPORT ONLY: Shop+'s /fulfillment/progress door still gates on
+# SHOP_PROGRESS_SECRET (= Shop+'s PROGRESS_WRITE_SECRET), set via
 # `wrangler secret put`, piped, the founder's alone — never here.
-[vars]
-SHOP_PROGRESS_BASE = "https://storefront-service.ilboudobernard2.workers.dev"
+[[services]]
+binding = "SHOP_PROGRESS"
+service = "storefront-service"
 
 [[durable_objects.bindings]]
 name = "CUSTODY"

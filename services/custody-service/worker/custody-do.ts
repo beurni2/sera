@@ -125,8 +125,15 @@ interface ClaimHeldMarker {
  */
 export interface CustodyObjectEnv {
   readonly PACKAGE_CLAIM: DurableObjectNamespace;
-  /** Shop+ Worker base URL — config (wrangler var), not a credential. */
-  readonly SHOP_PROGRESS_BASE?: string;
+  /**
+   * Shop+'s Worker, as a SERVICE BINDING — the SUPPLY_BASE / error-1042
+   * lesson (a Worker's public-URL fetch of another Worker in this account
+   * failed closed for a full day; shop-plus's OFFER binding is the proven
+   * cross-repo road). This replaced the first cut's `SHOP_PROGRESS_BASE`
+   * URL var BEFORE the wire ever fired live, so the failure was never paid
+   * for twice. TRANSPORT ONLY: the door still gates on the secret below.
+   */
+  readonly SHOP_PROGRESS?: { fetch(request: Request): Promise<Response> };
   /** = Shop+'s PROGRESS_WRITE_SECRET; `wrangler secret put`, the founder's alone. */
   readonly SHOP_PROGRESS_SECRET?: string;
 }
@@ -717,11 +724,11 @@ export class CustodyDO {
   async alarm(): Promise<void> {
     const outbox = await this.state.storage.get<EligibilityOutbox>(ELIGIBILITY_OUTBOX_KEY);
     if (outbox === undefined || outbox.status !== 'pending') return;
-    const base = (this.env.SHOP_PROGRESS_BASE ?? '').replace(/\/+$/, '');
+    const shop = this.env.SHOP_PROGRESS;
     const secret = this.env.SHOP_PROGRESS_SECRET ?? '';
-    if (base === '' || secret === '') {
+    if (shop === undefined || secret === '') {
       // HONEST resting state — visible in storage, revived by a replayed
-      // drop command once the founder sets the config. Never a silent drop.
+      // drop command once the founder sets the secret. Never a silent drop.
       await this.state.storage.put(ELIGIBILITY_OUTBOX_KEY, {
         ...outbox,
         status: 'unsendable_no_config',
@@ -730,11 +737,13 @@ export class CustodyDO {
     }
     let delivered = false;
     try {
-      const res = await fetch(`${base}/fulfillment/progress`, {
+      // The host is a placeholder — a service binding routes by BINDING, and
+      // Shop+'s Worker reads only the path.
+      const res = await shop.fetch(new Request('https://shop/fulfillment/progress', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${secret}` },
         body: JSON.stringify(outbox.event),
-      });
+      }));
       delivered = res.ok;
     } catch {
       delivered = false;
