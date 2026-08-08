@@ -1455,3 +1455,37 @@ VITE_SERA_LOGISTICS_BASE=https://logistics-service.ilboudobernard2.workers.dev \
 Then paste `SERA_OPS_SECRET` into « Votre clé d'opérateur », register himself as a rider, and tap « Donner un code ». The code shown once is what he types into the rider app.
 
 **Not done, and worth naming:** the console is not deployed, so this only runs locally; and calling the Worker from a browser needs `SERA_CONSOLE_ORIGIN` to include the dev origin (`http://localhost:5173`) or the browser's preflight will refuse — the CORS machinery exists, the origin is his to set.
+
+---
+
+## 2026-08-08 · « Coursiers » was dark because CORS was never armed (merged `4c3023c`)
+
+**FOUNDER REPORT:** a screenshot of the Boutik+ console's « Coursiers Séra » zone — « Ça n'a pas marché. Réessayez. » over « La liste n'est pas arrivée. » — and « the coursiers is not working ».
+
+**IT IS NOT THE ZONE. The logistics Worker has no CORS, so no browser can call it.** Proven from the deploy log of run `31233662755` (2026-08-08 01:53, sha `b685416`), two lines:
+
+```
+CONSOLE_ORIGIN:                          ← the repo VARIABLE is empty
+Your Worker has access to the following bindings:
+Binding                       Resource
+env.LOGISTICS (LogisticsDO)   Durable Object     ← no SERA_CONSOLE_ORIGIN var at all
+```
+
+`SERA_CONSOLE_ORIGIN` empty ⇒ `corsHeaders()` returns `{}` ⇒ the OPTIONS preflight (required, because the ops key rides an `Authorization` header) answers 204 with **no** `Access-Control-Allow-Origin` ⇒ the browser blocks it ⇒ `fetch` rejects ⇒ the port's `within()` catches ⇒ `{kind:'unreachable'}` ⇒ `read = echec`. Both banners in his screenshot, one cause: the list read and the « Inscrire » tap die the same way.
+
+### What I ruled OUT, with evidence, not by reasoning about my own code
+- **The base URL is right.** boutik-plus web-deploy run `31237504218` printed `SERA_LOGISTICS_BASE: https://logistics-service.ilboudobernard2.workers.dev` — identical to this repo's `LOGISTICS_BASE`. And the zone rendered its key door at all, which it only does when the base is a non-empty string.
+- **The key is right.** A 401 renders `cle_refusee` and sends him back to the door; he was past it.
+- **The routes are live.** `/ops/riders` and `/ops/rider-codes` have existed since SE-LIVE-1 (`5c0c23b`); the deployed sha `b685416` is after it, and `b685416..a552be8` touches no Worker source — only a test file.
+- **The wire shapes match.** `GET /ops/riders` → `{ok, riders:[{riderId, displayName, certified, …}]}`; `GET /ops/rider-codes` → `{ok, codes:[{riderId, mintedAt}]}`. The Boutik+ join reads exactly those.
+- **No render loop.** I suspected `charger`'s `useCallback` dependency on an inline `onCleRefusee`. It is stable: `SZoneCoursiers` re-renders only on `setCle`, and the child's own `setRead` does not re-render the parent.
+
+### What was mine to fix
+The deploy step took a **silent `else`**: no variable, no `--var`, no word. Boutik+'s web-deploy already warns on its own unset base « so the founder can tell CONFIG from a BUG » — this is the missing half of that guard on the Séra side. `logistics-deploy.yml` now prints the armed origins when set, and a `::warning title=CORS NON armé` naming the exact consequence when not. Warning, not a hard guard: the rider app is native and intake is server-to-server, so an empty allowlist is still a legitimate deploy.
+
+**Verification, stated honestly:** the change is a workflow file only. YAML parses and the step body reads correctly; `.github` is in `scripts/gates/scan.mjs`'s skip list, so no gate scans it. I ran no test suite, because none covers this file. No Worker, app, or test source changed.
+
+### ⚠ BLOCKED ON THE FOUNDER — one variable, one re-dispatch
+Set repo variable `SERA_CONSOLE_ORIGIN` in `beurni2/sera` to `https://boutik-plus-web.pages.dev`, then re-dispatch `logistics-deploy`. That deploys byte-identical Worker source plus the var.
+
+**And browse the production URL, not the deployment one.** The Pages deploy printed `https://6b9bc180.boutik-plus-web.pages.dev` — a per-deployment hostname that changes on every deploy and therefore can never be allowlisted ahead of time. Exact-origin means exact: the stable `https://boutik-plus-web.pages.dev` is the one that works.
