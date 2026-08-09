@@ -64,14 +64,29 @@ describe('WO-6.1 Grand Teint visual layer (rider-app)', () => {
     }
   });
 
-  it('LandmarkCard — the signature — consumes the landmark ladder + the illustrated scene, on affectation AND at the door', () => {
+  it('LandmarkCard — the signature — the repère ladder descends on the card that ships, on affectation AND at the door', () => {
     // KIT-SWEEP: the rendered repère card is the Faso one; the Grand Teint
     // LandmarkCard + its illustrated scene went with the deleted kit.
     const kit = read('src/ui/faso-kit.tsx');
     expect(kit).toMatch(/export function LandmarkCard/);
     // the repère icon comes from the SVG icon set (never emoji in chrome)
     expect(kit).toMatch(/IconRepere/);
-    // the ladder really descends (repère heads the block, doctrine §4)
+    /**
+     * « Le repère, pas l'adresse » (DESIGN-LANGUAGE §4) — repère → indications →
+     * zone, each step smaller than the last. Read off the LIVE card's own style
+     * block: the Faso layer sets its sizes from the planche, so asserting the
+     * /legacy `landmark.*` tokens (which no live module reads any more) would be
+     * a package tautology dressed as a product gate.
+     */
+    const sizeOf = (key: string): number => {
+      const m = new RegExp(`${key}: \\{[^}]*fontSize: (\\d+(?:\\.\\d+)?)`).exec(kit);
+      expect(m, `${key} has no fontSize in faso-kit — the ladder cannot be read`).not.toBeNull();
+      return Number(m?.[1]);
+    };
+    const [repere, indications, zone] = [sizeOf('landmarkRepere'), sizeOf('landmarkIndications'), sizeOf('landmarkZone')];
+    expect(repere, `repère ${repere} must head the block over indications ${indications}`).toBeGreaterThan(indications);
+    expect(indications, `indications ${indications} must sit above zone ${zone}`).toBeGreaterThan(zone);
+    // the same ladder holds in the /legacy token package the console still reads
     expect(landmark.repere.size).toBeGreaterThan(landmark.indications.size);
     expect(landmark.indications.size).toBeGreaterThan(landmark.zone.size);
     // the App renders the signature card on the assignment AND at the door
@@ -161,12 +176,15 @@ describe('WO-6.1 Grand Teint visual layer (rider-app)', () => {
     const rm = read('src/ui/reduced-motion.ts');
     expect(rm).toMatch(/AccessibilityInfo\.isReduceMotionEnabled/);
     expect(rm).toMatch(/reduceMotionChanged/);
-    // and the modules that animate actually consult it
+    // and the modules that animate actually consult it AND branch on it. Asserting
+    // only the call would be the inverse of the call-site law: the guard could be
+    // deleted while the hook stayed, and this gate would never notice.
     for (const f of ['src/ui/signature.tsx', 'src/ui/faso-sos.tsx']) {
       expect(read(f), `${f} animates without consulting reduced motion`).toMatch(
         /import \{ useReducedMotion \} from '\.\/reduced-motion'/,
       );
       expect(read(f)).toMatch(/useReducedMotion\(\)/);
+      expect(read(f), `${f} calls useReducedMotion but never branches on the result`).toMatch(/if \(reduced\)/);
     }
   });
 

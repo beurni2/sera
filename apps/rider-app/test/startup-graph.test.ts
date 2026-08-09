@@ -50,17 +50,24 @@ const resolveSpec = (fromFile: string, spec: string): string | null => {
  * DANGEROUS direction: a module reached only by a missed edge would look absent
  * from the bundle while Metro happily ships it — precisely the illusion this
  * file exists to break. So bare side-effect imports (`import './x';`) and
- * dynamic `import('./x')` are matched too, not just `… from '…'`.
+ * dynamic `import('./x')` are matched too, not just `… from '…'` — and every
+ * pattern accepts BOTH quote styles. The repo happens to be uniformly
+ * single-quoted and has no formatter config to keep it that way, so a walker
+ * that only understood `'…'` would silently miss `from "./kit"` and then report
+ * the kit absent — a false all-clear on the one thing this file exists to prove.
  */
+const Q = String.raw`['"]([^'"]+)['"]`;
 const specifiersOf = (src: string): string[] => {
   const out: string[] = [];
-  for (const m of src.matchAll(/(?:^|\n)\s*(?:import|export)\s+([^;]*?)\s*from\s*'([^']+)'/g)) {
+  for (const m of src.matchAll(new RegExp(String.raw`(?:^|\n)\s*(?:import|export)\s+([^;]*?)\s*from\s*${Q}`, 'g'))) {
     const clause = m[1] ?? '';
     if (/^type\b/.test(clause.trim())) continue; // `import type {…} from` — erased
     out.push(m[2] ?? '');
   }
-  for (const m of src.matchAll(/(?:^|\n)\s*import\s+'([^']+)'\s*;/g)) out.push(m[1] ?? ''); // side-effect
-  for (const m of src.matchAll(/\bimport\(\s*'([^']+)'\s*\)/g)) out.push(m[1] ?? ''); // dynamic
+  // side-effect: `import './x';`
+  for (const m of src.matchAll(new RegExp(String.raw`(?:^|\n)\s*import\s+${Q}\s*;`, 'g'))) out.push(m[1] ?? '');
+  // dynamic: `import('./x')`
+  for (const m of src.matchAll(new RegExp(String.raw`\bimport\(\s*${Q}\s*\)`, 'g'))) out.push(m[1] ?? '');
   return out;
 };
 
@@ -95,20 +102,35 @@ const graph = walk(ENTRY);
 const inGraph = (rel: string): boolean => graph.modules.has(join(appDir, rel));
 
 /**
- * App-owned UI modules that live on disk but are deliberately NOT shipped in the
+ * App-owned modules that live on disk but are deliberately NOT shipped in the
  * startup graph. Every entry needs a reason; an unlisted orphan fails the test.
- *   · fonts.ts — the Grand Teint font map. Its only app consumer was the deleted
- *     kit; it stays on disk because grand-teint.test.ts pins the five embedded
- *     weights against the real TTF assets (a rider who cannot read the screen is
- *     a failed screen). It costs the bundle nothing: it is not in the graph.
+ *
+ *   · src/ui/fonts.ts — the Grand Teint font map. Its only app consumer was the
+ *     deleted kit; it stays on disk because grand-teint.test.ts pins the five
+ *     embedded weights against the real TTF assets (a rider who cannot read the
+ *     screen is a failed screen). It costs the JS bundle nothing — it is out of
+ *     the graph. ⚠ It does NOT yet cost the APK nothing: app.json still embeds
+ *     the five Archivo faces natively (170 808 bytes) through the expo-font
+ *     plugin, and no live module requests an `Archivo-*` family any more — the
+ *     Faso layer resolves every face through displayFace/textFace
+ *     (Bricolage/Instrument). Removing them touches app.json, this map,
+ *     font-embedding.test.ts and grand-teint.test.ts, so it is its own slice —
+ *     named here and in JOURNAL.md so it cannot stay invisible.
+ *
+ *   · src/offline/ensureCsprng.ts — the device CSPRNG binding for mintCommandId,
+ *     twin of the wired ensureSha256.ts. Its own docblock says it is wired in a
+ *     later slice; it is referenced today only from comments. Pre-existing, not
+ *     produced by the kit sweep.
  */
-const UNSHIPPED_ON_PURPOSE = ['src/ui/fonts.ts'];
+const UNSHIPPED_ON_PURPOSE = ['src/ui/fonts.ts', 'src/offline/ensureCsprng.ts'];
 
 describe('KIT-SWEEP — the startup module graph is what the app actually loads', () => {
   it('the walk reached the app (a graph of one module would pass everything vacuously)', () => {
     expect(graph.modules.has(ENTRY)).toBe(true);
     expect(inGraph('App.tsx'), 'App.tsx must be reachable from index.ts').toBe(true);
-    expect(graph.modules.size).toBeGreaterThan(20);
+    // Pinned near the real figure (43): a resolver regression that halved the
+    // graph must fail here rather than sail past a token « > 20 ».
+    expect(graph.modules.size, 'the graph collapsed — suspect the resolver, not the app').toBeGreaterThan(38);
   });
 
   it('every app-owned import in the startup graph RESOLVES — no delete orphans a live import', () => {
@@ -145,15 +167,20 @@ describe('KIT-SWEEP — the startup module graph is what the app actually loads'
     }
   });
 
-  it('no UI module sits on disk unreachable from the entry point unless it is named', () => {
-    const uiDir = join(appDir, 'src/ui');
-    const orphans = readdirSync(uiDir)
-      .filter((f) => /\.(ts|tsx)$/.test(f))
-      .map((f) => `src/ui/${f}`)
-      .filter((rel) => !inGraph(rel) && !UNSHIPPED_ON_PURPOSE.includes(rel));
+  it('no app module sits on disk unreachable from the entry point unless it is named', () => {
+    // The whole src/ tree, recursively — an orphan one directory over is still
+    // dead weight, and scanning only src/ui would have missed the one that was
+    // already there (src/offline/ensureCsprng.ts).
+    const collect = (dir: string): string[] =>
+      readdirSync(join(appDir, dir), { withFileTypes: true }).flatMap((e) =>
+        e.isDirectory() ? collect(`${dir}/${e.name}`) : /\.(ts|tsx)$/.test(e.name) ? [`${dir}/${e.name}`] : [],
+      );
+    const all = collect('src');
+    expect(all.length, 'the sweep found no source files — the scan would pass vacuously').toBeGreaterThan(30);
+    const orphans = all.filter((rel) => !inGraph(rel) && !UNSHIPPED_ON_PURPOSE.includes(rel));
     expect(
       orphans,
-      `these UI modules ship to nobody — render them, delete them, or name them in UNSHIPPED_ON_PURPOSE: ${orphans.join(', ')}`,
+      `these modules ship to nobody — render them, delete them, or name them in UNSHIPPED_ON_PURPOSE: ${orphans.join(', ')}`,
     ).toEqual([]);
   });
 
