@@ -108,7 +108,17 @@ export class AssignmentBook {
     lease: LeaseRef;
   }): AssignOutcome {
     const replay = this.appliedCommandIds.get(cmd.command_id);
-    if (replay?.ok) return { ...replay, duplicate: true };
+    if (replay?.ok) {
+      // ⚠ RELAIS-REPRISE (founder report 2026-08-09, same law as the lease
+      // authority): a remembered SUCCESS answers a retry only while its
+      // assignment is STILL ACTIVE. Once it expired or was declined back to
+      // the queue, the same command id is a NEW dispatch decision — replaying
+      // the dead outcome made every re-confier a no-op that reported ok.
+      const remembered = this.assignments.get(replay.assignment.assignmentId);
+      if (remembered !== undefined && ACTIVE_STATUSES.includes(remembered.status)) {
+        return { ...replay, duplicate: true };
+      }
+    }
 
     // WO-4.3 defense in depth: the assignment proceeds only under a lease
     // ref that (i) names this exact task+rider and (ii) the wired witness

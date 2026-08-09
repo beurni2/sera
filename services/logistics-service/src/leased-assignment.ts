@@ -138,10 +138,13 @@ export class LeasedDispatch {
    * surface), (d) the book under the granted ref. Any book refusal after a
    * grant compensates with release cause 'grant_rolled_back' + witness
    * revocation, so the task is immediately re-grantable and the rolled-back
-   * ref confers nothing. NOTE the replay law: a command whose grant was
-   * rolled back replays its dead snapshot at the authority and — no longer
-   * witnessed — REFUSES CLOSED at the book; a retry needs a fresh command_id
-   * (refuse-closed over silent re-grant; asserted in tests).
+   * ref confers nothing. THE REPLAY LAW (RELAIS-REPRISE, founder 2026-08-09):
+   * a dedupe record answers a retry only while its remembered grant/assignment
+   * is STILL ALIVE — the double-tap over a live course replays as duplicate;
+   * a command whose outcome died (expired, declined, rolled back) RE-EVALUATES
+   * and answers with the current truth. The old poison-pill (dead snapshot →
+   * no_valid_lease for ever) silently no-op'd every re-relay of a requeued
+   * course; asserted in leased-dispatch + shift-acts e2e.
    */
   async assign(cmd: LeasedAssignCommand): Promise<LeasedAssignOutcome> {
     // (a) + (b): the checks whose booleans the attestation carries.
@@ -182,10 +185,14 @@ export class LeasedDispatch {
       return { ok: true, assignment: outcome.assignment, event: outcome.event, lease, duplicate: outcome.duplicate };
     }
     // Compensation arm: the grant must not outlive the refused assignment.
+    // ⚠ The rollback id names the GRANT VERSION (RELAIS-REPRISE): a retried
+    // command that earned a FRESH grant needs a fresh release — deriving the
+    // id from the command alone made the second rollback replay the first and
+    // leave the new lease alive, deadlocking the task.
     this.deps.witness.revoke(refOf(lease));
     const rollback = await this.deps.authority.send({
       kind: 'release',
-      command_id: `${cmd.command_id}:rollback`,
+      command_id: `${cmd.command_id}:rollback:v${lease.version}`,
       taskId: cmd.taskId,
       cause: 'grant_rolled_back',
     });

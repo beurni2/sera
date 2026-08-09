@@ -229,17 +229,21 @@ describe('LeasedDispatch — the full grant path on the real authority', () => {
     expect(direct.ok).toBe(true);
     const rolled = await dispatch.assign(assignCmd(salt, t));
     expect(rolled).toMatchObject({ ok: false, stage: 'book', reason: 'rider_already_has_active_assignment', leaseRolledBack: true });
-    // the rolled-back grant confers NOTHING: the same command replays its
-    // dead snapshot and refuses closed at the book (witness revoked); the
-    // compensation release replays idempotently alongside it
+    // ⚠ RELAIS-REPRISE (founder 2026-08-09) — the dead snapshot NEVER
+    // replays. The old law answered this retry `no_valid_lease` for ever (a
+    // poison pill: with the fold's deterministic command ids, one rollback
+    // permanently burned that task+rider pair). The retry now RE-EVALUATES:
+    // a fresh lease is granted, the book refuses with the CURRENT truth, and
+    // the compensation rolls the fresh grant back the same way — still one
+    // effect per live command, refusal by its real name.
     const burned = await dispatch.assign(assignCmd(salt, t));
-    expect(burned).toMatchObject({ ok: false, stage: 'book', reason: 'no_valid_lease', leaseRolledBack: true });
-    // …while a FRESH command, once the rider frees up, re-grants a FRESH lease.
+    expect(burned).toMatchObject({ ok: false, stage: 'book', reason: 'rider_already_has_active_assignment', leaseRolledBack: true });
+    // …and once the rider frees up, a command re-grants a FRESH lease.
     book.decline(`${salt}-as-direct`, 'server_confirmed', T);
     const fresh = await dispatch.assign({ ...assignCmd(salt, t, 2) });
     expect(fresh.ok).toBe(true);
     if (!fresh.ok) return;
-    expect(fresh.lease.version).toBe(2); // v1 was granted then rolled back
+    expect(fresh.lease.version).toBe(3); // v1 rolled back, v2 burned by the retry above
     expect(queue.get(t)?.status).toBe('assigned');
   });
 

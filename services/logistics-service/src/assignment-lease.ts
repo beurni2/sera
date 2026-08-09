@@ -158,7 +158,31 @@ export function decideLease(state: LeaseAuthorityState, cmd: LeaseCommand): Leas
   const replay = state.appliedCommands[cmd.command_id];
   if (replay !== undefined) {
     if (replay.kind === 'expire_due') return { ok: true, state, expired: replay.expired, idempotentReplay: true };
-    return { ok: true, state, lease: replay.lease, idempotentReplay: true };
+    /**
+     * ⚠ RELAIS-REPRISE (founder report 2026-08-09): a dedupe record absorbs
+     * RETRIES of a live command — it must never immortalize a dead outcome.
+     * The dispatch fold's deterministic command id (`cmd-boutik-confier-
+     * {task}-{rider}`) meant that after a grant EXPIRED back to the queue,
+     * re-confiding the same course to the same rider replayed the dead
+     * lease: « ok (duplicate) », nothing granted, the rider never heard,
+     * and the button honestly returned. An ACQUIRE replay now answers only
+     * while its remembered lease is STILL ACTIVE; a dead one falls through
+     * to a fresh evaluation — the same double-tap stays one grant, and a
+     * re-relay after expiry is a new dispatch decision, as it always was
+     * in the dispatcher's head.
+     */
+    if (replay.kind === 'acquire' && cmd.kind === 'acquire') {
+      const remembered = state.leases.find(
+        (l) => l.taskId === replay.lease.taskId && l.version === replay.lease.version,
+      );
+      if (remembered?.status !== 'active') {
+        // fall through to the acquire evaluation below
+      } else {
+        return { ok: true, state, lease: replay.lease, idempotentReplay: true };
+      }
+    } else {
+      return { ok: true, state, lease: replay.lease, idempotentReplay: true };
+    }
   }
 
   switch (cmd.kind) {

@@ -216,6 +216,75 @@ describe('⚠ the whole ladder, through the app’s own ports, judged by the BOA
     expect(await acts.accepterCourse(code, 'as-nowhere')).toEqual({ ok: false, reason: 'refused', refus: 'unknown_assignment' });
   });
 
+  it('RELAIS-REPRISE: after an expiry, the SAME confier command grants a NEW course that reaches the rider', async () => {
+    const mf = spawn();
+    const intake = async (path: string, body: unknown) => {
+      const res = await mf.dispatchFetch(`http://logistics${path}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${INTAKE}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      expect(res.status, path).toBe(200);
+    };
+    const T = '2026-08-09T10:00:00.000Z';
+    await intake('/intake/funding', { orderId: 'ord-rr-1', status: 'funded', paymentMode: 'FULL_PREPAY', asOf: T });
+    await intake('/intake/readiness', { orderId: 'ord-rr-1', ready: true, asOf: T });
+    await intake('/intake/task-ready', {
+      name: 'logistics.task_ready.v1',
+      envelope: {
+        command_id: 'cmd-rr-t1', correlation_id: 'corr-ord-rr-1', aggregateVersion: 1,
+        actor: 'shop-plus:commerce-core', serverTime: T, version: '1',
+      },
+      payload: {
+        task: {
+          type: 'delivery', id: 'task-rr-1', orderId: 'ord-rr-1',
+          location: { zone: 'Gounghin', landmark: 'Face à la mosquée', directions: '', maskedRelay: '' },
+          window: { start: T, end: '2026-08-09T16:00:00.000Z' }, status: 'ready',
+        },
+      },
+    });
+    await ops(mf, '/ops/riders', { riderId: 'rider-boss', displayName: 'boss', phoneAlias: 'bossy', certified: true });
+    const code = (await ops(mf, '/ops/rider-code/mint', { riderId: 'rider-boss' }))['code'] as string;
+    const { acts, session } = appPorts(mf);
+    await acts.ackPrivacy(code);
+    await acts.startShift(code);
+
+    // ⚠ THE FOUNDER'S EXACT TAPS. The confier fold's command id is
+    // deterministic per (task, rider) — this is that byte-for-byte shape.
+    const CONFIER_CMD = 'cmd-boutik-confier-task-rr-1-rider-boss';
+    const first = await ops(mf, '/ops/assign', { command_id: CONFIER_CMD, taskId: 'task-rr-1', riderId: 'rider-boss' });
+    expect(first['ok']).toBe(true);
+    const firstId = (first['assignment'] as Record<string, unknown>)['assignmentId'] as string;
+
+    // The rider never answers; the ack window dies; the sweep returns the
+    // course to the queue (the founder watching an old app build).
+    const swept = await ops(mf, '/ops/expire-due', { nowIso: new Date(Date.now() + 6 * 60_000).toISOString() });
+    expect((swept['requeued'] as Record<string, unknown>[]).some((a) => a['assignmentId'] === firstId)).toBe(true);
+
+    // He taps « Confier à boss » AGAIN — same task, same rider, SAME command
+    // id. Before this fix, both dedupe layers replayed the DEAD outcome:
+    // « ok (duplicate) », no new lease, no new assignment, nothing on the
+    // rider's phone, and the button honestly came back. Now: a NEW course.
+    const second = await ops(mf, '/ops/assign', { command_id: CONFIER_CMD, taskId: 'task-rr-1', riderId: 'rider-boss' });
+    expect(second['ok'], JSON.stringify(second)).toBe(true);
+    expect(second['duplicate']).toBe(false);
+    const secondId = (second['assignment'] as Record<string, unknown>)['assignmentId'] as string;
+    expect(secondId).not.toBe(firstId);
+
+    // …and it REACHES the rider's own session read, acceptable by his hand.
+    const seen = await session.signIn(code);
+    if (!seen.ok) throw new Error('sign-in refused');
+    expect(seen.session.assignment).toMatchObject({ assignmentId: secondId, status: 'active_unacknowledged' });
+    expect(await acts.accepterCourse(code, secondId)).toEqual({ ok: true });
+
+    // The double-tap law is UNTOUCHED: the same command id over the now-LIVE
+    // course replays as duplicate — one grant, however many taps.
+    const retap = await ops(mf, '/ops/assign', { command_id: CONFIER_CMD, taskId: 'task-rr-1', riderId: 'rider-boss' });
+    expect(retap['ok']).toBe(true);
+    expect(retap['duplicate']).toBe(true);
+    expect((retap['assignment'] as Record<string, unknown>)['assignmentId']).toBe(secondId);
+  });
+
   it('offline sends NOTHING and changes nothing — queued = pending, never done', async () => {
     const mf = spawn();
     await ops(mf, '/ops/riders', { riderId: 'rider-off', displayName: 'Off', phoneAlias: 'o-1' });
