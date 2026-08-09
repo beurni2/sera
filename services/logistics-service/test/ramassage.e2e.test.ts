@@ -19,9 +19,12 @@ import { httpRiderSession } from '../../../apps/rider-app/src/net/httpRiderSessi
  *
  * SE5 names the pickup TWO-PARTY. This is the supplier's half: a
  * logistics-owned code minted at assign, SHOWN to its own rider through the
- * app's real session port, SAID across the stall, and judged at the ops door
- * the supplier console holds — which answers a VERDICT and never the code.
- * Custody is untouched: `pickupVerificationCode` (SE-I05) flows as before.
+ * app's real session port, SAID across the stall, and judged at the INTAKE
+ * door — the one Boutik+'s offer-service already holds for readiness, so the
+ * verdict reaches the SUPPLIER's console (founder, 2026-08-09: « that screen
+ * should be on the supplier's console not mine »), never only the founder's.
+ * The door answers a VERDICT and never the code. Custody is untouched:
+ * `pickupVerificationCode` (SE-I05) flows as before.
  */
 
 const OPS = 'test-ops-ramassage';
@@ -62,6 +65,17 @@ async function intake(mf: Miniflare, path: string, body: unknown): Promise<void>
     body: JSON.stringify(body),
   });
   expect(res.status, path).toBe(200);
+}
+
+/** The verify door as the offer-service speaks it: the INTAKE bearer, a
+ *  verdict back. */
+async function verify(mf: Miniflare, body: unknown): Promise<Record<string, unknown>> {
+  const res = await mf.dispatchFetch('http://logistics/intake/ramassage/verify', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${INTAKE}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return (await res.json()) as Record<string, unknown>;
 }
 
 function appPorts(mf: Miniflare) {
@@ -107,18 +121,18 @@ describe('the whole handshake: minted at assign, shown to the rider, judged for 
 
     // The supplier types what the rider SAID — verdict: confirmé. Case and
     // separators are forgiven; the characters are not.
-    const dit = await ops(mf, '/ops/ramassage/verify', { command_id: 'r1-v1', orderId: 'ord-r1', code: montre });
+    const dit = await verify(mf, { command_id: 'r1-v1', orderId: 'ord-r1', code: montre });
     expect(dit).toEqual({ ok: true, verdict: 'confirme' });
-    const casse = await ops(mf, '/ops/ramassage/verify', {
+    const casse = await verify(mf, {
       command_id: 'r1-v2', orderId: 'ord-r1', code: (montre as string).toLowerCase().replace('-', ' '),
     });
     expect(casse).toEqual({ ok: true, verdict: 'confirme' });
 
     // A wrong code, a foreign order, an order with no course: all the same
     // « non confirmé » — no oracle at a market stall.
-    expect(await ops(mf, '/ops/ramassage/verify', { command_id: 'r1-v3', orderId: 'ord-r1', code: 'AAA-AAA' }))
+    expect(await verify(mf, { command_id: 'r1-v3', orderId: 'ord-r1', code: 'AAA-AAA' }))
       .toEqual({ ok: true, verdict: 'non_confirme' });
-    expect(await ops(mf, '/ops/ramassage/verify', { command_id: 'r1-v4', orderId: 'ord-inconnu', code: montre }))
+    expect(await verify(mf, { command_id: 'r1-v4', orderId: 'ord-inconnu', code: montre }))
       .toEqual({ ok: true, verdict: 'non_confirme' });
   });
 
@@ -150,7 +164,7 @@ describe('the whole handshake: minted at assign, shown to the rider, judged for 
     const repris = await ops(mf, '/ops/assignment/take-back', { command_id: 'r3-w', assignmentId, custodyNotBegun: true });
     expect(repris['ok'], JSON.stringify(repris)).toBe(true);
     // the dead course's code opens nothing
-    expect(await ops(mf, '/ops/ramassage/verify', { command_id: 'r3-v1', orderId: 'ord-r3', code: ancien }))
+    expect(await verify(mf, { command_id: 'r3-v1', orderId: 'ord-r3', code: ancien }))
       .toEqual({ ok: true, verdict: 'non_confirme' });
 
     // re-compose + re-assign: a FRESH code, and the old one still opens nothing
@@ -163,17 +177,24 @@ describe('the whole handshake: minted at assign, shown to the rider, judged for 
     const nouveau = fresh.session.assignment?.codeRamassage as string;
     expect(nouveau).toMatch(FORME);
     expect(nouveau).not.toBe(ancien);
-    expect(await ops(mf, '/ops/ramassage/verify', { command_id: 'r3-v2', orderId: 'ord-r3', code: nouveau }))
+    expect(await verify(mf, { command_id: 'r3-v2', orderId: 'ord-r3', code: nouveau }))
       .toEqual({ ok: true, verdict: 'confirme' });
-    expect(await ops(mf, '/ops/ramassage/verify', { command_id: 'r3-v3', orderId: 'ord-r3', code: ancien }))
+    expect(await verify(mf, { command_id: 'r3-v3', orderId: 'ord-r3', code: ancien }))
       .toEqual({ ok: true, verdict: 'non_confirme' });
   });
 
-  it('the verify door is the OPS key’s alone — no key and a wrong key are the one uniform 401', async () => {
+  it('the verify door is the INTAKE key’s alone — no key, a wrong key, and even the founder’s OPS key are the one uniform 401', async () => {
     const mf = spawn();
     await courseConfiee(mf, 'ord-r4', 'rider-awa', 'r4');
-    for (const headers of [{ 'Content-Type': 'application/json' }, { Authorization: 'Bearer wrong', 'Content-Type': 'application/json' }]) {
-      const res = await mf.dispatchFetch('http://logistics/ops/ramassage/verify', {
+    // The ops secret is deliberately in this list: the check moved to the
+    // supplier's console (founder, 2026-08-09), and each caller holds exactly
+    // the door they need — the router's own discipline.
+    for (const headers of [
+      { 'Content-Type': 'application/json' },
+      { Authorization: 'Bearer wrong', 'Content-Type': 'application/json' },
+      { Authorization: `Bearer ${OPS}`, 'Content-Type': 'application/json' },
+    ]) {
+      const res = await mf.dispatchFetch('http://logistics/intake/ramassage/verify', {
         method: 'POST', headers, body: JSON.stringify({ command_id: 'r4-v', orderId: 'ord-r4', code: 'AAA-AAA' }),
       });
       expect(res.status).toBe(401);

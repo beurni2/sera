@@ -878,14 +878,23 @@ export class LogisticsDO {
      */
     /**
      * RAMASSAGE — the supplier's half of the two-party pickup (SE5). The
-     * console sends what the RIDER SAID; this door answers a VERDICT and
-     * nothing else — never the expected code, never which character missed,
-     * never whether an assignment exists (an absent course and a wrong code
-     * are the same « non confirmé »: no oracle at a market stall). Custody is
-     * untouched: confirming here authorises the HUMAN handover; the custody
-     * chain still begins only at verification + seal (SE-I05).
+     * SUPPLIER's console sends what the RIDER SAID; this door answers a
+     * VERDICT and nothing else — never the expected code, never which
+     * character missed, never whether an assignment exists (an absent course
+     * and a wrong code are the same « non confirmé »: no oracle at a market
+     * stall). Custody is untouched: confirming here authorises the HUMAN
+     * handover; the custody chain still begins only at verification + seal
+     * (SE-I05).
+     *
+     * ⚠ AN INTAKE DOOR, NOT AN OPS DOOR (founder, 2026-08-09: « that screen
+     * should be on the supplier's console not mine »). The check stands where
+     * the supplier stands, so the request arrives through Boutik+'s
+     * offer-service — which already holds `SERA_INTAKE_SECRET` for readiness
+     * — after IT has proven the order belongs to the asking supplier. The
+     * founder's ops key opens every /ops/* door and deliberately NOT this
+     * one: no secret that lives in one browser should be the handover's key.
      */
-    if (request.method === 'POST' && pathname === '/ops/ramassage/verify') {
+    if (request.method === 'POST' && pathname === '/intake/ramassage/verify') {
       const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
       if (body === null || !isStr(body['command_id']) || !isStr(body['orderId']) || !isStr(body['code'])) {
         return malformed();
