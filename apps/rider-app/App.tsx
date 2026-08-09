@@ -70,11 +70,28 @@ import { httpSosSender } from './src/net/sos-wire';
 import { resolveEvidenceCapture, type CaptureOutcome } from './src/net/evidence-capture';
 import { expoPhotoSource } from './src/net/expoPhotoSource';
 import { ensureSha256 } from './src/offline/ensureSha256';
+import { ensureCsprng } from './src/offline/ensureCsprng';
 
 // RIDER-DELIVERY-SCREEN — the handoff photo's content hash is measured on
 // this device; a bare Hermes carries no WebCrypto digest, so the expo-crypto
 // shim installs one (no-op wherever the runtime already provides it).
 ensureSha256();
+/**
+ * ⚠ « ENVOYER LA VÉRIFICATION » DID NOTHING ON DEVICE, AND THIS IS WHY
+ * (founder report 2026-08-09). `mintCommandId` reads the ambient
+ * `globalThis.crypto.randomUUID` and THROWS when there is none rather than
+ * fall back to `Math.random` — correct, that is a custody idempotency key.
+ * But nothing on a real build ever installed it: Hermes has no WebCrypto,
+ * Expo's winter runtime installs TextDecoder/URL/structuredClone/FormData and
+ * NO crypto, and this shim — written for exactly this and marked « wired in a
+ * later slice » — was called by nobody. So `attemptFor` threw on the first
+ * line of every custody act, BEFORE `runAct` could set a phase: no spinner, no
+ * refusal, no outcome. A dead primary action on the custody spine, and the
+ * same throw on the SOS mint and every outbox enqueue.
+ *
+ * Its twin above was wired; this one was not. Both must run before any mint.
+ */
+ensureCsprng();
 import { deliveryChainOf, mintActId, type CustodyAnswer } from './src/net/custody-acts';
 import {
   ACT_IDLE,

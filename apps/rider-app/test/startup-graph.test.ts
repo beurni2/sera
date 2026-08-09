@@ -117,12 +117,17 @@ const inGraph = (rel: string): boolean => graph.modules.has(join(appDir, rel));
  *     font-embedding.test.ts and grand-teint.test.ts, so it is its own slice —
  *     named here and in JOURNAL.md so it cannot stay invisible.
  *
- *   · src/offline/ensureCsprng.ts — the device CSPRNG binding for mintCommandId,
- *     twin of the wired ensureSha256.ts. Its own docblock says it is wired in a
- *     later slice; it is referenced today only from comments. Pre-existing, not
- *     produced by the kit sweep.
+ * ⚠ `src/offline/ensureCsprng.ts` WAS LISTED HERE AND SHOULD NEVER HAVE BEEN.
+ * This gate correctly flagged it as unreachable; I silenced it by believing its
+ * own docblock (« wired in a later slice — SERA-S1 wires nothing ») instead of
+ * asking what breaks while it stays unwired. The answer was: every custody act
+ * and the SOS mint, on device, silently — the founder found « Envoyer la
+ * vérification » dead the same day. It is now CALLED from App.tsx and asserted
+ * present in the graph below. The lesson for the next entry added here: an
+ * allowlist entry needs a reason that survives the question « what is broken
+ * while this stays out? », not a comment copied from the orphan itself.
  */
-const UNSHIPPED_ON_PURPOSE = ['src/ui/fonts.ts', 'src/offline/ensureCsprng.ts'];
+const UNSHIPPED_ON_PURPOSE = ['src/ui/fonts.ts'];
 
 describe('KIT-SWEEP — the startup module graph is what the app actually loads', () => {
   it('the walk reached the app (a graph of one module would pass everything vacuously)', () => {
@@ -162,6 +167,10 @@ describe('KIT-SWEEP — the startup module graph is what the app actually loads'
       'src/ui/icons.tsx',
       'src/ui/faso.ts',
       'src/ui/faso-fonts.ts',
+      // The two device shims. Unreachable = uninstalled = every custody mint
+      // throws on device; that is not a tidiness question, it is the spine.
+      'src/offline/ensureSha256.ts',
+      'src/offline/ensureCsprng.ts',
     ]) {
       expect(inGraph(f), `${f} is NOT reachable from index.ts — the app cannot render it`).toBe(true);
     }
