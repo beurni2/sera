@@ -99,6 +99,17 @@ const SNAP_PROJECTIONS = 'snap:projections:v1';
  * the task in Séra's own book, keyed by the task they brief.
  */
 const SNAP_BRIEFS = 'snap:briefs:v1';
+/**
+ * RAMASSAGE (founder order 2026-08-09) — the handover code the RIDER'S APP
+ * SHOWS and the SUPPLIER checks before handing the package over. A NEW,
+ * logistics-owned secret: SE5 names the pickup TWO-PARTY, and this is the
+ * supplier's half of the handshake — it authenticates the RIDER standing at
+ * the stall, human to human. It is NOT one of the four custody secrets and
+ * touches none of them: `pickupVerificationCode` (SE-I05) flows exactly as
+ * before. Keyed by assignmentId: a re-assigned course mints a FRESH code and
+ * a taken-back one leaves its code answering only « non confirmé ».
+ */
+const SNAP_RAMASSAGE = 'snap:ramassage:v1';
 const CODEHASH_PREFIX = 'codehash:';
 const RIDERCODE_PREFIX = 'ridercode:';
 
@@ -140,6 +151,22 @@ async function sha256Hex(value: string): Promise<string> {
  * the boutik supplier-code pattern. Never the seedable Math generator
  * (the mint-path entropy gate bans it repo-wide). */
 const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTVWXYZ23456789';
+/** Six characters, grouped for the voice — the rider SAYS this across a
+ * market stall; the supplier types it. Same unambiguous alphabet as the
+ * personal codes, same CSPRNG law (the entropy gate binds repo-wide). */
+function mintCodeRamassage(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(6));
+  let raw = '';
+  for (let i = 0; i < bytes.length; i += 1) raw += CODE_ALPHABET[(bytes[i] as number) % CODE_ALPHABET.length];
+  return `${raw.slice(0, 3)}-${raw.slice(3, 6)}`;
+}
+
+/** What the supplier TYPES vs what was minted: case and separators forgiven,
+ * the characters themselves never. */
+function normaliseCodeRamassage(v: string): string {
+  return v.toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
 function mintRiderCode(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(12));
   let raw = '';
@@ -189,6 +216,8 @@ export class LogisticsDO {
   private readinessFacts: Record<string, ReadinessFact> = {};
   /** COURSE-BRIEF, keyed by taskId — beside the canon task, never on it. */
   private briefs: Record<string, CourseBrief> = {};
+  /** RAMASSAGE — assignmentId → the handover code its rider's app shows. */
+  private ramassage: Record<string, { code: string }> = {};
   private queue!: ReadyQueue;
   private registry!: RiderRegistry;
   private witness!: GrantedLeaseWitness;
@@ -223,7 +252,7 @@ export class LogisticsDO {
 
   private async ensureLoaded(): Promise<void> {
     if (this.loaded) return;
-    const keys = [SNAP_QUEUE, SNAP_REGISTRY, SNAP_BOOK, SNAP_LEASE, SNAP_WITNESS, SNAP_PROJECTIONS, SNAP_BRIEFS];
+    const keys = [SNAP_QUEUE, SNAP_REGISTRY, SNAP_BOOK, SNAP_LEASE, SNAP_WITNESS, SNAP_PROJECTIONS, SNAP_BRIEFS, SNAP_RAMASSAGE];
     const stored = await this.state.storage.get<unknown>(keys);
     const lease = stored.get(SNAP_LEASE) as LeaseAuthorityState | undefined;
     this.leaseState = lease ?? emptyLeaseState();
@@ -231,6 +260,7 @@ export class LogisticsDO {
     this.fundingFacts = projections?.funding ?? {};
     this.readinessFacts = projections?.readiness ?? {};
     this.briefs = (stored.get(SNAP_BRIEFS) as Record<string, CourseBrief> | undefined) ?? {};
+    this.ramassage = (stored.get(SNAP_RAMASSAGE) as Record<string, { code: string }> | undefined) ?? {};
     this.queue = new ReadyQueue(this.projections());
     const queueSnap = stored.get(SNAP_QUEUE) as ReadyQueueSnapshot | undefined;
     if (queueSnap !== undefined) this.queue.restore(queueSnap);
@@ -263,6 +293,7 @@ export class LogisticsDO {
       [SNAP_WITNESS]: this.witness.snapshot(),
       [SNAP_PROJECTIONS]: { funding: this.fundingFacts, readiness: this.readinessFacts },
       [SNAP_BRIEFS]: this.briefs,
+      [SNAP_RAMASSAGE]: this.ramassage,
     });
   }
 
@@ -548,6 +579,13 @@ export class LogisticsDO {
         newAssignmentId: `as-${crypto.randomUUID()}`,
       });
       if (!outcome.ok) return Response.json(outcome, { status: 409 });
+      // RAMASSAGE — a FRESH course mints a fresh handover code; a duplicate
+      // replay keeps the one its rider is already showing. The code never
+      // rides THIS response: the supplier's console must ask the RIDER, and a
+      // console that could read it here would make the check theatre.
+      if (!outcome.duplicate && this.ramassage[outcome.assignment.assignmentId] === undefined) {
+        this.ramassage[outcome.assignment.assignmentId] = { code: mintCodeRamassage() };
+      }
       return Response.json({ ok: true, assignment: outcome.assignment, lease: outcome.lease, duplicate: outcome.duplicate });
     }
     /**
@@ -838,6 +876,34 @@ export class LogisticsDO {
      * from the stored facts and the queue — never a guess, never a count that
      * outlives its evidence.
      */
+    /**
+     * RAMASSAGE — the supplier's half of the two-party pickup (SE5). The
+     * console sends what the RIDER SAID; this door answers a VERDICT and
+     * nothing else — never the expected code, never which character missed,
+     * never whether an assignment exists (an absent course and a wrong code
+     * are the same « non confirmé »: no oracle at a market stall). Custody is
+     * untouched: confirming here authorises the HUMAN handover; the custody
+     * chain still begins only at verification + seal (SE-I05).
+     */
+    if (request.method === 'POST' && pathname === '/ops/ramassage/verify') {
+      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      if (body === null || !isStr(body['command_id']) || !isStr(body['orderId']) || !isStr(body['code'])) {
+        return malformed();
+      }
+      const orderId = (body['orderId'] as string).trim();
+      const active = this.book
+        .snapshot()
+        .assignments.map(([, r]) => r)
+        .find((r) => r.orderId === orderId && ACTIVE_ASSIGNMENT_STATUSES.includes(r.status));
+      const attendu = active === undefined ? undefined : this.ramassage[active.assignmentId]?.code;
+      const donne = normaliseCodeRamassage(body['code'] as string);
+      const verdict =
+        attendu !== undefined && donne !== '' && donne === normaliseCodeRamassage(attendu)
+          ? 'confirme'
+          : 'non_confirme';
+      return Response.json({ ok: true, verdict });
+    }
+
     if (request.method === 'GET' && pathname === '/ops/a-preparer') {
       const withTask = new Set(
         this.queue
@@ -1113,6 +1179,8 @@ export class LogisticsDO {
                */
               repereAudioRef: this.briefs[assignment.taskId]?.repereAudioRef ?? null,
               preuvePhotoRefs: this.briefs[assignment.taskId]?.preuvePhotoRefs ?? [],
+              /** RAMASSAGE — shown to its OWN rider, said to the supplier. */
+              codeRamassage: this.ramassage[assignment.assignmentId]?.code ?? null,
             },
     };
   }

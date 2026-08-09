@@ -142,7 +142,7 @@ describe('VOIX-ÉTAT-2 — the player reports what it is actually doing', () => 
     await port.play(URL_NOTE);
     mod.made[0]?.emit({ playing: true, currentTime: 3 });
     mod.made[0]?.emit({ didJustFinish: true, playing: false, currentTime: 0 });
-    expect(seen.at(-1)).toEqual({ playing: false, seconds: 0 });
+    expect(seen.at(-1)).toEqual({ playing: false, seconds: 0, echec: false });
   });
 
   it('⚠ PAUSE REPORTS ITSELF — it never waits for an event that may not come', async () => {
@@ -154,7 +154,7 @@ describe('VOIX-ÉTAT-2 — the player reports what it is actually doing', () => 
     port.pause();
     expect(mod.made[0]?.calls, 'the sound must actually stop').toContain('pause');
     // The position is KEPT: the row shows where the buyer's sentence was cut.
-    expect(seen.at(-1)).toEqual({ playing: false, seconds: 5 });
+    expect(seen.at(-1)).toEqual({ playing: false, seconds: 5, echec: false });
   });
 
   it('stop() reports rest, so a screen that leaves cannot leave a lying glyph', async () => {
@@ -164,7 +164,7 @@ describe('VOIX-ÉTAT-2 — the player reports what it is actually doing', () => 
     await port.play(URL_NOTE);
     mod.made[0]?.emit({ playing: true, currentTime: 9 });
     port.stop();
-    expect(seen.at(-1)).toEqual({ playing: false, seconds: 0 });
+    expect(seen.at(-1)).toEqual({ playing: false, seconds: 0, echec: false });
   });
 
   it('unsubscribing actually stops the updates', async () => {
@@ -205,7 +205,7 @@ describe('VOIX-ÉTAT-2 — the player reports what it is actually doing', () => 
     port.pause();
     await port.play(URL_NOTE);
     // Immediately, before any further status: playing again, position kept.
-    expect(seen.at(-1)).toEqual({ playing: true, seconds: 6 });
+    expect(seen.at(-1)).toEqual({ playing: true, seconds: 6, echec: false });
   });
 
   it('A TRAILING STATUS AFTER THE END IS IGNORED — no frozen clock beside « Écouter »', async () => {
@@ -218,7 +218,7 @@ describe('VOIX-ÉTAT-2 — the player reports what it is actually doing', () => 
     mod.made[0]?.emit({ playing: true, currentTime: 6 });
     mod.made[0]?.emit({ didJustFinish: true, playing: false, currentTime: 7 });
     mod.made[0]?.emit({ playing: false, currentTime: 7 });
-    expect(seen.at(-1)).toEqual({ playing: false, seconds: 0 });
+    expect(seen.at(-1)).toEqual({ playing: false, seconds: 0, echec: false });
   });
 
   it('« m:ss » matches the shape the buyer and the console already show', () => {
@@ -363,5 +363,151 @@ describe('the repère note — an absence and a fault are not the same silence',
     // it names what exists, what cannot happen, and what to do instead
     expect(entry?.fr).toMatch(/note vocale/i);
     expect(entry?.fr).toMatch(/repère écrit/i);
+  });
+});
+
+/**
+ * ═══ VOIX-MUETTE (founder, 2026-08-09: « When I tap the audio on sera to
+ * listen I am not hearing anything ») ═══
+ *
+ * Two silences, two answers. The iPhone's hardware mute switch: expo-audio's
+ * default iOS session respects it, so the row counted seconds over nothing —
+ * the session now plays in silent mode, set ONCE before the first playback
+ * (a spoken repère is the product, not a notification sound). And a load that
+ * FAILS (bad ref, dead network): the player names it in `playbackState`, and
+ * the port now forwards that fact instead of leaving an eternal « Écouter ».
+ */
+describe('VOIX-MUETTE — the silent switch and the named failure', () => {
+  it('CONTRACT-CERTIFIED: the real expo-audio exports setAudioModeAsync, playsInSilentMode and playbackState', () => {
+    const expoAudio = readFileSync(
+      join(import.meta.dirname, '..', 'node_modules', 'expo-audio', 'build', 'ExpoAudio.js'),
+      'utf8',
+    );
+    expect(expoAudio).toContain('export async function setAudioModeAsync');
+    const types = readFileSync(
+      join(import.meta.dirname, '..', 'node_modules', 'expo-audio', 'build', 'Audio.types.d.ts'),
+      'utf8',
+    );
+    expect(types).toContain('playsInSilentMode');
+    expect(types).toContain('playbackState');
+  });
+
+  it('the session is set to play in silent mode ONCE, BEFORE the first playback — and a second play never re-asks', async () => {
+    const calls: unknown[] = [];
+    const ordre: string[] = [];
+    const fake = {
+      createAudioPlayer: () => ({
+        play: () => ordre.push('play'),
+        pause: () => {},
+        seekTo: () => {},
+        addListener: () => ({ remove: () => {} }),
+      }),
+      setAudioModeAsync: async (mode: unknown) => {
+        calls.push(mode);
+        ordre.push('mode');
+      },
+    };
+    const port = repereAudioOver(fake as never);
+    await port.play('https://media/a');
+    await port.play('https://media/a');
+    expect(calls).toEqual([{ playsInSilentMode: true }]);
+    expect(ordre[0], 'the mode must be set BEFORE the first play, or the first note stays muted').toBe('mode');
+  });
+
+  it('a web build without setAudioModeAsync still plays — the call is optional, never a crash', async () => {
+    let played = 0;
+    const fake = {
+      createAudioPlayer: () => ({
+        play: () => { played += 1; },
+        pause: () => {},
+        seekTo: () => {},
+        addListener: () => ({ remove: () => {} }),
+      }),
+    };
+    const port = repereAudioOver(fake as never);
+    await port.play('https://media/a');
+    expect(played).toBe(1);
+  });
+
+  it('a status NAMING a failure reaches the screen as echec — and a fresh play clears it', async () => {
+    let onStatus: ((s: Record<string, unknown>) => void) | undefined;
+    const fake = {
+      createAudioPlayer: () => ({
+        play: () => {},
+        pause: () => {},
+        seekTo: () => {},
+        addListener: (_: string, fn: (s: Record<string, unknown>) => void) => {
+          onStatus = fn;
+          return { remove: () => {} };
+        },
+      }),
+      setAudioModeAsync: async () => {},
+    };
+    const port = repereAudioOver(fake as never);
+    const vus: unknown[] = [];
+    port.subscribe((e) => vus.push(e));
+    await port.play('https://media/mauvaise');
+    onStatus?.({ playbackState: 'failed' });
+    expect(vus.at(-1)).toEqual({ playing: false, seconds: 0, echec: true });
+    // the rider taps again: the failure fact clears with the fresh attempt
+    await port.play('https://media/mauvaise');
+    onStatus?.({ currentTime: 1, playing: true });
+    expect(vus.at(-1)).toEqual({ playing: true, seconds: 1, echec: false });
+  });
+
+  it('a failed player is REBUILT on the retry, never resumed — « réessayez » must be a true sentence', async () => {
+    let onStatus: ((s: Record<string, unknown>) => void) | undefined;
+    let crees = 0;
+    const fake = {
+      createAudioPlayer: () => {
+        crees += 1;
+        return {
+          play: () => {},
+          pause: () => {},
+          seekTo: () => {},
+          addListener: (_: string, fn: (s: Record<string, unknown>) => void) => {
+            onStatus = fn;
+            return { remove: () => {} };
+          },
+        };
+      },
+      setAudioModeAsync: async () => {},
+    };
+    const port = repereAudioOver(fake as never);
+    await port.play('https://media/a');
+    onStatus?.({ playbackState: 'failed' });
+    // The retry the echec line asks for: resuming the dead player would replay
+    // the failure — the port must build a FRESH one.
+    await port.play('https://media/a');
+    expect(crees, 'the failed player must be released and recreated').toBe(2);
+    let last: RepereAudioEtat | undefined;
+    port.subscribe((e) => { last = e; });
+    onStatus?.({ currentTime: 3, playing: true });
+    expect(last).toEqual({ playing: true, seconds: 3, echec: false });
+  });
+
+  it('a play that THROWS lands on the echec state, never on a silent rejection', async () => {
+    const fake = {
+      createAudioPlayer: () => {
+        throw new Error('native load refused');
+      },
+      setAudioModeAsync: async () => {},
+    };
+    const port = repereAudioOver(fake as never);
+    const vus: unknown[] = [];
+    port.subscribe((e) => vus.push(e));
+    // Before the fix this REJECTED, App.tsx caught it with stop(), and the row
+    // went back to « Écouter » with echec:false — a silence wearing a calm face.
+    await expect(port.play('https://media/morte')).resolves.toBeUndefined();
+    expect(vus.at(-1)).toEqual({ playing: false, seconds: 0, echec: true });
+  });
+
+  it('the SCREEN says it: the echec line renders under the row, from the catalog (call site)', () => {
+    const app = readFileSync(join(import.meta.dirname, '..', 'App.tsx'), 'utf8');
+    expect(app).toMatch(/\{repereEtat\.echec \? <FasoBody>\{t\('repere\.voix_echec'\)\}<\/FasoBody> : null\}/);
+    const catalog = JSON.parse(
+      readFileSync(join(import.meta.dirname, '..', 'i18n', 'catalog.json'), 'utf8'),
+    ) as { key: string }[];
+    expect(catalog.some((e) => e.key === 'repere.voix_echec')).toBe(true);
   });
 });

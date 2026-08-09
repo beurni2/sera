@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createManualConnectivity } from '../src/offline/connectivity';
 import { httpRiderSession } from '../src/net/httpRiderSession';
@@ -205,5 +207,33 @@ describe('an unconfigured build is honest about being unconfigured', () => {
     });
     expect((await wired.signIn('C')).ok).toBe(true);
     expect(called).toBe(1);
+  });
+});
+
+describe('RAMASSAGE — the handover code reaches the rider, bounded, and the screen shows it', () => {
+  it('the parser accepts the minted shape and drops anything else', () => {
+    const rider = {
+      riderId: 'r', displayName: 'r', certified: true, privacyAckOk: true, noticeVersion: 'v1',
+      shift: null,
+      assignment: {
+        assignmentId: 'as-1', taskId: 't-1', orderId: 'o-1', status: 'acknowledged',
+        ackDeadline: null, window: null, location: null,
+        repereAudioRef: null, preuvePhotoRefs: [], codeRamassage: 'ABC-234',
+      },
+    };
+    const vue = (a: Record<string, unknown>) =>
+      riderSessionFromBody({ ok: true, rider: { ...rider, assignment: a } });
+    expect(vue(rider.assignment)?.assignment?.codeRamassage).toBe('ABC-234');
+    // A byte that is not the minted shape is DROPPED, never displayed — the
+    // same bound the source enforces on media refs.
+    expect(vue({ ...rider.assignment, codeRamassage: '<script>' })?.assignment?.codeRamassage).toBeNull();
+    expect(vue({ ...rider.assignment, codeRamassage: undefined })?.assignment?.codeRamassage).toBeNull();
+  });
+
+  it('the ACCEPTED course SHOWS it (call site): the seal mark + the say-it line', () => {
+    const app = readFileSync(join(import.meta.dirname, '..', 'App.tsx'), 'utf8');
+    expect(app).toMatch(/liveAssignment\.codeRamassage !== null \? \(/);
+    expect(app).toContain("<FasoSealMark code={liveAssignment.codeRamassage} label={t('ramassage.titre')} />");
+    expect(app).toContain("<FasoBody>{t('ramassage.dire')}</FasoBody>");
   });
 });

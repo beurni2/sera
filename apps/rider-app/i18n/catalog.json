@@ -1488,6 +1488,24 @@
     "screenClass": "status"
   },
   {
+    "key": "repere.voix_echec",
+    "fr": "La note ne se lit pas. Vérifiez le réseau et réessayez.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "ramassage.titre",
+    "fr": "Code de ramassage",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "ramassage.dire",
+    "fr": "Dites ce code au fournisseur en arrivant. Il le vérifie avant de vous remettre le colis.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
     "key": "preuve.titre",
     "fr": "Photos du fournisseur",
     "register": "neutral",

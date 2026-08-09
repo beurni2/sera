@@ -36,6 +36,13 @@ export interface RepereAudioEtat {
   readonly playing: boolean;
   /** How far into the note we are, in whole seconds. */
   readonly seconds: number;
+  /**
+   * VOIX-MUETTE (founder, 2026-08-09: « When I tap the audio on sera to
+   * listen I am not hearing anything ») — the player REPORTED a failure
+   * (`playbackState` names it). Forwarded, never inferred: a slow 2G load is
+   * not a failure and must not be called one. A fresh play() clears it.
+   */
+  readonly echec: boolean;
 }
 
 export interface RepereAudioPort {
@@ -50,7 +57,7 @@ export interface RepereAudioPort {
 }
 
 /** Exactly the fields of `expo-audio`'s `AudioStatus` this port reads. */
-type StatusLike = { currentTime?: number; playing?: boolean; didJustFinish?: boolean };
+type StatusLike = { currentTime?: number; playing?: boolean; didJustFinish?: boolean; playbackState?: string };
 type SubscriptionLike = { remove?: () => void };
 type PlayerLike = {
   play: () => void;
@@ -60,7 +67,11 @@ type PlayerLike = {
   release?: () => void;
   remove?: () => void;
 };
-type AudioModule = { createAudioPlayer: (source: string) => PlayerLike };
+type AudioModule = {
+  createAudioPlayer: (source: string) => PlayerLike;
+  /** The real `expo-audio` export (build/ExpoAudio.js); absent on the web stub. */
+  setAudioModeAsync?: (mode: { playsInSilentMode: boolean }) => Promise<void>;
+};
 
 /**
  * The real port over `expo-audio`, given the module. Kept separate from the
@@ -78,6 +89,18 @@ export function repereAudioOver(mod: AudioModule): RepereAudioPort {
   let finished = false;
   /** The position the last status reported — what `pause()` keeps on screen. */
   let lastSeconds = 0;
+  /** The player named a failure; cleared only by a fresh play(). */
+  let echec = false;
+  /**
+   * VOIX-MUETTE — the iPhone's silent switch. `expo-audio`'s default iOS
+   * session respects the hardware mute, so a rider (or the founder) with the
+   * switch down heard NOTHING while the row honestly counted seconds. A
+   * spoken repère is the product, not a notification sound: the session is
+   * set to play in silent mode ONCE, before the first playback. Best-effort
+   * and awaited: setting it after play() starts would leave the first note
+   * muted anyway.
+   */
+  let modeRegle = false;
   const watchers = new Set<(e: RepereAudioEtat) => void>();
   /** The last state we told the screen — so `stop()` and the end of a note
    *  both land on the same honest rest, and nothing lingers as « playing ». */
@@ -95,66 +118,99 @@ export function repereAudioOver(mod: AudioModule): RepereAudioPort {
   };
   return {
     async play(url: string): Promise<void> {
-      if (player !== null && current === url) {
-        // ⚠ RESUME, NEVER RESTART. Tapping « Pause » then tapping again must
-        // continue where the buyer's sentence was cut, not replay it from the
-        // top — a rider re-listening to « portail bleu » should not have to
-        // sit through « face à la pharmacie » again. Only a note that has
-        // RUN OUT goes back to the start.
-        if (finished) {
-          await player.seekTo(0);
-          lastSeconds = 0;
-        }
-        // ⚠ CLEARED HERE, NOT ONLY IN stop() (verifier, 2026-08-09). `finished`
-        // was sticky: after one natural end, EVERY later tap rewound — so
-        // pause-then-resume restarted the note instead of continuing it,
-        // contradicting this block's own contract two lines up.
-        finished = false;
-        player.play();
-        // Resume reports itself for the same reason pause does: the next status
-        // is up to 500 ms away (expo-audio's default updateInterval), and a row
-        // showing « Écouter » over live sound is the defect, briefly.
-        emit({ playing: true, seconds: lastSeconds });
-        return;
+      if (!modeRegle) {
+        modeRegle = true;
+        await mod.setAudioModeAsync?.({ playsInSilentMode: true }).catch(() => {
+          // The session call failing must not eat the tap — playback is still
+          // asked for; on a platform without the call it simply never fails.
+        });
       }
-      // A different note replaces the old one — and the old one is RELEASED,
-      // because a rider's phone is a 1 GB Android and a leaked player is a
-      // crash three courses later.
-      detach();
-      player = mod.createAudioPlayer(url);
-      current = url;
-      finished = false;
-      sub = player.addListener?.('playbackStatusUpdate', (status: StatusLike) => {
-        // The note ENDING is the state the screen could never see before, and
-        // it is the one that left « Pause » sitting over silence.
-        if (status.didJustFinish === true) {
-          finished = true;
-          lastSeconds = 0;
-          emit({ playing: false, seconds: 0 });
+      // ⚠ A FAILED PLAYER IS NEVER RESUMED (verifier, 2026-08-09). The echec
+      // line says « réessayez » — so the retry must be able to succeed. A
+      // player that named a failure is dead; resuming it replays the failure.
+      // The next tap falls through to the fresh branch and REBUILDS it.
+      const avaitEchoue = echec;
+      echec = false;
+      try {
+        if (player !== null && current === url && !avaitEchoue) {
+          // ⚠ RESUME, NEVER RESTART. Tapping « Pause » then tapping again must
+          // continue where the buyer's sentence was cut, not replay it from the
+          // top — a rider re-listening to « portail bleu » should not have to
+          // sit through « face à la pharmacie » again. Only a note that has
+          // RUN OUT goes back to the start.
+          if (finished) {
+            await player.seekTo(0);
+            lastSeconds = 0;
+          }
+          // ⚠ CLEARED HERE, NOT ONLY IN stop() (verifier, 2026-08-09). `finished`
+          // was sticky: after one natural end, EVERY later tap rewound — so
+          // pause-then-resume restarted the note instead of continuing it,
+          // contradicting this block's own contract two lines up.
+          finished = false;
+          player.play();
+          // Resume reports itself for the same reason pause does: the next status
+          // is up to 500 ms away (expo-audio's default updateInterval), and a row
+          // showing « Écouter » over live sound is the defect, briefly.
+          emit({ playing: true, seconds: lastSeconds, echec: false });
           return;
         }
-        // A note that has ENDED may still emit a trailing status carrying
-        // `currentTime === duration`; taking it would put a frozen « 0:07 »
-        // beside « Écouter », which is the same class of lie the end-handler
-        // above exists to prevent. Only a genuine resume reopens the clock.
-        if (finished && status.playing !== true) return;
-        lastSeconds = Math.max(0, Math.floor(status.currentTime ?? 0));
-        emit({ playing: status.playing === true, seconds: lastSeconds });
-      });
-      player.play();
+        // A different note replaces the old one — and the old one is RELEASED,
+        // because a rider's phone is a 1 GB Android and a leaked player is a
+        // crash three courses later.
+        detach();
+        player = mod.createAudioPlayer(url);
+        current = url;
+        finished = false;
+        sub = player.addListener?.('playbackStatusUpdate', (status: StatusLike) => {
+          // The player NAMING a failure is the one fact the row could never
+          // show — a bad ref or a dead network read as an eternal « Écouter ».
+          if (typeof status.playbackState === 'string' && /fail|error/i.test(status.playbackState)) {
+            echec = true;
+            emit({ playing: false, seconds: lastSeconds, echec: true });
+            return;
+          }
+          // The note ENDING is the state the screen could never see before, and
+          // it is the one that left « Pause » sitting over silence.
+          if (status.didJustFinish === true) {
+            finished = true;
+            lastSeconds = 0;
+            emit({ playing: false, seconds: 0, echec: false });
+            return;
+          }
+          // A note that has ENDED may still emit a trailing status carrying
+          // `currentTime === duration`; taking it would put a frozen « 0:07 »
+          // beside « Écouter », which is the same class of lie the end-handler
+          // above exists to prevent. Only a genuine resume reopens the clock.
+          if (finished && status.playing !== true) return;
+          lastSeconds = Math.max(0, Math.floor(status.currentTime ?? 0));
+          emit({ playing: status.playing === true, seconds: lastSeconds, echec: false });
+        });
+        player.play();
+      } catch {
+        // ⚠ A play that THROWS is the same fact as a status naming a failure
+        // (verifier, 2026-08-09): before this, the rejection fell to the
+        // screen's catch-and-stop and the row went silently back to
+        // « Écouter » with no echec line. The port handles its own failure:
+        // the broken player is released, the honest state is emitted, and the
+        // promise RESOLVES — the screen never needs a rescue path.
+        detach();
+        echec = true;
+        emit({ playing: false, seconds: lastSeconds, echec: true });
+      }
     },
     pause(): void {
       player?.pause();
       // Reported immediately: `playbackStatusUpdate` may not fire again once
       // the sound stops, and a button that waits for an event that never comes
       // is the same dead face this whole change is about.
-      emit({ playing: false, seconds: lastSeconds });
+      emit({ playing: false, seconds: lastSeconds, echec });
     },
     stop(): void {
       detach();
       finished = false;
       lastSeconds = 0;
-      emit({ playing: false, seconds: 0 });
+      echec = false;
+      emit({ playing: false, seconds: 0, echec: false });
     },
     subscribe(fn: (e: RepereAudioEtat) => void): () => void {
       watchers.add(fn);

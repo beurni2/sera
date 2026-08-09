@@ -49,6 +49,15 @@ export interface RiderAssignment {
    */
   readonly repereAudioRef: string | null;
   readonly preuvePhotoRefs: readonly string[];
+  /**
+   * RAMASSAGE (founder order 2026-08-09) — the handover code THIS rider says
+   * to the supplier at the stall; the supplier's console confirms it before
+   * handing the package over (SE5's two-party pickup, the supplier's half).
+   * Logistics-owned, per assignment — NOT one of the four custody secrets;
+   * the typed `pickupVerificationCode` flow is untouched by it. Bounded to
+   * the minted shape so nothing else can wear it on this screen.
+   */
+  readonly codeRamassage: string | null;
 }
 
 /** A media pointer and nothing else — mirrors the Worker's own bound, because
@@ -56,6 +65,13 @@ export interface RiderAssignment {
 const MEDIA_REF = /^media\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 function mediaRefOrNull(v: unknown): string | null {
   return typeof v === 'string' && MEDIA_REF.test(v) && !v.includes('..') ? v : null;
+}
+
+/** The minted ramassage shape (`XXX-XXX`, the unambiguous alphabet) and
+ *  nothing else — a stray byte is dropped, never displayed. */
+const CODE_RAMASSAGE = /^[ABCDEFGHJKMNPQRSTVWXYZ2-9]{3}-[ABCDEFGHJKMNPQRSTVWXYZ2-9]{3}$/;
+function codeRamassageOrNull(v: unknown): string | null {
+  return typeof v === 'string' && CODE_RAMASSAGE.test(v) ? v : null;
 }
 
 /** The rider's session as logistics tells it — identity + certification +
@@ -127,6 +143,7 @@ export function riderSessionFromBody(body: unknown): RiderSession | null {
         preuvePhotoRefs: Array.isArray(a['preuvePhotoRefs'])
           ? (a['preuvePhotoRefs'] as unknown[]).map(mediaRefOrNull).filter((r): r is string => r !== null)
           : [],
+        codeRamassage: codeRamassageOrNull(a['codeRamassage']),
       };
     }
   }

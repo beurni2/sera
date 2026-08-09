@@ -553,7 +553,7 @@ export default function App() {
    * all. It now comes from the player itself (`subscribe`), which is the only
    * thing that knows whether sound is actually coming out of the phone.
    */
-  const [repereEtat, setRepereEtat] = useState<RepereAudioEtat>({ playing: false, seconds: 0 });
+  const [repereEtat, setRepereEtat] = useState<RepereAudioEtat>({ playing: false, seconds: 0, echec: false });
   useEffect(() => {
     if (repereAudio === null) return undefined;
     return repereAudio.subscribe(setRepereEtat);
@@ -622,6 +622,7 @@ export default function App() {
      */
     if (repereAudio === null) return <FasoBody>{t('repere.voix_indisponible')}</FasoBody>;
     return (
+      <>
       <FasoVoicePlayRow
         label={t(repereEtat.playing ? 'repere.voix_pause' : 'repere.voix_ecouter')}
         // Blank until the note has actually run: « 0:00 » before the first tap
@@ -637,6 +638,11 @@ export default function App() {
           void repereAudio.play(repereUrl).catch(() => repereAudio.stop());
         }}
       />
+      {/* VOIX-MUETTE — the player NAMED a failure (bad ref, dead network):
+          say so under the row instead of an eternal « Écouter » (founder,
+          2026-08-09: « I am not hearing anything »). */}
+      {repereEtat.echec ? <FasoBody>{t('repere.voix_echec')}</FasoBody> : null}
+    </>
     );
   }, [repereUrl, repereAudio, repereEtat]);
 
@@ -1581,6 +1587,19 @@ export default function App() {
                     </FasoCard>
                   )}
                   <FasoStatusChip tone="info" label={t(assignmentStateKey(liveAssignment.status))} />
+
+                  {/* RAMASSAGE (founder order 2026-08-09) — the handover code
+                      the rider SAYS to the supplier at the stall; the
+                      supplier's console confirms it before handing the
+                      package over. SE5's two-party pickup, the supplier's
+                      half — logistics-owned, and NOT the custody code typed
+                      below (that one still comes from Séra by phone). */}
+                  {liveAssignment.codeRamassage !== null ? (
+                    <>
+                      <FasoSealMark code={liveAssignment.codeRamassage} label={t('ramassage.titre')} />
+                      <FasoBody>{t('ramassage.dire')}</FasoBody>
+                    </>
+                  ) : null}
 
                   {/**
                     * ⚠ SE-I05, IN THE ORDER THE SPEC GIVES IT: « Custody begins
