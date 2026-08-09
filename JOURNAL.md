@@ -1629,3 +1629,64 @@ Set repo variable `SERA_CONSOLE_ORIGIN` in `beurni2/sera` to `https://boutik-plu
 - **⚠ Law 7 — the row remounted twice a second on a 1 GB Android.** `RepereVoix` is a `useCallback` whose identity changes with `repereEtat`, and it was mounted as `<RepereVoix />` — a NEW component type each tick, so React unmounted and remounted the Pressable + SVG subtree on every status update. Now called as `{RepereVoix()}`, reconciled by position. The same file already treats this remount class as a defect worth fixing (the `preuveKey` memo), which is what makes it embarrassing rather than surprising.
 - **Evidence after the fixes:** rider-app **329/329** (+5: sticky-`finished`, self-reporting resume, the ignored trailing status, the call-form pin — mutation-tested — and the honest demo row) · logistics 167/167 · custody 207/207 · dispatch-console 41/41 · typecheck clean · gate board **ALL GATES GREEN**.
 - **Journalled, not fixed (stated, not dropped):** `src/ui/kit.tsx` carries a SECOND, unpatched `VoicePlayRow` still drawing `IconEcouter` unconditionally, plus the `LandmarkCard` that feeds it. Neither is rendered — App.tsx uses the `Faso*` kit — so touching them changes nothing a user sees, and dead-code edits are not this build's scope. Named here because the next screen that reaches for `kit` inherits the old bug.
+
+---
+
+# ═══ STATE OF PLAY — read this first in a new session (2026-08-09) ═══
+
+*Written at a chat handoff. The canon (CLAUDE.md/AGENTS.md) still outranks it; this is the LIVE state and the environment's own traps, which no spec file carries. THIS repo (`sera`) was at `74f9fc2` when it was written — the same block is in all three journals.*
+
+## 1. WHERE THE WORK IS
+
+Branch for ALL repos: `claude/buyer-pwa-standing-laws-nerljz`. At handoff every repo's branch and `main` are the SAME commit — nothing is unmerged, nothing unpushed:
+
+| repo | main == branch | last wave |
+|---|---|---|
+| sera | `74f9fc2` | VOIX-ÉTAT-2 + verifier round |
+| shop-plus | `0a8c56c` | VOIX-ÉTAT-2 + verifier round + the two journalled closures |
+| boutik-plus | `7553b2d` | VOIX-ÉTAT-2 + verifier round |
+| platform-contracts | `b777cc4` | unchanged this wave |
+
+**Deployed and confirmed `completed success`:** sera custody + logistics · boutik offer + web console · shop storefront + buyer PWA. Everything shipped this wave is live EXCEPT the rider app: it needs a **NEW NATIVE BUILD** (`expo-audio` is a native module; OTA cannot carry it).
+
+## 2. ⚠ THE ENVIRONMENT TRAP THAT COSTS THE MOST — RESTART-ROLLBACK
+
+**The container restarts without warning and rolls the local clones back to a DAYS-OLD working tree while `origin` holds the merged truth.** It happened FIVE times in the session that wrote this, three of them in one afternoon.
+
+What it looks like: a stop-hook says « uncommitted changes »; `git status` shows files modified; `HEAD` is an old SHA you do not recognise.
+
+**The rule: never trust the working tree. Before committing ANYTHING, diff it against `origin/main`.** On the last occurrence the « uncommitted changes » were pickup-verification policy **v1** (nine checks) over a repo whose origin already had **v2** (three checks) — committing them would have reverted policy v2 and the replay-safety stamp on a **custody** path.
+
+Recovery, and it is always this:
+```
+git -C <repo> fetch origin main
+git -C <repo> diff origin/main -- <each dirty file>   # older, or genuinely newer?
+git -C <repo> checkout -B <branch> origin/main        # when older: discard
+```
+Two more consequences of the same trap:
+- **`git checkout <file>` to revert a mutation test WIPES live uncommitted work in that file.** Use a scratch copy (`cp file $SCRATCH/x.bak` … `cp back`), never the index.
+- **`node_modules` can be left on a stale canon.** If pinned-package behaviour looks wrong, `pnpm install --frozen-lockfile` before suspecting your own code.
+
+## 3. STANDING OPERATIONAL LAWS (not in the specs, learned the hard way)
+
+- **Merges are guarded fast-forwards, never PRs.** `SHA=$(git rev-parse origin/<branch>)` → `git merge-base --is-ancestor origin/main "$SHA"` → `git push origin "$SHA":refs/heads/main`.
+- **DEPLOY ORDER: receivers before consumers.** Workers first, then the surfaces that call them (boutik web console, buyer PWA) — always.
+- **ERROR-1042: a Worker never fetches another Worker's public workers.dev URL.** Service bindings only.
+- **Secrets are the founder's alone** — `wrangler secret put`, never bundled. All repos are public. (One ruling exception: the media WRITE key ships in app bundles — MEDIA-KEY-SPLIT.)
+- **Workflow dispatch via raw `curl` returns 403 here.** Use the GitHub MCP tool (`actions_run_trigger`).
+- **`vitest run` does NOT run `pretest`** — Worker bundles go stale and e2e fails for no visible reason. Run `pnpm run bundle:worker` (sera) / `pnpm bundle:worker:combined` (shop) first.
+- **Sandbox egress blocks workers.dev, github.io and Expo's API** — so `expo install` fails; read native pins from expo's own `node_modules/expo/bundledNativeModules.json`, never guess. The npm registry IS reachable.
+- **`⚠` and other glyphs in shop/boutik source or tests trip the `no-emoji-in-chrome` gate** — it scans the app trees including tests. Cost two gate-board rounds; keep them out.
+- **Playwright:** `PW_EXECUTABLE=/opt/pw-browsers/chromium npx playwright test`.
+
+## 4. WHAT THE LAST WAVE PROVED, AND THE LESSON THAT GENERALISES
+
+Founder report: audio players showed no pause state and no counting seconds. Six audio affordances were inventoried across three repos; four were broken and are now fixed (rider repère row, buyer's own recorded note, Boutik+ console repère, reseller product note).
+
+**The lesson worth carrying:** the two players I first classed « already correct » were classed that way because I read a CODE COMMENT saying both screens shared a fixed player — and did not check the two call sites. One of them (C5, the payment screen) had never passed its button, so the fix could not reach it. *A port that exists is not a port that is called.* Three green source-scan tests also sat over a detached-node bug for five days. **Where a browser can answer, make it answer** — the buyer PWA now has three real-browser tests in this family, each mutation-checked (break the fix, the test goes red).
+
+## 5. OPEN — awaiting the founder, do not start unasked
+
+- **The rider-app `kit.tsx` sweep — RECOMMENDED, needs his go-ahead.** `sera/apps/rider-app/src/ui/kit.tsx` is 1288 lines and 35 exports; `faso-kit.tsx` duplicates **20 of its component names**. `App.tsx` imports 20 of them and renders **ZERO** — every render site uses the `Faso*` equivalent. The only live export in the whole file is `useReducedMotion` (used by `signature.tsx` + `faso-sos.tsx`); `ChipTone` is also exported by faso-kit. Because App.tsx imports from it, Metro bundles and evaluates the whole module at startup on a 1 GB Android — **Law 7, not tidiness**. Plan: move `useReducedMotion` out, point `ChipTone` at faso-kit, delete `kit.tsx` + the dead import block, consider `noUnusedLocals` (check blast radius first). Proof: typecheck + 329 rider tests + gate board + a bundle-size before/after.
+- **Journalled, deliberately not fixed** (state them, don't silently re-open): a malformed proof ref 400s the whole Séra relay under a generic « Séra a refusé »; a still-loading proof photo relays silently with no photo (needs a founder call on whether a relay should WAIT on a photo read); the Séra dispatch board does not clear on course completion; a rider app killed mid-course loses session ids; the ACK deadline of 5 min may be tight.
+- **Carried debt, named in the gate's own header:** the Shop+ cliente module keeps its copy inline; `copy-lint-inline-refus.mjs` lints FIVE tables (REFUS · PAIEMENT · CONFIRMATION · PORTE · VOIX), not the file. The full i18n catalog migration is its own slice.
