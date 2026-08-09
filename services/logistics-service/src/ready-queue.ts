@@ -85,8 +85,24 @@ export class ReadyQueue {
       return { admitted: false, reason: 'unexpected_event_name' };
     }
     if (this.processedCommandIds.has(event.envelope.command_id)) {
+      /**
+       * ⚠ A DEDUPE RECORD MUST NEVER IMMORTALIZE A DEAD OUTCOME (verifier
+       * blocker, COURSE-REPRISE round — the same RELAIS-REPRISE law already
+       * applied at the book and the lease authority, which this door alone
+       * still lacked). The founder composes by hand and re-runs saved
+       * commands; matching the remembered admission by correlation ALONE
+       * found the `closed_taken_back` task, answered « ok (duplicate) » over
+       * a task nobody can ever be given, and filed the NEW brief (the voice
+       * note + photos he re-composed FOR) onto the dead row. A replay answers
+       * duplicate only while its task is still ALIVE; a closed one falls
+       * through to a fresh admission, as a re-compose always was in the
+       * dispatcher's head.
+       */
       const existing = [...this.tasks.values()].find(
-        (q) => q.correlationId === event.envelope.correlation_id,
+        (q) =>
+          q.correlationId === event.envelope.correlation_id &&
+          q.status !== 'closed_rescheduled' &&
+          q.status !== 'closed_taken_back',
       );
       if (existing) return { admitted: true, duplicate: true, task: existing.task };
       // Same command replayed but nothing admitted: it was refused before —

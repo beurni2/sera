@@ -569,14 +569,51 @@ export class LogisticsDO {
      */
     if (request.method === 'POST' && pathname === '/ops/assignment/take-back') {
       const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
-      if (body === null || !isStr(body['command_id']) || !isStr(body['assignmentId'])) return malformed();
+      if (
+        body === null ||
+        !isStr(body['command_id']) ||
+        !isStr(body['assignmentId']) ||
+        // Same guard as /ops/assign: a non-string dispatcherId is malformed,
+        // never a 500 (a 500 drops the DO's in-memory state — verifier minor).
+        (body['dispatcherId'] !== undefined && !isStr(body['dispatcherId']))
+      ) {
+        return malformed();
+      }
+      /**
+       * ⚠ THE CUSTODY BOUND, STATED AT THE DOOR (verifier blocker B2).
+       * Logistics cannot SEE custody — it is the custody Worker's ledger. A
+       * take-back after the seal would strip the carrying rider's every
+       * custody screen (`/rider/moi` → null, and the app's seal/evidence/drop
+       * paths all key off the live assignment) while the ledger still names
+       * them custodian: the package would have NO discharge path until the
+       * same rider is re-assigned the same order. This door therefore refuses
+       * unless the dispatcher ASSERTS the bound — a sentence typed on
+       * purpose, never an accident of a generic button. (Whether this door
+       * should one day ask the custody ledger itself, over a service binding,
+       * is an open founder decision — flagged, not closed, here.)
+       *
+       * `command_id` is REQUIRED for shape-consistency with every ops door
+       * and is deliberately UNUSED: idempotency here is by state (a repeat
+       * answers duplicate), which is strictly stronger for a one-way act.
+       */
+      if (body['custodyNotBegun'] !== true) {
+        return Response.json(
+          { ok: false, reason: 'custody_bound_not_asserted' },
+          { status: 428 },
+        );
+      }
       const outcome = await this.dispatch.takeBack(
         (body['assignmentId'] as string).trim(),
         ((body['dispatcherId'] as string | undefined) ?? 'fondateur').trim(),
         now,
       );
       if (!outcome.ok) {
-        return Response.json(outcome, { status: outcome.reason === 'unknown_assignment' ? 404 : 409 });
+        // The refusal carries its reason and nothing else — no orchestrator
+        // internals riding along (verifier minor).
+        return Response.json(
+          { ok: false, reason: outcome.reason },
+          { status: outcome.reason === 'unknown_assignment' ? 404 : 409 },
+        );
       }
       return Response.json({
         ok: true,
@@ -588,6 +625,10 @@ export class LogisticsDO {
           orderId: outcome.assignment.orderId,
           riderId: outcome.assignment.riderId,
           status: outcome.assignment.status,
+          // The audit IS the record (no platform event exists for this) — so
+          // the record's audit answers to the hand that acted.
+          takenBackAt: outcome.assignment.takenBackAt ?? null,
+          takenBackBy: outcome.assignment.takenBackBy ?? null,
         },
       });
     }

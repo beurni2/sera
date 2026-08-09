@@ -131,13 +131,16 @@ describe('⚠ the founder’s loop: take back the briefless course, re-compose W
     expect(blocked['reason']).toBe('order_already_has_task');
 
     // ═══ THE ACT: the dispatcher takes the course back. ═══
-    const takenBack = await ops(mf, '/ops/assignment/take-back', { command_id: 'cmd-w1', assignmentId });
+    const takenBack = await ops(mf, '/ops/assignment/take-back', { command_id: 'cmd-w1', assignmentId, custodyNotBegun: true });
     expect(takenBack['ok'], JSON.stringify(takenBack)).toBe(true);
     expect(takenBack['duplicate']).toBe(false);
     // The ANCHORED lease released — the assertion that makes acknowledged
     // endable at THE authority, not merely in the book.
     expect(takenBack['leaseReleased'], 'the anchored lease must release').toBe(true);
     expect((takenBack['assignment'] as Record<string, unknown>)['status']).toBe('taken_back_by_dispatch');
+    // the audit IS the record (no platform event exists) — asserted, not decorative
+    expect((takenBack['assignment'] as Record<string, unknown>)['takenBackBy']).toBe('fondateur');
+    expect(typeof (takenBack['assignment'] as Record<string, unknown>)['takenBackAt']).toBe('string');
 
     // The rider's screen clears on its next read — no course, and free again.
     const cleared = await session.signIn(code);
@@ -156,12 +159,21 @@ describe('⚠ the founder’s loop: take back the briefless course, re-compose W
     const aPreparer = await ops(mf, '/ops/a-preparer');
     expect(JSON.stringify(aPreparer), 'ord-stuck must reappear in /ops/a-preparer').toContain('ord-stuck');
 
-    // The SAME order re-composes — this time WITH the brief (his goal).
+    /**
+     * The SAME order re-composes — this time WITH the brief (his goal) — and
+     * ⚠ DELIBERATELY REUSING THE ORIGINAL COMMAND ID (verifier blocker B1):
+     * the founder re-runs saved commands. The correlation-only replay lookup
+     * used to find the dead closed_taken_back task, answer « ok (duplicate) »
+     * over a task nobody can be given, and file the NEW voice note + photos
+     * onto the dead row. A replayed compose over a CLOSED task must fall
+     * through to a FRESH admission instead.
+     */
     const recomposed = await ops(mf, '/ops/task', {
-      command_id: 'cmd-new-2', orderId: 'ord-stuck', location: LOC, window: WIN,
+      command_id: 'cmd-old', orderId: 'ord-stuck', location: LOC, window: WIN,
       repereAudioRef: AUDIO, preuvePhotoRefs: [PHOTO],
     });
     expect(recomposed['ok'], JSON.stringify(recomposed)).toBe(true);
+    expect(recomposed['duplicate'], 'a dead task must never answer a replay as duplicate').not.toBe(true);
     const newTaskId = recomposed['taskId'] as string;
     expect(newTaskId).not.toBe(oldTaskId); // a fresh task, never a resurrection
 
@@ -183,14 +195,14 @@ describe('⚠ the founder’s loop: take back the briefless course, re-compose W
     const unknown = await mf.dispatchFetch('http://logistics/ops/assignment/take-back', {
       method: 'POST',
       headers: { Authorization: `Bearer ${OPS}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command_id: 'cmd-x', assignmentId: 'as-inconnue' }),
+      body: JSON.stringify({ command_id: 'cmd-x', assignmentId: 'as-inconnue', custodyNotBegun: true }),
     });
     expect(unknown.status).toBe(404);
     expect(((await unknown.json()) as Record<string, unknown>)['reason']).toBe('unknown_assignment');
 
     // Take it back, then again: the second is duplicate, never a new act.
-    expect((await ops(mf, '/ops/assignment/take-back', { command_id: 'cmd-w1', assignmentId }))['ok']).toBe(true);
-    const again = await ops(mf, '/ops/assignment/take-back', { command_id: 'cmd-w2', assignmentId });
+    expect((await ops(mf, '/ops/assignment/take-back', { command_id: 'cmd-w1', assignmentId, custodyNotBegun: true }))['ok']).toBe(true);
+    const again = await ops(mf, '/ops/assignment/take-back', { command_id: 'cmd-w2', assignmentId, custodyNotBegun: true });
     expect(again['ok']).toBe(true);
     expect(again['duplicate']).toBe(true);
 
@@ -214,6 +226,32 @@ describe('⚠ the founder’s loop: take back the briefless course, re-compose W
     const board = (await ops(mf, '/ops/board')) as { board?: Record<string, unknown> };
     const b = board.board as { queued: Record<string, unknown>[] };
     expect(b.queued.map((q) => (q as { task?: { id?: string } }).task?.id ?? q['taskId'])).not.toContain(oldTaskId);
+  });
+
+  it('the door refuses an unasserted custody bound, and refuses every key that is not the ops key', async () => {
+    const mf = spawn();
+    const { assignmentId, session, code } = await stuckWorld(mf);
+
+    // ⚠ B2 — the custody bound is a sentence TYPED ON PURPOSE. Without it the
+    // door refuses by name and the course is untouched.
+    const bare = await mf.dispatchFetch('http://logistics/ops/assignment/take-back', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${OPS}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command_id: 'cmd-nb', assignmentId }),
+    });
+    expect(bare.status).toBe(428);
+    expect(((await bare.json()) as Record<string, unknown>)['reason']).toBe('custody_bound_not_asserted');
+
+    // no key / a wrong key: the one uniform 401, and the course is untouched
+    for (const headers of [{ 'Content-Type': 'application/json' }, { Authorization: 'Bearer wrong', 'Content-Type': 'application/json' }]) {
+      const res = await mf.dispatchFetch('http://logistics/ops/assignment/take-back', {
+        method: 'POST', headers, body: JSON.stringify({ command_id: 'cmd-k', assignmentId, custodyNotBegun: true }),
+      });
+      expect(res.status).toBe(401);
+    }
+    const still = await session.signIn(code);
+    if (!still.ok) throw new Error('refresh refused');
+    expect(still.session.assignment?.status, 'every refusal above must leave the course carried').toBe('acknowledged');
   });
 
   it('a course that already ended another way refuses `not_active` — a take-back never rewrites history', async () => {
@@ -243,7 +281,7 @@ describe('⚠ the founder’s loop: take back the briefless course, re-compose W
     const res = await mf.dispatchFetch('http://logistics/ops/assignment/take-back', {
       method: 'POST',
       headers: { Authorization: `Bearer ${OPS}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command_id: 'cmd-d-w', assignmentId }),
+      body: JSON.stringify({ command_id: 'cmd-d-w', assignmentId, custodyNotBegun: true }),
     });
     expect(res.status).toBe(409);
     expect(((await res.json()) as Record<string, unknown>)['reason']).toBe('not_active');
@@ -263,7 +301,7 @@ describe('⚠ the founder’s loop: take back the briefless course, re-compose W
     const granted = await ops(mf, '/ops/assign', { command_id: 'cmd-p-a', taskId: composed['taskId'], riderId: 'rider-awa' });
     const assignmentId = (granted['assignment'] as Record<string, unknown>)['assignmentId'] as string;
 
-    const takenBack = await ops(mf, '/ops/assignment/take-back', { command_id: 'cmd-p-w', assignmentId });
+    const takenBack = await ops(mf, '/ops/assignment/take-back', { command_id: 'cmd-p-w', assignmentId, custodyNotBegun: true });
     expect(takenBack['ok'], JSON.stringify(takenBack)).toBe(true);
     expect(takenBack['leaseReleased']).toBe(true);
     const cleared = await session.signIn(code);
