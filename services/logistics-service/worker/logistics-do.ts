@@ -551,6 +551,47 @@ export class LogisticsDO {
       return Response.json({ ok: true, assignment: outcome.assignment, lease: outcome.lease, duplicate: outcome.duplicate });
     }
     /**
+     * ═══ COURSE-REPRISE — THE DISPATCHER TAKES A COURSE BACK ═══
+     *
+     * Founder report (2026-08-09): a rider carrying an ACKNOWLEDGED course had
+     * no exit — decline and expiry only touch pre-ack statuses, and an in-time
+     * ack ANCHORS the lease so no sweep ever ends it. The rider stayed
+     * unassignable and the order uncomposable, for ever.
+     *
+     * By assignmentId ONLY, never riderId: a retried take-back must never land
+     * on a LATER course the same rider was given (the RELAIS-REPRISE class of
+     * bug, refused at the parameter). The board (`GET /ops/board`) names every
+     * active assignment's id. The task closes `closed_taken_back`, the order
+     * returns to the composable pool (`/ops/task` + `/ops/a-preparer` exempt
+     * that status), and custody is untouched — this door reprises courses
+     * whose custody never began; a sealed package is the custody ledger's
+     * affair, not this route's.
+     */
+    if (request.method === 'POST' && pathname === '/ops/assignment/take-back') {
+      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      if (body === null || !isStr(body['command_id']) || !isStr(body['assignmentId'])) return malformed();
+      const outcome = await this.dispatch.takeBack(
+        (body['assignmentId'] as string).trim(),
+        ((body['dispatcherId'] as string | undefined) ?? 'fondateur').trim(),
+        now,
+      );
+      if (!outcome.ok) {
+        return Response.json(outcome, { status: outcome.reason === 'unknown_assignment' ? 404 : 409 });
+      }
+      return Response.json({
+        ok: true,
+        duplicate: outcome.duplicate,
+        leaseReleased: outcome.leaseReleased,
+        assignment: {
+          assignmentId: outcome.assignment.assignmentId,
+          taskId: outcome.assignment.taskId,
+          orderId: outcome.assignment.orderId,
+          riderId: outcome.assignment.riderId,
+          status: outcome.assignment.status,
+        },
+      });
+    }
+    /**
      * ═══ SE-LIVE-2c — THE FOUNDER COMPOSES THE DELIVERY TASK ═══
      *
      * FOUNDER RULING (2026-08-06, option 1): the buyer gives Shop+ only
@@ -675,7 +716,14 @@ export class LogisticsDO {
        */
       const openForOrder = this.queue
         .snapshot()
-        .tasks.find(([, queued]) => queued.orderId === orderId && queued.status !== 'closed_rescheduled');
+        .tasks.find(
+          ([, queued]) =>
+            queued.orderId === orderId &&
+            queued.status !== 'closed_rescheduled' &&
+            // COURSE-REPRISE: a taken-back course's task blocks nothing — the
+            // whole point of taking it back is composing a fresh one.
+            queued.status !== 'closed_taken_back',
+        );
       if (openForOrder !== undefined) {
         // AN OPEN TASK FOR THIS ORDER ENDS THE ROUTE, both ways. Either this
         // very command composed it — answer duplicate from the task itself,
@@ -753,7 +801,13 @@ export class LogisticsDO {
       const withTask = new Set(
         this.queue
           .snapshot()
-          .tasks.map(([, queued]) => queued.orderId),
+          // COURSE-REPRISE: a taken-back course leaves its order TASK-LESS in
+          // every sense that matters — it must reappear here or the founder
+          // can never re-compose it. ONLY that status is exempt: a
+          // closed_rescheduled order is replaced by its follow-up task
+          // automatically and must not surface twice.
+          .tasks.filter(([, queued]) => queued.status !== 'closed_taken_back')
+          .map(([, queued]) => queued.orderId),
       );
       const attente = Object.entries(this.fundingFacts)
         .filter(([orderId, fact]) => {

@@ -62,8 +62,12 @@ export interface QueuedTask {
   admittedByCommandId: string;
   /** `closed_rescheduled` (WO-2.7): the attempt ended in a reschedule and a
    * follow-up task replaced this one — closed lawfully, never assignable
-   * again, custody untouched by the closure. */
-  status: 'queued' | 'assigned' | 'closed_rescheduled';
+   * again, custody untouched by the closure.
+   * `closed_taken_back` (COURSE-REPRISE): the dispatcher took the course back
+   * before custody began — same closure laws (never assignable, never
+   * requeued, custody untouched), but the ORDER goes back to the composable
+   * pool: unlike a reschedule, nothing replaces this task automatically. */
+  status: 'queued' | 'assigned' | 'closed_rescheduled' | 'closed_taken_back';
 }
 
 export class ReadyQueue {
@@ -125,7 +129,9 @@ export class ReadyQueue {
   recheckAssignable(taskId: string): { assignable: true } | { assignable: false; reason: IntakeRefusalReason | 'not_in_queue' | 'already_assigned' | 'task_closed' } {
     const queued = this.tasks.get(taskId);
     if (!queued) return { assignable: false, reason: 'not_in_queue' };
-    if (queued.status === 'closed_rescheduled') return { assignable: false, reason: 'task_closed' };
+    if (queued.status === 'closed_rescheduled' || queued.status === 'closed_taken_back') {
+      return { assignable: false, reason: 'task_closed' };
+    }
     if (queued.status !== 'queued') return { assignable: false, reason: 'already_assigned' };
     const gate = this.admissionGate(queued.orderId);
     if (gate !== null) return { assignable: false, reason: gate };
@@ -157,8 +163,9 @@ export class ReadyQueue {
   requeue(taskId: string): void {
     const queued = this.tasks.get(taskId);
     // A closed task stays closed — an expiring stale assignment must not
-    // resurrect an attempt that a follow-up task already replaced (WO-2.7).
-    if (queued && queued.status !== 'closed_rescheduled') {
+    // resurrect an attempt that a follow-up task already replaced (WO-2.7),
+    // and a taken-back course must not ride back into the queue on a sweep.
+    if (queued && queued.status !== 'closed_rescheduled' && queued.status !== 'closed_taken_back') {
       this.tasks.set(taskId, { ...queued, status: 'queued' });
     }
   }
@@ -169,6 +176,15 @@ export class ReadyQueue {
   closeRescheduled(taskId: string): void {
     const queued = this.tasks.get(taskId);
     if (queued) this.tasks.set(taskId, { ...queued, status: 'closed_rescheduled' });
+  }
+
+  /** COURSE-REPRISE: the dispatcher took the course back — the task closes
+   * under the same never-resurrect laws as a reschedule closure. The ORDER's
+   * return to the composable pool is the ops door's affair (`/ops/task` and
+   * `/ops/a-preparer` exempt this status); the queue only closes honestly. */
+  closeTakenBack(taskId: string): void {
+    const queued = this.tasks.get(taskId);
+    if (queued) this.tasks.set(taskId, { ...queued, status: 'closed_taken_back' });
   }
 
   queuedTasks(): readonly QueuedTask[] {

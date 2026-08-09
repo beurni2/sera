@@ -33,9 +33,19 @@ export type LeaseStatus = 'active' | 'released' | 'expired';
  * and shared shapes only): when the book refuses an assignment after the
  * grant, the orchestrator releases with the honest cause, never a borrowed
  * one. */
-export type ReleaseCause = 'declined' | 'completed' | 'reschedule_closed' | 'grant_rolled_back';
+export type ReleaseCause = 'declined' | 'completed' | 'reschedule_closed' | 'grant_rolled_back' | 'taken_back';
 
-const RELEASE_CAUSES: readonly ReleaseCause[] = ['declined', 'completed', 'reschedule_closed', 'grant_rolled_back'];
+const RELEASE_CAUSES: readonly ReleaseCause[] = [
+  'declined',
+  'completed',
+  'reschedule_closed',
+  'grant_rolled_back',
+  // COURSE-REPRISE: the dispatcher took the course back. An ANCHORED lease is
+  // exempt from expire_due and "ends only by release" (the anchor ruling
+  // above) — this is that release, with its own honest cause on the LOCAL
+  // record, never a borrowed one and never a canon event name.
+  'taken_back',
+];
 
 /**
  * The LOCAL lease record — the richer audit fields live HERE; the canon

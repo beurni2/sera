@@ -7,7 +7,14 @@ import {
   type LeaseRecord,
   type LeaseRefusalReason,
 } from './assignment-lease.js';
-import type { AckOutcome, AssignmentBook, AssignmentRecord, DeclineOutcome, LeaseRef } from './manual-assignment.js';
+import type {
+  AckOutcome,
+  AssignmentBook,
+  AssignmentRecord,
+  DeclineOutcome,
+  LeaseRef,
+  TakeBackOutcome,
+} from './manual-assignment.js';
 import type { ReadyQueue } from './ready-queue.js';
 import type { RescheduleBook, FollowUpOutcome } from './reschedule.js';
 import type { RiderRegistry } from './rider-registry.js';
@@ -330,6 +337,34 @@ export class LeasedDispatch {
     });
     if (release.ok && release.lease !== undefined) this.deps.witness.revoke(refOf(release.lease));
     return { ...outcome, priorLeaseReleased: release.ok };
+  }
+
+  /**
+   * COURSE-REPRISE — the dispatcher takes the course back. The book records
+   * the named terminal (`taken_back_by_dispatch`, task → `closed_taken_back`),
+   * then the lease releases at THE authority with cause 'taken_back' — the
+   * release the anchor ruling reserves as an anchored lease's only exit. On a
+   * duplicate (already taken back) the lease was already released by the first
+   * application; re-sending would only replay idempotently, so it is skipped.
+   */
+  async takeBack(
+    assignmentId: string,
+    dispatcherId: string,
+    at: string,
+  ): Promise<TakeBackOutcome & { leaseReleased: boolean }> {
+    const assignment = this.deps.book.get(assignmentId);
+    const outcome = this.deps.book.takeBack(assignmentId, dispatcherId, at);
+    if (!outcome.ok || outcome.duplicate || assignment === undefined) {
+      return { ...outcome, leaseReleased: false };
+    }
+    this.deps.witness.revoke(assignment.lease);
+    const release = await this.deps.authority.send({
+      kind: 'release',
+      command_id: `take-back-${assignmentId}`,
+      taskId: assignment.taskId,
+      cause: 'taken_back',
+    });
+    return { ...outcome, leaseReleased: release.ok };
   }
 
   /** Completion: the delivery closed — the lease releases with the honest

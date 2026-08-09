@@ -36,7 +36,15 @@ export interface LeaseWitness {
   isGranted(lease: LeaseRef): boolean;
 }
 
-export type AssignmentStatus = 'active_unacknowledged' | 'ack_pending_offline' | 'acknowledged' | 'returned_to_queue';
+export type AssignmentStatus =
+  | 'active_unacknowledged'
+  | 'ack_pending_offline'
+  | 'acknowledged'
+  | 'returned_to_queue'
+  /** COURSE-REPRISE: the dispatcher took the course back — a NAMED terminal
+   * (never a generic « failed »), valid from any active status including
+   * `acknowledged`, which until this had no exit at all. */
+  | 'taken_back_by_dispatch';
 
 export interface AssignmentRecord {
   assignmentId: string;
@@ -50,6 +58,12 @@ export interface AssignmentRecord {
   status: AssignmentStatus;
   /** LOCAL audit field — the lease this assignment proceeds under (WO-4.3). */
   lease: LeaseRef;
+  /** COURSE-REPRISE audit — who took the course back, and when. LOCAL fields
+   * on a LOCAL record: the canon event-name union has no take-back event and
+   * widening it is a `contracts/` change (§7), so the record itself is the
+   * whole account. Absent on every record that was never taken back. */
+  takenBackAt?: string;
+  takenBackBy?: string;
 }
 
 export type AssignOutcome =
@@ -72,6 +86,10 @@ export type AckOutcome =
 export type DeclineOutcome =
   | { ok: true; pending: true; status: AssignmentStatus }
   | { ok: true; pending: false; status: 'returned_to_queue'; event: PlatformEvent }
+  | { ok: false; reason: 'unknown_assignment' | 'not_active' };
+
+export type TakeBackOutcome =
+  | { ok: true; duplicate: boolean; assignment: AssignmentRecord }
   | { ok: false; reason: 'unknown_assignment' | 'not_active' };
 
 const ACTIVE_STATUSES: readonly AssignmentStatus[] = ['active_unacknowledged', 'ack_pending_offline', 'acknowledged'];
@@ -246,6 +264,57 @@ export class AssignmentBook {
       },
     });
     return { ok: true, pending: false, status: 'returned_to_queue', event };
+  }
+
+  /**
+   * COURSE-REPRISE — the dispatcher takes the course back. Valid from ANY
+   * active status: unlike a decline, this is the DISPATCHER'S act, and an
+   * `acknowledged` course (whose anchored lease exempts it from every sweep)
+   * had no exit at all — a rider stuck carrying a course for ever, and an
+   * order no new task could ever be composed for.
+   *
+   * The task CLOSES (`closed_taken_back`) rather than requeueing: the
+   * dispatcher is taking the course off the road, not re-offering it — the
+   * ORDER returns to the composable pool at the ops door, and a fresh compose
+   * mints a fresh task (with, e.g., the brief the old one never had).
+   *
+   * Custody is UNTOUCHED by construction: this store never held a custody
+   * surface, and the route that drives it is the founder's ops door. A course
+   * whose custody has already begun is the custody ledger's affair — nothing
+   * here releases, transfers, or erases custody (Ten Laws #3).
+   *
+   * NO platform event: the canon event-name union (§5.7) carries no
+   * take-back name, and widening canon is a §7 founder trigger. The record's
+   * own `takenBackAt`/`takenBackBy` and the lease's `releaseCause:
+   * 'taken_back'` are the audit.
+   *
+   * Idempotent by STATE, on purpose: taking back an already-taken-back
+   * assignment answers `duplicate: true`. The route accepts only an
+   * assignmentId (never a riderId), so a retry can never land on a LATER
+   * course the same rider was given — the RELAIS-REPRISE lesson, applied
+   * before the bug this time.
+   */
+  takeBack(assignmentId: string, dispatcherId: string, at: string): TakeBackOutcome {
+    const assignment = this.assignments.get(assignmentId);
+    if (!assignment) return { ok: false, reason: 'unknown_assignment' };
+    if (assignment.status === 'taken_back_by_dispatch') {
+      return { ok: true, duplicate: true, assignment };
+    }
+    if (!ACTIVE_STATUSES.includes(assignment.status)) {
+      // returned_to_queue: the assignment already ended another way — there is
+      // nothing to take back, and saying ok would misreport what happened.
+      return { ok: false, reason: 'not_active' };
+    }
+    const takenBack: AssignmentRecord = {
+      ...assignment,
+      status: 'taken_back_by_dispatch',
+      takenBackAt: at,
+      takenBackBy: dispatcherId,
+    };
+    this.assignments.set(assignmentId, takenBack);
+    this.queue.closeTakenBack(assignment.taskId);
+    this.aggregateVersion += 1;
+    return { ok: true, duplicate: false, assignment: takenBack };
   }
 
   /** Unacknowledged past deadline → back to the queue (assignment.expired.v1).
