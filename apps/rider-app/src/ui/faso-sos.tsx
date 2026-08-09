@@ -2,13 +2,14 @@ import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-nativ
 import { useEffect, useRef } from 'react';
 import { alpha, C, DARK, GEO, motionOf, rad, ty } from './faso';
 import { displayFace } from './faso-fonts';
-import { useReducedMotion } from './kit';
+import { useReducedMotion } from './reduced-motion';
 import { IconSos } from './icons';
 
 /**
  * WO-FP-SERA · R14 SOS restyled to Faso Premium (README dark surfaces; HANDOFF §
- * R14). SKIN ONLY — the state machine, the honesty contract and the props are
- * byte-identical to the Grand Teint SosSheet (src/ui/kit.tsx): queued shows NO
+ * R14). SKIN ONLY — the state machine, the honesty contract and the props were
+ * carried over byte-identical from the Grand Teint SosSheet (retired with
+ * src/ui/kit.tsx; this is now the only SOS sheet there is): queued shows NO
  * acknowledgment (offline never lies), raised/escalated show a clearly-marked
  * « (aperçu) » sandbox stand-in for the inbound ack (the rider never self-acks),
  * the chain is raised → ack → enroute → clos. The sheet is the README's dark

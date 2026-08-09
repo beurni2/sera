@@ -14,10 +14,31 @@ import { motion as fpMotion } from '@platform/ui-tokens';
  * rider's ONE named moment — the course_validee celebration — is present (it
  * was NOT in the WO-4.2R kit; WO-6.1 adds it). Navigation pins stay in
  * journey-spine.test.ts (byte-untouched).
+ *
+ * KIT-SWEEP — src/ui/kit.tsx (the Grand Teint kit) is DELETED. App.tsx imported
+ * twenty of its components and rendered none of them, so Metro bundled and
+ * evaluated 1288 dead lines at startup on a 1 GB Android (Law 7). Assertions
+ * that pinned live behaviour moved onto the surface that ships (faso-kit,
+ * faso-sos, signature, reduced-motion); assertions that only described the
+ * deleted file went with it. The scans below therefore cover App.tsx — the
+ * screen-composition layer, still bound to the /legacy tokens. The Faso
+ * component layer carries the planche's own pixel sources by design and has its
+ * own fidelity gate in faso-token-fidelity.test.ts (hex-free), so it is
+ * deliberately NOT swept for raw numbers here.
  */
 
 const appDir = join(import.meta.dirname, '..');
-const FILES = ['App.tsx', 'src/ui/kit.tsx'];
+const FILES = ['App.tsx'];
+/** The rider's live visual layer — what the app actually renders. */
+const VISUAL_LAYER = [
+  'src/ui/faso-kit.tsx',
+  'src/ui/faso-sos.tsx',
+  'src/ui/faso-act-code.tsx',
+  'src/ui/faso-signin.tsx',
+  'src/ui/signature.tsx',
+  'src/ui/reduced-motion.ts',
+  'src/ui/icons.tsx',
+];
 const read = (f: string) => readFileSync(join(appDir, f), 'utf8');
 
 describe('WO-6.1 Grand Teint visual layer (rider-app)', () => {
@@ -44,20 +65,12 @@ describe('WO-6.1 Grand Teint visual layer (rider-app)', () => {
   });
 
   it('LandmarkCard — the signature — consumes the landmark ladder + the illustrated scene, on affectation AND at the door', () => {
-    const kit = read('src/ui/kit.tsx');
+    // KIT-SWEEP: the rendered repère card is the Faso one; the Grand Teint
+    // LandmarkCard + its illustrated scene went with the deleted kit.
+    const kit = read('src/ui/faso-kit.tsx');
     expect(kit).toMatch(/export function LandmarkCard/);
-    expect(kit).toMatch(/export function LandmarkIllustration|function LandmarkIllustration/);
-    // the hierarchy ladder: repère → indications → zone, token-typed
-    expect(kit).toMatch(/landmark\.repere\.size/);
-    expect(kit).toMatch(/landmark\.repere\.wght/);
-    expect(kit).toMatch(/landmark\.indications\.size/);
-    expect(kit).toMatch(/landmark\.zone\.size/);
-    // the illustrated scene paints on the illustration-only palette + card border
-    expect(kit).toMatch(/landmark\.illustration/);
-    expect(kit).toMatch(/landmark\.cardBorderPx/);
-    // the repère/zone icons come from the SVG icon set (never emoji in chrome)
+    // the repère icon comes from the SVG icon set (never emoji in chrome)
     expect(kit).toMatch(/IconRepere/);
-    expect(kit).toMatch(/IconZone/);
     // the ladder really descends (repère heads the block, doctrine §4)
     expect(landmark.repere.size).toBeGreaterThan(landmark.indications.size);
     expect(landmark.indications.size).toBeGreaterThan(landmark.zone.size);
@@ -123,9 +136,8 @@ describe('WO-6.1 Grand Teint visual layer (rider-app)', () => {
     // which broke the scroll surface) is retired from the app; the per-screen FpIn
     // (the planche fpIn — a soft cubic-bezier(.2,.8,.2,1) entry, reduced-motion safe
     // in useEntry) re-animates on each screen change. ScreenTransition stays defined
-    // in the /legacy kit for the frozen console.
-    const kit = read('src/ui/kit.tsx');
-    expect(kit).toMatch(/export function ScreenTransition/);
+    // KIT-SWEEP: with the kit deleted, ScreenTransition no longer exists at all —
+    // the per-screen FpIn is the only screen-change motion there is.
     const sig = read('src/ui/signature.tsx');
     const fpin = sig.slice(sig.indexOf('export function FpIn'), sig.indexOf('export function FpPop'));
     expect(fpin).toMatch(/useEntry\('fpIn'\)/);
@@ -138,23 +150,29 @@ describe('WO-6.1 Grand Teint visual layer (rider-app)', () => {
     expect(motion.standardMs).toBeLessThanOrEqual(250);
   });
 
-  it('no bare spinner anywhere — the skeleton pulses on motion tokens, static under reduced motion', () => {
-    const kit = read('src/ui/kit.tsx');
-    expect(kit).toMatch(/export function Skeleton/);
-    expect(kit).toMatch(/motion\.standardMs/);
-    expect(kit).toMatch(/if \(reduced\) return;/);
-    expect(kit).toMatch(/AccessibilityInfo\.isReduceMotionEnabled/);
-    expect(kit).toMatch(/reduceMotionChanged/);
-    for (const f of FILES) expect(read(f)).not.toMatch(/ActivityIndicator/);
+  it('no bare spinner anywhere — waiting is a designed state, and reduced motion is honoured', () => {
+    // KIT-SWEEP: the Grand Teint Skeleton went with the kit (the live waiting
+    // states are the Faso PendingNotice / FpBar). What must survive is the two
+    // halves that still bind: no bare spinner ANYWHERE in the live layer, and a
+    // reduced-motion flag that really listens to the OS.
+    for (const f of [...FILES, ...VISUAL_LAYER]) {
+      expect(read(f), `${f} falls back to a bare spinner`).not.toMatch(/ActivityIndicator/);
+    }
+    const rm = read('src/ui/reduced-motion.ts');
+    expect(rm).toMatch(/AccessibilityInfo\.isReduceMotionEnabled/);
+    expect(rm).toMatch(/reduceMotionChanged/);
+    // and the modules that animate actually consult it
+    for (const f of ['src/ui/signature.tsx', 'src/ui/faso-sos.tsx']) {
+      expect(read(f), `${f} animates without consulting reduced motion`).toMatch(
+        /import \{ useReducedMotion \} from '\.\/reduced-motion'/,
+      );
+      expect(read(f)).toMatch(/useReducedMotion\(\)/);
+    }
   });
 
   it('the permanent brand strip — WO-FP-SERA: the Faso woven band replaces the Grand Teint theme strip in the App shell', () => {
-    const kit = read('src/ui/kit.tsx');
-    // the Grand Teint ThemeStrip stays defined in the /legacy kit (the un-migrated
-    // views + the frozen console pattern); the App shell now renders the Faso monogram
-    // header, which carries the woven band at its top (planche l.33).
-    expect(kit).toMatch(/export function ThemeStrip/);
-    expect(kit).toMatch(/band\.themeStripPx/);
+    // KIT-SWEEP: the Grand Teint ThemeStrip went with the kit. The App shell's
+    // permanent mark is the Faso monogram header carrying the woven band (planche l.33).
     const app = read('App.tsx');
     expect(app).toMatch(/<FasoHeader/);
     const fasoKit = read('src/ui/faso-kit.tsx');
@@ -201,9 +219,12 @@ describe('WO-6.1 Grand Teint visual layer (rider-app)', () => {
 
   it('the kit imports stay inside the RN + tokens world (banned-import law extended to the kit)', () => {
     const BANNED = /@platform\/certification|@platform\/contracts|@platform\/i18n\/(data-loader|lint-cli)|@sera\/commerce-core|^node:/;
-    const kit = read('src/ui/kit.tsx');
-    const specs = [...kit.matchAll(/^import [^;]*from '([^']+)';/gm)].map((m) => m[1]);
-    expect(specs.length).toBeGreaterThan(0);
-    for (const spec of specs) expect(spec, `kit imports ${spec}`).not.toMatch(BANNED);
+    // KIT-SWEEP: the law now binds every module of the live visual layer, not
+    // one file — a Metro-hostile import cannot slip in through a sibling.
+    for (const f of VISUAL_LAYER) {
+      const specs = [...read(f).matchAll(/^import [^;]*from '([^']+)';/gm)].map((m) => m[1]);
+      expect(specs.length, `${f} parsed no imports — the scan would pass vacuously`).toBeGreaterThan(0);
+      for (const spec of specs) expect(spec, `${f} imports ${spec}`).not.toMatch(BANNED);
+    }
   });
 });

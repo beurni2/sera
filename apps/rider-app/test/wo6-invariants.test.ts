@@ -23,7 +23,25 @@ const appDir = join(import.meta.dirname, '..');
 const repoRoot = join(appDir, '../..');
 const read = (p: string) => readFileSync(p, 'utf8');
 const app = read(join(appDir, 'App.tsx'));
-const kit = read(join(appDir, 'src/ui/kit.tsx'));
+
+/**
+ * The rider's LIVE visual layer — the modules the app actually renders. These
+ * scans used to run against src/ui/kit.tsx, the Grand Teint kit, which App.tsx
+ * imported for twenty components it rendered ZERO of; the SOS hold gate below
+ * was therefore reading a sheet no rider could ever open. The kit is deleted and
+ * every scan now points at the surface that ships.
+ */
+const VISUAL_LAYER = [
+  'src/ui/faso-kit.tsx',
+  'src/ui/faso-sos.tsx',
+  'src/ui/faso-act-code.tsx',
+  'src/ui/faso-signin.tsx',
+  'src/ui/signature.tsx',
+  'src/ui/reduced-motion.ts',
+  'src/ui/icons.tsx',
+].map((p) => join(appDir, p));
+/** The SOS sheet the app mounts (App.tsx imports SosButton/SosSheet from here). */
+const sos = read(join(appDir, 'src/ui/faso-sos.tsx'));
 
 describe('R14 — SOS is reachable in one gesture from every screen', () => {
   it('the SOS button + sheet are mounted UNCONDITIONALLY, outside every screen branch', () => {
@@ -49,9 +67,13 @@ describe('R14 — SOS is reachable in one gesture from every screen', () => {
     const openBody = app.slice(app.indexOf('const openSos = useCallback('), app.indexOf('const cancelSos'));
     expect(openBody).toMatch(/setSos\('confirm'\)/);
     expect(openBody, 'opening must never raise').not.toMatch(/fireSos|raiseSos|setSos\('raised'\)/);
-    // firing is a HOLD: onPressIn arms a timer, onPressOut cancels it
-    expect(kit).toMatch(/onPressIn=\{onHoldStart\}/);
-    expect(kit).toMatch(/onPressOut=\{onHoldEnd\}/);
+    // firing is a HOLD: onPressIn arms a timer, onPressOut cancels it — asserted
+    // on the sheet the app MOUNTS (faso-sos), not on a kit nothing rendered
+    expect(sos).toMatch(/onPressIn=\{onHoldStart\}/);
+    expect(sos).toMatch(/onPressOut=\{onHoldEnd\}/);
+    // and the mounted sheet is that one: the hold gate cannot drift onto a file
+    // the app does not import again
+    expect(app).toMatch(/import \{ SosButton, SosSheet[^}]*\} from '\.\/src\/ui\/faso-sos'/);
     expect(app).toMatch(/holdTimer\.current = setTimeout\(/);
     expect(app).toMatch(/setSos\('raised'\)/);
   });
@@ -130,7 +152,8 @@ describe('R13 — a single-key return REFUSES (SE6.2, both-or-neither)', () => {
 describe('Money — Séra emits signals, never money: NO franc amount anywhere', () => {
   const surfaces = [
     join(appDir, 'App.tsx'),
-    join(appDir, 'src/ui/kit.tsx'),
+    // the whole live visual layer, not just one kit file (which is now deleted)
+    ...VISUAL_LAYER,
     join(appDir, 'i18n/catalog.json'),
     // WO-6.3 — the safety surfaces join the no-franc scan (Séra emits signals).
     join(appDir, 'src/safety.ts'),
@@ -155,7 +178,7 @@ describe('Money — Séra emits signals, never money: NO franc amount anywhere',
   });
 
   it('the visual layer references no money-amount token (no amount hero, no currency suffix)', () => {
-    for (const src of [app, kit]) {
+    for (const src of [app, ...VISUAL_LAYER.map(read)]) {
       expect(src).not.toMatch(/money\.amountScale/);
       expect(src).not.toMatch(/money\.currencySuffix/);
     }
@@ -164,8 +187,17 @@ describe('Money — Séra emits signals, never money: NO franc amount anywhere',
 
 describe('CLS — the visual layer animates transform/opacity only (native driver)', () => {
   it('every animation uses the native driver (which cannot animate layout) — no animated layout, no shift', () => {
-    expect(kit).toMatch(/useNativeDriver: true/);
-    expect(kit).not.toMatch(/useNativeDriver: false/);
-    expect(kit).not.toMatch(/LayoutAnimation/);
+    // Every module in the LIVE layer that animates at all must animate natively.
+    // Deriving the set (rather than naming one file) means a new animated module
+    // cannot join the app without joining this gate.
+    const animated = VISUAL_LAYER.filter((p) =>
+      /Animated\.(timing|spring|decay|loop|sequence|parallel|stagger)\(/.test(read(p)),
+    );
+    expect(animated.length, 'the live layer animates somewhere — else this gate guards nothing').toBeGreaterThan(0);
+    for (const p of animated) {
+      expect(read(p), `${p} animates without the native driver`).toMatch(/useNativeDriver: true/);
+      expect(read(p), `${p} opts OUT of the native driver`).not.toMatch(/useNativeDriver: false/);
+    }
+    for (const p of VISUAL_LAYER) expect(read(p), `${p} uses LayoutAnimation`).not.toMatch(/LayoutAnimation/);
   });
 });

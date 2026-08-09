@@ -67,9 +67,12 @@ describe('WO-FP-SERA — R2 course card carries the planche anatomy', () => {
 describe('WO-FP-SERA — R1\'s old skeleton is dead (views 4–13 pass)', () => {
   it('no un-prefixed Grand Teint view component is rendered in the app (all views are Faso)', () => {
     const app = read('App.tsx');
-    // Every screen body composes the Faso kit. The Grand Teint components stay
-    // DEFINED in src/ui/kit.tsx (the /legacy layer + the frozen console) but the
-    // rider app renders NONE of them.
+    // Every screen body composes the Faso kit. KIT-SWEEP: the Grand Teint
+    // components used to stay DEFINED in src/ui/kit.tsx while the app rendered
+    // none of them — App.tsx still imported twenty, so Metro bundled the whole
+    // dead module at startup. The kit is deleted; they are not merely unrendered
+    // now, they do not exist. The render assertion below stands unchanged, and
+    // the import assertion after it is what keeps the file from coming back.
     const RETIRED = [
       '<AppHeader', '<Card', '<PosterTitle', '<Body', '<Overline', '<PrimaryButton',
       '<SecondaryButton', '<DangerButton', '<GhostButton', '<StatusChip', '<ListRow',

@@ -50,29 +50,6 @@ import {
   type DemoCourse,
   type DemoWorld,
 } from './src/demo/store';
-import {
-  Body,
-  Card,
-  CheckRow,
-  CodeCells,
-  DangerButton,
-  EmptyState,
-  GhostButton,
-  Keypad,
-  LandmarkCard,
-  ListRow,
-  OfflineBanner,
-  Overline,
-  PendingNotice,
-  PosterTitle,
-  PrimaryButton,
-  QuoteRule,
-  SealMark,
-  SecondaryButton,
-  StatusChip,
-  TabBar,
-  type ChipTone,
-} from './src/ui/kit';
 import { SosButton, SosSheet, type SosState } from './src/ui/faso-sos';
 import { FasoSignIn } from './src/ui/faso-signin';
 import { IDLE, refusalKeys, submit as submitSignIn, type SignInState } from './src/net/signin-model';
@@ -144,6 +121,7 @@ import {
   CodeCells as FasoCodeCells,
   Keypad as FasoKeypad,
   VoicePlayRow as FasoVoicePlayRow,
+  type ChipTone,
 } from './src/ui/faso-kit';
 import { dureeVoix, mediaUrl, resolveRepereAudio, type RepereAudioEtat } from './src/net/repere-audio';
 import {

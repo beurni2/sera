@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Animated, Easing, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { Svg, Defs, Pattern, Rect, Line, LinearGradient, Stop, G } from 'react-native-svg';
 import { alpha, C, DARK, GEO, motionOf, rad, ty, type MotionName } from './faso';
-import { useReducedMotion } from './kit';
+import { useReducedMotion } from './reduced-motion';
 
 /**
  * WO-FP-SERA · the SIGNATURE MODULE — the six Faso Premium signature elements
