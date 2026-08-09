@@ -1482,6 +1482,12 @@
     "screenClass": "label"
   },
   {
+    "key": "repere.voix_indisponible",
+    "fr": "Une note vocale existe, mais cette version de l’application ne peut pas la lire. Suivez le repère écrit.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
     "key": "preuve.titre",
     "fr": "Photos du fournisseur",
     "register": "neutral",

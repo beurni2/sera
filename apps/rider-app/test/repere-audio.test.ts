@@ -310,3 +310,58 @@ describe('VOIX-ÉTAT-2 — the rider’s row renders from the player, not from a
     expect(app).toContain("t(repereEtat.playing ? 'repere.voix_pause' : 'repere.voix_ecouter')");
   });
 });
+
+/**
+ * ═══ « I STILL DO NOT SEE THE AUDIO » (founder, 2026-08-09) ═══
+ *
+ * Three different situations rendered byte-identical NOTHING: this course has
+ * no voice note; the media base is unset; `expo-audio` cannot load. The third
+ * is not an absence, it is a FAULT — `requireNativeModule('ExpoAudio')` runs at
+ * expo-audio's module scope and throws on any binary built before the dependency
+ * was added, which an OTA update cannot fix because it ships JavaScript, not
+ * native code. Folding a broken build into the same silence as « nothing to
+ * play » is what left the founder with an empty space and no cause.
+ *
+ * These pin the SHAPE of the branch, in order — the repo's source-discipline
+ * idiom (no RN renderer here), each one mutation-checked.
+ */
+describe('the repère note — an absence and a fault are not the same silence', () => {
+  const app = readFileSync(join(import.meta.dirname, '..', 'App.tsx'), 'utf8');
+  const catalog = JSON.parse(
+    readFileSync(join(import.meta.dirname, '..', 'i18n', 'catalog.json'), 'utf8'),
+  ) as { key: string; fr: string; register: string }[];
+
+  /** The body of RepereVoix, sliced so the assertions cannot match elsewhere. */
+  const body = app.slice(app.indexOf('const RepereVoix = useCallback('), app.indexOf('/** The supplier’s readiness photos'));
+
+  it('NO NOTE stays silent — a course without a note grows no row', () => {
+    expect(body).toMatch(/if \(repereUrl === null\) return null;/);
+  });
+
+  it('⚠ A NOTE THAT CANNOT BE PLAYED SAYS SO — it no longer returns null', () => {
+    expect(body, 'the player-missing branch must render an honest line').toMatch(
+      /if \(repereAudio === null\) return <FasoBody>\{t\('repere\.voix_indisponible'\)\}<\/FasoBody>;/,
+    );
+    // the two causes are no longer collapsed into one guard
+    expect(body, 'the old combined guard is back — the fault is hidden again').not.toMatch(
+      /repereUrl === null \|\| repereAudio === null/,
+    );
+  });
+
+  it('⚠ ORDER: absence is judged BEFORE the fault, or a noteless course would claim a note exists', () => {
+    const noNote = body.indexOf('repereUrl === null');
+    const noPlayer = body.indexOf('repereAudio === null');
+    expect(noNote).toBeGreaterThan(-1);
+    expect(noPlayer).toBeGreaterThan(-1);
+    expect(noNote, 'the fault branch runs first — « une note vocale existe » over a course with none').toBeLessThan(noPlayer);
+  });
+
+  it('the honest line is a real catalog string, registered and in French Voice', () => {
+    const entry = catalog.find((e) => e.key === 'repere.voix_indisponible');
+    expect(entry, 'the string is inline instead of in the catalog (Law 6)').toBeDefined();
+    expect(entry?.register).toBe('neutral');
+    // it names what exists, what cannot happen, and what to do instead
+    expect(entry?.fr).toMatch(/note vocale/i);
+    expect(entry?.fr).toMatch(/repère écrit/i);
+  });
+});

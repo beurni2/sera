@@ -601,7 +601,26 @@ export default function App() {
    * parent's own render, which reconciles by position and remounts nothing.
    */
   const RepereVoix = useCallback((): React.JSX.Element | null => {
-    if (repereUrl === null || repereAudio === null) return null;
+    // No note on this course — a lawful absence. The card simply has no voice row.
+    if (repereUrl === null) return null;
+    /**
+     * ⚠ A NOTE EXISTS AND NOTHING CAN PLAY IT — SAY SO (founder, 2026-08-09:
+     * « i still do not see the audio on the sera app for the rider »).
+     *
+     * `resolveRepereAudio()` returns null when `require('expo-audio')` throws,
+     * and it throws on any binary built before expo-audio was added: the module
+     * runs `requireNativeModule('ExpoAudio')` at module scope, and an OTA
+     * update ships JavaScript — it cannot register native code. The old guard
+     * folded that FAULT into the same silence as « this course has no note », so
+     * the rider saw an empty space with no cause and the founder could not tell
+     * the two apart. Neither could I, until I read the module.
+     *
+     * « A control that cannot work is never drawn » was the right instinct for a
+     * BUTTON; applied to a missing capability it hid a broken build. An honest
+     * state names what exists, what cannot happen, and what to do instead — and
+     * the written repère is right above this line, so the rider is never stuck.
+     */
+    if (repereAudio === null) return <FasoBody>{t('repere.voix_indisponible')}</FasoBody>;
     return (
       <FasoVoicePlayRow
         label={t(repereEtat.playing ? 'repere.voix_pause' : 'repere.voix_ecouter')}
