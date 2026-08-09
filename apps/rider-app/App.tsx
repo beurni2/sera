@@ -594,8 +594,17 @@ export default function App() {
   }, [repereVisible, repereAudio]);
   useEffect(() => () => repereAudio?.stop(), [repereAudio]);
 
-  /** « Écouter le repère » — rendered ONLY when there is a note AND something
-   *  that can play it; a control that cannot work is never drawn. */
+  /**
+   * « Écouter le repère » — rendered ONLY when there is a note AND something
+   * that can play it; a control that cannot work is never drawn.
+   *
+   * ⚠ CALLED AS `{RepereVoix()}`, NEVER `<RepereVoix />` (verifier, 2026-08-09).
+   * Its identity changes whenever `repereEtat` does — twice a second while a
+   * note plays — and React treats a new component TYPE as a different element:
+   * it would unmount and remount the Pressable + SVG subtree on every status
+   * tick, on a 1 GB Android. Calling it returns the element tree into the
+   * parent's own render, which reconciles by position and remounts nothing.
+   */
   const RepereVoix = useCallback((): React.JSX.Element | null => {
     if (repereUrl === null || repereAudio === null) return null;
     return (
@@ -1279,10 +1288,22 @@ export default function App() {
       ? (shift === 'on' ? t('shift.on') : t('shift.off'))
       : t('assignment.title');
 
+  /**
+   * ⚠ THE DEMO ROW STOPPED CLAIMING PLAYBACK IT CANNOT DELIVER (verifier,
+   * 2026-08-09). This tree has NO audio element at all — `playing` was a local
+   * toggle and `time` a hardcoded string. That was merely inert while the row
+   * always drew a triangle; the moment `VoicePlayRow` learned to swap glyphs it
+   * became the founder's exact reported symptom, manufactured: a pause sign and
+   * a frozen clock over total silence, on the build a bare `expo start` opens.
+   *
+   * A specimen row may be sparse; it may not lie. `playing` is now false for
+   * ever here and the clock is blank — the REAL row (`RepereVoix`, wired arm)
+   * is the one that reports, because it is the one with a player behind it.
+   */
   const voiceFor = () => ({
-    label: playing ? t('repere.voice_playing') : t('repere.voice'),
-    time: '0:11',
-    playing,
+    label: t('repere.voice'),
+    time: '',
+    playing: false,
     onPress: () => setPlaying((p) => !p),
   });
   // R4/R8 relais props — the masked-call affordance, shared across the repère
@@ -1503,7 +1524,7 @@ export default function App() {
                   )}
                   {/* COURSE-BRIEF: the buyer's own voice, where someone is
                       actually looking for the door. */}
-                  <RepereVoix />
+                  {RepereVoix()}
                   <PreuvePhotos />
                   {liveAssignment.ackDeadline !== null ? (
                     <FasoBody>
@@ -2013,7 +2034,7 @@ export default function App() {
                   the three questions that read them. The rider compares a
                   picture, not nine remembered fields. */}
               <PreuvePhotos />
-              <RepereVoix />
+              {RepereVoix()}
               <FasoCard>
                 {/* Ecrans R5: the card leads with the colis identity — the order ref
                     chip + what's being verified — before the 7 checks. */}

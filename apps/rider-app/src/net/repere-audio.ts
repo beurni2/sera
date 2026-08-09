@@ -101,8 +101,20 @@ export function repereAudioOver(mod: AudioModule): RepereAudioPort {
         // top — a rider re-listening to « portail bleu » should not have to
         // sit through « face à la pharmacie » again. Only a note that has
         // RUN OUT goes back to the start.
-        if (finished) await player.seekTo(0);
+        if (finished) {
+          await player.seekTo(0);
+          lastSeconds = 0;
+        }
+        // ⚠ CLEARED HERE, NOT ONLY IN stop() (verifier, 2026-08-09). `finished`
+        // was sticky: after one natural end, EVERY later tap rewound — so
+        // pause-then-resume restarted the note instead of continuing it,
+        // contradicting this block's own contract two lines up.
+        finished = false;
         player.play();
+        // Resume reports itself for the same reason pause does: the next status
+        // is up to 500 ms away (expo-audio's default updateInterval), and a row
+        // showing « Écouter » over live sound is the defect, briefly.
+        emit({ playing: true, seconds: lastSeconds });
         return;
       }
       // A different note replaces the old one — and the old one is RELEASED,
@@ -121,6 +133,11 @@ export function repereAudioOver(mod: AudioModule): RepereAudioPort {
           emit({ playing: false, seconds: 0 });
           return;
         }
+        // A note that has ENDED may still emit a trailing status carrying
+        // `currentTime === duration`; taking it would put a frozen « 0:07 »
+        // beside « Écouter », which is the same class of lie the end-handler
+        // above exists to prevent. Only a genuine resume reopens the clock.
+        if (finished && status.playing !== true) return;
         lastSeconds = Math.max(0, Math.floor(status.currentTime ?? 0));
         emit({ playing: status.playing === true, seconds: lastSeconds });
       });

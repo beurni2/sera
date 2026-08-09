@@ -180,6 +180,47 @@ describe('VOIX-ÉTAT-2 — the player reports what it is actually doing', () => 
     expect(seen).toHaveLength(before);
   });
 
+  it('RESUME AFTER A NATURAL END IS STILL A RESUME — `finished` is not sticky', async () => {
+    // What this replaces: `finished` was set on didJustFinish and cleared only
+    // by stop() or a different url, so EVERY tap after one natural end rewound
+    // — pause-then-resume restarted the note, contradicting the port's own
+    // contract (verifier, 2026-08-09).
+    const mod = fakeModule();
+    const port = repereAudioOver(mod);
+    await port.play(URL_NOTE);
+    mod.made[0]?.emit({ didJustFinish: true, playing: false, currentTime: 0 });
+    await port.play(URL_NOTE); // the rewind that IS correct
+    mod.made[0]?.emit({ playing: true, currentTime: 4 });
+    port.pause();
+    await port.play(URL_NOTE); // …and this one must NOT rewind
+    expect(mod.made[0]?.calls).toEqual(['play', 'seek:0', 'play', 'pause', 'play']);
+  });
+
+  it('RESUME REPORTS ITSELF — no « Écouter » over live sound while a status is awaited', async () => {
+    const mod = fakeModule();
+    const port = repereAudioOver(mod);
+    const seen = watch(port);
+    await port.play(URL_NOTE);
+    mod.made[0]?.emit({ playing: true, currentTime: 6 });
+    port.pause();
+    await port.play(URL_NOTE);
+    // Immediately, before any further status: playing again, position kept.
+    expect(seen.at(-1)).toEqual({ playing: true, seconds: 6 });
+  });
+
+  it('A TRAILING STATUS AFTER THE END IS IGNORED — no frozen clock beside « Écouter »', async () => {
+    // Native players may emit one more status carrying currentTime === duration
+    // after finishing. Taking it would put « 0:07 » next to a resting control.
+    const mod = fakeModule();
+    const port = repereAudioOver(mod);
+    const seen = watch(port);
+    await port.play(URL_NOTE);
+    mod.made[0]?.emit({ playing: true, currentTime: 6 });
+    mod.made[0]?.emit({ didJustFinish: true, playing: false, currentTime: 7 });
+    mod.made[0]?.emit({ playing: false, currentTime: 7 });
+    expect(seen.at(-1)).toEqual({ playing: false, seconds: 0 });
+  });
+
   it('« m:ss » matches the shape the buyer and the console already show', () => {
     expect(dureeVoix(0)).toBe('0:00');
     expect(dureeVoix(7)).toBe('0:07');
@@ -240,6 +281,29 @@ describe('VOIX-ÉTAT-2 — the rider’s row renders from the player, not from a
   it('tapping while it plays PAUSES — the pause glyph means something', () => {
     expect(app).toContain('if (repereEtat.playing) {');
     expect(app).toContain('repereAudio.pause();');
+  });
+
+  it('the row is CALLED, not mounted as a component type — no remount per tick', () => {
+    // `<RepereVoix />` gave React a NEW component type on every status update
+    // (twice a second while a note plays), so it unmounted and remounted the
+    // Pressable + SVG subtree — on a 1 GB Android (verifier, 2026-08-09).
+    expect(app).toContain('{RepereVoix()}');
+    // Scanned over CODE, not prose: the comment at the definition quotes the
+    // banned form on purpose, and a pin that cannot tell the two apart would
+    // force the explanation out of the file it explains.
+    const code = app.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    expect(code, 'the element form is what remounts').not.toContain('<RepereVoix />');
+  });
+
+  it('THE DEMO ROW NO LONGER CLAIMS PLAYBACK IT CANNOT DELIVER', () => {
+    // This tree has no audio element at all. While the row always drew a
+    // triangle that was merely inert; once the glyph learned to swap, a local
+    // toggle manufactured the founder's exact symptom — a pause sign and a
+    // frozen clock over silence — on the build a bare `expo start` opens.
+    const bloc = app.slice(app.indexOf('const voiceFor = () => ({'), app.indexOf('const relaisFor'));
+    expect(bloc, 'the demo voiceFor anchor').toContain('label:');
+    expect(bloc).toContain('playing: false,');
+    expect(bloc, 'a hardcoded clock over no audio').not.toContain("'0:11'");
   });
 
   it('the label toggles with the truth, from the catalog — never inline French', () => {
