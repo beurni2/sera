@@ -18,17 +18,45 @@
  * a voice, and nothing transcribes one.
  */
 
+/**
+ * ═══ VOIX-ÉTAT-2 — THE PORT HAD NO STATE TO REPORT (founder, 2026-08-09) ═══
+ *
+ * « the button is not displaying the pause sign and the seconds are not
+ * counting ». On this screen it could not: the port exposed `play` and `stop`
+ * and nothing else, so the row it drives had no way to know whether the note
+ * was running, how far in it was, or that it had ended. The screen guessed —
+ * it set « playing » on tap and never unset it.
+ *
+ * So the port now REPORTS. `expo-audio` already emits `playbackStatusUpdate`
+ * with `currentTime`, `playing` and `didJustFinish` (Audio.types `AudioStatus`);
+ * this forwards exactly those three facts and invents nothing.
+ */
+export interface RepereAudioEtat {
+  /** Is sound coming out RIGHT NOW, as the player itself reports it. */
+  readonly playing: boolean;
+  /** How far into the note we are, in whole seconds. */
+  readonly seconds: number;
+}
+
 export interface RepereAudioPort {
   /** Start (or restart) the note. Resolves when playback has been asked for. */
   play(url: string): Promise<void>;
+  /** Pause where we are — the note keeps its position, a second tap resumes. */
+  pause(): void;
   /** Stop and release — called when the screen leaves, always. */
   stop(): void;
+  /** Watch playback. Returns the unsubscribe; the screen calls it on unmount. */
+  subscribe(fn: (etat: RepereAudioEtat) => void): () => void;
 }
 
+/** Exactly the fields of `expo-audio`'s `AudioStatus` this port reads. */
+type StatusLike = { currentTime?: number; playing?: boolean; didJustFinish?: boolean };
+type SubscriptionLike = { remove?: () => void };
 type PlayerLike = {
   play: () => void;
   pause: () => void;
   seekTo: (seconds: number) => Promise<void> | void;
+  addListener?: (event: 'playbackStatusUpdate', fn: (status: StatusLike) => void) => SubscriptionLike | undefined;
   release?: () => void;
   remove?: () => void;
 };
@@ -45,31 +73,89 @@ type AudioModule = { createAudioPlayer: (source: string) => PlayerLike };
 export function repereAudioOver(mod: AudioModule): RepereAudioPort {
   let player: PlayerLike | null = null;
   let current: string | null = null;
+  let sub: SubscriptionLike | undefined;
+  /** Has this note run out? Only then does the next tap rewind to the start. */
+  let finished = false;
+  /** The position the last status reported — what `pause()` keeps on screen. */
+  let lastSeconds = 0;
+  const watchers = new Set<(e: RepereAudioEtat) => void>();
+  /** The last state we told the screen — so `stop()` and the end of a note
+   *  both land on the same honest rest, and nothing lingers as « playing ». */
+  const emit = (e: RepereAudioEtat): void => {
+    for (const w of watchers) w(e);
+  };
+  const detach = (): void => {
+    sub?.remove?.();
+    sub = undefined;
+    player?.pause();
+    player?.release?.();
+    player?.remove?.();
+    player = null;
+    current = null;
+  };
   return {
     async play(url: string): Promise<void> {
       if (player !== null && current === url) {
-        await player.seekTo(0);
+        // ⚠ RESUME, NEVER RESTART. Tapping « Pause » then tapping again must
+        // continue where the buyer's sentence was cut, not replay it from the
+        // top — a rider re-listening to « portail bleu » should not have to
+        // sit through « face à la pharmacie » again. Only a note that has
+        // RUN OUT goes back to the start.
+        if (finished) await player.seekTo(0);
         player.play();
         return;
       }
       // A different note replaces the old one — and the old one is RELEASED,
       // because a rider's phone is a 1 GB Android and a leaked player is a
       // crash three courses later.
-      player?.pause();
-      player?.release?.();
-      player?.remove?.();
+      detach();
       player = mod.createAudioPlayer(url);
       current = url;
+      finished = false;
+      sub = player.addListener?.('playbackStatusUpdate', (status: StatusLike) => {
+        // The note ENDING is the state the screen could never see before, and
+        // it is the one that left « Pause » sitting over silence.
+        if (status.didJustFinish === true) {
+          finished = true;
+          lastSeconds = 0;
+          emit({ playing: false, seconds: 0 });
+          return;
+        }
+        lastSeconds = Math.max(0, Math.floor(status.currentTime ?? 0));
+        emit({ playing: status.playing === true, seconds: lastSeconds });
+      });
       player.play();
     },
-    stop(): void {
+    pause(): void {
       player?.pause();
-      player?.release?.();
-      player?.remove?.();
-      player = null;
-      current = null;
+      // Reported immediately: `playbackStatusUpdate` may not fire again once
+      // the sound stops, and a button that waits for an event that never comes
+      // is the same dead face this whole change is about.
+      emit({ playing: false, seconds: lastSeconds });
+    },
+    stop(): void {
+      detach();
+      finished = false;
+      lastSeconds = 0;
+      emit({ playing: false, seconds: 0 });
+    },
+    subscribe(fn: (e: RepereAudioEtat) => void): () => void {
+      watchers.add(fn);
+      return () => {
+        watchers.delete(fn);
+      };
     },
   };
+}
+
+/**
+ * « m:ss » — the SAME shape the buyer's own player and the Boutik+ console use
+ * (`fmtVoiceDuration`), so one note reads identically wherever it is heard. A
+ * seven-second repère is « 0:07 », never a bare number and never « 7 s ».
+ */
+export function dureeVoix(seconds: number): string {
+  const total = Math.max(0, Math.floor(seconds));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
 }
 
 /**

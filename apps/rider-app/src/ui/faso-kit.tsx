@@ -2,7 +2,7 @@ import { Pressable, StyleSheet, Text, View, type StyleProp, type TextStyle, type
 import { alpha, C, DARK, GEO, rad, ty } from './faso';
 import { displayFace, textFace } from './faso-fonts';
 import { WovenBand, FpBar, FpPop } from './signature';
-import { IconRepere, IconEcouter, IconScelle, IconCoche, type IconProps } from './icons';
+import { IconRepere, IconEcouter, IconPause, IconScelle, IconCoche, type IconProps } from './icons';
 
 /**
  * WO-FP-SERA · the Faso Premium chrome + list components (README § shared system;
@@ -103,8 +103,15 @@ export function PendingNotice({ title, lines }: { title?: string | undefined; li
 export function VoicePlayRow({ label, time, playing, onPress }: { label: string; time: string; playing: boolean; onPress: () => void }) {
   return (
     <Pressable style={({ pressed }) => [styles.voiceRow, pressed && styles.pressed]} onPress={onPress} accessibilityRole="button" accessibilityState={{ selected: playing }}>
+      {/* VOIX-ÉTAT-2 (founder 2026-08-09) — « the button is not displaying the
+          pause sign ». It never did: this drew IconEcouter unconditionally, so
+          the row looked identical whether the buyer's voice was coming out of
+          the phone or not. `playing` reached only accessibilityState, which a
+          rider in the sun cannot see. */}
       <View style={styles.voiceGlyph}>
-        <IconEcouter size={ty('row').fontSize} color={C.onAccent} />
+        {playing
+          ? <IconPause size={ty('row').fontSize} color={C.onAccent} />
+          : <IconEcouter size={ty('row').fontSize} color={C.onAccent} />}
       </View>
       <Text style={styles.voiceLabel} numberOfLines={1}>{label}</Text>
       <Text style={styles.voiceTime}>{time}</Text>

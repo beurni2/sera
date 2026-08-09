@@ -18,10 +18,10 @@ const iconsSrc = read('src/ui/icons.tsx');
 const svgDir = join(repoRoot, 'design-reference/grand-teint/icons');
 const svgNames = readdirSync(svgDir).filter((f) => f.endsWith('.svg')).map((f) => f.slice(0, -4)).sort();
 
-describe('the 26 icon components carry the design-reference geometry (byte-identity)', () => {
-  it('there are exactly 26 canonical glyphs, and 26 components', () => {
-    expect(svgNames).toHaveLength(26);
-    expect(iconsSrc.match(/export function Icon\w+\(/g)).toHaveLength(26);
+describe('the 27 icon components carry the design-reference geometry (byte-identity)', () => {
+  it('there are exactly 27 canonical glyphs, and 27 components', () => {
+    expect(svgNames).toHaveLength(27);
+    expect(iconsSrc.match(/export function Icon\w+\(/g)).toHaveLength(27);
   });
 
   it('every path `d`, circle and rect from every SVG appears verbatim in its component', () => {
@@ -30,6 +30,10 @@ describe('the 26 icon components carry the design-reference geometry (byte-ident
       // pull the geometry-bearing attributes out of the source SVG
       const ds = [...svg.matchAll(/\bd="([^"]+)"/g)].map((m) => m[1]);
       const circles = [...svg.matchAll(/<circle cx="([^"]+)" cy="([^"]+)" r="([^"]+)"/g)];
+      // VOIX-ÉTAT-2: `pause` is the first glyph drawn from RECTS, and this loop
+      // was checking paths and circles only — so its two bars would have been
+      // carried by nobody. The generator emits Rect; the pin now reads Rect.
+      const rects = [...svg.matchAll(/<rect x="([^"]+)" y="([^"]+)" width="([^"]+)" height="([^"]+)"/g)];
       for (const d of ds) {
         expect(iconsSrc, `${name}: path d not carried verbatim`).toContain(`d="${d}"`);
       }
@@ -37,12 +41,15 @@ describe('the 26 icon components carry the design-reference geometry (byte-ident
         expect(iconsSrc, `${name}: circle not carried`).toContain(`cx={${c[1]}}`);
         expect(iconsSrc, `${name}: circle not carried`).toContain(`cy={${c[2]}}`);
       }
+      for (const r of rects) {
+        expect(iconsSrc, `${name}: rect not carried`).toContain(`x={${r[1]}} y={${r[2]}} width={${r[3]}} height={${r[4]}}`);
+      }
     }
   });
 
   it('every component defaults to currentColor and threads it to every stroke/fill', () => {
     const comps = iconsSrc.split('export function Icon').slice(1);
-    expect(comps).toHaveLength(26);
+    expect(comps).toHaveLength(27);
     for (const c of comps) {
       expect(c).toMatch(/color = 'currentColor'/); // the default
       expect(c).toMatch(/stroke=\{color\}/); // stroke threads it

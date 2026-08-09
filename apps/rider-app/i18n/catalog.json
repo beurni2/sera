@@ -1476,6 +1476,12 @@
     "screenClass": "label"
   },
   {
+    "key": "repere.voix_pause",
+    "fr": "Pause",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
     "key": "preuve.titre",
     "fr": "Photos du fournisseur",
     "register": "neutral",

@@ -145,7 +145,7 @@ import {
   Keypad as FasoKeypad,
   VoicePlayRow as FasoVoicePlayRow,
 } from './src/ui/faso-kit';
-import { mediaUrl, resolveRepereAudio } from './src/net/repere-audio';
+import { dureeVoix, mediaUrl, resolveRepereAudio, type RepereAudioEtat } from './src/net/repere-audio';
 import {
   IconColis,
   IconReprendre,
@@ -550,7 +550,19 @@ export default function App() {
    * OWN media base — nothing the server says can point this phone elsewhere.
    */
   const repereAudio = useMemo(() => resolveRepereAudio(), []);
-  const [repereJoue, setRepereJoue] = useState(false);
+  /**
+   * VOIX-ÉTAT-2 (founder 2026-08-09): « the button is not displaying the pause
+   * sign and the seconds are not counting ». This state used to be a single
+   * boolean the SCREEN set on tap and nothing ever cleared — so the row claimed
+   * « en lecture » after the note had finished, and had no seconds to show at
+   * all. It now comes from the player itself (`subscribe`), which is the only
+   * thing that knows whether sound is actually coming out of the phone.
+   */
+  const [repereEtat, setRepereEtat] = useState<RepereAudioEtat>({ playing: false, seconds: 0 });
+  useEffect(() => {
+    if (repereAudio === null) return undefined;
+    return repereAudio.subscribe(setRepereEtat);
+  }, [repereAudio]);
   // ⚠ KEYED ON THE REF VALUES, NOT THE SESSION OBJECT. `/rider/moi` replaces
   // that object every 20 s poll, so keying on it rebuilt these on every poll
   // and remounted the <Image> subtree — on a 1 GB Android over 2G.
@@ -576,10 +588,9 @@ export default function App() {
    */
   const repereVisible = liveAssignment !== null && liveAssignment.status !== 'acknowledged';
   useEffect(() => {
-    if (!repereVisible) {
-      repereAudio?.stop();
-      setRepereJoue(false);
-    }
+    // `stop()` reports its own rest state through the subscription, so the row
+    // goes back to « Écouter » without this screen having to assert it.
+    if (!repereVisible) repereAudio?.stop();
   }, [repereVisible, repereAudio]);
   useEffect(() => () => repereAudio?.stop(), [repereAudio]);
 
@@ -589,16 +600,22 @@ export default function App() {
     if (repereUrl === null || repereAudio === null) return null;
     return (
       <FasoVoicePlayRow
-        label={t('repere.voix_ecouter')}
-        time=""
-        playing={repereJoue}
+        label={t(repereEtat.playing ? 'repere.voix_pause' : 'repere.voix_ecouter')}
+        // Blank until the note has actually run: « 0:00 » before the first tap
+        // would be a clock claiming a position in a note nobody has started.
+        time={repereEtat.playing || repereEtat.seconds > 0 ? dureeVoix(repereEtat.seconds) : ''}
+        playing={repereEtat.playing}
         onPress={() => {
-          setRepereJoue(true);
-          void repereAudio.play(repereUrl).catch(() => setRepereJoue(false));
+          // The pause glyph has to MEAN something when the rider taps it.
+          if (repereEtat.playing) {
+            repereAudio.pause();
+            return;
+          }
+          void repereAudio.play(repereUrl).catch(() => repereAudio.stop());
         }}
       />
     );
-  }, [repereUrl, repereAudio, repereJoue]);
+  }, [repereUrl, repereAudio, repereEtat]);
 
   /** The supplier's readiness photos — what the check-up is answered against. */
   const PreuvePhotos = useCallback((): React.JSX.Element | null => {

@@ -4,15 +4,26 @@ import { grandTeintIcon, GRAND_TEINT_ICON_NAMES } from '../src/icons';
 /**
  * WO-5.1 — the dispatch-console (a web surface) receives the Grand Teint icons
  * as INLINE SVG strings (the PWA idiom, zero deps), NOT the RN font/component
- * substrate. This asserts the generated module is complete (26 glyphs) and
+ * substrate. This asserts the generated module is complete (27 glyphs) and
  * stays token-driven: every glyph paints via currentColor (the theme ink),
  * never a hardcoded colour.
+ *
+ * VOIX-ÉTAT-2 (founder 2026-08-09) — the set grew by one: `pause`, the twin of
+ * `ecouter` on the same ring, because every listen affordance in this ecosystem
+ * must be able to SHOW that it is playing. The count is a completeness pin, not
+ * a ceiling: it moves with the design-reference folder, which is the source the
+ * generator reads.
  */
 
 describe('the Grand Teint inline icon module (dispatch-console PWA)', () => {
-  it('carries all 26 canonical glyphs', () => {
-    expect(GRAND_TEINT_ICON_NAMES).toHaveLength(26);
-    expect(Object.keys(grandTeintIcon)).toHaveLength(26);
+  it('carries all 27 canonical glyphs', () => {
+    expect(GRAND_TEINT_ICON_NAMES).toHaveLength(27);
+    expect(Object.keys(grandTeintIcon)).toHaveLength(27);
+  });
+
+  it('⚠ the listen glyph has a PAUSE twin — a player that cannot show playback is the bug', () => {
+    expect(GRAND_TEINT_ICON_NAMES).toContain('ecouter');
+    expect(GRAND_TEINT_ICON_NAMES).toContain('pause');
   });
 
   it('every glyph paints via currentColor and hardcodes no colour', () => {
