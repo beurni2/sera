@@ -1480,5 +1480,17 @@
     "fr": "Photos du fournisseur",
     "register": "neutral",
     "screenClass": "label"
+  },
+  {
+    "key": "verify.photo_ecart",
+    "fr": "Photographiez la différence. Cela aide à régler la suite.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "verify.photo_facultative",
+    "fr": "Photo facultative",
+    "register": "neutral",
+    "screenClass": "label"
   }
 ]

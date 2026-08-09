@@ -171,11 +171,20 @@ describe('⚠ a WIRED build shows only what a server said (blocker A3)', () => {
     expect(sendSite, 'dwell recomputed at send time').not.toMatch(/Date\.now\(\)/);
   });
 
-  it('⚠ no photo, no act — neither ref is ever fabricated (blocker A7)', () => {
+  it('⚠ no photo, no SEAL — the ref custody depends on is never fabricated (blocker A7)', () => {
     // `ev-<uuid>` named a bundle that never existed, defeating the spine's
     // no_evidence_refs guard and writing a dangling pointer into the ledger.
     expect(app, 'a synthetic evidence ref').not.toMatch(/`ev-\$\{/);
-    expect(app).toMatch(/if \(verifyBundleId === null\) return;/);
+    /**
+     * ⚠ THE VERIFY HALF OF THIS PIN IS RETIRED BY FOUNDER RULING (2026-08-09):
+     * « camera capture is optional, and it's used only in case if product on
+     * pick up is different from the photos. » A7's guard had become a DEAD
+     * BUTTON — « Envoyer » did nothing, silently, for any rider whose package
+     * matched. What A7 was really protecting is the SEAL, whose
+     * `no_evidence_refs` guard lives in the spine and is unchanged below; the
+     * no-photo verification now carries a value that says so by name
+     * (`sans-photo-…`), which is pinned in photo-facultative.test.ts.
+     */
     expect(app).toMatch(/if \(sealPhotoRefs\.length === 0\) return;/);
   });
 
@@ -403,9 +412,18 @@ describe('⚠ the ports are CALLED, not merely present (blockers A1 + A2, round 
     expect(app, 'the verification photo').toMatch(/onPress: \(\) => takePhoto\(\(art\) => setVerifyBundleId\(art\.ref\)\)/);
     expect(app, 'the seal photo').toMatch(/onPress: \(\) => takePhoto\(\(art\) => setSealPhotoRefs\(\[art\.ref\]\)\)/);
     expect(app, 'the handoff photo').toMatch(/onPress=\{\(\) => takePhoto\(setDropArt\)\}/);
-    // …and the two FasoActCode photo folds are still mounted (the delivery
-    // photo rides its own card, not the act-code component).
-    expect(app.match(/photo=\{\{/g)).toHaveLength(2);
+    /**
+     * …and both FasoActCode photo folds are still mounted — but the VERIFY one
+     * is now CONDITIONAL by founder ruling (2026-08-09): « camera capture is
+     * optional, and it's used only in case if product on pick up is different
+     * from the photos », so it is spread in only when a check was answered
+     * « Non ». The seal's fold stays unconditional (he kept that photo
+     * mandatory), which is why exactly one `photo={{` remains.
+     */
+    expect(app.match(/photo=\{\{/g), 'the seal fold, always mounted').toHaveLength(1);
+    expect(app, 'the verify fold, mounted only on a reported difference').toMatch(
+      /\{\.\.\.\(ecartConstate\s*\?\s*\{\s*photo: \{/,
+    );
   });
 
   it('the send stays shut until the BUCKET holds the photo, and says why', () => {

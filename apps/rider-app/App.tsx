@@ -83,6 +83,10 @@ import { refusServiceKey, resolveShiftActs } from './src/net/shift-acts';
 /** How often a signed-in wired build re-asks `/rider/moi`. The ack window is
  *  five minutes (logistics `ACK_DEADLINE_MS`) — 20 s keeps a confided course
  *  well inside it. */
+/** COURSE-BRIEF — what a verification carries when the package matched and
+ *  the rider took no photo. Never shaped like a bundle ref (blocker A7). */
+const SANS_PHOTO = 'sans-photo';
+
 const MOI_POLL_MS = 20_000;
 import { resolveCustodyActs } from './src/net/resolveCustodyActs';
 import { httpSosSender } from './src/net/sos-wire';
@@ -670,9 +674,21 @@ export default function App() {
   const sendVerification = useCallback(
     (pickupCode: string) => {
       if (riderCode === null || liveAssignment === null) return;
-      // ⚠ NO PHOTO, NO VERIFICATION (A7). The bundle ref must name bytes the
-      // media bucket actually stored; there is no synthetic fallback.
-      if (verifyBundleId === null) return;
+      /**
+       * ⚠ FOUNDER RULING (2026-08-09) — THE PHOTO IS OPTIONAL HERE, AND ONLY
+       * HERE. « camera capture is optional, and it's used only in case if
+       * product on pick up is different from the photos. »
+       *
+       * What this replaces was worse than a missing feature: `if
+       * (verifyBundleId === null) return;` made « Envoyer » a DEAD BUTTON
+       * whenever the rider had not photographed a package that matched
+       * perfectly — the tap did nothing, said nothing, and the rider had no
+       * way to learn why. Now a conforming pickup sends without a photo.
+       *
+       * ⚠ WHAT DID NOT CHANGE: the SEAL photo (§6.2 step 6, kept mandatory on
+       * his ruling). Custody still cannot begin without a picture — this only
+       * stops demanding one before the rider has anything to report.
+       */
       /**
        * ⚠ KEYED BY EVERY FIELD CUSTODY FINGERPRINTS — INCLUDING THE PHOTO.
        * `evidenceBundleId` was missing here while the seal key already carried
@@ -685,7 +701,7 @@ export default function App() {
        * A new photo is a new attempt, not a retry of the old one.
        */
       const attempt = attemptFor(
-        `verify|${liveAssignment.orderId}|${pickupCode}|${verifyBundleId}|${JSON.stringify(checks)}`,
+        `verify|${liveAssignment.orderId}|${pickupCode}|${verifyBundleId ?? SANS_PHOTO}|${JSON.stringify(checks)}`,
       );
       runAct(setVerifyPhase, () =>
         custodyActs.verifyPickup(
@@ -694,15 +710,22 @@ export default function App() {
             orderId: liveAssignment.orderId,
             presentedPickupCode: pickupCode,
             /**
-             * ⚠ THE BUNDLE THIS NAMES DOES NOT EXIST YET. Pickup photo capture
-             * is not wired in this app (delivery evidence is, via the outbox).
-             * The id is minted from the act's own command id so it is STABLE:
-             * when the capture lands, its upload attaches to exactly this
-             * reference rather than a second one. Recorded in JOURNAL.md as a
-             * named gap — the ledger is carrying a reference to a bundle
-             * nobody has filled in, and that must not be discovered later.
+             * The bundle names REAL BYTES when the rider photographed a
+             * difference. When the package matched and no photo was taken, the
+             * value SAYS SO (`sans-photo-…`) rather than wearing the shape of a
+             * bundle that was never filled — blocker A7's lesson kept while its
+             * guard is lifted: a dangling `ev-<uuid>` was indistinguishable
+             * from real evidence, and this can never be mistaken for it. It is
+             * a CONSTANT, so the value sent is a pure function of
+             * `verifyBundleId` — which is what lets the attempt key below
+             * cover it exactly, instead of deriving it from the very attempt
+             * it must key (custody fingerprints this field: a value the key
+             * cannot see returns as `409 command_id_reused_with_other_content`).
+             *
+             * The SEAL's own `no_evidence_refs` guard is untouched: custody
+             * still refuses to begin on zero photos.
              */
-            evidenceBundleId: verifyBundleId,
+            evidenceBundleId: verifyBundleId ?? SANS_PHOTO,
             dwellSec: attempt.dwellSec,
             checkResults: checks,
           },
@@ -921,6 +944,15 @@ export default function App() {
    *  this asks « has the rider said something about every one » — the gate that
    *  stops an unfinished list ever reaching the single-use pickup code. */
   const allAnswered = POLICY_CHECK_IDS.every((id) => checks[id] !== undefined);
+  /**
+   * COURSE-BRIEF (founder ruling 2026-08-09) — « camera capture is optional,
+   * and it's used only in case if product on pick up is different from the
+   * photos. » A difference is exactly a check answered « Non »: that is when
+   * the camera is offered and its sentence changes from an invitation to the
+   * thing that supports the refusal (§6.1 puts the pickup cost on the seller,
+   * so the picture is what makes that claim answerable).
+   */
+  const ecartConstate = POLICY_CHECK_IDS.some((id) => checks[id] === false);
 
   // SERA-S4 · the reconnect drain sender. The LIVE sender posts each queued write to
   // its service at assembly; here it models the server accepting on reconnect
@@ -1679,20 +1711,27 @@ export default function App() {
                           working: t('acts.sending'),
                         }}
                         working={verifyPhase.kind === 'working'}
-                        photo={{
-                          hint: t('verify.photo_hint'),
-                          takeLabel: t('photo.take'),
-                          retakeLabel: t('photo.retake'),
-                          takenLabel: t('photo.taken'),
-                          neededLabel: t('photo.needed'),
-                          taken: verifyBundleId !== null,
-                          busy: capturing,
-                          issue: (() => {
-                            const key = captureIssueKey(captureIssue);
-                            return key === undefined ? undefined : t(key);
-                          })(),
-                          onPress: () => takePhoto((art) => setVerifyBundleId(art.ref)),
-                        }}
+                        {...(ecartConstate
+                          ? {
+                              photo: {
+                                // A DIFFERENCE WAS REPORTED — the camera appears,
+                                // and its sentence says what the picture is for.
+                                hint: t('verify.photo_ecart'),
+                                takeLabel: t('photo.take'),
+                                retakeLabel: t('photo.retake'),
+                                takenLabel: t('photo.taken'),
+                                // Never « photo requise »: it is offered, not demanded.
+                                neededLabel: t('verify.photo_facultative'),
+                                taken: verifyBundleId !== null,
+                                busy: capturing,
+                                issue: (() => {
+                                  const key = captureIssueKey(captureIssue);
+                                  return key === undefined ? undefined : t(key);
+                                })(),
+                                onPress: () => takePhoto((art) => setVerifyBundleId(art.ref)),
+                              },
+                            }
+                          : {})}
                         outcome={
                           verifyPhase.kind === 'answered'
                             ? (() => {
