@@ -45,11 +45,17 @@ describe('WO-FP-SERA — the screen is a full-bleed scroll surface (R5 can compl
 
   it('R5 renders ALL checks + BOTH actions inside the scroll (nothing clipped)', () => {
     const r5 = app.slice(app.indexOf("screen === 'verify'"), app.indexOf("screen === 'refused'"));
-    // the WHOLE policy set maps to a check row (not a fixed/clipped subset). The app
-    // models the full custody check set (≥ 7 — the planche shows 7, the app 9); the
-    // map renders every one, so the tallest R5 must scroll to the last + the action.
+    // The WHOLE policy set maps to a check row (not a fixed/clipped subset) —
+    // that is the real property, and it survives any policy version.
+    //
+    // ⚠ The old proxy for « tall enough to clip » was `length >= 7`, true of
+    // policy v1's nine fields. The founder's 2026-08-09 ruling made it three
+    // photo-referenced questions, and the screen got TALLER, not shorter: the
+    // supplier's proof photos now render above them. So the count assertion is
+    // replaced by the thing it was standing in for — every id renders, and the
+    // photos and both actions are inside the same scroll.
     expect(r5).toMatch(/POLICY_CHECK_IDS\.map\(\(id\) =>/);
-    expect(POLICY_CHECK_IDS.length).toBeGreaterThanOrEqual(7);
+    expect(POLICY_CHECK_IDS.length).toBeGreaterThan(0);
     // the accept + the refusal arm both render (reachable after the last check)
     expect(r5).toMatch(/label=\{t\('verify\.accept_action'\)\}/);
     expect(r5).toMatch(/label=\{t\('verify\.refuse_action'\)\}/);

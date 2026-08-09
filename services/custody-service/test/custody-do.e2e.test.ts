@@ -43,8 +43,9 @@ const T = '2026-08-07T09:00:00.000Z';
 
 /** The policy's nine checks, all passing — the accepted path. */
 const ALL_PASS = {
-  order_ref: true, identity: true, variant: true, colour: true, size_label: true,
-  qty: true, damage: true, pieces: true, manufacturer_seal: true,
+  // pickup-verification-policy.v2 (founder ruling 2026-08-09): three
+  // photo-referenced questions replace v1's nine fields.
+  produit_conforme: true, quantite_complete: true, emballage_intact: true,
 };
 
 const persist = mkdtempSync(join(tmpdir(), 'custody-do-'));
@@ -529,7 +530,7 @@ describe('a redelivered command repeats its real answer — refusals included', 
     })).status).toBe(200);
     const refusedBody = {
       orderId: other, command_id: 'v-refused-h2', riderId: 'rider-h2', presentedPickupCode: otherCode,
-      checkResults: { ...ALL_PASS, damage: false }, dwellSec: 200, evidenceBundleId: 'ev-h2', at: T,
+      checkResults: { ...ALL_PASS, emballage_intact: false }, dwellSec: 200, evidenceBundleId: 'ev-h2', at: T,
     };
     expect((await call('POST', '/ops/verification', opsAuth, refusedBody)).json).toMatchObject({ kind: 'refused' });
     const refusedAgain = await call('POST', '/ops/verification', opsAuth, refusedBody);
@@ -1008,7 +1009,7 @@ describe('DURABILITY — the whole point of this slice, across a real process de
     const refused = await call('POST', '/ops/verification', opsAuth, {
       orderId: order, command_id: 'cmd-verify-r', riderId: 'rider-2',
       presentedPickupCode: code,
-      checkResults: { ...ALL_PASS, damage: false }, // the package arrived damaged
+      checkResults: { ...ALL_PASS, emballage_intact: false }, // the package arrived damaged
       dwellSec: 200, evidenceBundleId: 'ev-r', at: T,
     });
     expect(refused.status).toBe(200);

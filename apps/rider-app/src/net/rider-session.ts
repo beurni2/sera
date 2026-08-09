@@ -38,6 +38,24 @@ export interface RiderAssignment {
   readonly ackDeadline: string | null;
   readonly window: unknown | null;
   readonly location: unknown | null;
+  /**
+   * COURSE-BRIEF (founder order 2026-08-09) — media POINTERS, never URLs: the
+   * app appends them to its own media base, so nothing the Worker says can
+   * point this screen at another host. `repereAudioRef` is the buyer's
+   * recorded landmark; `preuvePhotoRefs` is what the supplier photographed at
+   * readiness, and what the pickup check-up is answered against.
+   * Parsed defensively: a malformed ref is DROPPED, so a bad byte costs the
+   * rider a photo, never the course.
+   */
+  readonly repereAudioRef: string | null;
+  readonly preuvePhotoRefs: readonly string[];
+}
+
+/** A media pointer and nothing else — mirrors the Worker's own bound, because
+ *  this value becomes a URL on the phone. */
+const MEDIA_REF = /^media\/[A-Za-z0-9][A-Za-z0-9/_-]{0,119}$/;
+function mediaRefOrNull(v: unknown): string | null {
+  return typeof v === 'string' && MEDIA_REF.test(v) && !v.includes('..') ? v : null;
 }
 
 /** The rider's session as logistics tells it — identity + certification +
@@ -105,6 +123,10 @@ export function riderSessionFromBody(body: unknown): RiderSession | null {
         ackDeadline: typeof a['ackDeadline'] === 'string' ? a['ackDeadline'] : null,
         window: a['window'] ?? null,
         location: a['location'] ?? null,
+        repereAudioRef: mediaRefOrNull(a['repereAudioRef']),
+        preuvePhotoRefs: Array.isArray(a['preuvePhotoRefs'])
+          ? (a['preuvePhotoRefs'] as unknown[]).map(mediaRefOrNull).filter((r): r is string => r !== null)
+          : [],
       };
     }
   }

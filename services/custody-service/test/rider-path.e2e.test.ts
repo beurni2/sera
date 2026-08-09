@@ -8,7 +8,7 @@ import { httpEvidenceCapture, type PhotoSource } from '../../../apps/rider-app/s
 import { custodyBegan, deliveryChainOf, evidenceHeld, verificationAccepted } from '../../../apps/rider-app/src/net/custody-acts';
 import { resizeForEvidence } from '../../../apps/rider-app/src/net/photo-bounds';
 import { POLICY_CHECK_IDS } from '../../../apps/rider-app/src/custody-flow';
-import { PICKUP_VERIFICATION_POLICY_V1 } from '../src/pickup-verification-policy';
+import { ACTIVE_PICKUP_VERIFICATION_POLICY } from '../src/pickup-verification-policy';
 
 /**
  * ═══ THE RIDER'S WHOLE PATH, WALKED ONCE, THROUGH THE APP'S OWN PORTS ═══
@@ -154,10 +154,10 @@ const PICKUP_CODE = 'PICKUP-PATH-0001';
  * My first draft of this file invented nine plausible check names and the
  * Worker answered `check_not_in_policy` — which is precisely the class of
  * cross-boundary drift this file exists to catch. The app renders its checklist
- * from `POLICY_CHECK_IDS`; the SERVICE judges against
- * `PICKUP_VERIFICATION_POLICY_V1.checks`. If those two lists ever diverge, every
- * verification a rider sends is refused, and nothing else in the repo compares
- * them.
+ * from `POLICY_CHECK_IDS`; the SERVICE judges against the ACTIVE policy's
+ * checks (v2 since the founder's 2026-08-09 ruling — three photo-referenced
+ * questions). If those two lists ever diverge, every verification a rider
+ * sends is refused, and nothing else in the repo compares them.
  */
 const ALL_PASS = Object.fromEntries(POLICY_CHECK_IDS.map((id) => [id, true]));
 
@@ -225,7 +225,14 @@ describe('⚠ THE RIDER TAKES CUSTODY — the app’s own ports, the real Worker
     // Drift here refuses every verification a rider sends, with
     // `check_not_in_policy` — and until this line, the app's list and the
     // service's list were two independent literals that nothing compared.
-    expect([...POLICY_CHECK_IDS]).toEqual([...PICKUP_VERIFICATION_POLICY_V1.checks]);
+    //
+    // ⚠ It compares against the ACTIVE policy, not a named version: the day
+    // the founder rules a v3, this pin must fail on the app that still asks
+    // v2's questions. Pinning V1 by name would have gone quietly green
+    // through exactly the change that made the app's checklist wrong.
+    expect([...POLICY_CHECK_IDS]).toEqual([...ACTIVE_PICKUP_VERIFICATION_POLICY.checks]);
+    // …and the ruling's own shape: three questions, not nine fields.
+    expect(POLICY_CHECK_IDS).toHaveLength(3);
   });
 
   it('walks photo → verification → seal → custody, and the LEDGER says so', async () => {
@@ -323,7 +330,7 @@ describe('⚠ THE RIDER TAKES CUSTODY — the app’s own ports, the real Worker
       {
         commandId: 'cmd-path-verify-refused', orderId: ORDER2,
         presentedPickupCode: PICKUP_CODE, evidenceBundleId: 'media/tok-refused',
-        dwellSec: 150, checkResults: { ...ALL_PASS, damage: false },
+        dwellSec: 150, checkResults: { ...ALL_PASS, emballage_intact: false },
       },
       RIDER_CODE,
     );

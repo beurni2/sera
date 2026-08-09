@@ -28,6 +28,59 @@ export const PICKUP_VERIFICATION_POLICY_V1 = Object.freeze({
   dwellSecMax: 240,
 });
 
+/**
+ * ⚠ FOUNDER RULING (2026-08-09) — POLICY v2, THE PHOTO-REFERENCED CHECK-UP.
+ * « the check up will be against these photos but only 2-3 questions … to
+ * make sure it looks exactly like what the photos show. »
+ *
+ * WHAT CHANGED: the supplier's readiness photos now ride the course
+ * (COURSE-BRIEF), so the rider compares against a PICTURE instead of holding
+ * nine abstract fields in their head at a market stall. Three questions carry
+ * the same ground v1 covered:
+ *   · `produit_conforme`  ← identity · variant · colour · size_label
+ *   · `quantite_complete` ← qty · pieces
+ *   · `emballage_intact`  ← damage · manufacturer_seal
+ * `order_ref` is not asked because it is already PROVEN: the rider presents
+ * the single-use `pickupVerificationCode` minted for THIS order, and the door
+ * consumes it before any check is judged.
+ *
+ * ⚠ WHAT DID NOT CHANGE, DELIBERATELY — the founder's own words were
+ * « exactly like what the photos show », and Sera-Build-Spec §6.1 excludes
+ * exactly that: riders « do NOT determine authenticity, material quality,
+ * cosmetic genuineness, hidden defects, performance, ingredients, warranty,
+ * or shade-vs-photo match. » A refusal costs the supplier the order and the
+ * pickup fee (§6.1, `faultClass = seller`), so « same product » is asked, and
+ * « identical appearance » is not. He was shown the quote and chose the
+ * bounded wording (AskUserQuestion, 2026-08-09).
+ *
+ * Dwell bounds are UNCHANGED (§6.1 « target dwell ≈ 2–4 min »): dwell is
+ * RECORDED, never enforced. A three-question check-up will often record
+ * under-target — journalled as an ops observation for the founder, not
+ * silently retuned here.
+ */
+export const PICKUP_VERIFICATION_POLICY_V2 = Object.freeze({
+  version: 'pickup-verification-policy.v2',
+  checks: Object.freeze(['produit_conforme', 'quantite_complete', 'emballage_intact'] as const),
+  dwellSecMin: 120,
+  dwellSecMax: 240,
+});
+
+/** What NEW verifications are judged by. Stored ones keep their own version. */
+export const ACTIVE_PICKUP_VERIFICATION_POLICY = PICKUP_VERIFICATION_POLICY_V2;
+
+/**
+ * ⚠ REPLAY SAFETY — the reason this is a MAP and not a swap. The custody
+ * ledger is not stored: it is RECOMPUTED from the command log on every wake,
+ * so every stored `verify_pickup` runs through this function again. Judging a
+ * v1 verification by v2's list would make nine lawful checks
+ * `check_not_in_policy` on replay and rewrite history that already happened.
+ * A command is judged by the policy IT was recorded under, for ever.
+ */
+const POLICIES: Record<string, typeof PICKUP_VERIFICATION_POLICY_V1 | typeof PICKUP_VERIFICATION_POLICY_V2> = {
+  [PICKUP_VERIFICATION_POLICY_V1.version]: PICKUP_VERIFICATION_POLICY_V1,
+  [PICKUP_VERIFICATION_POLICY_V2.version]: PICKUP_VERIFICATION_POLICY_V2,
+};
+
 export type PolicyCheck = (typeof PICKUP_VERIFICATION_POLICY_V1.checks)[number];
 
 export interface VerificationInput {
@@ -37,13 +90,16 @@ export interface VerificationInput {
   dwellSec: number;
   evidenceBundleId: string;
   custodySealId?: string;
+  /** The policy this verification was recorded under. ABSENT means a command
+   *  stored before v2 existed — those are v1's, and stay v1's on every replay. */
+  policyVersion?: string;
 }
 
 export type VerificationOutcome =
   | { ok: true; verification: PickupVerification; dwellRecorded: { dwellSec: number; withinTarget: boolean } }
   | {
       ok: false;
-      reason: 'check_not_in_policy' | 'policy_checks_missing';
+      reason: 'check_not_in_policy' | 'policy_checks_missing' | 'policy_version_unknown';
       detail: string;
     };
 
@@ -57,9 +113,17 @@ export type FaultSignal = {
 export function runPickupVerification(input: VerificationInput):
   | { kind: 'accepted'; verification: PickupVerification; dwell: { dwellSec: number; withinTarget: boolean } }
   | { kind: 'refused'; verification: PickupVerification; faultSignal: FaultSignal; failedChecks: readonly string[] }
-  | { kind: 'invalid'; reason: 'check_not_in_policy' | 'policy_checks_missing'; detail: string } {
-  const policyChecks = PICKUP_VERIFICATION_POLICY_V1.checks as readonly string[];
-  // Objective conformity ONLY: a check outside policy v1 is not runnable.
+  | { kind: 'invalid'; reason: 'check_not_in_policy' | 'policy_checks_missing' | 'policy_version_unknown'; detail: string } {
+  // A command with no version is one recorded before v2 existed: v1, for ever.
+  const version = input.policyVersion ?? PICKUP_VERIFICATION_POLICY_V1.version;
+  const policy = POLICIES[version];
+  // An unknown version is REFUSED, never silently judged by the active policy
+  // — falling back would let a rolled-back deploy re-judge a verification
+  // under a list its rider never answered.
+  if (policy === undefined) return { kind: 'invalid', reason: 'policy_version_unknown', detail: version };
+  const policyChecks = policy.checks as readonly string[];
+  // Objective conformity ONLY: a check outside THIS command's policy is
+  // not runnable (SE-I12).
   for (const name of Object.keys(input.checkResults)) {
     if (!policyChecks.includes(name)) {
       return { kind: 'invalid', reason: 'check_not_in_policy', detail: name };
@@ -84,8 +148,8 @@ export function runPickupVerification(input: VerificationInput):
 
   if (accepted) {
     const withinTarget =
-      input.dwellSec >= PICKUP_VERIFICATION_POLICY_V1.dwellSecMin &&
-      input.dwellSec <= PICKUP_VERIFICATION_POLICY_V1.dwellSecMax;
+      input.dwellSec >= policy.dwellSecMin &&
+      input.dwellSec <= policy.dwellSecMax;
     return { kind: 'accepted', verification, dwell: { dwellSec: input.dwellSec, withinTarget } };
   }
   // Mismatch → refuse custody; fault attribution is a SIGNAL for

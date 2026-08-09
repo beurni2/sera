@@ -10,17 +10,19 @@ import type { FlushOutcome } from './offline/outbox';
  * device) — the retired `CONNECTIVITY` constant that lied is gone.
  */
 
-export const POLICY_CHECK_IDS = [
-  'order_ref',
-  'identity',
-  'variant',
-  'colour',
-  'size_label',
-  'qty',
-  'damage',
-  'pieces',
-  'manufacturer_seal',
-] as const;
+/**
+ * ⚠ FOUNDER RULING (2026-08-09) — the three questions of
+ * `pickup-verification-policy.v2`, answered against the supplier's readiness
+ * photos now riding the course (COURSE-BRIEF). The SERVICE owns the policy;
+ * this list MIRRORS it, and the shell renders `check.<id>` from the catalog.
+ *
+ * Each question carries several of v1's nine: produit ← identity/variant/
+ * colour/size_label · quantité ← qty/pieces · emballage ← damage/mfr-seal.
+ * They ask what a photo can honestly settle. « Identical to the photo » is
+ * NOT asked — Sera-Build-Spec §6.1 excludes shade-vs-photo match from a
+ * rider's judgement, and a refusal costs the supplier the order.
+ */
+export const POLICY_CHECK_IDS = ['produit_conforme', 'quantite_complete', 'emballage_intact'] as const;
 export type PolicyCheckId = (typeof POLICY_CHECK_IDS)[number];
 
 export type CustodyStep =

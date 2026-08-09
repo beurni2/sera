@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { CustodySpine, type ChainIds } from '../src/custody-spine.js';
-import type { VerificationInput } from '../src/pickup-verification-policy.js';
+import { ACTIVE_PICKUP_VERIFICATION_POLICY, type VerificationInput } from '../src/pickup-verification-policy.js';
 
 /**
  * ═══ CustodyDO — ONE OBJECT PER ORDER, and the ledger is its memory ═══
@@ -1297,6 +1297,17 @@ export class CustodyDO {
           checkResults,
           dwellSec: body['dwellSec'] as number,
           evidenceBundleId: (body['evidenceBundleId'] as string).trim(),
+          /**
+           * ⚠ STAMPED HERE, ONCE, AND STORED WITH THE COMMAND — never read
+           * from the body, and never resolved at replay time. The ledger is
+           * recomputed from this log on every wake; if the version were
+           * resolved live, deploying policy v2 would re-judge every v1
+           * verification already on the chain under a list its rider never
+           * answered. A command carries the policy it was taken under, and a
+           * command stored before v2 existed carries none — which reads as
+           * v1, for ever.
+           */
+          policyVersion: ACTIVE_PICKUP_VERIFICATION_POLICY.version,
         },
         // HASHED AT THE DOOR — the presented code dies with this request.
         presentedPickupCodeDigest: digestSecret(body['presentedPickupCode'] as string),

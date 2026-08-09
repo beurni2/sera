@@ -30,8 +30,9 @@ const OPS = 'test-custody-ops-secret-0002';
 const opsAuth = { Authorization: `Bearer ${OPS}`, 'Content-Type': 'application/json' };
 
 const ALL_PASS = {
-  order_ref: true, identity: true, variant: true, colour: true, size_label: true,
-  qty: true, damage: true, pieces: true, manufacturer_seal: true,
+  // pickup-verification-policy.v2 (founder ruling 2026-08-09): three
+  // photo-referenced questions replace v1's nine fields.
+  produit_conforme: true, quantite_complete: true, emballage_intact: true,
 };
 
 const digest = (s: string): string => createHash('sha256').update(s, 'utf8').digest('hex');
@@ -473,20 +474,22 @@ describe('the command log is chained too — the facts that never reach the ledg
     let mf = await seed(dir, 'ord-bind-b');
     expect((await call(mf, 'POST', '/ops/verification', {
       orderId: 'ord-bind-b', command_id: 'v-b', riderId: 'rider-1', presentedPickupCode: CODE,
-      checkResults: { ...ALL_PASS, damage: false }, dwellSec: 200, evidenceBundleId: 'ev-b', at: AT,
+      checkResults: { ...ALL_PASS, emballage_intact: false }, dwellSec: 200, evidenceBundleId: 'ev-b', at: AT,
     })).json).toMatchObject({ kind: 'refused' });
     const before = await call(mf, 'GET', '/ops/ledger?orderId=ord-bind-b');
     await mf.dispose();
 
     /**
      * THE VERIFIER'S OWN FORGERY, byte for byte. Booleans serialize as a single
-     * 'T'/'F' after the key name, so swapping `damage` false→true and `colour`
-     * true→false keeps EXACTLY ONE failed check. The verification therefore
-     * stays `refused` and the LEDGER ENTRY IS IDENTICAL — the old ledger-only
-     * head could not see this at all. Only chaining the command log catches it.
+     * 'T'/'F' after the key name, so swapping `emballage_intact` false→true and
+     * `produit_conforme` true→false keeps EXACTLY ONE failed check. The
+     * verification therefore stays `refused` and the LEDGER ENTRY IS IDENTICAL
+     * — the old ledger-only head could not see this at all. Only chaining the
+     * command log catches it. (Policy v2 vocabulary, founder ruling 2026-08-09:
+     * « a damaged package cannot become a wrong-product one ».)
      */
-    const swapped = forgeInStoredCommands(dir, 'damageF', 'damageT')
-      + forgeInStoredCommands(dir, 'colourT', 'colourF');
+    const swapped = forgeInStoredCommands(dir, 'emballage_intactF', 'emballage_intactT')
+      + forgeInStoredCommands(dir, 'produit_conformeT', 'produit_conformeF');
     expect(swapped).toBe(2);
 
     mf = boot(dir);

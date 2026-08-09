@@ -148,6 +148,113 @@ describe('⚠ the whole ladder, through the app’s own ports, judged by the BOA
     expect(await acts.startShift('SR-AAAA-BBBB-CCCC')).toEqual({ ok: false, reason: 'unauthorized' });
   });
 
+  it('⚠ COURSE-BRIEF: the repère voice note and the supplier’s proof photos reach the RIDER’S OWN session read', async () => {
+    // FOUNDER REPORT (2026-08-09): « on rider's app sera when order arrives on
+    // the screen there is nowhere to listen the repère audio … and when I
+    // relay the order to the rider it has to carry as well the proof photos
+    // that the supplier sent ». Neither ever crossed: the compose door took an
+    // address and a window, and `/rider/moi` sent back exactly that.
+    //
+    // This drives the FOUNDER'S OWN compose route and asks the RIDER APP'S OWN
+    // session port for the answer — the only two ends that matter.
+    const mf = spawn();
+    const T = '2026-08-09T10:00:00.000Z';
+    const intake = async (path: string, body: unknown) => {
+      const res = await mf.dispatchFetch(`http://logistics${path}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${INTAKE}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      expect(res.status, path).toBe(200);
+    };
+    await intake('/intake/funding', { orderId: 'ord-brief-1', status: 'funded', paymentMode: 'FULL_PREPAY', asOf: T });
+    await intake('/intake/readiness', { orderId: 'ord-brief-1', ready: true, asOf: T });
+
+    const AUDIO = 'media/11111111-2222-3333-4444-555555555555';
+    const PHOTO = 'media/readiness/ord-brief-1';
+    const composed = await ops(mf, '/ops/task', {
+      command_id: 'cmd-brief-1',
+      orderId: 'ord-brief-1',
+      location: { zone: 'Gounghin', landmark: 'Face à la pharmacie', directions: '', maskedRelay: '' },
+      window: { start: T, end: '2026-08-09T16:00:00.000Z' },
+      repereAudioRef: AUDIO,
+      preuvePhotoRefs: [PHOTO],
+    });
+    expect(composed['ok'], JSON.stringify(composed)).toBe(true);
+    const taskId = composed['taskId'] as string;
+
+    await ops(mf, '/ops/riders', { riderId: 'rider-boss', displayName: 'boss', phoneAlias: 'bossy' });
+    await ops(mf, '/ops/riders/certify', { riderId: 'rider-boss', certified: true });
+    const code = (await ops(mf, '/ops/rider-code/mint', { riderId: 'rider-boss' }))['code'] as string;
+    const { acts, session } = appPorts(mf);
+    await acts.ackPrivacy(code);
+    if (!(await acts.startShift(code)).ok) throw new Error('start refused');
+    const granted = await ops(mf, '/ops/assign', { command_id: 'cmd-brief-a1', taskId, riderId: 'rider-boss' });
+    expect(granted['ok'], JSON.stringify(granted)).toBe(true);
+
+    // ⚠ THE WHOLE POINT: the app's OWN parser hands the screen both pointers.
+    const arrived = await session.signIn(code);
+    if (!arrived.ok) throw new Error('sign-in refused');
+    expect(arrived.session.assignment?.repereAudioRef, 'the voice note must reach the rider').toBe(AUDIO);
+    expect(arrived.session.assignment?.preuvePhotoRefs, 'the proof photos must reach the rider').toEqual([PHOTO]);
+  });
+
+  it('⚠ COURSE-BRIEF: a course composed WITHOUT media answers an honest empty brief, and a bad ref is refused BY NAME', async () => {
+    const mf = spawn();
+    const T = '2026-08-09T10:00:00.000Z';
+    const intake = async (path: string, body: unknown) => {
+      const res = await mf.dispatchFetch(`http://logistics${path}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${INTAKE}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      expect(res.status, path).toBe(200);
+    };
+    await intake('/intake/funding', { orderId: 'ord-brief-2', status: 'funded', paymentMode: 'FULL_PREPAY', asOf: T });
+    await intake('/intake/readiness', { orderId: 'ord-brief-2', ready: true, asOf: T });
+    const loc = { zone: 'Gounghin', landmark: 'Face à la pharmacie', directions: '', maskedRelay: '' };
+    const win = { start: T, end: '2026-08-09T16:00:00.000Z' };
+
+    // A ref that could escape the media bucket ends the compose — refused, not
+    // quietly dropped, so a founder never believes a photo travelled.
+    for (const bad of ['https://elsewhere.example/x.jpg', 'media/../secrets', '', 'notmedia/x']) {
+      const res = await mf.dispatchFetch('http://logistics/ops/task', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${OPS}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command_id: `cmd-bad-${bad}`, orderId: 'ord-brief-2', location: loc, window: win, repereAudioRef: bad }),
+      });
+      expect(res.status, bad).toBe(400);
+      expect((await res.json() as Record<string, unknown>)['reason'], bad).toBe('repere_audio_ref_malformed');
+    }
+    // More photos than a rider can read at a market stall is also refused.
+    const tooMany = await mf.dispatchFetch('http://logistics/ops/task', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${OPS}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        command_id: 'cmd-many', orderId: 'ord-brief-2', location: loc, window: win,
+        preuvePhotoRefs: ['media/a', 'media/b', 'media/c', 'media/d', 'media/e'],
+      }),
+    });
+    expect(tooMany.status).toBe(400);
+    expect((await tooMany.json() as Record<string, unknown>)['reason']).toBe('preuve_photo_refs_malformed');
+
+    // And the lawful absence: composed with no media at all, the rider's read
+    // is an honest empty brief — never a fabricated one.
+    const composed = await ops(mf, '/ops/task', { command_id: 'cmd-brief-2', orderId: 'ord-brief-2', location: loc, window: win });
+    expect(composed['ok'], JSON.stringify(composed)).toBe(true);
+    await ops(mf, '/ops/riders', { riderId: 'rider-awa', displayName: 'Awa', phoneAlias: 'awa' });
+    await ops(mf, '/ops/riders/certify', { riderId: 'rider-awa', certified: true });
+    const code = (await ops(mf, '/ops/rider-code/mint', { riderId: 'rider-awa' }))['code'] as string;
+    const { acts, session } = appPorts(mf);
+    await acts.ackPrivacy(code);
+    await acts.startShift(code);
+    await ops(mf, '/ops/assign', { command_id: 'cmd-brief-a2', taskId: composed['taskId'], riderId: 'rider-awa' });
+    const arrived = await session.signIn(code);
+    if (!arrived.ok) throw new Error('sign-in refused');
+    expect(arrived.session.assignment?.repereAudioRef).toBeNull();
+    expect(arrived.session.assignment?.preuvePhotoRefs).toEqual([]);
+  });
+
   it('SERA-FLOW: the confided course REACHES the rider, is ACCEPTED by their own hand, and the carrier leaves the free list', async () => {
     const mf = spawn();
     // The order's facts arrive as they do in production — funding + readiness

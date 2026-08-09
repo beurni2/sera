@@ -114,60 +114,6 @@
     "screenClass": "general"
   },
   {
-    "key": "check.order_ref",
-    "fr": "Bon numéro de commande",
-    "register": "neutral",
-    "screenClass": "instruction"
-  },
-  {
-    "key": "check.identity",
-    "fr": "C'est le bon produit",
-    "register": "neutral",
-    "screenClass": "instruction"
-  },
-  {
-    "key": "check.variant",
-    "fr": "Bon modèle",
-    "register": "neutral",
-    "screenClass": "instruction"
-  },
-  {
-    "key": "check.colour",
-    "fr": "Bonne couleur",
-    "register": "neutral",
-    "screenClass": "instruction"
-  },
-  {
-    "key": "check.size_label",
-    "fr": "Bonne taille",
-    "register": "neutral",
-    "screenClass": "instruction"
-  },
-  {
-    "key": "check.qty",
-    "fr": "Le bon nombre",
-    "register": "neutral",
-    "screenClass": "instruction"
-  },
-  {
-    "key": "check.damage",
-    "fr": "Pas de casse",
-    "register": "neutral",
-    "screenClass": "instruction"
-  },
-  {
-    "key": "check.pieces",
-    "fr": "Rien ne manque",
-    "register": "neutral",
-    "screenClass": "instruction"
-  },
-  {
-    "key": "check.manufacturer_seal",
-    "fr": "Cachet d'usine en place",
-    "register": "neutral",
-    "screenClass": "instruction"
-  },
-  {
     "key": "verify.accept_action",
     "fr": "Tout est bon",
     "register": "neutral",
@@ -1226,6 +1172,30 @@
   {
     "key": "sos.reached_hint",
     "fr": "Restez où vous êtes si c'est sûr.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "check.produit_conforme",
+    "fr": "C'est bien ce produit",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "check.quantite_complete",
+    "fr": "La quantité est complète",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "check.emballage_intact",
+    "fr": "L'emballage est intact, rien d'abîmé",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "check.aide_photos",
+    "fr": "Comparez avec les photos du fournisseur ci-dessus.",
     "register": "neutral",
     "screenClass": "instruction"
   },

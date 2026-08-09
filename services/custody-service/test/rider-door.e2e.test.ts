@@ -34,8 +34,9 @@ const SEAL_CODE = 'SEAL-4BII-0001';
 const T = '2026-08-07T09:00:00.000Z';
 
 const ALL_PASS = {
-  order_ref: true, identity: true, variant: true, colour: true, size_label: true,
-  qty: true, damage: true, pieces: true, manufacturer_seal: true,
+  // pickup-verification-policy.v2 (founder ruling 2026-08-09): three
+  // photo-referenced questions replace v1's nine fields.
+  produit_conforme: true, quantite_complete: true, emballage_intact: true,
 };
 
 const dirs: string[] = [];

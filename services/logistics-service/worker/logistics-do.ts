@@ -87,6 +87,18 @@ const SNAP_BOOK = 'snap:book:v1';
 const SNAP_LEASE = 'snap:lease:v1';
 const SNAP_WITNESS = 'snap:witness:v1';
 const SNAP_PROJECTIONS = 'snap:projections:v1';
+/**
+ * COURSE-BRIEF (founder order 2026-08-09) — what the rider needs to SEE and
+ * HEAR on arrival: the buyer's own repère voice note, and the supplier's
+ * readiness proof photos the pickup check-up is read against.
+ *
+ * ⚠ WHY IT IS NOT ON THE TASK. `DeliveryTaskSchema` is canon and `.strict()`
+ * — an extra key does not ride along, it makes the parse THROW, and widening
+ * it is a `contracts/` version bump (a §7 founder trigger). These are media
+ * pointers for one Séra surface, not a cross-repo shape, so they live beside
+ * the task in Séra's own book, keyed by the task they brief.
+ */
+const SNAP_BRIEFS = 'snap:briefs:v1';
 const CODEHASH_PREFIX = 'codehash:';
 const RIDERCODE_PREFIX = 'ridercode:';
 
@@ -146,11 +158,33 @@ function malformed(): Response {
 
 const ACTIVE_ASSIGNMENT_STATUSES = ['active_unacknowledged', 'ack_pending_offline', 'acknowledged'];
 
+/**
+ * COURSE-BRIEF — the media the rider is briefed with, per task.
+ * `preuvePhotoRefs` is what the supplier photographed at readiness; the
+ * pickup check-up is answered against it. `repereAudioRef` is the buyer's
+ * recorded landmark (Law 5: recorded audio, never synthesized).
+ */
+interface CourseBrief {
+  readonly repereAudioRef?: string;
+  readonly preuvePhotoRefs: readonly string[];
+}
+
+/** A media pointer, and nothing else: no scheme, no host, no traversal. The
+ *  app appends it to its OWN media base, so a ref that could escape the
+ *  bucket would be a ref that could point the rider at anything. */
+const MEDIA_REF = /^media\/[A-Za-z0-9][A-Za-z0-9/_-]{0,119}$/;
+const MAX_BRIEF_PHOTOS = 4;
+function isMediaRef(v: unknown): v is string {
+  return typeof v === 'string' && MEDIA_REF.test(v) && !v.includes('..');
+}
+
 export class LogisticsDO {
   private loaded = false;
   private leaseState: LeaseAuthorityState = emptyLeaseState();
   private fundingFacts: Record<string, FundingFact> = {};
   private readinessFacts: Record<string, ReadinessFact> = {};
+  /** COURSE-BRIEF, keyed by taskId — beside the canon task, never on it. */
+  private briefs: Record<string, CourseBrief> = {};
   private queue!: ReadyQueue;
   private registry!: RiderRegistry;
   private witness!: GrantedLeaseWitness;
@@ -185,13 +219,14 @@ export class LogisticsDO {
 
   private async ensureLoaded(): Promise<void> {
     if (this.loaded) return;
-    const keys = [SNAP_QUEUE, SNAP_REGISTRY, SNAP_BOOK, SNAP_LEASE, SNAP_WITNESS, SNAP_PROJECTIONS];
+    const keys = [SNAP_QUEUE, SNAP_REGISTRY, SNAP_BOOK, SNAP_LEASE, SNAP_WITNESS, SNAP_PROJECTIONS, SNAP_BRIEFS];
     const stored = await this.state.storage.get<unknown>(keys);
     const lease = stored.get(SNAP_LEASE) as LeaseAuthorityState | undefined;
     this.leaseState = lease ?? emptyLeaseState();
     const projections = stored.get(SNAP_PROJECTIONS) as ProjectionsSnapshot | undefined;
     this.fundingFacts = projections?.funding ?? {};
     this.readinessFacts = projections?.readiness ?? {};
+    this.briefs = (stored.get(SNAP_BRIEFS) as Record<string, CourseBrief> | undefined) ?? {};
     this.queue = new ReadyQueue(this.projections());
     const queueSnap = stored.get(SNAP_QUEUE) as ReadyQueueSnapshot | undefined;
     if (queueSnap !== undefined) this.queue.restore(queueSnap);
@@ -223,6 +258,7 @@ export class LogisticsDO {
       [SNAP_LEASE]: this.leaseState,
       [SNAP_WITNESS]: this.witness.snapshot(),
       [SNAP_PROJECTIONS]: { funding: this.fundingFacts, readiness: this.readinessFacts },
+      [SNAP_BRIEFS]: this.briefs,
     });
   }
 
@@ -592,6 +628,28 @@ export class LogisticsDO {
         return Response.json({ ok: false, reason: 'task_id_is_not_yours_to_choose' }, { status: 400 });
       }
       /**
+       * COURSE-BRIEF (founder order 2026-08-09) — the two media pointers the
+       * rider is briefed with. Both OPTIONAL: a buyer who typed their repère
+       * instead of recording it, or a supplier whose proof predates the photo
+       * step, must still be dispatchable. Absent is absent — never an empty
+       * string standing in for a recording nobody made.
+       *
+       * REFUSED, NOT IGNORED (the refuse-don't-ignore law): a malformed ref
+       * ends the compose. Silently dropping it would hand the rider a course
+       * with no photos to check against and no way to know one was meant.
+       */
+      const audioRaw = body['repereAudioRef'];
+      const photosRaw = body['preuvePhotoRefs'];
+      if (audioRaw !== undefined && !isMediaRef(audioRaw)) {
+        return Response.json({ ok: false, reason: 'repere_audio_ref_malformed' }, { status: 400 });
+      }
+      if (
+        photosRaw !== undefined &&
+        (!Array.isArray(photosRaw) || photosRaw.length > MAX_BRIEF_PHOTOS || !photosRaw.every(isMediaRef))
+      ) {
+        return Response.json({ ok: false, reason: 'preuve_photo_refs_malformed' }, { status: 400 });
+      }
+      /**
        * VERIFIER MAJOR 3 — ONE OPEN TASK PER ORDER, at this door. A second
        * compose for an order that already has a live task is an accident (the
        * order has already left `/ops/a-preparer`, so nothing shows it to him);
@@ -672,6 +730,12 @@ export class LogisticsDO {
         // unprepared order cannot be dispatched by hand any more than by wire.
         return Response.json({ ok: false, admitted: false, reason: outcome.reason }, { status: 422 });
       }
+      // COURSE-BRIEF filed against the ADMITTED task's own id — never the one
+      // this route hoped for. A refused compose leaves no brief behind.
+      this.briefs[outcome.task.id] = {
+        ...(isMediaRef(audioRaw) ? { repereAudioRef: audioRaw } : {}),
+        preuvePhotoRefs: Array.isArray(photosRaw) ? (photosRaw as string[]) : [],
+      };
       return Response.json({ ok: true, admitted: true, duplicate: outcome.duplicate, taskId: outcome.task.id });
     }
 
@@ -940,6 +1004,16 @@ export class LogisticsDO {
               ackDeadline: assignment.ackDeadline,
               window: queued?.task.window ?? null,
               location: queued?.task.location ?? null,
+              /**
+               * COURSE-BRIEF — the founder's order: « nowhere to listen the
+               * repère audio … it has to carry as well the proof photos ».
+               * Pointers only; the app fetches them from its own media base,
+               * so this read stays small on a 2G connection. A course
+               * composed before this existed answers an honest empty brief,
+               * never a fabricated one.
+               */
+              repereAudioRef: this.briefs[assignment.taskId]?.repereAudioRef ?? null,
+              preuvePhotoRefs: this.briefs[assignment.taskId]?.preuvePhotoRefs ?? [],
             },
     };
   }
