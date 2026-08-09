@@ -53,7 +53,7 @@ describe('demo world custody walk', () => {
     expect(acked.step).toBe('affectation');
     expect(beginPickup(world, id)).toBe('verify');
     // the policy checklist gates the seal: a partial checklist is refused
-    expect(() => passVerification(world, id, { order_ref: true })).toThrow();
+    expect(() => passVerification(world, id, { produit_conforme: true })).toThrow();
     expect(passVerification(world, id, allChecks())).toBe('seal');
     expect(registerSeal(world, id)).toBe('evidence');
     // SE-I06: capturing LOCKS the drop at evidence_pending; only the authoritative

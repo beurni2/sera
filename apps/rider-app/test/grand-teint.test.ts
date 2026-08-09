@@ -142,6 +142,12 @@ describe('the approved dependencies — nothing else', () => {
       '@platform/contracts', '@platform/ui-tokens', 'expo', 'expo-status-bar', 'expo-updates', 'react', 'react-native',
     ]);
     const added = Object.keys(pkg.dependencies).filter((d) => !before.has(d));
-    expect(added.sort()).toEqual(['expo-crypto', 'expo-file-system', 'expo-font', 'expo-haptics', 'expo-image-manipulator', 'expo-image-picker', 'expo-network', 'react-native-svg']);
+    // COURSE-BRIEF (founder order 2026-08-09): `expo-audio` is the ONE new
+    // native capability — playing the buyer's recorded repère on the rider's
+    // screen. Version is the SDK-54 bundled pin read from expo's own
+    // bundledNativeModules.json, never a guess. ⚠ Native module = the rider
+    // installs a NEW BUILD; an OTA update alone cannot carry it.
+    expect(pkg.dependencies['expo-audio']).toBe('~1.1.1');
+    expect(added.sort()).toEqual(['expo-audio', 'expo-crypto', 'expo-file-system', 'expo-font', 'expo-haptics', 'expo-image-manipulator', 'expo-image-picker', 'expo-network', 'react-native-svg']);
   });
 });

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { seraTheme, spacing, radius, touch, type as typo, interaction, money } from '@platform/ui-tokens/legacy';
 import {
   FAILURE_REASON_IDS,
@@ -139,7 +139,9 @@ import {
   RelaisRow as FasoRelaisRow,
   CodeCells as FasoCodeCells,
   Keypad as FasoKeypad,
+  VoicePlayRow as FasoVoicePlayRow,
 } from './src/ui/faso-kit';
+import { mediaUrl, resolveRepereAudio } from './src/net/repere-audio';
 import {
   IconColis,
   IconReprendre,
@@ -534,6 +536,67 @@ export default function App() {
   const liveSession = signInState.kind === 'signed_in' ? signInState.session : null;
   const liveAssignment = signInState.kind === 'signed_in' ? signInState.session.assignment : null;
   const assignmentLines = liveAssignment === null ? null : landmarkLines(liveAssignment.location);
+
+  /**
+   * ═══ COURSE-BRIEF — what the rider SEES and HEARS about this course ═══
+   *
+   * FOUNDER ORDER (2026-08-09): the buyer's repère voice note and the
+   * supplier's readiness photos now ride the course (Séra's task brief), and
+   * this is where they surface. Pointers become URLs only against the app's
+   * OWN media base — nothing the server says can point this phone elsewhere.
+   */
+  const repereAudio = useMemo(() => resolveRepereAudio(), []);
+  const [repereJoue, setRepereJoue] = useState(false);
+  const repereUrl = useMemo(
+    () => mediaUrl(process.env.EXPO_PUBLIC_SERA_MEDIA_BASE ?? null, liveAssignment?.repereAudioRef ?? null),
+    [liveAssignment],
+  );
+  const preuveUrls = useMemo(
+    () =>
+      (liveAssignment?.preuvePhotoRefs ?? [])
+        .map((r) => mediaUrl(process.env.EXPO_PUBLIC_SERA_MEDIA_BASE ?? null, r))
+        .filter((u): u is string => u !== null),
+    [liveAssignment],
+  );
+  // Leaving the screen never leaves a voice playing in someone's pocket.
+  useEffect(() => () => repereAudio?.stop(), [repereAudio]);
+
+  /** « Écouter le repère » — rendered ONLY when there is a note AND something
+   *  that can play it; a control that cannot work is never drawn. */
+  const RepereVoix = useCallback((): React.JSX.Element | null => {
+    if (repereUrl === null || repereAudio === null) return null;
+    return (
+      <FasoVoicePlayRow
+        label={t('repere.voix_ecouter')}
+        time=""
+        playing={repereJoue}
+        onPress={() => {
+          setRepereJoue(true);
+          void repereAudio.play(repereUrl).catch(() => setRepereJoue(false));
+        }}
+      />
+    );
+  }, [repereUrl, repereAudio, repereJoue]);
+
+  /** The supplier's readiness photos — what the check-up is answered against. */
+  const PreuvePhotos = useCallback((): React.JSX.Element | null => {
+    if (preuveUrls.length === 0) return null;
+    return (
+      <FasoCard>
+        <FasoBody>{t('preuve.titre')}</FasoBody>
+        {preuveUrls.map((u) => (
+          <Image
+            key={u}
+            source={{ uri: u }}
+            // Capped like every other proof photo in this ecosystem: the PHOTO
+            // is bounded, never the screen (founder report 2026-08-08).
+            style={styles.preuvePhoto}
+            resizeMode="cover"
+          />
+        ))}
+      </FasoCard>
+    );
+  }, [preuveUrls]);
   const dwellOrderId = liveAssignment?.orderId ?? null;
   useEffect(() => {
     // Keyed on the ORDER: a second course starts its own clock, and the clock
@@ -1371,6 +1434,10 @@ export default function App() {
                       <ProofLine label={t('assignment.no_landmark')} />
                     </FasoCard>
                   )}
+                  {/* COURSE-BRIEF: the buyer's own voice, where someone is
+                      actually looking for the door. */}
+                  <RepereVoix />
+                  <PreuvePhotos />
                   {liveAssignment.ackDeadline !== null ? (
                     <FasoBody>
                       {`${t('courses.before')} ${new Date(liveAssignment.ackDeadline).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
@@ -1852,6 +1919,12 @@ export default function App() {
             <FpIn style={styles.stackGap}>
               <FasoPosterTitle>{t('verify.title')}</FasoPosterTitle>
               <FasoBody>{t('verify.body')}</FasoBody>
+              {/* ⚠ THE CHECK-UP IS ANSWERED AGAINST THESE (founder ruling
+                  2026-08-09): the supplier's readiness photos come FIRST, then
+                  the three questions that read them. The rider compares a
+                  picture, not nine remembered fields. */}
+              <PreuvePhotos />
+              <RepereVoix />
               <FasoCard>
                 {/* Ecrans R5: the card leads with the colis identity — the order ref
                     chip + what's being verified — before the 7 checks. */}
@@ -1862,6 +1935,7 @@ export default function App() {
                 {POLICY_CHECK_IDS.map((id) => (
                   <FasoCheckRow key={id} label={t(`check.${id}`)} checked={checks[id] === true} onPress={() => setChecks({ ...checks, [id]: !checks[id] })} />
                 ))}
+                {preuveUrls.length > 0 ? <FasoBody>{t('check.aide_photos')}</FasoBody> : null}
               </FasoCard>
               <FasoPrimaryButton
                 label={t('verify.accept_action')}
@@ -2342,6 +2416,16 @@ const styles = StyleSheet.create({
   },
   flexCard: { flex: 0 },
   stackGap: { gap: spacing.md, paddingTop: spacing.sm },
+  /** COURSE-BRIEF — the supplier's readiness photo. The PHOTO is capped, never
+   *  the screen (founder report 2026-08-08); every value is a token. */
+  preuvePhoto: {
+    width: '100%',
+    maxWidth: touch.minTargetPx * 7,
+    height: touch.minTargetPx * 4,
+    borderRadius: radius.card,
+    marginTop: spacing.sm,
+    backgroundColor: FASO.paper,
+  },
   listWrap: { gap: spacing.sm },
   dropWrap: { gap: spacing.lg, paddingHorizontal: spacing.md, paddingTop: spacing.xl },
   dropHint: { textAlign: 'center' },

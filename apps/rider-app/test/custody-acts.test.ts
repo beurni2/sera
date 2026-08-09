@@ -27,7 +27,7 @@ const VERIFY = {
   presentedPickupCode: 'PICKUP-SECRET-1',
   evidenceBundleId: 'ev-1',
   dwellSec: 150,
-  checkResults: { order_ref: true, identity: true } as const,
+  checkResults: { produit_conforme: true, quantite_complete: true } as const,
 };
 const SEAL = {
   commandId: mintActId(),

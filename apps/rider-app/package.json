@@ -2,7 +2,7 @@
   "name": "@sera/rider-app",
   "version": "0.0.1",
   "private": true,
-  "description": "S\u00e9ra rider app shell (Expo/RN, WO-SE0.1) \u2014 ui-tokens sera theme; strings from the i18n catalog; Metro-safe (no node-only canon barrels).",
+  "description": "Séra rider app shell (Expo/RN, WO-SE0.1) — ui-tokens sera theme; strings from the i18n catalog; Metro-safe (no node-only canon barrels).",
   "license": "UNLICENSED",
   "main": "index.ts",
   "scripts": {
@@ -14,6 +14,7 @@
     "@platform/contracts": "git+https://github.com/beurni2/platform-contracts.git#eee9d198d89d2a219c73ec72f682e6c8c8a9b7bf&path:packages/contracts",
     "@platform/ui-tokens": "git+https://github.com/beurni2/platform-contracts.git#a832df0a8ed9e9fc83083826bc11c2a2e57e615a&path:packages/ui-tokens",
     "expo": "~54.0.35",
+    "expo-audio": "~1.1.1",
     "expo-crypto": "~15.0.9",
     "expo-file-system": "~19.0.23",
     "expo-font": "~14.0.12",
@@ -29,10 +30,10 @@
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
-    "babel-preset-expo": "~54.0.11",
+    "@platform/i18n": "git+https://github.com/beurni2/platform-contracts.git#199bc2ab172dbbf93b446af35445e17f5a0f3f35&path:packages/i18n",
     "@types/react": "~19.1.0",
+    "babel-preset-expo": "~54.0.11",
     "typescript": "^5.9.2",
-    "vitest": "^3.2.4",
-    "@platform/i18n": "git+https://github.com/beurni2/platform-contracts.git#199bc2ab172dbbf93b446af35445e17f5a0f3f35&path:packages/i18n"
+    "vitest": "^3.2.4"
   }
 }
