@@ -71,10 +71,22 @@ export type AckPrivacyResult =
   | { readonly ok: true }
   | { readonly ok: false; readonly reason: 'unauthorized' | 'offline' | 'unreachable' };
 
+/** Accepting a course. `refused` carries the door's own names —
+ *  `unknown_assignment` (404) and `not_active` (409: expired back to the
+ *  queue, or already settled) — bounded like every refusal here. */
+export type AccepterCourseResult =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly reason: 'unauthorized' | 'offline' | 'unreachable' }
+  | { readonly ok: false; readonly reason: 'refused'; readonly refus: 'unknown_assignment' | 'not_active' | 'autre' };
+
 export interface ShiftActsPort {
   ackPrivacy(code: string): Promise<AckPrivacyResult>;
   startShift(code: string): Promise<ActeServiceResult>;
   endShift(code: string): Promise<ActeServiceResult>;
+  /** SERA-FLOW (founder 2026-08-09): the rider TAPS TO ACCEPT — the
+   *  `/rider/assignment/ack` route existed from SE-LIVE-4b and, like the
+   *  shift routes before it, was called by NOTHING. */
+  accepterCourse(code: string, assignmentId: string): Promise<AccepterCourseResult>;
 }
 
 /** The 200 body → the registry's new shift state, or null when the body is not
@@ -170,6 +182,30 @@ export function httpShiftActs(
     },
     startShift: (code) => acte(code, '/rider/shift/start'),
     endShift: (code) => acte(code, '/rider/shift/end'),
+    async accepterCourse(code: string, assignmentId: string): Promise<AccepterCourseResult> {
+      if (connectivity.current() === 'offline') return { ok: false, reason: 'offline' };
+      const res = await fetchWithin(fetchFn, `${root}/rider/assignment/ack`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${code}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assignmentId }),
+      }, timeoutMs);
+      if (res === null) return { ok: false, reason: 'unreachable' };
+      if (res.status === 401) return { ok: false, reason: 'unauthorized' };
+      const body = (await res.json().catch(() => null)) as unknown;
+      if (res.status === 200) {
+        const ok = body !== null && typeof body === 'object' && (body as Record<string, unknown>)['ok'] === true;
+        return ok ? { ok: true } : { ok: false, reason: 'unreachable' };
+      }
+      if (res.status === 404 || res.status === 409) {
+        const reason = body !== null && typeof body === 'object' ? (body as Record<string, unknown>)['reason'] : null;
+        return {
+          ok: false,
+          reason: 'refused',
+          refus: reason === 'unknown_assignment' || reason === 'not_active' ? reason : 'autre',
+        };
+      }
+      return { ok: false, reason: 'unreachable' };
+    },
   };
 }
 
@@ -184,6 +220,9 @@ export function demoShiftActs(): ShiftActsPort {
       return { ok: false, reason: 'unauthorized' };
     },
     async endShift(): Promise<ActeServiceResult> {
+      return { ok: false, reason: 'unauthorized' };
+    },
+    async accepterCourse(): Promise<AccepterCourseResult> {
       return { ok: false, reason: 'unauthorized' };
     },
   };

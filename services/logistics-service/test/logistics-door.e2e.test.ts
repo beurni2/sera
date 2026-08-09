@@ -1017,16 +1017,34 @@ describe('RB-2 — the founder dispatches from Boutik+: compose → assign → t
     });
     expect(retap.status).toBe(200);
     expect(retap.json).toMatchObject({ duplicate: true });
-    // NOTE, journaled with the slice: a GRANTED-but-unacked rider still reads
-    // `assignable` on the board (the lease law — a grant can expire or be
-    // declined, and an invisible granted rider would strand tasks). The
-    // picker may therefore offer them; a second GRANT refuses 409 at the
-    // authority (proven above under 20-way concurrency), and the fold speaks
-    // that refusal by name. Asserted here so the UI claim matches the LAW.
+    // ⚠ RULING SUPERSEDED (founder, 2026-08-09, from live use): « after giving
+    // an order to boss it's still showing confier à boss on other products ».
+    // The old law kept a granted-not-acked rider on the free list so tasks
+    // could not strand behind an invisible grant — but the button it produced
+    // was a TRAP whose only outcome was the 409 above. The strand-risk is now
+    // carried by the LAZY SWEEP instead (every /ops/board and /rider/moi read
+    // settles overdue leases first), so `assignable` finally means what the
+    // assign door will actually do: a carrier is NOT free.
     const after = await call(mf, 'GET', '/ops/board', opsAuth);
     const busy = ((after.json['board'] as Json)['riders'] as Json[]).find(
       (r) => r['riderId'] === 'rider-rb2-boutik',
     );
-    expect(busy?.['assignable'], 'granted-not-acked still reads assignable — the lease law').toBe(true);
+    expect(busy?.['assignable'], 'a granted rider is BUSY on the board — founder ruling 2026-08-09').toBe(false);
+
+    // …and the no-strand property the old law protected, proven on its new
+    // road: past the ack deadline the sweep requeues the task and frees the
+    // rider (driven through /ops/expire-due because the lazy sweep runs on
+    // the REAL clock, which a test cannot fast-forward).
+    const swept = await call(mf, 'POST', '/ops/expire-due', opsAuth, {
+      nowIso: new Date(Date.now() + 6 * 60_000).toISOString(),
+    });
+    expect(swept.status).toBe(200);
+    expect((swept.json['requeued'] as Json[]).some((a) => a['taskId'] === taskId)).toBe(true);
+    const freed = await call(mf, 'GET', '/ops/board', opsAuth);
+    const boardAfter = freed.json['board'] as Json;
+    expect(((boardAfter['riders'] as Json[]).find((r) => r['riderId'] === 'rider-rb2-boutik'))?.['assignable'],
+      'expiry frees the rider — no task ever strands behind a dead grant').toBe(true);
+    expect((boardAfter['queued'] as Json[]).some((q) => q['taskId'] === taskId),
+      'the task is back in the queue, offerable again').toBe(true);
   }, 60_000);
 });

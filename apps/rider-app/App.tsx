@@ -79,6 +79,11 @@ import { IDLE, refusalKeys, submit as submitSignIn, type SignInState } from './s
 import { isWired, resolveRiderSession } from './src/net/resolveRiderSession';
 import { assignmentStateKey, landmarkLines, onShiftFromSession } from './src/net/rider-session';
 import { refusServiceKey, resolveShiftActs } from './src/net/shift-acts';
+
+/** How often a signed-in wired build re-asks `/rider/moi`. The ack window is
+ *  five minutes (logistics `ACK_DEADLINE_MS`) — 20 s keeps a confided course
+ *  well inside it. */
+const MOI_POLL_MS = 20_000;
 import { resolveCustodyActs } from './src/net/resolveCustodyActs';
 import { httpSosSender } from './src/net/sos-wire';
 import { resolveEvidenceCapture, type CaptureOutcome } from './src/net/evidence-capture';
@@ -762,6 +767,19 @@ export default function App() {
       if (next.kind === 'signed_in') setSignInState(next);
     }, () => void 0);
   }, [sessionPort, riderCode]);
+  /**
+   * ⚠ FOUNDER REPORT (2026-08-09): « I sent the coursier but nothing shows on
+   * the sera app. » The session was fetched ONCE, at sign-in, and never again
+   * — a course confided a minute later had no road to the screen until the
+   * rider signed out and back in, and by then its five-minute ack window was
+   * long dead. A signed-in wired build now re-asks `/rider/moi` on a clock;
+   * what arrives is always the SERVER'S session, never an invention.
+   */
+  useEffect(() => {
+    if (!WIRED || riderCode === null) return;
+    const timer = setInterval(refreshSession, MOI_POLL_MS);
+    return () => clearInterval(timer);
+  }, [WIRED, riderCode, refreshSession]);
   const accepterPrivacy = useCallback(() => {
     if (riderCode === null || serviceBusy) return;
     setServiceBusy(true);
@@ -798,6 +816,34 @@ export default function App() {
           // « The screen was stale » — fetch the true state; the sentence
           // above explains the jump.
           if (r.refus === 'already_on_shift' || r.refus === 'not_on_shift') refreshSession();
+          return;
+        }
+        setServiceAvis(r.reason === 'offline' ? 'signin.offline' : 'service.act_failed');
+      });
+    },
+    [shiftActs, riderCode, serviceBusy, refreshSession],
+  );
+  /**
+   * SERA-FLOW — the ACCEPT (founder 2026-08-09: « it will tap and accept it »).
+   * The 200 is the BOOK's word (`acknowledged`); the session is then re-asked
+   * rather than patched by hope. A refusal means the course is no longer his
+   * to accept — expired back to the queue or gone — said in one sentence, and
+   * the refresh clears the card.
+   */
+  const accepterCourse = useCallback(
+    (assignmentId: string) => {
+      if (riderCode === null || serviceBusy) return;
+      setServiceBusy(true);
+      setServiceAvis(null);
+      void shiftActs.accepterCourse(riderCode, assignmentId).then((r) => {
+        setServiceBusy(false);
+        if (r.ok) {
+          refreshSession();
+          return;
+        }
+        if (r.reason === 'refused') {
+          setServiceAvis('course.repartie');
+          refreshSession();
           return;
         }
         setServiceAvis(r.reason === 'offline' ? 'signin.offline' : 'service.act_failed');
@@ -1300,6 +1346,43 @@ export default function App() {
                     onPress={() => acteService('start')}
                   />
                 </>
+              ) : liveAssignment !== null && liveAssignment.status !== 'acknowledged' ? (
+                /**
+                 * ═══ SERA-FLOW — THE PROPOSAL (founder 2026-08-09): the course
+                 * arrives, the rider SEES it and ACCEPTS it — before any
+                 * custody act. Until now the wired arm dropped a rider
+                 * straight onto the verification checklist of a course they
+                 * had never said yes to, and the book's five-minute ack
+                 * window ran out unanswered. The place leads (landmark
+                 * first); the deadline is stated; the one primary action is
+                 * the acceptance.
+                 */
+                <>
+                  <FasoPosterTitle>{t('course.proposee_titre')}</FasoPosterTitle>
+                  {assignmentLines !== null ? (
+                    <FasoLandmarkCard
+                      zone={assignmentLines[2]}
+                      lines={assignmentLines}
+                      repereLabel={t('assignment.landmark_label')}
+                      indicationsLabel={t('repere.indications')}
+                    />
+                  ) : (
+                    <FasoCard>
+                      <ProofLine label={t('assignment.no_landmark')} />
+                    </FasoCard>
+                  )}
+                  {liveAssignment.ackDeadline !== null ? (
+                    <FasoBody>
+                      {`${t('courses.before')} ${new Date(liveAssignment.ackDeadline).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
+                    </FasoBody>
+                  ) : null}
+                  <FasoBody>{t('course.proposee_aide')}</FasoBody>
+                  <FasoPrimaryButton
+                    label={t(serviceBusy ? 'acts.sending' : 'course.accepter')}
+                    disabled={serviceBusy}
+                    onPress={() => accepterCourse(liveAssignment.assignmentId)}
+                  />
+                </>
               ) : liveAssignment !== null ? (
                 <>
                   {/**
@@ -1568,6 +1651,9 @@ export default function App() {
                     title={t('assignment.none_title')}
                     hint={t('assignment.none_hint')}
                   />
+                  {/* The clock re-asks every 20 s; the button is for the rider
+                      who was just TOLD a course is coming and wants it NOW. */}
+                  <FasoGhostButton label={t('service.actualiser')} onPress={refreshSession} />
                   {onShiftFromSession(liveSession?.shift ?? null) === true ? (
                     /* Ending the day is offered only with no course in hand —
                        the registry would refuse a custody-holding end anyway

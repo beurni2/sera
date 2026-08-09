@@ -19,25 +19,25 @@
   },
   {
     "key": "shift.start_action",
-    "fr": "Prendre la route",
+    "fr": "Passer en ligne",
     "register": "neutral",
     "screenClass": "general"
   },
   {
     "key": "shift.end_action",
-    "fr": "Finir la route",
+    "fr": "Passer hors ligne",
     "register": "neutral",
     "screenClass": "general"
   },
   {
     "key": "shift.on",
-    "fr": "En service",
+    "fr": "En ligne",
     "register": "neutral",
     "screenClass": "status"
   },
   {
     "key": "shift.off",
-    "fr": "Hors service",
+    "fr": "Hors ligne",
     "register": "neutral",
     "screenClass": "status"
   },
@@ -595,19 +595,19 @@
   },
   {
     "key": "service.off_title",
-    "fr": "Hors service.",
+    "fr": "Hors ligne.",
     "register": "neutral",
     "screenClass": "status"
   },
   {
     "key": "service.off_body",
-    "fr": "Prenez votre service quand vous êtes prêt. Sans service confirmé, aucune course ne vous est proposée.",
+    "fr": "Passez en ligne quand vous êtes prêt. Sans être en ligne, aucune course ne peut vous être confiée.",
     "register": "neutral",
     "screenClass": "instruction"
   },
   {
     "key": "service.location_note",
-    "fr": "Votre position est suivie en service seulement. Jamais en dehors.",
+    "fr": "Votre position est suivie en ligne seulement. Jamais en dehors.",
     "register": "neutral",
     "screenClass": "status"
   },
@@ -631,13 +631,13 @@
   },
   {
     "key": "service.pending_note",
-    "fr": "Seul le serveur confirme votre service. Un départ hors ligne ne confère rien.",
+    "fr": "Seul le serveur confirme que vous êtes en ligne. Un départ hors réseau ne confère rien.",
     "register": "neutral",
     "screenClass": "status"
   },
   {
     "key": "service.on_note",
-    "fr": "Position suivie, en service seulement. Les courses peuvent arriver.",
+    "fr": "Position suivie, en ligne seulement. Les courses peuvent arriver.",
     "register": "neutral",
     "screenClass": "status"
   },
@@ -676,6 +676,12 @@
     "fr": "Pas de réponse. Réessayez dans un moment.",
     "register": "neutral",
     "screenClass": "status"
+  },
+  {
+    "key": "service.actualiser",
+    "fr": "Actualiser",
+    "register": "neutral",
+    "screenClass": "label"
   },
   {
     "key": "courses.overline",
@@ -1468,5 +1474,29 @@
     "fr": "J'accepte et je continue",
     "register": "neutral",
     "screenClass": "label"
+  },
+  {
+    "key": "course.proposee_titre",
+    "fr": "Une course pour vous",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "course.proposee_aide",
+    "fr": "Regardez le lieu, puis acceptez. Passé l'heure indiquée, elle repart dans la file.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "course.accepter",
+    "fr": "Accepter la course",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "course.repartie",
+    "fr": "Cette course est repartie dans la file.",
+    "register": "neutral",
+    "screenClass": "status"
   }
 ]

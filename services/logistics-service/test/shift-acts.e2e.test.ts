@@ -148,6 +148,74 @@ describe('⚠ the whole ladder, through the app’s own ports, judged by the BOA
     expect(await acts.startShift('SR-AAAA-BBBB-CCCC')).toEqual({ ok: false, reason: 'unauthorized' });
   });
 
+  it('SERA-FLOW: the confided course REACHES the rider, is ACCEPTED by their own hand, and the carrier leaves the free list', async () => {
+    const mf = spawn();
+    // The order's facts arrive as they do in production — funding + readiness
+    // through the intake door, then the task itself.
+    const intake = async (path: string, body: unknown) => {
+      const res = await mf.dispatchFetch(`http://logistics${path}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${INTAKE}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      expect(res.status, path).toBe(200);
+      return (await res.json()) as Record<string, unknown>;
+    };
+    const T = '2026-08-09T10:00:00.000Z';
+    await intake('/intake/funding', { orderId: 'ord-flow-1', status: 'funded', paymentMode: 'FULL_PREPAY', asOf: T });
+    await intake('/intake/readiness', { orderId: 'ord-flow-1', ready: true, asOf: T });
+    await intake('/intake/task-ready', {
+      name: 'logistics.task_ready.v1',
+      envelope: {
+        command_id: 'cmd-flow-t1', correlation_id: 'corr-ord-flow-1', aggregateVersion: 1,
+        actor: 'shop-plus:commerce-core', serverTime: T, version: '1',
+      },
+      payload: {
+        task: {
+          type: 'delivery', id: 'task-flow-1', orderId: 'ord-flow-1',
+          location: { zone: 'Gounghin', landmark: 'Face à la pharmacie du marché', directions: '', maskedRelay: '' },
+          window: { start: T, end: '2026-08-09T16:00:00.000Z' }, status: 'ready',
+        },
+      },
+    });
+
+    // Boss climbs the whole ladder through the APP'S OWN ports.
+    await ops(mf, '/ops/riders', { riderId: 'rider-boss', displayName: 'boss', phoneAlias: 'bossy' });
+    await ops(mf, '/ops/riders/certify', { riderId: 'rider-boss', certified: true });
+    const code = (await ops(mf, '/ops/rider-code/mint', { riderId: 'rider-boss' }))['code'] as string;
+    const { acts, session } = appPorts(mf);
+    await acts.ackPrivacy(code);
+    const started = await acts.startShift(code);
+    if (!started.ok) throw new Error('start refused');
+    expect(await boardRider(mf, 'rider-boss')).toMatchObject({ assignable: true });
+
+    // The founder confides — the same /ops/assign contract confier calls.
+    const granted = await ops(mf, '/ops/assign', { command_id: 'cmd-flow-a1', taskId: 'task-flow-1', riderId: 'rider-boss' });
+    expect(granted['ok']).toBe(true);
+    const assignmentId = (granted['assignment'] as Record<string, unknown>)['assignmentId'] as string;
+
+    // ⚠ THE FOUNDER'S REPORT, CLOSED TWICE OVER:
+    // (1) « nothing shows on the sera app » — the app's own session read now
+    //     carries the course, as a PROPOSAL awaiting his yes;
+    const proposed = await session.signIn(code);
+    if (!proposed.ok) throw new Error('sign-in refused');
+    expect(proposed.session.assignment).toMatchObject({ assignmentId, orderId: 'ord-flow-1', status: 'active_unacknowledged' });
+    expect(proposed.session.assignment?.ackDeadline).not.toBeNull();
+    // (2) « it's still showing confier à boss on other products » — a carrier
+    //     is no longer on the free list, by the board's own word.
+    expect(await boardRider(mf, 'rider-boss')).toMatchObject({ certified: true, assignable: false });
+
+    // The ACCEPT, from the rider's own hand — then the session says acknowledged.
+    expect(await acts.accepterCourse(code, assignmentId)).toEqual({ ok: true });
+    const accepted = await session.signIn(code);
+    if (!accepted.ok) throw new Error('refresh refused');
+    expect(accepted.session.assignment?.status).toBe('acknowledged');
+
+    // Accepting twice, or a course that is not yours: refused BY NAME.
+    expect(await acts.accepterCourse(code, assignmentId)).toEqual({ ok: false, reason: 'refused', refus: 'not_active' });
+    expect(await acts.accepterCourse(code, 'as-nowhere')).toEqual({ ok: false, reason: 'refused', refus: 'unknown_assignment' });
+  });
+
   it('offline sends NOTHING and changes nothing — queued = pending, never done', async () => {
     const mf = spawn();
     await ops(mf, '/ops/riders', { riderId: 'rider-off', displayName: 'Off', phoneAlias: 'o-1' });

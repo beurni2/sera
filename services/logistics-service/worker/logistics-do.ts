@@ -332,6 +332,18 @@ export class LogisticsDO {
 
     // ── Ops door (router-gated: SERA_OPS_SECRET — the founder) ────────────
     if (request.method === 'GET' && pathname === '/ops/board') {
+      /**
+       * ⚠ THE SWEEP RUNS LAZILY, HERE AND ON `/rider/moi` — nothing else ever
+       * ran it. `/ops/expire-due` existed with NO caller, so an assignment a
+       * rider never acknowledged (the founder's course to a rider whose app
+       * predates the accept screen) stayed `active_unacknowledged` for ever:
+       * the task never requeued, the rider never freed. Every live read now
+       * settles overdue leases first, so what the founder and the rider see
+       * is always the post-deadline truth. Same proven `expireDue` the ops
+       * route calls; its events ride the response there — a lazy sweep's
+       * outcome is fully visible in the very board it returns.
+       */
+      await this.dispatch.expireDue(now);
       return Response.json({ ok: true, board: this.board() });
     }
     if (request.method === 'POST' && pathname === '/ops/riders') {
@@ -372,12 +384,14 @@ export class LogisticsDO {
       return Response.json({ ok: true, rider: this.registry.rider(existing.riderId) });
     }
     if (request.method === 'GET' && pathname === '/ops/riders') {
+      // Same `assignable` semantics as the board — one meaning, both doors.
+      const carrying = this.ridersCarrying();
       const riders = this.registry
         .snapshot()
         .riders.map(([, record]) => ({
           ...record,
           shift: this.registry.shift(record.riderId),
-          assignable: this.registry.isAssignable(record.riderId),
+          assignable: this.registry.isAssignable(record.riderId) && !carrying.has(record.riderId),
         }))
         .sort((a, b) => (a.riderId < b.riderId ? -1 : 1));
       return Response.json({ ok: true, riders });
@@ -723,6 +737,9 @@ export class LogisticsDO {
       const riderId = codeRecord.riderId;
 
       if (request.method === 'GET' && pathname === '/rider/moi') {
+        // The lazy sweep (see /ops/board): a rider polling their session must
+        // never be shown a course whose lease already died.
+        await this.dispatch.expireDue(now);
         return Response.json({ ok: true, rider: this.riderView(riderId) });
       }
       /**
@@ -832,8 +849,25 @@ export class LogisticsDO {
     return Response.json(outcome);
   }
 
+  /** Riders holding a LIVE assignment right now — the book's truth, the same
+   *  active set the one-active-per-rider invariant guards at assign time. */
+  private ridersCarrying(): Set<string> {
+    const carrying = new Set<string>();
+    for (const [, record] of this.book.snapshot().assignments) {
+      if (ACTIVE_ASSIGNMENT_STATUSES.includes(record.status)) carrying.add(record.riderId);
+    }
+    return carrying;
+  }
+
   /** The dispatch board — queued tasks, the roster, live assignments. Reads
-   * from the same snapshots the persistence layer uses; recomputes nothing. */
+   * from the same snapshots the persistence layer uses; recomputes nothing.
+   *
+   * ⚠ FOUNDER REPORT (2026-08-09): « after giving an order to boss it's still
+   * showing confier à boss on other products ». The ASSIGN door has always
+   * refused a busy rider (`rider_already_has_active_assignment`) — but this
+   * projection said `assignable: true` for him, so every other order offered
+   * a button whose only possible outcome was that refusal. `assignable` now
+   * means what the door will actually do: certified + on-shift + NOT carrying. */
   private board(): {
     queued: { taskId: string; orderId: string; admittedAt: string; window: unknown; location: unknown }[];
     riders: (RiderRecord & { shift: unknown; assignable: boolean })[];
@@ -846,12 +880,13 @@ export class LogisticsDO {
       window: q.task.window,
       location: q.task.location,
     }));
+    const carrying = this.ridersCarrying();
     const riders = this.registry
       .snapshot()
       .riders.map(([, record]) => ({
         ...record,
         shift: this.registry.shift(record.riderId),
-        assignable: this.registry.isAssignable(record.riderId),
+        assignable: this.registry.isAssignable(record.riderId) && !carrying.has(record.riderId),
       }))
       .sort((a, b) => (a.riderId < b.riderId ? -1 : 1));
     const assignments = this.book
