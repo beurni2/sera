@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { money } from '@platform/ui-tokens/legacy';
+import { displayFace, textFace } from '../src/ui/faso-fonts';
 
 /**
  * WO-FP-SERA · STEP 0 — the Faso Premium faces embed under DISTINCT names AND the
@@ -124,5 +125,42 @@ describe('WO-FP-SERA STEP 0 — the six Faso Premium faces embed distinct + draw
       expect(missing, `${file} cannot draw: ${missing.map((c) => JSON.stringify(c)).join(', ')}`).toEqual([]);
       expect(f.hasTnum, `${file} lost the tnum (tabular figures) feature`).toBe(true);
     }
+  });
+});
+
+/**
+ * ⚠ (3) THE LINK NOTHING GUARDED (verifier M7, 2026-08-09). Every `fontFamily`
+ * in the app comes from `displayFace()` / `textFace()`, and those return STRINGS
+ * built from weight arrays. Nothing tied those strings to the faces that are
+ * actually embedded — so renaming a file, dropping a weight from an array, or
+ * removing a face from app.json would leave the app asking for a family that
+ * does not exist, and RN answers that by silently falling back to the system
+ * face. Sun, 1 GB Android, a rider reading a drop code in the wrong typeface.
+ * The ARCHIVO-SWEEP made this the only unguarded link in the font chain.
+ */
+describe('WO-FP-SERA — every face the app can ASK for is a face that is embedded', () => {
+  it('displayFace/textFace resolve, over their whole weight range, to embedded families', () => {
+    const embedded = new Set(FACES.map(([, family]) => family));
+    const asked = new Set<string>();
+    // the full plausible CSS weight range, not just the pinned stops — `nearest`
+    // must land on an embedded face for anything a caller might pass
+    for (let w = 100; w <= 900; w += 50) {
+      asked.add(displayFace(w));
+      asked.add(textFace(w));
+    }
+    expect(asked.size, 'the helpers collapsed to nothing — vacuous otherwise').toBeGreaterThan(1);
+    for (const family of asked) {
+      expect(embedded.has(family), `the app can ask for "${family}", which is not an embedded face`).toBe(true);
+    }
+  });
+
+  it('and every embedded face is REACHABLE — no dead weight shipped in the binary', () => {
+    const reachable = new Set<string>();
+    for (let w = 100; w <= 900; w += 50) {
+      reachable.add(displayFace(w));
+      reachable.add(textFace(w));
+    }
+    const dead = FACES.map(([, family]) => family).filter((f) => !reachable.has(f));
+    expect(dead, `embedded but unreachable — the Archivo lesson, in miniature: ${dead.join(', ')}`).toEqual([]);
   });
 });

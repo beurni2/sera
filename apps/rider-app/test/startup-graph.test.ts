@@ -190,13 +190,11 @@ describe('KIT-SWEEP — the startup module graph is what the app actually loads'
   });
 
   it('every module named UNSHIPPED_ON_PURPOSE really is on disk and really is unshipped', () => {
-    // The list is empty today and that is the target state, so say so out loud
-    // rather than let an empty loop read as « checked ». Both former entries
-    // were defects, not exemptions; the next addition should expect that prior.
-    if (UNSHIPPED_ON_PURPOSE.length === 0) {
-      expect(UNSHIPPED_ON_PURPOSE).toEqual([]);
-      return;
-    }
+    // The list is empty today and that is the target state. `expect([]).toEqual([])`
+    // would be exactly as vacuous as the empty loop it dressed up, so this says
+    // nothing extra: the real guard is the recursive orphan scan above, which is
+    // non-vacuous (it walks all of src/ and pins the file count). Both former
+    // entries were defects, not exemptions; the next addition should expect that.
     for (const rel of UNSHIPPED_ON_PURPOSE) {
       expect(existsSync(join(appDir, rel)), `${rel} is named but does not exist — stale entry`).toBe(true);
       expect(inGraph(rel), `${rel} is named as unshipped but IS in the startup graph`).toBe(false);

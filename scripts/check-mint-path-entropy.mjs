@@ -31,7 +31,15 @@ function walk(dir, acc) {
     if (statSync(p).isDirectory()) {
       if (name === 'node_modules' || name === 'dist' || name === 'test') continue;
       walk(p, acc);
-    } else if (/(command-id|commandId)[^/\\]*\.(ts|mjs|js)$/.test(name)) {
+    } else if (/(command-id|commandId|ensureCsprng)[^/\\]*\.(ts|mjs|js)$/.test(name)) {
+      // ⚠ `ensureCsprng` JOINED THIS FILTER 2026-08-09 (verifier M1). The canon
+      // helper draws from `globalThis.crypto.randomUUID`, and on device that
+      // global is installed by `ensureCsprng.ts` and by nothing else — so THAT
+      // file is now the entropy source for every command_id on a phone, and the
+      // filename filter could not see it. A shim handing back a constant, or a
+      // UUID assembled from `Math.random()`, passed this gate and the whole
+      // suite. The ban is only absolute if the gate can see where the bytes
+      // actually come from.
       acc.push(p);
     }
   }

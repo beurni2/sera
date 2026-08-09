@@ -37,7 +37,7 @@ function fontPlugin(): [string, { fonts?: string[] }] | undefined {
   return undefined;
 }
 
-describe('WO-6.2 — the preview publish embeds Archivo natively (no silent typeface loss)', () => {
+describe('WO-6.2 — the preview publish embeds the typefaces natively (no silent typeface loss)', () => {
   it('DROP MODE 1: expo-font is a DIRECT dependency (transitive-only is what broke the publish)', () => {
     const deps = { ...pkg.dependencies, ...pkg.devDependencies };
     expect(
