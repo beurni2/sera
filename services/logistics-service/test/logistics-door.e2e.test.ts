@@ -257,13 +257,16 @@ describe('riders, personal codes, and the full dispatch loop through the doors',
     expect(phantom.json).toMatchObject({ reason: 'unknown_rider' });
   });
 
-  it('the code inventory lists {riderId, mintedAt} — the hash NEVER leaves the object', async () => {
+  it('the code inventory lists {riderId, mintedAt, revelable} — the hash and the code NEVER leave the object', async () => {
+    // CODE-REVU (2026-08-09) widened the allowlist by ONE boolean flag —
+    // `revelable` says whether « Voir le code » can answer, never the bytes.
     const inv = await call(mf, 'GET', '/ops/rider-codes', opsAuth);
     expect(inv.status).toBe(200);
     const codes = inv.json['codes'] as Json[];
     const mine = codes.find((c) => c['riderId'] === 'r-loop-1');
     expect(mine).toBeDefined();
-    expect(Object.keys(mine as object).sort()).toEqual(['mintedAt', 'riderId']);
+    expect(Object.keys(mine as object).sort()).toEqual(['mintedAt', 'revelable', 'riderId']);
+    expect(typeof (mine as Record<string, unknown>)['revelable']).toBe('boolean');
   });
 
   it('an uncertified or privacy-silent rider cannot start a shift (the registry law, spoken through the door)', async () => {

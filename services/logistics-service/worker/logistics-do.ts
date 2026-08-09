@@ -410,11 +410,25 @@ export class LogisticsDO {
       const previous = await this.state.storage.get<{ hash: string }>(`${RIDERCODE_PREFIX}${riderId}`);
       if (previous !== undefined) await this.state.storage.delete(`${CODEHASH_PREFIX}${previous.hash}`);
       await this.state.storage.put({
+        // CODE-REVU (founder ruling 2026-08-09, all code desks): the plaintext
+        // is KEPT on the founder-side pointer so /ops/rider-code/reveal can
+        // show it back — behind SERA_OPS_SECRET only; the rider door still
+        // verifies on the hash, and no rider-facing read carries it.
         [`${CODEHASH_PREFIX}${hash}`]: { riderId, mintedAt } satisfies RiderCodeRecord,
-        [`${RIDERCODE_PREFIX}${riderId}`]: { hash, mintedAt },
+        [`${RIDERCODE_PREFIX}${riderId}`]: { hash, mintedAt, code },
       });
-      // The clear code leaves exactly once — here, to the founder's console.
       return Response.json({ ok: true, code, riderId, mintedAt });
+    }
+    /** CODE-REVU — the founder REREADS a code he already gave. Pre-ruling
+     *  codes exist only as hashes and answer `code_anterieur`, honestly. */
+    if (request.method === 'POST' && pathname === '/ops/rider-code/reveal') {
+      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      if (body === null || !isStr(body['riderId'])) return malformed();
+      const riderId = (body['riderId'] as string).trim();
+      const pointer = await this.state.storage.get<{ mintedAt: string; code?: string }>(`${RIDERCODE_PREFIX}${riderId}`);
+      if (pointer === undefined) return Response.json({ ok: false, reason: 'no_code' }, { status: 404 });
+      if (pointer.code === undefined) return Response.json({ ok: false, reason: 'code_anterieur' }, { status: 409 });
+      return Response.json({ ok: true, code: pointer.code, riderId, mintedAt: pointer.mintedAt });
     }
     if (request.method === 'POST' && pathname === '/ops/rider-code/revoke') {
       const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
@@ -426,10 +440,15 @@ export class LogisticsDO {
       return Response.json({ ok: true, status: 'revoked' });
     }
     if (request.method === 'GET' && pathname === '/ops/rider-codes') {
-      // Allowlist projection: riderId + mintedAt; the hash NEVER leaves.
-      const entries = await this.state.storage.list<{ mintedAt: string }>({ prefix: RIDERCODE_PREFIX });
+      // Allowlist projection: riderId + mintedAt (+ whether the reveal can
+      // answer); the hash and the code NEVER leave on this list.
+      const entries = await this.state.storage.list<{ mintedAt: string; code?: string }>({ prefix: RIDERCODE_PREFIX });
       const codes = [...entries.entries()]
-        .map(([key, value]) => ({ riderId: key.slice(RIDERCODE_PREFIX.length), mintedAt: value.mintedAt }))
+        .map(([key, value]) => ({
+          riderId: key.slice(RIDERCODE_PREFIX.length),
+          mintedAt: value.mintedAt,
+          revelable: value.code !== undefined,
+        }))
         .sort((a, b) => (a.riderId < b.riderId ? -1 : 1));
       return Response.json({ ok: true, codes });
     }

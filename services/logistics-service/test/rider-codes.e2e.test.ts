@@ -164,6 +164,68 @@ describe('⚠ the founder gives a rider their code — console port, real Worker
     expect(again.kind === 'refused' ? again.reason : '').toBe('already_registered');
   }, 30_000);
 
+  it('⚠ CODE-REVU (founder ruling 2026-08-09): the founder rereads the code he already gave — same bytes, door untouched, list says revelable only', async () => {
+    // The consuming screen lives in the Boutik+ console (Coursiers tab); this
+    // pins the Worker contract that screen's port relies on.
+    const mf = spawn();
+    const port = desk(mf);
+    await port.register({ riderId: 'rider-revu', displayName: 'Revu', phoneAlias: 'alias-revu' });
+    const minted = await port.mint('rider-revu');
+    const code = minted.kind === 'ok' ? minted.value : '';
+
+    const revu = await mf.dispatchFetch('http://logistics/ops/rider-code/reveal', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${OPS}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ riderId: 'rider-revu' }),
+    });
+    expect(revu.status).toBe(200);
+    expect(await revu.json()).toMatchObject({ ok: true, code });
+
+    // The reread is a POINTER READ, never a rotation: the same bytes still
+    // open the rider's door afterwards.
+    const verified = await mf.dispatchFetch('http://logistics/verify/rider-code', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${VERIFY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+    });
+    expect(verified.status).toBe(200);
+
+    // The inventory says « Voir le code » can answer — a FLAG, never the bytes.
+    const liste = await mf.dispatchFetch('http://logistics/ops/rider-codes', {
+      headers: { Authorization: `Bearer ${OPS}` },
+    });
+    const listeText = await liste.text();
+    const rows = (JSON.parse(listeText) as { codes: Record<string, unknown>[] }).codes;
+    expect(rows.find((r) => r['riderId'] === 'rider-revu')).toMatchObject({ revelable: true });
+    expect(listeText.includes(code)).toBe(false);
+  }, 30_000);
+
+  it('⚠ CODE-REVU refusals: founder key only, no_code for a stranger and after revoke', async () => {
+    const mf = spawn();
+    const port = desk(mf);
+    const relire = async (riderId: string, key: string = OPS) => {
+      const res = await mf.dispatchFetch('http://logistics/ops/rider-code/reveal', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ riderId }),
+      });
+      return { status: res.status, json: (await res.json().catch(() => ({}))) as Record<string, unknown> };
+    };
+
+    await port.register({ riderId: 'rider-revu2', displayName: 'Revu2', phoneAlias: 'alias-revu2' });
+    await port.mint('rider-revu2');
+    expect((await relire('rider-revu2', 'not-the-ops-key')).status).toBe(401);
+
+    const inconnu = await relire('rider-nowhere');
+    expect(inconnu.status).toBe(404);
+    expect(inconnu.json['reason']).toBe('no_code');
+
+    await port.revoke('rider-revu2');
+    const apres = await relire('rider-revu2');
+    expect(apres.status, 'revoke kills the pointer — the reread dies with the door').toBe(404);
+    expect(apres.json['reason']).toBe('no_code');
+  }, 30_000);
+
   it('⚠ a wrong ops key is BAD_KEY, never an empty roster', async () => {
     // An empty desk under a wrong key would read as « no riders yet » and send
     // the founder registering duplicates of people who already exist.
