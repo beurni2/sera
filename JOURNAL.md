@@ -1671,6 +1671,26 @@ Set repo variable `SERA_CONSOLE_ORIGIN` in `beurni2/sera` to `https://boutik-plu
 - **What I could NOT verify:** I cannot run the app on a device from here. The chain is proven at every link I can execute — the throw, the fix, the call site, the bundle — but the on-device confirmation is the founder's tap.
 - **Evidence:** rider-app **339/339** (335 + 4) · typecheck clean · gate board **ALL GATES GREEN exit 0**.
 
+## 2026-08-09 · ARCHIVO-SWEEP — 166.8 KiB of fonts that drew nothing leave the APK (founder go-ahead)
+- **Founder ruling:** « yes go ahead ». Surfaced by the KIT-SWEEP verifier round and confirmed independently before acting.
+- **What was wrong:** the reskin moved every rendered face to Bricolage + Instrument (`faso-fonts.ts` → `displayFace`/`textFace`), but `app.json` never stopped natively embedding the five **Archivo** TTFs through the expo-font plugin. Nothing live requested an `Archivo-*` family: the only two mentions left in app source were the orphaned `src/ui/fonts.ts` (whose sole consumer had been the deleted Grand Teint kit) and `app.json` itself. Every rider carried **170 808 bytes** of faces that could never draw a letter.
+- **Measured:** the embedded font set goes **471.0 KiB → 304.2 KiB, −166.8 KiB (−35.4 %)**. That is **six times** what KIT-SWEEP saved (−27.2 KiB of JS), on the same Law-7 axis. It lands in the APK, so it arrives with the next native build, not over the air — unlike the JS saving.
+- **Removed:** the five `Archivo-*.ttf` assets · `src/ui/fonts.ts` · the five `app.json` embed entries · `assets/fonts/BUILD.md` and `COLD-START.md` (both WO-5.1 documents about the Archivo substrate specifically — every claim in them is an Archivo claim, and their one durable law now lives as an executable assertion instead of prose) · `test/font-embedding.test.ts`.
+- **Nothing was dropped that had a live subject.** `font-embedding.test.ts` guarded the Archivo name-table collision — `faso-fonts.test.ts` already carries the identical guard for the six shipped faces (real TTF bytes, distinct families, truthful OS/2 weights, `Set(families).size === 6`) and is untouched. The two laws inside the retired `grand-teint` substrate block that DID outlive their file were re-aimed, not deleted:
+  - the **font budget** now reads the embed list out of `app.json` itself — the list the native build actually packs, never a hand-kept second copy — asserts exactly six faces, that none matches `/Archivo/`, and that the total stays under a ceiling;
+  - the **cold-start law** (« data only, no loader, first paint never waits ») now scans `src/ui/faso-fonts.ts`.
+  Only the assertion that genuinely died with the retired design was dropped: `FONT_FAMILY === tokens.type.family === 'Archivo'`, a pin to the Grand Teint design-reference tokens.
+- **Tightened while correctly aimed:** `preview-font-embedding.test.ts` asserted « at least 6 » embedded faces, which is exactly the assertion that let five dead ones ride along for months. It now asserts **exactly six** — a seventh means a new family arrived unreviewed or the retired one came back.
+- **`UNSHIPPED_ON_PURPOSE` is now EMPTY, and both of its former entries turned out to be defects wearing a docblock** — `ensureCsprng.ts` (the dead custody spine, above) and `fonts.ts` (this). The allowlist test says so explicitly rather than letting an empty loop read as « checked ». The lesson is written into the file: an entry needs a reason that survives « what is broken while this stays out? ».
+- **Four mutations, each verified to have applied, each caught:** an Archivo face put back in the embed list → red in grand-teint AND preview-font · `fonts.ts` restored on disk → red in grand-teint AND startup-graph · a font loader sneaked into `faso-fonts.ts` → red.
+- **Evidence:** rider-app **337/337** (339 − the 2 Archivo-only tests retired with their subject) · typecheck clean · gate board **ALL GATES GREEN exit 0**.
+
+## 2026-08-09 · DECISION — `noUnusedLocals` stays OFF (founder ruling, my recommendation adopted)
+- **Founder:** « for the 1 do it with your recommendation. » My recommendation was **not** to enable it, so the flag stays off and this entry is the record.
+- **The case for it, measured, not asserted:** replayed against the pre-KIT-SWEEP tree it flags **exactly the twenty** dead kit imports (`TS6133`). It is a real recurrence net.
+- **Why it is still off:** post-sweep blast radius is three sites — `KIND_ICON` (App.tsx) and `GROUP` (rider-code.ts), both plainly dead, and **`playing` (App.tsx), which is unread deliberately**. The VOIX-ÉTAT-2 verifier round hardcoded `playing: false` in `voiceFor()` precisely so the demo row cannot show a pause sign over silence. A compiler flag nagging about that fix invites the next reader to « repair » it by reading the value again, which re-manufactures the founder's own reported bug.
+- **What covers the risk instead:** `test/startup-graph.test.ts` catches the actual failure mode (a module reaching the bundle that nothing renders) with better evidence than a lint rule — Metro's real graph. Revisit if the three sites are ever resolved on their own merits.
+
 ---
 
 # ═══ STATE OF PLAY — read this first in a new session (2026-08-09) ═══

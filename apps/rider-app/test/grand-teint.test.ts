@@ -1,7 +1,6 @@
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { FONT_FAMILY, FONT_FALLBACK, FONT_WEIGHTS } from '../src/ui/fonts';
 
 /**
  * WO-5.1 — the Grand Teint SUBSTRATE: design reference, typeface, icon
@@ -67,35 +66,50 @@ describe('the 27 icon components carry the design-reference geometry (byte-ident
   });
 });
 
-describe('the typeface substrate (Archivo, Latin) — data only, loads nothing', () => {
-  it('the family + fallback match the design tokens (Archivo over a metrics-matched system fallback)', () => {
-    const tokens = JSON.parse(
-      readFileSync(join(repoRoot, 'design-reference/grand-teint/docs/tokens.json'), 'utf8'),
-    ) as { type: { family: string; familyFallback: string } };
-    expect(FONT_FAMILY).toBe(tokens.type.family);
-    expect(FONT_FAMILY).toBe('Archivo');
-    expect(FONT_FALLBACK).toBe('System'); // RN's metrics-close system face
-    expect(tokens.type.familyFallback).toContain('system-ui');
-  });
-
-  it('the five static weights the design uses exist on disk (400/500/700/800/900)', () => {
-    expect(Object.keys(FONT_WEIGHTS).map(Number).sort((a, b) => a - b)).toEqual([400, 500, 700, 800, 900]);
+/**
+ * ARCHIVO-SWEEP (2026-08-09) — the Grand Teint typeface substrate is DELETED.
+ * The reskin moved every face to Bricolage/Instrument, but app.json kept
+ * embedding the five Archivo TTFs natively: 170 808 bytes of the APK that drew
+ * nothing, six times what the kit sweep saved on the same Law-7 axis. The
+ * Archivo-only assertions (family === the Grand Teint tokens.json) went with
+ * the design they described; the two laws below outlived it and are re-aimed at
+ * the faces that actually ship. `test/faso-fonts.test.ts` keeps the name-table
+ * collision guard (six distinct families, real TTF bytes) — unchanged.
+ */
+describe('the typeface substrate (Bricolage + Instrument) — data only, loads nothing', () => {
+  it('every embedded face exists on disk and the set stays inside the APK budget', () => {
+    // The app.json plugin list IS the embed set — the budget must be measured
+    // from what the native build packs, never from a hand-kept second list.
+    const embedded = (
+      JSON.parse(read('app.json')) as { expo: { plugins: [string, { fonts?: string[] }][] } }
+    ).expo.plugins.find((p) => Array.isArray(p) && p[0] === 'expo-font')?.[1].fonts;
+    expect(embedded, 'no expo-font plugin — nothing would embed at all').toBeDefined();
+    expect(embedded).toHaveLength(6);
     let total = 0;
-    for (const file of Object.values(FONT_WEIGHTS)) {
-      const p = join(appDir, 'assets/fonts', file);
-      const size = statSync(p).size;
-      expect(size, `${file} present + non-trivial`).toBeGreaterThan(10_000);
+    for (const rel of embedded as string[]) {
+      expect(rel, 'a retired Archivo face is back in the embed list').not.toMatch(/Archivo/);
+      const size = statSync(join(appDir, rel)).size;
+      expect(size, `${rel} present + non-trivial`).toBeGreaterThan(10_000);
       total += size;
     }
-    // within the design's 180–240 KB estimate (budget.md), no runaway
-    expect(total).toBeLessThan(240 * 1024);
+    // 311 KB today. The ceiling is the design's 180–240 KB estimate per FAMILY
+    // set plus headroom; what it really forbids is a third family arriving
+    // unnoticed, or the retired one coming back.
+    expect(total, `embedded font bytes: ${total}`).toBeLessThan(360 * 1024);
   });
 
   it('the substrate GATES NOTHING: it is data, with no font loader and no expo-font import (cold-start law)', () => {
-    // comments stripped: the docblock EXPLAINS the loader belongs elsewhere.
-    const src = read('src/ui/fonts.ts').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    // The law survives its original file: native embedding means first paint
+    // never waits on a font, and a loader sneaking in here would break that.
+    const src = read('src/ui/faso-fonts.ts').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
     expect(src).not.toMatch(/expo-font|loadAsync|useFonts/); // no loader here — first paint never waits
     expect(src).not.toMatch(/\brequire\(/); // no binary asset require in the data module
+  });
+
+  it('the retired Archivo substrate is gone — module, assets and embed entries alike', () => {
+    expect(existsSync(join(appDir, 'src/ui/fonts.ts')), 'the Grand Teint font map is back').toBe(false);
+    const stray = readdirSync(join(appDir, 'assets/fonts')).filter((f) => /Archivo/i.test(f));
+    expect(stray, `Archivo assets back on disk: ${stray.join(', ')}`).toEqual([]);
   });
 });
 

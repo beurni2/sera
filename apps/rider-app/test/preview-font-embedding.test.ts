@@ -57,9 +57,11 @@ describe('WO-6.2 — the preview publish embeds Archivo natively (no silent type
   it('DROP MODE 3: every font the plugin references exists on disk; the 6 Faso Premium faces are embedded', () => {
     const plugin = fontPlugin();
     const fonts = plugin?.[1]?.fonts ?? [];
-    // WO-FP-SERA STEP 0: the plugin now embeds the 6 Faso Premium faces (Bricolage
-    // 700/800 + Instrument 400-700). Archivo rides alongside during the transition
-    // shim and is removed when the last rider view migrates off /legacy.
+    // WO-FP-SERA STEP 0: the plugin embeds the 6 Faso Premium faces (Bricolage
+    // 700/800 + Instrument 400-700). ARCHIVO-SWEEP 2026-08-09: the five Archivo
+    // faces that « rode alongside during the transition » are gone — the last
+    // rider view migrated off /legacy long ago and nothing requested them, while
+    // the native build kept packing 170 808 bytes of them into every APK.
     const FASO = [
       'Bricolage-700.ttf', 'Bricolage-800.ttf',
       'Instrument-400.ttf', 'Instrument-500.ttf', 'Instrument-600.ttf', 'Instrument-700.ttf',
@@ -67,7 +69,9 @@ describe('WO-6.2 — the preview publish embeds Archivo natively (no silent type
     for (const face of FASO) {
       expect(fonts.some((f) => f.endsWith(face)), `plugin must embed ${face}`).toBe(true);
     }
-    expect(fonts.length, 'at least the 6 Faso Premium faces').toBeGreaterThanOrEqual(6);
+    // EXACTLY six: a seventh face means either a new family arrived unreviewed
+    // or the retired substrate came back. « At least six » could not say that.
+    expect(fonts, `embed list: ${fonts.join(', ')}`).toHaveLength(6);
     for (const rel of fonts) {
       const abs = join(appDir, rel);
       expect(existsSync(abs), `font asset missing: ${rel}`).toBe(true);

@@ -105,17 +105,13 @@ const inGraph = (rel: string): boolean => graph.modules.has(join(appDir, rel));
  * App-owned modules that live on disk but are deliberately NOT shipped in the
  * startup graph. Every entry needs a reason; an unlisted orphan fails the test.
  *
- *   · src/ui/fonts.ts — the Grand Teint font map. Its only app consumer was the
- *     deleted kit; it stays on disk because grand-teint.test.ts pins the five
- *     embedded weights against the real TTF assets (a rider who cannot read the
- *     screen is a failed screen). It costs the JS bundle nothing — it is out of
- *     the graph. ⚠ It does NOT yet cost the APK nothing: app.json still embeds
- *     the five Archivo faces natively (170 808 bytes) through the expo-font
- *     plugin, and no live module requests an `Archivo-*` family any more — the
- *     Faso layer resolves every face through displayFace/textFace
- *     (Bricolage/Instrument). Removing them touches app.json, this map,
- *     font-embedding.test.ts and grand-teint.test.ts, so it is its own slice —
- *     named here and in JOURNAL.md so it cannot stay invisible.
+ * ⚠ THE LIST IS EMPTY, AND THAT IS THE GOAL. Both of its former entries turned
+ * out to be defects wearing a docblock:
+ *   · `src/ui/fonts.ts` — the Grand Teint font map. Listed as « costs the bundle
+ *     nothing », which was true of the JS bundle and false of the APK: app.json
+ *     still embedded the five Archivo faces natively (170 808 bytes) that no live
+ *     module requested. ARCHIVO-SWEEP deleted map, assets and embed entries.
+ *   · `src/offline/ensureCsprng.ts` — see below.
  *
  * ⚠ `src/offline/ensureCsprng.ts` WAS LISTED HERE AND SHOULD NEVER HAVE BEEN.
  * This gate correctly flagged it as unreachable; I silenced it by believing its
@@ -127,7 +123,7 @@ const inGraph = (rel: string): boolean => graph.modules.has(join(appDir, rel));
  * allowlist entry needs a reason that survives the question « what is broken
  * while this stays out? », not a comment copied from the orphan itself.
  */
-const UNSHIPPED_ON_PURPOSE = ['src/ui/fonts.ts'];
+const UNSHIPPED_ON_PURPOSE: readonly string[] = [];
 
 describe('KIT-SWEEP — the startup module graph is what the app actually loads', () => {
   it('the walk reached the app (a graph of one module would pass everything vacuously)', () => {
@@ -194,6 +190,13 @@ describe('KIT-SWEEP — the startup module graph is what the app actually loads'
   });
 
   it('every module named UNSHIPPED_ON_PURPOSE really is on disk and really is unshipped', () => {
+    // The list is empty today and that is the target state, so say so out loud
+    // rather than let an empty loop read as « checked ». Both former entries
+    // were defects, not exemptions; the next addition should expect that prior.
+    if (UNSHIPPED_ON_PURPOSE.length === 0) {
+      expect(UNSHIPPED_ON_PURPOSE).toEqual([]);
+      return;
+    }
     for (const rel of UNSHIPPED_ON_PURPOSE) {
       expect(existsSync(join(appDir, rel)), `${rel} is named but does not exist — stale entry`).toBe(true);
       expect(inGraph(rel), `${rel} is named as unshipped but IS in the startup graph`).toBe(false);

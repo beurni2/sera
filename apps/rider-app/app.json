@@ -21,11 +21,6 @@
         "expo-font",
         {
           "fonts": [
-            "./assets/fonts/Archivo-Regular.ttf",
-            "./assets/fonts/Archivo-Medium.ttf",
-            "./assets/fonts/Archivo-Bold.ttf",
-            "./assets/fonts/Archivo-ExtraBold.ttf",
-            "./assets/fonts/Archivo-Black.ttf",
             "./assets/fonts/Instrument-400.ttf",
             "./assets/fonts/Instrument-500.ttf",
             "./assets/fonts/Instrument-600.ttf",
