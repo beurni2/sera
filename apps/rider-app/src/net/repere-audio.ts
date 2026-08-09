@@ -96,6 +96,6 @@ export function resolveRepereAudio(): RepereAudioPort | null {
  */
 export function mediaUrl(base: string | null, ref: string | null): string | null {
   if (base === null || base === '' || ref === null) return null;
-  if (!/^media\/[A-Za-z0-9][A-Za-z0-9/_-]{0,119}$/.test(ref) || ref.includes('..')) return null;
+  if (!/^media\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(ref) || ref.includes('..')) return null;
   return `${base.replace(/\/+$/, '')}/${ref}`;
 }

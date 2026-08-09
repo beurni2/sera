@@ -228,7 +228,7 @@ describe('pickup verification — the code is consumed, the ledger records, the 
    * Remove the `commit` before the `invalid` return in custody-do.ts and the
    * retry after this restart answers 200 instead of 409.
    */
-  it('A CHECK OUTSIDE POLICY v1 is refused — riders verify objective conformity only (SE-I12) — and the code is spent by the attempt, ACROSS A RESTART', async () => {
+  it('⚠ A CHECK OUTSIDE POLICY is refused (SE-I12) and DOES NOT SPEND THE CODE — the corrected retry still takes custody, ACROSS A RESTART', async () => {
     const order = 'ord-custody-outside';
     const code = 'PICKUP-OUTSIDE-0003';
     expect((await call('POST', '/ops/order/open', opsAuth, {
@@ -251,18 +251,38 @@ describe('pickup verification — the code is consumed, the ledger records, the 
 
     await restart(); // the runtime dies; the registry can only come back by replay
 
-    // …but the code was SPENT by the presentation, and it STAYS spent: a
-    // well-formed retry with the same code is refused on a freshly replayed
-    // spine. This is the trap named above, and the pin for the blocker.
+    /**
+     * ⚠ RULING REVERSED, DELIBERATELY (2026-08-09). This pin used to assert
+     * that an out-of-policy attempt SPENT the code and stayed spent — « the
+     * trap named above ». Policy v2 turned that trap into a live production
+     * hazard: the service stamps the ACTIVE policy while the rider's app owns
+     * the question list, and a rider on a build that still asks v1's nine
+     * questions would have burned a code and stranded the order for ever
+     * (`register` refuses to re-arm; `openNewVerificationCycle` only re-arms
+     * after a *refused* verification, never an *invalid* one).
+     *
+     * The shape is now judged BEFORE the code is consumed, so a mismatched
+     * build costs a refusal the rider can retry — not a package nobody can
+     * take. THAT is what this asserts now.
+     */
     const retry = await call('POST', '/ops/verification', opsAuth, {
       orderId: order, command_id: 'cmd-verify-outside-retry', riderId: 'rider-1',
       presentedPickupCode: code, checkResults: ALL_PASS, dwellSec: 150, evidenceBundleId: 'ev-o', at: T,
     });
-    expect(retry.status).toBe(409);
-    expect(retry.json).toMatchObject({ reason: 'pickup_code_refused', detail: 'secret_already_used' });
-    // And the refused retry recorded nothing either — a burned code cannot
-    // write a custody fact by being presented again.
-    expect((await call('GET', `/ops/ledger?orderId=${order}`, opsAuth)).json['entries']).toEqual([]);
+    expect(retry.status, 'the corrected retry must succeed — the code was never spent').toBe(200);
+    expect(retry.json).toMatchObject({ kind: 'accepted' });
+    // …and NOW it is recorded: one verification, from the attempt that was
+    // actually judgeable.
+    const entries = (await call('GET', `/ops/ledger?orderId=${order}`, opsAuth)).json['entries'] as unknown[];
+    expect(entries).toHaveLength(1);
+
+    // The code IS single-use once genuinely spent: presenting it again dies.
+    const third = await call('POST', '/ops/verification', opsAuth, {
+      orderId: order, command_id: 'cmd-verify-outside-third', riderId: 'rider-1',
+      presentedPickupCode: code, checkResults: ALL_PASS, dwellSec: 150, evidenceBundleId: 'ev-o2', at: T,
+    });
+    expect(third.status).toBe(409);
+    expect(third.json).toMatchObject({ reason: 'pickup_code_refused', detail: 'secret_already_used' });
   });
 
   it('THE ACCEPTED VERIFICATION: recorded on the hash chain, and the chain verifies', async () => {
@@ -876,14 +896,19 @@ describe('the founder-attested rider identity can be read back', () => {
   });
 
   /**
-   * ⚠ ROUND 6 (MAJOR) — WHICH ATTEMPT BURNED THE CODE. Three refusals that
-   * differ in the only way that matters were rendered identically: a wrong
-   * code burns nothing, an OUT-OF-POLICY check list BURNS the single-use code
-   * (verifyPickup consumes before it judges), and a presentation after the
-   * spend burns nothing. An `invalid` verification never reaches the ledger,
-   * so this route is the only place that fact can be read at all.
+   * ⚠ ROUND 6 (MAJOR) — WHICH ATTEMPT BURNED THE CODE. Refusals that differ in
+   * the only way that matters were rendered identically, and an `invalid`
+   * verification never reaches the ledger, so this route is the only place
+   * that fact can be read at all.
+   *
+   * ⚠ UPDATED 2026-08-09: out-of-policy no longer burns anything. The spine
+   * judges the check list BEFORE consuming the code, because policy v2 made
+   * the old ordering a live hazard — a rider on a build still asking v1's
+   * nine questions would have burned a code and stranded the order for ever.
+   * So now exactly ONE thing spends the code: a verification that was
+   * actually judgeable. That is what this walks.
    */
-  it('tells apart the refusal that SPENT the code from the two that did not', async () => {
+  it('⚠ only a JUDGEABLE verification spends the code — the other refusals leave it usable, and each is named', async () => {
     const order = 'ord-attest-burn';
     const code = 'PICKUP-BURN-0014';
     expect((await call('POST', '/ops/order/open', opsAuth, {
@@ -898,25 +923,32 @@ describe('the founder-attested rider identity can be read back', () => {
       orderId: order, command_id: 'v-wrong', riderId: 'R-WRONG', presentedPickupCode: 'NOPE',
       checkResults: ALL_PASS, dwellSec: 100, evidenceBundleId: 'ev', at: T,
     });
-    // 2. out-of-policy — SPENDS the code
+    // 2. out-of-policy — named, and burns NOTHING (the 2026-08-09 reversal)
     const oop: Record<string, boolean> = { ...ALL_PASS, authenticity: true };
     await call('POST', '/ops/verification', opsAuth, {
       orderId: order, command_id: 'v-oop', riderId: 'R-OOP', presentedPickupCode: code,
       checkResults: oop, dwellSec: 100, evidenceBundleId: 'ev', at: T,
     });
-    // 3. after the spend — burns nothing
+    // 3. the JUDGEABLE one — this is what spends the code, and it succeeds
+    const good = await call('POST', '/ops/verification', opsAuth, {
+      orderId: order, command_id: 'v-good', riderId: 'R-GOOD', presentedPickupCode: code,
+      checkResults: ALL_PASS, dwellSec: 100, evidenceBundleId: 'ev', at: T,
+    });
+    expect(good.status, 'the code survived both refusals').toBe(200);
+    // 4. after the spend — burns nothing, and says which one it is
     await call('POST', '/ops/verification', opsAuth, {
       orderId: order, command_id: 'v-late', riderId: 'R-LATE', presentedPickupCode: code,
       checkResults: ALL_PASS, dwellSec: 100, evidenceBundleId: 'ev', at: T,
     });
 
     const rows = (await call('GET', `/ops/attestations?orderId=${order}`, opsAuth)).json['attestations'] as Json[];
-    expect(rows).toHaveLength(3);
-    expect(rows[0]).toMatchObject({ riderId: 'R-WRONG', reason: 'pickup_code_refused', detail: 'secret_mismatch' });
-    // THE ONE THAT SPENT IT, and it is distinguishable from the other two.
-    expect(rows[1]).toMatchObject({ riderId: 'R-OOP', reason: 'check_not_in_policy', detail: 'authenticity' });
-    expect(rows[2]).toMatchObject({ riderId: 'R-LATE', reason: 'pickup_code_refused', detail: 'secret_already_used' });
-    expect(rows[1]?.['reason']).not.toBe(rows[0]?.['reason']);
+    const byRider = (id: string): Json | undefined => rows.find((r) => r['riderId'] === id);
+    expect(byRider('R-WRONG')).toMatchObject({ reason: 'pickup_code_refused', detail: 'secret_mismatch' });
+    expect(byRider('R-OOP')).toMatchObject({ reason: 'check_not_in_policy', detail: 'authenticity' });
+    expect(byRider('R-LATE')).toMatchObject({ reason: 'pickup_code_refused', detail: 'secret_already_used' });
+    // The three refusals stay distinguishable — that was this pin's point.
+    expect(byRider('R-OOP')?.['reason']).not.toBe(byRider('R-WRONG')?.['reason']);
+    expect(byRider('R-LATE')?.['detail']).not.toBe(byRider('R-WRONG')?.['detail']);
 
     // Corroborated independently: the code really is spent.
     const rearm = await call('POST', '/ops/secrets/arm', opsAuth, {

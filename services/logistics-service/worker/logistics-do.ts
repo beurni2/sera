@@ -172,7 +172,11 @@ interface CourseBrief {
 /** A media pointer, and nothing else: no scheme, no host, no traversal. The
  *  app appends it to its OWN media base, so a ref that could escape the
  *  bucket would be a ref that could point the rider at anything. */
-const MEDIA_REF = /^media\/[A-Za-z0-9][A-Za-z0-9/_-]{0,119}$/;
+// CONTRACT-CERTIFIED to the media service's real key shape
+// (`media-service/src/media-key.ts`): `media/<uuid-v4>` and nothing else.
+// A wider bound let a ref through that the bucket can only 404 — a broken
+// image on a rider's phone instead of a refusal the founder can see.
+const MEDIA_REF = /^media\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const MAX_BRIEF_PHOTOS = 4;
 function isMediaRef(v: unknown): v is string {
   return typeof v === 'string' && MEDIA_REF.test(v) && !v.includes('..');

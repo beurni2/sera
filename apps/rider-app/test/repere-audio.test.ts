@@ -30,17 +30,17 @@ describe('COURSE-BRIEF — the buyer’s repère plays on the rider’s screen',
   it('creates ONE player and plays it', async () => {
     const mod = fakeModule();
     const port = repereAudioOver(mod);
-    await port.play('https://media.example/media/abc');
+    await port.play('https://media.example/media/11111111-2222-4333-8444-555555555555');
     expect(mod.made).toHaveLength(1);
-    expect(mod.made[0]?.url).toBe('https://media.example/media/abc');
+    expect(mod.made[0]?.url).toBe('https://media.example/media/11111111-2222-4333-8444-555555555555');
     expect(mod.made[0]?.calls).toEqual(['play']);
   });
 
   it('⚠ a second tap on the SAME note re-seeks it — never a second voice over the first', async () => {
     const mod = fakeModule();
     const port = repereAudioOver(mod);
-    await port.play('https://media.example/media/abc');
-    await port.play('https://media.example/media/abc');
+    await port.play('https://media.example/media/11111111-2222-4333-8444-555555555555');
+    await port.play('https://media.example/media/11111111-2222-4333-8444-555555555555');
     expect(mod.made, 'a second player would play two voices at once').toHaveLength(1);
     expect(mod.made[0]?.calls).toEqual(['play', 'seek:0', 'play']);
   });
@@ -48,8 +48,8 @@ describe('COURSE-BRIEF — the buyer’s repère plays on the rider’s screen',
   it('⚠ a DIFFERENT note releases the old player — a rider’s phone is 1 GB', async () => {
     const mod = fakeModule();
     const port = repereAudioOver(mod);
-    await port.play('https://media.example/media/one');
-    await port.play('https://media.example/media/two');
+    await port.play('https://media.example/media/11111111-2222-4333-8444-555555555551');
+    await port.play('https://media.example/media/11111111-2222-4333-8444-555555555552');
     expect(mod.made).toHaveLength(2);
     expect(mod.made[0]?.calls).toContain('release');
     expect(mod.made[1]?.calls).toEqual(['play']);
@@ -58,7 +58,7 @@ describe('COURSE-BRIEF — the buyer’s repère plays on the rider’s screen',
   it('stop() releases, so leaving the screen never leaks a voice', async () => {
     const mod = fakeModule();
     const port = repereAudioOver(mod);
-    await port.play('https://media.example/media/abc');
+    await port.play('https://media.example/media/11111111-2222-4333-8444-555555555555');
     port.stop();
     expect(mod.made[0]?.calls).toEqual(['play', 'pause', 'release']);
   });
@@ -66,9 +66,9 @@ describe('COURSE-BRIEF — the buyer’s repère plays on the rider’s screen',
 
 describe('COURSE-BRIEF — a pointer becomes a URL only against the app’s OWN base', () => {
   it('builds the url from base + ref, tolerating a trailing slash', () => {
-    expect(mediaUrl('https://media.example', 'media/abc')).toBe('https://media.example/media/abc');
-    expect(mediaUrl('https://media.example/', 'media/readiness/ord-1')).toBe(
-      'https://media.example/media/readiness/ord-1',
+    expect(mediaUrl('https://media.example', 'media/11111111-2222-4333-8444-555555555555')).toBe('https://media.example/media/11111111-2222-4333-8444-555555555555');
+    expect(mediaUrl('https://media.example/', 'media/9f1c2d3e-4b5a-4c6d-8e9f-0a1b2c3d4e5f')).toBe(
+      'https://media.example/media/9f1c2d3e-4b5a-4c6d-8e9f-0a1b2c3d4e5f',
     );
   });
 
@@ -80,8 +80,8 @@ describe('COURSE-BRIEF — a pointer becomes a URL only against the app’s OWN 
   });
 
   it('no base configured means NO url — never a half-built one', () => {
-    expect(mediaUrl(null, 'media/abc')).toBeNull();
-    expect(mediaUrl('', 'media/abc')).toBeNull();
+    expect(mediaUrl(null, 'media/11111111-2222-4333-8444-555555555555')).toBeNull();
+    expect(mediaUrl('', 'media/11111111-2222-4333-8444-555555555555')).toBeNull();
     expect(mediaUrl('https://media.example', null)).toBeNull();
   });
 });

@@ -142,13 +142,36 @@ export class CustodySpine {
    * count — while a replay of the SAME attempt still carries the same
    * command_id and dedupes. */
   verifyPickup(input: VerificationInput, presentedPickupCode: string, at: string) {
+    /**
+     * ⚠ THE SHAPE IS JUDGED BEFORE THE CODE IS SPENT (2026-08-09).
+     *
+     * The single-use `pickupVerificationCode` used to be consumed FIRST, and
+     * an unjudgeable check list then returned `invalid` — after the code was
+     * already burned. `SecretRegistry.register` refuses to re-arm a spent
+     * secret, and `openNewVerificationCycle` only re-arms after a *refused*
+     * verification, never an *invalid* one. So the order became permanently
+     * unverifiable, with no route to recover it.
+     *
+     * That was survivable while one build talked to one policy. Policy v2
+     * (founder ruling, three photo-referenced questions) makes it REACHABLE
+     * IN PRODUCTION: this service stamps the ACTIVE policy while the rider's
+     * app owns the question list, and the founder must install a NEW native
+     * build for the audio — so a phone still asking v1's nine questions will
+     * exist. Every one of its pickups would have burned a code and stranded
+     * an order.
+     *
+     * `runPickupVerification` is PURE and reads only the submitted list, so
+     * running it first leaks nothing an attacker could not already read: the
+     * app ships the same list. What it buys is that a mismatched build costs
+     * a refusal the rider can retry, not a package nobody can ever take.
+     */
+    const outcome = runPickupVerification(input);
+    if (outcome.kind === 'invalid') return outcome;
     const code = this.secrets.consume('pickup_verification_code', input.orderId, presentedPickupCode, at, this.verificationCycle);
     if (!code.ok) {
       return { kind: 'invalid' as const, reason: 'pickup_code_refused' as const, detail: code.reason };
     }
     const attempt = this.verificationCycle;
-    const outcome = runPickupVerification(input);
-    if (outcome.kind === 'invalid') return outcome;
     this.ledger.append({
       packageId: this.chain.package_id,
       kind: 'pickup_verification',

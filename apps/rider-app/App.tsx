@@ -551,18 +551,36 @@ export default function App() {
    */
   const repereAudio = useMemo(() => resolveRepereAudio(), []);
   const [repereJoue, setRepereJoue] = useState(false);
+  // ⚠ KEYED ON THE REF VALUES, NOT THE SESSION OBJECT. `/rider/moi` replaces
+  // that object every 20 s poll, so keying on it rebuilt these on every poll
+  // and remounted the <Image> subtree — on a 1 GB Android over 2G.
+  const repereRef = liveAssignment?.repereAudioRef ?? null;
+  const preuveKey = (liveAssignment?.preuvePhotoRefs ?? []).join('|');
   const repereUrl = useMemo(
-    () => mediaUrl(process.env.EXPO_PUBLIC_SERA_MEDIA_BASE ?? null, liveAssignment?.repereAudioRef ?? null),
-    [liveAssignment],
+    () => mediaUrl(process.env.EXPO_PUBLIC_SERA_MEDIA_BASE ?? null, repereRef),
+    [repereRef],
   );
   const preuveUrls = useMemo(
     () =>
-      (liveAssignment?.preuvePhotoRefs ?? [])
+      (preuveKey === '' ? [] : preuveKey.split('|'))
         .map((r) => mediaUrl(process.env.EXPO_PUBLIC_SERA_MEDIA_BASE ?? null, r))
         .filter((u): u is string => u !== null),
-    [liveAssignment],
+    [preuveKey],
   );
-  // Leaving the screen never leaves a voice playing in someone's pocket.
+  /**
+   * The note stops when the card that offered it goes away — on ACCEPT, on a
+   * course ending, and on unmount. The first cut only cleaned up on unmount,
+   * which in an RN app means process death: a rider tapped « Écouter », then
+   * « Accepter », and the buyer's voice kept playing with no control left on
+   * screen to stop it.
+   */
+  const repereVisible = liveAssignment !== null && liveAssignment.status !== 'acknowledged';
+  useEffect(() => {
+    if (!repereVisible) {
+      repereAudio?.stop();
+      setRepereJoue(false);
+    }
+  }, [repereVisible, repereAudio]);
   useEffect(() => () => repereAudio?.stop(), [repereAudio]);
 
   /** « Écouter le repère » — rendered ONLY when there is a note AND something
@@ -1692,6 +1710,17 @@ export default function App() {
                         */}
                       <FasoPosterTitle>{t('verify.title')}</FasoPosterTitle>
                       <FasoBody>{t('verify.body')}</FasoBody>
+                      {/**
+                        * ⚠ THE PHOTOS BELONG HERE, ON THE WIRED SCREEN.
+                        * The founder's order is « the check up will be against
+                        * these photos ». The first cut rendered them on the
+                        * PROPOSAL card (before acceptance) and on the DEMO
+                        * verify screen — never on the screen a real rider
+                        * answers, so the three questions were answered from
+                        * memory: exactly the « nine fields in your head at a
+                        * market stall » problem policy v2 exists to remove.
+                        */}
+                      <PreuvePhotos />
                       {POLICY_CHECK_IDS.map((id) => (
                         <FasoCheckAnswer
                           key={id}
@@ -1701,6 +1730,7 @@ export default function App() {
                           onAnswer={(value) => setChecks((c) => ({ ...c, [id]: value }))}
                         />
                       ))}
+                      {preuveUrls.length > 0 ? <FasoBody>{t('check.aide_photos')}</FasoBody> : null}
                       {!allAnswered ? <FasoBody>{t('verify.answer_all')}</FasoBody> : null}
                       <FasoActCode
                         strings={{
@@ -1717,6 +1747,9 @@ export default function App() {
                                 // A DIFFERENCE WAS REPORTED — the camera appears,
                                 // and its sentence says what the picture is for.
                                 hint: t('verify.photo_ecart'),
+                                // The camera is OFFERED here, never demanded:
+                                // « Envoyer » stays alive with no photo.
+                                optional: true,
                                 takeLabel: t('photo.take'),
                                 retakeLabel: t('photo.retake'),
                                 takenLabel: t('photo.taken'),

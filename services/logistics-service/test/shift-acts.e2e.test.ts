@@ -170,8 +170,10 @@ describe('⚠ the whole ladder, through the app’s own ports, judged by the BOA
     await intake('/intake/funding', { orderId: 'ord-brief-1', status: 'funded', paymentMode: 'FULL_PREPAY', asOf: T });
     await intake('/intake/readiness', { orderId: 'ord-brief-1', ready: true, asOf: T });
 
-    const AUDIO = 'media/11111111-2222-3333-4444-555555555555';
-    const PHOTO = 'media/readiness/ord-brief-1';
+    const AUDIO = 'media/11111111-2222-4333-8444-555555555555';
+    // CONTRACT-CERTIFIED: the media service serves `media/<uuid-v4>` only
+    // (media-key.ts). A prettier fixture would 404 in production.
+    const PHOTO = 'media/9f1c2d3e-4b5a-4c6d-8e9f-0a1b2c3d4e5f';
     const composed = await ops(mf, '/ops/task', {
       command_id: 'cmd-brief-1',
       orderId: 'ord-brief-1',
@@ -232,7 +234,13 @@ describe('⚠ the whole ladder, through the app’s own ports, judged by the BOA
       headers: { Authorization: `Bearer ${OPS}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         command_id: 'cmd-many', orderId: 'ord-brief-2', location: loc, window: win,
-        preuvePhotoRefs: ['media/a', 'media/b', 'media/c', 'media/d', 'media/e'],
+        preuvePhotoRefs: [
+          'media/11111111-2222-4333-8444-555555555551',
+          'media/11111111-2222-4333-8444-555555555552',
+          'media/11111111-2222-4333-8444-555555555553',
+          'media/11111111-2222-4333-8444-555555555554',
+          'media/11111111-2222-4333-8444-555555555555',
+        ],
       }),
     });
     expect(tooMany.status).toBe(400);

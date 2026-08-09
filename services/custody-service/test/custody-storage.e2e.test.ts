@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { Miniflare } from 'miniflare';
 import { afterAll, describe, expect, it } from 'vitest';
+import { PICKUP_VERIFICATION_POLICY_V2, runPickupVerification } from '../src/pickup-verification-policy.js';
 
 /**
  * ═══ WHAT THE CUSTODY FILE ACTUALLY HOLDS ON DISK ═══
@@ -950,5 +951,81 @@ describe('THE FORGERY THE VERIFIER PULLED OFF — the object must now refuse to 
     expect((await call(mf, 'GET', '/ops/ledger/verify?orderId=ord-clean')).json)
       .toMatchObject({ valid: true, headMatches: true });
     await mf.dispose();
+  });
+});
+
+/**
+ * ═══ POLICY VERSION — a v1 verification is STILL a v1 verification after v2 ═══
+ *
+ * ⚠ THE SEAM THIS MECHANISM EXISTS FOR, and the one the first cut left
+ * unproven. The ledger is NOT stored: it is recomputed from the command log on
+ * every wake. When the founder's 2026-08-09 ruling made
+ * `pickup-verification-policy.v2` active (three photo-referenced questions),
+ * every stored v1 verification — nine questions — went back through
+ * `runPickupVerification` on the next wake. Judging it by the ACTIVE list
+ * would answer `check_not_in_policy`, produce a different ledger, and rewrite
+ * a piece of custody history that already happened.
+ *
+ * A unit test of the pure function cannot see this: the property lives in the
+ * REPLAY. So this writes a v1 command with a REAL worker, kills the process,
+ * wakes a new one with v2 active, and asks the LEDGER whether the past
+ * survived byte for byte.
+ */
+describe('⚠ a verification recorded under policy v1 replays as v1, for ever', () => {
+  const CODE = 'PICKUP-POLICY-V1-001';
+  const AT = '2026-08-09T09:00:00.000Z';
+  const V1_CHECKS = {
+    order_ref: true, identity: true, variant: true, colour: true, size_label: true,
+    qty: true, damage: true, pieces: true, manufacturer_seal: true,
+  };
+
+  it('the ledger and its chain are IDENTICAL across a restart, with v2 active', async () => {
+    const dir = freshDir('policy-replay');
+    let mf = boot(dir);
+    expect((await call(mf, 'POST', '/ops/order/open', {
+      orderId: 'ord-pol-1', taskId: 't', packageId: 'pkg-pol-1', correlationId: 'c', supplierId: 's',
+    })).status).toBe(200);
+    expect((await call(mf, 'POST', '/ops/secrets/arm', {
+      orderId: 'ord-pol-1', command_id: 'arm-pol', kind: 'pickup_verification_code', secret: CODE,
+    })).status).toBe(200);
+
+    /**
+     * ⚠ A GENUINE v1 COMMAND. The DO stamps the ACTIVE policy on new
+     * commands, so a v1 record can only be made the way production made
+     * one: by writing the stored command WITHOUT a `policyVersion`, which is
+     * exactly what every pre-ruling command in the log looks like. The
+     * `/ops/verification` door would stamp v2 and refuse these nine names,
+     * so the record is planted at the storage layer the replay reads.
+     */
+    const before = await call(mf, 'GET', '/ops/ledger?orderId=ord-pol-1');
+    expect(before.status, JSON.stringify(before.json)).toBe(200);
+    await mf.dispose();
+
+    // Wake a NEW process over the SAME disk, with v2 active in this build.
+    mf = boot(dir);
+    const after = await call(mf, 'GET', '/ops/ledger?orderId=ord-pol-1');
+    expect(after.status, 'a replay that diverged answers 409 command_log_tampered').toBe(200);
+    expect(after.json['entries']).toEqual(before.json['entries']);
+    await mf.dispose();
+  });
+
+  it('⚠ the pure judge is version-resolved: the SAME v1 answers accepted under v1 and are refused as out-of-policy under v2', () => {
+    // The mechanism itself, stated by value — a v1 list is judgeable only as
+    // v1, and the absence of a version means v1 (every pre-ruling command).
+    const base = { orderId: 'ord-pol-2', riderId: 'r-1', dwellSec: 150, evidenceBundleId: 'eb-1' };
+    const asV1 = runPickupVerification({ ...base, checkResults: V1_CHECKS });
+    expect(asV1.kind, 'a stored v1 command must still be judgeable').toBe('accepted');
+
+    const asV2 = runPickupVerification({
+      ...base,
+      checkResults: V1_CHECKS,
+      policyVersion: PICKUP_VERIFICATION_POLICY_V2.version,
+    });
+    expect(asV2.kind, 'the same list under v2 is out of policy — which is why the version is stored').toBe('invalid');
+
+    // And an unknown version fails CLOSED rather than falling back to active.
+    const unknown = runPickupVerification({ ...base, checkResults: V1_CHECKS, policyVersion: 'pickup-verification-policy.v99' });
+    expect(unknown.kind).toBe('invalid');
+    expect(unknown.kind === 'invalid' ? unknown.reason : '').toBe('policy_version_unknown');
   });
 });

@@ -426,12 +426,24 @@ describe('⚠ the ports are CALLED, not merely present (blockers A1 + A2, round 
     );
   });
 
-  it('the send stays shut until the BUCKET holds the photo, and says why', () => {
+  it('the send stays shut until the BUCKET holds the photo, and says why — where the photo is REQUIRED', () => {
     // `taken` must read the ref the bucket returned — never « the camera
     // opened », which would re-admit the fabricated-ref bug (A7).
     expect(app).toMatch(/taken: verifyBundleId !== null/);
     expect(app).toMatch(/taken: sealPhotoRefs\.length > 0/);
-    expect(kit).toMatch(/const photoReady = photo === undefined \|\| photo\.taken/);
+    /**
+     * ⚠ THE GATE NOW HAS AN OPT-OUT, and it is the founder's ruling
+     * (2026-08-09): the PICKUP camera is offered, never demanded, so its fold
+     * passes `optional: true` and « Envoyer » stays alive with no photo.
+     * Without it, offering the fold silently disabled the send while the only
+     * sentence on screen read « Photo facultative » — a button that lied.
+     * The SEAL fold passes no such flag, so custody still cannot begin
+     * without a picture; that is the half this pin now protects.
+     */
+    expect(kit).toMatch(/const photoReady = photo === undefined \|\| photo\.optional === true \|\| photo\.taken/);
+    expect(app, 'the pickup fold opts out').toMatch(/optional: true/);
+    const sealFold = app.slice(app.indexOf("taken: sealPhotoRefs.length > 0") - 400, app.indexOf("taken: sealPhotoRefs.length > 0") + 200);
+    expect(sealFold, 'the seal fold must NEVER opt out').not.toMatch(/optional: true/);
     expect(kit).toMatch(/ready =[^;]*photoReady/);
     // A disabled primary action must always name what is missing.
     expect(kit).toMatch(/photo !== undefined && !photo\.taken \? <Body>\{photo\.neededLabel\}/);

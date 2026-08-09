@@ -56,7 +56,7 @@ export function FasoActCode({
   readonly outcome?: { readonly title: string; readonly hint?: string | undefined; readonly tone: 'ok' | 'refused' | 'waiting' } | undefined;
   /**
    * ⚠ AN EXTERNAL GATE THE CALLER OWNS (verifier blocker A4). On the
-   * verification screen this is « every one of the nine checks has an answer »
+   * verification screen this is « every one of the policy's checks has an answer »
    * — because sending an unfinished list BURNS the single-use pickup code and
    * leaves the order unverifiable for ever. Defaults to true for the seal,
    * which has no checklist.
@@ -85,6 +85,16 @@ export function FasoActCode({
         readonly neededLabel: string;
         /** The bucket has the bytes and named them. Never « the camera opened ». */
         readonly taken: boolean;
+        /**
+         * ⚠ TRUE = the act may be sent WITHOUT a photo (founder ruling
+         * 2026-08-09, the pickup check-up). Without this flag, offering a
+         * camera fold silently DISABLED « Envoyer » until the bucket held a
+         * photo — while the only sentence on screen said « Photo facultative ».
+         * A rider reporting a damaged package could then send nothing at all
+         * unless they took back the answer they had just given. The seal fold
+         * omits this flag and stays gated, which is the founder's other ruling.
+         */
+        readonly optional?: boolean;
         readonly busy: boolean;
         /** Already resolved from the catalog by the caller; absent = nothing wrong. */
         readonly issue?: string | undefined;
@@ -93,7 +103,7 @@ export function FasoActCode({
     | undefined;
 }) {
   const [typed, setTyped] = useState('');
-  const photoReady = photo === undefined || photo.taken;
+  const photoReady = photo === undefined || photo.optional === true || photo.taken;
   const ready = typed.trim() !== '' && !working && canSend !== false && photoReady && photo?.busy !== true;
 
   return (
@@ -245,7 +255,7 @@ const styles = StyleSheet.create({
  * FOUNDER RULING (2026-08-07): keep ONE send button — no separate refuse
  * action. That is only safe if the ambiguity is removed, so every check is now
  * explicitly ANSWERED: « Oui » or « Non », nothing implied by absence. The
- * send button stays disabled until all nine carry an answer, so an unfinished
+ * send button stays disabled until every one carries an answer, so an unfinished
  * list can no longer reach the code at all, and a « Non » is a thing the rider
  * deliberately said rather than a box they missed.
  *

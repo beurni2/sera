@@ -53,7 +53,7 @@ export interface RiderAssignment {
 
 /** A media pointer and nothing else — mirrors the Worker's own bound, because
  *  this value becomes a URL on the phone. */
-const MEDIA_REF = /^media\/[A-Za-z0-9][A-Za-z0-9/_-]{0,119}$/;
+const MEDIA_REF = /^media\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 function mediaRefOrNull(v: unknown): string | null {
   return typeof v === 'string' && MEDIA_REF.test(v) && !v.includes('..') ? v : null;
 }
