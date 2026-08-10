@@ -817,7 +817,7 @@
   },
   {
     "key": "courses.confirmer_garde",
-    "fr": "La preuve de garde n'est pas touchée.",
+    "fr": "La preuve de garde reste. Mais si le coursier a déjà le colis, reprenez la course avant de la retirer.",
     "register": "neutral",
     "screenClass": "general"
   },

@@ -405,13 +405,30 @@ export class LeasedDispatch {
     for (const taskId of taskIds) {
       const release = await this.deps.authority.send({
         kind: 'release',
-        // Deterministic and task-scoped: a task id is minted once and never
-        // reused, so this id can never replay another course's release.
-        command_id: `retire-${taskId}`,
+        /**
+         * ⚠ VERIFIER MAJOR (PURGE-ESSAI round 1) — A FRESH ID EVERY TIME, and
+         * the reason is the opposite of the usual one. My first cut used the
+         * deterministic `retire-${taskId}`, justified by « a task id is minted
+         * once and never reused » — WHICH IS FALSE: `/ops/task` mints ids, but
+         * `/intake/task-ready` takes the id off the producer's event, and a
+         * purge DELETES the queue row rather than closing it, so the
+         * already-claimed guard no longer blocks that id either. The verifier
+         * drove the real core: retire → the id re-composes and a NEW lease is
+         * acquired (version 2) → the second retire REPLAYS the version-1
+         * release, `ok:true` with `idempotentReplay`, so the live lease
+         * survived, the wrong witness ref was revoked, the count reported a
+         * release that never happened, and the rider was refused
+         * `rider_already_leased` for ever with no dispatch row left to take
+         * back. Replay protection is exactly wrong for a purge: each purge
+         * must release WHATEVER lease is live now.
+         */
+        command_id: `retire-${taskId}-${crypto.randomUUID()}`,
         taskId,
         cause: 'retire',
       });
-      if (!release.ok) continue;
+      // COUNTED ONLY WHEN IT ACTUALLY HAPPENED — a replay is not a release,
+      // and a response that says otherwise is a lie the founder would act on.
+      if (!release.ok || release.idempotentReplay === true) continue;
       leasesReleased += 1;
       if (release.lease !== undefined) this.deps.witness.revoke(refOf(release.lease));
     }
