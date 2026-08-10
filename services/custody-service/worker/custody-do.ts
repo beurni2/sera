@@ -1669,13 +1669,38 @@ export class CustodyDO {
       const doorRider = request.headers.get('X-Rider-Authenticated');
       const actor = doorRider !== null && doorRider !== '' ? doorRider : CUSTODY_ACTOR;
       const transit = (await this.state.storage.get<TransitRecord>(TRANSIT_KEY)) ?? {};
+      /**
+       * ⚠ VERIFIER MAJOR (VRAI-ROUTE round 1) — THE ROAD IS THE CUSTODIAN'S
+       * TO NARRATE, and only theirs. The first cut gated on order-global
+       * spine state alone, so ANY authenticated rider — never this order's —
+       * could post depart AND arrive: the attestations then named the forger
+       * over Alice's custody, and the forged arrival crossed to Shop+ and
+       * OPENED THE REMISE REVEAL before the real rider was anywhere near the
+       * buyer (founder ruling 1: the code appears only after the rider's
+       * arrival fact). The one-hand binding `/custody/begin` already carries
+       * now guards the journey too: through the rider door, the acting hand
+       * must be the ledger's CURRENT CUSTODIAN. The founder's ops door stays
+       * an attestation, as everywhere. Checked before any NEW fact is
+       * written; a `deja` replay stays answerable to the assigned rider even
+       * after the drop (custodian then `customer`) via the first-wins arms
+       * below, which never write.
+       */
+      const custodianNow = this.spine.ledger.currentCustodian(this.chain.package_id);
+      const foreignHand = doorRider !== null && doorRider !== '' && custodianNow !== `courier:${doorRider}`;
       if (pathname === '/transit/depart') {
         if (transit.departedAt !== undefined) {
           await this.rearmTransitStage('en_route');
           return Response.json({ ok: true, status: 'deja', at: transit.departedAt });
         }
+        // ORDER OF REFUSALS: « nobody holds it yet » outranks « not you » —
+        // before the seal, `custody_not_with_courier` is the true sentence
+        // for EVERY hand (and the one the rider app renders); only once a
+        // courier does hold it can a hand be the wrong one.
         if (!this.spine.courierHoldsCustody()) {
           return Response.json({ ok: false, reason: 'custody_not_with_courier' }, { status: 409 });
+        }
+        if (foreignHand) {
+          return Response.json({ ok: false, reason: 'not_the_custodian' }, { status: 409 });
         }
         const at = new Date().toISOString();
         const outbox = (await this.state.storage.get<TransitOutbox>(TRANSIT_OUTBOX_KEY)) ?? {};
@@ -1696,6 +1721,9 @@ export class CustodyDO {
       if (transit.arrivedAt !== undefined) {
         await this.rearmTransitStage('arrivee');
         return Response.json({ ok: true, status: 'deja', at: transit.arrivedAt });
+      }
+      if (foreignHand) {
+        return Response.json({ ok: false, reason: 'not_the_custodian' }, { status: 409 });
       }
       if (transit.departedAt === undefined) {
         return Response.json({ ok: false, reason: 'not_departed' }, { status: 409 });

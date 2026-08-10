@@ -39,6 +39,10 @@ const VERIFY_KEY = 'test-rider-verify-secret-vrai';
 
 const RIDER = 'rider-vrai-0001';
 const RIDER_CODE = 'SR-VRAI-PERSONAL-0001';
+/** A SECOND valid rider — never this order's custodian. The road must refuse
+ *  his hand by name (verifier MAJOR: the journey is the custodian's alone). */
+const FORAIN = 'rider-vrai-forain';
+const FORAIN_CODE = 'SR-VRAI-PERSONAL-0002';
 
 const ALL_PASS = { produit_conforme: true, quantite_complete: true, emballage_intact: true };
 
@@ -88,10 +92,10 @@ function logisticsStub() {
       return Response.json({ ok: false, reason: 'not_found' }, { status: 404 });
     }
     const body = (await request.json().catch(() => null)) as Json | null;
-    if (String(body?.['code'] ?? '') !== RIDER_CODE) {
-      return Response.json({ error: 'unauthorized' }, { status: 401 });
-    }
-    return Response.json({ ok: true, riderId: RIDER });
+    const code = String(body?.['code'] ?? '');
+    if (code === RIDER_CODE) return Response.json({ ok: true, riderId: RIDER });
+    if (code === FORAIN_CODE) return Response.json({ ok: true, riderId: FORAIN });
+    return Response.json({ error: 'unauthorized' }, { status: 401 });
   };
 }
 
@@ -249,10 +253,23 @@ describe('VRAI-ROUTE — the whole road, machine-armed, in the rider her own han
     expect(tooSoon.status).toBe(409);
     expect(tooSoon.json).toMatchObject({ reason: 'not_departed' });
 
+    // THE ROAD IS THE CUSTODIAN'S ALONE (verifier MAJOR): a second, perfectly
+    // authenticated rider — never this order's — can narrate NOTHING. A
+    // forged arrival would have opened the buyer's code reveal early.
+    const forgeDep = await call(mf, 'POST', '/rider/transit/depart', FORAIN_CODE, { orderId: O, command_id: 'forge-dep' });
+    expect(forgeDep.status).toBe(409);
+    expect(forgeDep.json).toMatchObject({ ok: false, reason: 'not_the_custodian' });
+
     // « En route » — first-wins, and the replay answers the ORIGINAL instant.
     const dep = await call(mf, 'POST', '/rider/transit/depart', RIDER_CODE, { orderId: O, command_id: 'dep-1' });
     expect(dep.status).toBe(200);
     expect(dep.json).toMatchObject({ ok: true, status: 'departed' });
+
+    // ...and the foreign hand cannot forge the ARRIVAL either, which is the
+    // fact the remise reveal turns on.
+    const forgeArr = await call(mf, 'POST', '/rider/transit/arrive', FORAIN_CODE, { orderId: O, command_id: 'forge-arr' });
+    expect(forgeArr.status).toBe(409);
+    expect(forgeArr.json).toMatchObject({ ok: false, reason: 'not_the_custodian' });
     const depAgain = await call(mf, 'POST', '/rider/transit/depart', RIDER_CODE, { orderId: O, command_id: 'dep-2' });
     expect(depAgain.json).toMatchObject({ ok: true, status: 'deja', at: dep.json['at'] });
 
