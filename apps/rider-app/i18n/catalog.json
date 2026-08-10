@@ -1362,22 +1362,10 @@
     "screenClass": "label"
   },
   {
-    "key": "delivery.photo_hint",
-    "fr": "Prenez le colis en photo, chez la cliente. C'est la preuve de la remise.",
-    "register": "neutral",
-    "screenClass": "instruction"
-  },
-  {
-    "key": "delivery.no_hash",
-    "fr": "Ce téléphone ne peut pas signer la photo. Prévenez Séra.",
+    "key": "delivery.preuve_bloquee",
+    "fr": "Séra n'a pas pu noter votre arrivée. Appelez Séra pour finir la remise.",
     "register": "neutral",
     "screenClass": "status"
-  },
-  {
-    "key": "delivery.evidence_send",
-    "fr": "Envoyer la preuve",
-    "register": "neutral",
-    "screenClass": "label"
   },
   {
     "key": "delivery.evidence_held",

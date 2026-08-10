@@ -709,12 +709,34 @@ export default function App() {
    *
    * Resetting on the ORDER also gives the auto-seal a legitimate second life:
    * a new course gets a fresh, idle phase instead of inheriting a spent one.
+   *
+   * ⚠ ALL SIX PHASES, AND THE THREE VALUES THEY LEAVE BEHIND. This list was
+   * four when only the seal fired by itself; the door's bundle fires by itself
+   * too now, and the omissions were not cosmetic:
+   *
+   *   · `evidencePhase` — a rider pulled off course A at the door and given B
+   *     kept A's arrival, A's `livraisonIds` and A's seal, so the effect POSTed
+   *     **A's chain ids to B's custody object**. The spine refuses that closed
+   *     (`evidence_chain_mismatch`) so nothing moves, but it writes a spurious
+   *     refused command into B's log and poisons the phase.
+   *   · `dropPhase` — worse, and PRE-EXISTING: `dropDone(dropPhase)` stayed
+   *     true across courses, so the « Livré. Merci. » celebration rendered for
+   *     course B the moment its seal registered. A false delivery claim, on
+   *     screen, over a package still in the rider's hands.
+   *   · `livraisonIds` / `sealSaisi` / `verifyBundleId` — the values the acts
+   *     compose from. Carrying one course's ids into the next is how the two
+   *     above became reachable at all.
    */
   useEffect(() => {
     setVerifyPhase(ACT_IDLE);
     setSealPhase(ACT_IDLE);
     setDepartPhase(ACT_IDLE);
     setArrivePhase(ACT_IDLE);
+    setEvidencePhase(ACT_IDLE);
+    setDropPhase(ACT_IDLE);
+    setLivraisonIds(null);
+    setSealSaisi(null);
+    setVerifyBundleId(null);
   }, [dwellOrderId]);
 
   /**
@@ -848,8 +870,10 @@ export default function App() {
              * it must key (custody fingerprints this field: a value the key
              * cannot see returns as `409 command_id_reused_with_other_content`).
              *
-             * The SEAL's own `no_evidence_refs` guard is untouched: custody
-             * still refuses to begin on zero photos.
+             * ⚠ AND THE SEAL'S OWN `no_evidence_refs` GUARD IS GONE TOO
+             * (ROUTE-DIRECTE, 2026-08-10) — this used to say it was untouched.
+             * Custody now begins on zero photos by the founder's ruling; what
+             * did NOT change is that nothing here ever invents a ref.
              */
             evidenceBundleId: verifyBundleId ?? SANS_PHOTO,
             dwellSec: attempt.dwellSec,
@@ -1805,8 +1829,9 @@ export default function App() {
                           * the ROAD: one primary action « En route » (a real
                           * transit fact on the ledger), then the destination
                           * with ONE primary action « Je suis arrivé » (a real
-                          * arrival fact), and only then the delivery photo and
-                          * the buyer's code. Each screen advances on the
+                          * arrival fact), and then the buyer's code — the door
+                          * photo between them is gone (PORTE-SANS-PHOTO,
+                          * founder ruling 2026-08-10). Each screen advances on the
                           * LEDGER's answer, never on the tap; a refusal or an
                           * offline gets its honest sentence in place.
                           */}
@@ -1914,17 +1939,46 @@ export default function App() {
                                           button below is real. */}
                                       {o.hint === undefined ? null : <FasoBody>{t(o.hint)}</FasoBody>}
                                     </FasoCard>
-                                    {/* The same retry law as the seal: offered
-                                        only where retrying can work. A named
-                                        refusal keeps its sentence and no lever.
-                                        Safe to press — the command is keyed on
-                                        the order alone, so it replays. */}
-                                    {o.tone === 'waiting' ? (
+                                    {/**
+                                      * ⚠ THE DOOR'S ACT IS AUTOMATIC, SO THIS
+                                      * ARM IS THE ONLY WAY OUT — and « offered
+                                      * only on the waiting tones » was too
+                                      * narrow for it. It deleted the « Envoyer
+                                      * la preuve » button that used to sit
+                                      * here for EVERY outcome, and
+                                      * `preuveAuto` cannot re-fire (it needs
+                                      * `idle`). A rider whose code was rotated
+                                      * at the console mid-shift got 401 →
+                                      * « Demandez un nouveau code à Séra » →
+                                      * they do, they sign back in — and the
+                                      * screen is still the refused chip, for
+                                      * ever. The delivery could not be
+                                      * finished on that phone.
+                                      *
+                                      * So the retry follows what a rider can
+                                      * actually change: the network coming
+                                      * back (waiting) OR a fresh code
+                                      * (`unauthorized` — which `act-model`
+                                      * itself calls « not a statement about
+                                      * the package »).
+                                      */}
+                                    {o.tone === 'waiting' || evidencePhase.answer.kind === 'unauthorized' ? (
                                       <FasoPrimaryButton
                                         label={t('delivery.preuve_reessayer')}
                                         onPress={sendDeliveryEvidence}
                                       />
-                                    ) : null}
+                                    ) : (
+                                      /* A refusal custody NAMED (chain or seal
+                                         mismatch, custody elsewhere). Retrying
+                                         replays the same answer, so no lever —
+                                         but never a dead end either: the way
+                                         out is a phone call, said plainly, the
+                                         same escape `delivery.ids_missing`
+                                         already offers. */
+                                      <FasoCard>
+                                        <FasoBody>{t('delivery.preuve_bloquee')}</FasoBody>
+                                      </FasoCard>
+                                    )}
                                   </>
                                 );
                               })()

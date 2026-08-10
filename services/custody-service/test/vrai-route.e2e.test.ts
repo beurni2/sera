@@ -22,7 +22,9 @@ import { afterAll, describe, expect, it } from 'vitest';
  *      depart), and relayed to Shop+'s `/fulfillment/transit` at-least-once.
  *   4. AUTO-DECIDE — the deterministic ValidationDecision runs when evidence
  *      LANDS; a photo validates, an empty bundle holds for review. Money still
- *      moves ONLY on the buyer's code — the review_hold branch proves it.
+ *      moves ONLY on the buyer's code — a WRONG code proves it, and the
+ *      ledger still reads `courier:` after it (the review_hold branch that
+ *      used to carry this went dormant with PORTE-SANS-PHOTO).
  *
  * The Shop+ receiver below is CONTRACT-CERTIFIED (Execution Contract §3)
  * against the real storefront doors: Bearer PROGRESS_WRITE_SECRET or a

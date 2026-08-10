@@ -102,7 +102,7 @@ jobs:
           # cannot be registered, so custody never begins on this build. Warn
           # in the same voice, and never print the key itself.
           if [ -z "$EXPO_PUBLIC_SERA_MEDIA_BASE" ] || [ -z "$EXPO_PUBLIC_SERA_MEDIA_WRITE_KEY" ]; then
-            echo "::warning title=Aperçu sans photo de preuve::MEDIA_BASE (Variables) et/ou MEDIA_WRITE_KEY (Secrets) ne sont pas configurés. La photo de remise ne peut pas être enregistrée, donc la livraison ne peut pas être prouvée à la porte — l'écran le dit clairement. Le scellé, lui, ne demande plus de photo (ROUTE-DIRECTE)."
+            echo "::warning title=Aperçu sans photo de preuve::MEDIA_BASE (Variables) et/ou MEDIA_WRITE_KEY (Secrets) ne sont pas configurés. Il ne reste qu'une photo dans l'application — celle du ramassage, quand le coursier signale une différence — et elle ne pourra pas être enregistrée. La remise n'en demande plus (PORTE-SANS-PHOTO) : elle se termine avec le code de la cliente."
           else
             echo "media:     $EXPO_PUBLIC_SERA_MEDIA_BASE"
           fi

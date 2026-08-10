@@ -78,6 +78,18 @@ describe('VRAI-ROUTE — the held-package arm runs seal -> En route -> arrivé -
     expect(held, 'the door photo hint must be gone').not.toContain('delivery.photo_hint');
     expect(held, 'and its camera with it').not.toContain('setDropArt');
     expect(held, 'and its send button').not.toContain('delivery.evidence_send');
+    /**
+     * ⚠ AND THE ARM ALWAYS OFFERS A WAY OUT. The door's act is automatic and
+     * cannot re-fire (it needs `idle`), so this arm is the rider's ONLY exit:
+     * a retry where one can work — the network returning, or a fresh code
+     * after the console rotated theirs — and a phone number where it cannot.
+     * Deleting either leaves a rider at a door with a package and no screen
+     * that goes anywhere, which is exactly what the send button used to
+     * prevent before it was removed.
+     */
+    expect(held, 'a retry where retrying can work').toContain("t('delivery.preuve_reessayer')");
+    expect(held, '…including after a rotated rider code').toContain("evidencePhase.answer.kind === 'unauthorized'");
+    expect(held, 'and a named way out where it cannot').toContain("t('delivery.preuve_bloquee')");
   });
 
   it('the arrival screen shows the destination — the same landmark-first lines', () => {

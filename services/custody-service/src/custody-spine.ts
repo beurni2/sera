@@ -263,8 +263,14 @@ export class CustodySpine {
      * WHAT STILL PROVES THE PICKUP. The rider's checklist (§6.1 objective
      * conformity) is unchanged and still gated on `accepted`; the supplier's
      * readiness photos ride the course; the optional difference-photo on the
-     * verification screen is still offered; and the DELIVERY photo at the door
-     * is untouched and still mandatory. The custody record keeps its
+     * verification screen is still offered; and the buyer's own drop code is
+     * still what releases the package at the door.
+     *
+     * ⚠ THAT LAST CLAUSE USED TO READ « and the DELIVERY photo at the door is
+     * untouched and still mandatory ». True when written, false the same day:
+     * PORTE-SANS-PHOTO removed the door camera too. Corrected here rather than
+     * left standing, because this paragraph is the justification a future
+     * reader will weigh. The custody record keeps its
      * `photoRefs` field — now often empty, never fabricated. A7's real lesson
      * survives intact: an EMPTY list is honest, a made-up `ev-<uuid>` is not,
      * and nothing anywhere invents a ref.

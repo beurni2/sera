@@ -199,12 +199,36 @@ describe('delivery + SE5.3 — validation gates the drop code; eligibility exact
     // …and with no decision at all, likewise closed.
     const spine2 = spineWithCourierCustody();
     expect(spine2.resolveHoldAsRejected(['x'], T)).toEqual({ ok: false, reason: 'unknown_transition' });
-    // The dormancy is asserted, not assumed: nothing in the spine produces a
-    // hold any more. If a future change re-introduces one, this fails and the
-    // test above it must be restored.
-    const src = readFileSync(new URL('../src/custody-spine.ts', import.meta.url), 'utf8');
-    expect(src.match(/'review_hold'/g) ?? [], 'a new review_hold producer means the rejection path is live again')
-      .toHaveLength(1);
+    /**
+     * ⚠ THE DORMANCY IS ASSERTED BY BEHAVIOUR, NOT BY GREPPING FOR A QUOTE.
+     *
+     * The first cut of this counted `/'review_hold'/g` in the source and
+     * expected 1. A verifier broke it in one line: a live producer written
+     * `const HOLD = "review_hold" as const` — double quotes — put the
+     * rejection path back in service with all 218 tests green. A test that a
+     * change of quote style defeats is not protecting anything, and its
+     * natural repair (bump the number) disarms it permanently.
+     *
+     * So the question is asked of the SPINE, not of its text: across every
+     * bundle shape a real delivery can present — no artifacts, one, several —
+     * does any of them still produce a hold? The day one does, this fails and
+     * the test above must be restored to its original assertions.
+     */
+    const shapes: readonly { readonly name: string; readonly artifacts: readonly unknown[] }[] = [
+      { name: 'no artifact (the door, since PORTE-SANS-PHOTO)', artifacts: [] },
+      { name: 'one artifact', artifacts: [{ ref: 'media/a.jpg', sha256: SHA, mimeType: 'image/jpeg' }] },
+      { name: 'several artifacts', artifacts: [
+        { ref: 'media/a.jpg', sha256: SHA, mimeType: 'image/jpeg' },
+        { ref: 'media/b.jpg', sha256: SHA, mimeType: 'image/jpeg' },
+      ] },
+    ];
+    for (const shape of shapes) {
+      const s = spineWithCourierCustody();
+      s.submitDeliveryEvidence(evidenceBundle({ artifacts: shape.artifacts }), 'server_confirmed', T);
+      const d = s.decideValidation(T);
+      expect(d.ok && d.decision.result, `${shape.name} must not produce a hold while the path is dormant`).toBe('validated');
+      expect(s.resolveHoldAsRejected(['x'], T), shape.name).toEqual({ ok: false, reason: 'unknown_transition' });
+    }
   });
 
   it('happy validation: exactly ONE delivery.validated.v1 exists per order — the eligibility signal, after the drop code', () => {

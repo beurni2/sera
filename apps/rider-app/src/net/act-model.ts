@@ -241,8 +241,9 @@ export function roadDeparted(phase: ActPhase, remembered: ActStage): boolean {
   return rememberedAtLeast(remembered, 'departed');
 }
 
-/** VRAI-ROUTE — has the arrival been recorded? Only then do the delivery
- *  photo and the buyer's code render (Spec l.63: arrival precedes them). */
+/** VRAI-ROUTE — has the arrival been recorded? Only then does the buyer's code
+ *  render (Spec l.63: arrival precedes it). The delivery photo that used to
+ *  sit between them is gone — PORTE-SANS-PHOTO, founder ruling 2026-08-10. */
 export function roadArrived(phase: ActPhase, remembered: ActStage): boolean {
   if (phase.kind === 'answered') return transitArrived(phase.answer);
   return rememberedAtLeast(remembered, 'arrived');
