@@ -127,6 +127,39 @@ jobs:
           fi
           printf '%s' "$ARM_SECRET" | npx --yes wrangler@4 secret put SHOP_ARM_SECRET
 
+      # ⚠ THE WIRE THAT CARRIES A FINISHED DELIVERY BACK TO THE CONSOLES, AND
+      # WHICH WAS NEVER ARMED (founder report 2026-08-10: « once I tap in the
+      # buyer's code nothing happens »).
+      #
+      # The rider's screen was right — custody recorded `custody_with_customer`
+      # — but `flushEligibility` and `flushTransit` both open with
+      # `if (shop === undefined || secret === '')` and park the row as
+      # `unsendable_no_config`. This workflow armed four secrets and never this
+      # one, so EVERY delivery, EVERY « en route » and EVERY « arrivée » has
+      # been resting in the outbox instead of reaching Shop+ — and therefore
+      # never reaching Boutik+'s supplier console, which learns of a delivery
+      # only through Shop+'s `/fulfillment/delivered`.
+      #
+      # Nothing was lost: the rows rest with their attempts intact and are
+      # revived by the alarm once this is set, which is what « honest resting
+      # state, never a silent drop » was built for.
+      #
+      # ⚠ SAME VALUE AS SHOP+'s `PROGRESS_WRITE_SECRET`, which gates the
+      # `/fulfillment/progress` and `/fulfillment/transit` doors on the
+      # storefront Worker. A different value is a 401 on every attempt — the
+      # same class of silence as the media write key.
+      - name: Arm SHOP_PROGRESS_SECRET (piped — skipped only if the repo secret is absent)
+        working-directory: services/custody-service
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          PROGRESS_SECRET: ${{ secrets.SHOP_PROGRESS_SECRET }}
+        run: |
+          if [ -z "$PROGRESS_SECRET" ]; then
+            echo "::warning title=Retour vers les consoles NON armé::SHOP_PROGRESS_SECRET absent — une livraison terminée, un départ et une arrivée restent dans la file (unsendable_no_config) et n'arrivent JAMAIS sur la console du fournisseur ni sur la vôtre. Rien n'est perdu : la file repart dès que le secret est posé et ce workflow relancé. Il doit valoir exactement le PROGRESS_WRITE_SECRET de shop-plus."
+            exit 0
+          fi
+          printf '%s' "$PROGRESS_SECRET" | npx --yes wrangler@4 secret put SHOP_PROGRESS_SECRET
+
       # ═══ The F9 assertion: the live Worker must BE the bundle this job built ═══
       - name: Assert the live custody Worker is the bundle this job built
         env:

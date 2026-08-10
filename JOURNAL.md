@@ -9,6 +9,21 @@ Format per entry:
 
 ---
 
+## 2026-08-10 · RETOUR-CONSOLES — a finished delivery never left the outbox · IN-REVIEW (branch, awaiting founder)
+**Founder report:** « once I tap in the buyer's code in rider's sera app nothing happens ».
+
+**THE RIDER'S SCREEN WAS NOT THE BUG.** The RENDU-RÉEL walk drives exactly that path — type the buyer's code, press « Confirmer la remise », see « Livré. Merci. » — and it passes; custody records `custody_with_customer`. What does not happen is everything AFTER: the supplier's console never moves the order to « Livré et terminé », and neither does his.
+
+**FOUND, by reading the deploy against the code.** `flushEligibility` (`custody-do.ts:776-784`) and `flushTransit` (`:821-830`) both open with `if (shop === undefined || secret === '')` and park the row as `unsendable_no_config`. `custody-deploy.yml` arms FOUR secrets — `SERA_CUSTODY_OPS_SECRET`, `SERA_RIDER_VERIFY_SECRET`, `SERA_PRODUCE_SECRET`, `SHOP_ARM_SECRET` — and **has never armed `SHOP_PROGRESS_SECRET`.** So on the live Worker every delivery, every « en route » and every « arrivée » has been resting in the outbox instead of reaching Shop+ — and therefore never reaching Boutik+'s supplier console, which learns of a delivery only through Shop+'s `/fulfillment/delivered` (`shop-plus/services/storefront-service/worker/order-do.ts:1589` → `boutik-plus/services/offer-service/worker/index.ts:140`).
+
+**Nothing was lost.** The rows rest with their attempts intact and the alarm revives them once the secret is set — which is precisely what the `unsendable_no_config` state was built for (« an honest resting state, never a silent drop »).
+
+**FIXED:** the deploy now arms it, with a French warning that says what stays stuck if the repo secret is absent. **⚠ IT MUST EQUAL Shop+'s `PROGRESS_WRITE_SECRET`** (`storefront-service/worker/auth.ts:174`), which gates `/fulfillment/progress` and `/fulfillment/transit`. A different value is a 401 on every attempt — the same class of silence as the media write key. **The value is the founder's alone; I set the workflow, he sets the secret.**
+
+**Pending:** he sets `SHOP_PROGRESS_SECRET` in `beurni2/sera` to Shop+'s `PROGRESS_WRITE_SECRET` value, then custody-deploy is re-run → the parked rows drain and the consoles catch up. Merge + deploy approval.
+
+---
+
 ## 2026-08-10 · STANDING ORDER — the screen is DRIVEN, never only read · LAW
 **Founder:** « Make it a law from now on every build and fix should uses this tool for tests before merge and deploy ask. »
 
