@@ -698,6 +698,25 @@ export default function App() {
     // does NOT restart under a rider who is mid-inspection of this one.
     if (dwellOrderId !== null) dwellStart.current = Date.now();
   }, [dwellOrderId]);
+  /**
+   * ⚠ THE ACT PHASES BELONG TO ONE COURSE. They were never reset when the
+   * assignment changed — tolerable while every act was a TAP, and not now that
+   * the seal fires from an effect: a rider reassigned while `sealPhase` was
+   * still idle would have `beginCustody` fired for order B carrying order A's
+   * accepted verification. The spine refuses that closed
+   * (`verification_not_accepted`, BEFORE the seal is consumed — nothing is
+   * burned), but it writes a spurious refused command into B's log and lands
+   * the rider on a screen for an act that never made sense.
+   *
+   * Resetting on the ORDER also gives the auto-seal a legitimate second life:
+   * a new course gets a fresh, idle phase instead of inheriting a spent one.
+   */
+  useEffect(() => {
+    setVerifyPhase(ACT_IDLE);
+    setSealPhase(ACT_IDLE);
+    setDepartPhase(ACT_IDLE);
+    setArrivePhase(ACT_IDLE);
+  }, [dwellOrderId]);
 
   /**
    * ⚠ THE THREE HALVES OF RULING ③ — LOAD, REMEMBER, FORGET.
@@ -1706,8 +1725,10 @@ export default function App() {
                       the rider SAYS to the supplier at the stall; the
                       supplier's console confirms it before handing the
                       package over. SE5's two-party pickup, the supplier's
-                      half — logistics-owned, and NOT the custody code typed
-                      below (that one still comes from Séra by phone). */}
+                      half — logistics-owned, and NOT the custody pickup code,
+                      which rides the session and is never typed or shown
+                      (VRAI-ROUTE), nor the seal, machine-carried too since
+                      ROUTE-DIRECTE. */}
                   {liveAssignment.codeRamassage !== null ? (
                     <>
                       <FasoSealMark code={liveAssignment.codeRamassage} label={t('ramassage.titre')} />
@@ -1927,14 +1948,46 @@ export default function App() {
                       ) : sealPhase.kind === 'answered' ? (
                         (() => {
                           const o = sealOutcome(sealPhase.answer);
+                          const scelle = liveAssignment.codeScelle;
                           return (
-                            <FasoCard>
-                              <FasoStatusChip
-                                tone={o.tone === 'ok' ? 'ok' : o.tone === 'waiting' ? 'info' : 'bad'}
-                                label={t(o.title)}
-                              />
-                              {o.hint === undefined ? null : <FasoBody>{t(o.hint)}</FasoBody>}
-                            </FasoCard>
+                            <>
+                              <FasoCard>
+                                <FasoStatusChip
+                                  tone={o.tone === 'ok' ? 'ok' : o.tone === 'waiting' ? 'info' : 'bad'}
+                                  label={t(o.title)}
+                                />
+                                {o.hint === undefined ? null : <FasoBody>{t(o.hint)}</FasoBody>}
+                              </FasoCard>
+                              {/**
+                                * ⚠ « RÉESSAYEZ » MUST HAVE SOMETHING TO TAP.
+                                * The auto-effect fires ONCE (it requires
+                                * `sealPhase.kind === 'idle'`, and nothing resets
+                                * it mid-course), so a rider whose signal dropped
+                                * in the two seconds after the verification was
+                                * accepted read « Réessayez ici même » on a card
+                                * with no button and no way forward but killing
+                                * the app. That is the dead end the founder hit
+                                * this morning, one screen earlier.
+                                *
+                                * Offered ONLY on the waiting tones — offline and
+                                * unreachable, the two a retry can actually fix.
+                                * A NAMED refusal keeps its sentence and no
+                                * button: retrying changes nothing, and a lever
+                                * that cannot work is the defect this screen
+                                * exists to avoid.
+                                *
+                                * Safe to press: `attemptFor` keys the command on
+                                * order+seal, so the retry is the SAME command_id
+                                * and custody replays its recorded answer rather
+                                * than moving custody twice.
+                                */}
+                              {o.tone === 'waiting' && scelle !== null ? (
+                                <FasoPrimaryButton
+                                  label={t('seal.reessayer')}
+                                  onPress={() => sendSeal(scelle)}
+                                />
+                              ) : null}
+                            </>
                           );
                         })()
                       ) : (

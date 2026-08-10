@@ -408,6 +408,33 @@ describe('⚠ the ports are CALLED, not merely present (blockers A1 + A2, round 
     expect(app, 'the seal act is CALLED, with no tap').toMatch(/sendSeal\(scelle\);/);
     expect(app, '…on the ledger accepting the verification').toMatch(/sealScreenIsDue\(verifyPhase, remembered\)/);
     expect(app, '…and never twice').toMatch(/!packageIsHeld\(sealPhase, remembered\)/);
+    /**
+     * ⚠ A STALE DEP ARRAY IS A DEAD PRIMARY ACTION, AND THE STRING ASSERTIONS
+     * ABOVE CANNOT SEE IT. Mutation, verified applied: changing this effect's
+     * deps to `[WIRED]` means it can never re-run after mount — the seal never
+     * fires for ANY rider, every one of them sits on « Séra enregistre le
+     * scellé » for ever, the road never opens — and the whole board stayed
+     * green. Byte for byte the round-two blocker (« 260 green tests over a
+     * dead primary action ») in a new costume, reachable because this slice
+     * turned a tap into an effect.
+     *
+     * So the deps are pinned to the values the effect READS. Add a value and
+     * forget the array, or trim the array, and this fails.
+     */
+    const sealEffect = app.slice(app.indexOf('const scelleAuto ='), app.indexOf('const sealPourRemise'));
+    expect(sealEffect, 'the auto-seal effect block').toContain('sendSeal(scelle);');
+    expect(sealEffect, 'every value the effect reads must be a dependency')
+      .toContain('}, [WIRED, scelleAuto, liveAssignment, sendSeal]);');
+    /**
+     * …and the ONE recovery path, because the effect fires only from `idle`
+     * and nothing resets it mid-course: a waiting answer (offline /
+     * unreachable) must leave a lever the rider can actually press, or
+     * « Réessayez » is a lie told to someone holding a package.
+     */
+    expect(app, 'a retry the rider can tap').toMatch(/label=\{t\('seal\.reessayer'\)\}/);
+    expect(app, '…offered only where retrying can work').toMatch(/o\.tone === 'waiting' && scelle !== null \?/);
+    expect(app, '…and the phases are per-course, so a new order is not born spent')
+      .toMatch(/setSealPhase\(ACT_IDLE\);/);
     // And the senders really call the ports, in the arm that renders them.
     expect(app).toMatch(/const sendVerification = useCallback\(/);
     expect(app).toMatch(/const sendSeal = useCallback\(/);

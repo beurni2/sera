@@ -81,7 +81,7 @@ jobs:
         if: steps.token.outputs.present == 'true'
         run: |
           if [ -z "$EXPO_PUBLIC_SERA_LOGISTICS_BASE" ] || [ -z "$EXPO_PUBLIC_SERA_CUSTODY_BASE" ]; then
-            echo "::warning title=Aperçu non relié à Séra::LOGISTICS_BASE et/ou CUSTODY_BASE ne sont pas configurés (Settings → Variables). L'aperçu se lance, mais aucun code coursier ne pourra ouvrir de session et aucun scellé ne pourra être enregistré — l'écran le dit clairement."
+            echo "::warning title=Aperçu non relié à Séra::LOGISTICS_BASE et/ou CUSTODY_BASE ne sont pas configurés (Settings → Variables). L'aperçu se lance, mais aucun code coursier ne pourra ouvrir de session et aucune course ne pourra être vérifiée — l'écran le dit clairement."
           else
             echo "logistics: $EXPO_PUBLIC_SERA_LOGISTICS_BASE"
             echo "custody:   $EXPO_PUBLIC_SERA_CUSTODY_BASE"
@@ -90,7 +90,7 @@ jobs:
           # cannot be registered, so custody never begins on this build. Warn
           # in the same voice, and never print the key itself.
           if [ -z "$EXPO_PUBLIC_SERA_MEDIA_BASE" ] || [ -z "$EXPO_PUBLIC_SERA_MEDIA_WRITE_KEY" ]; then
-            echo "::warning title=Aperçu sans photo de preuve::MEDIA_BASE (Variables) et/ou MEDIA_WRITE_KEY (Secrets) ne sont pas configurés. La photo ne peut pas être enregistrée, donc le scellé ne part pas et la garde ne commence pas — l'écran le dit clairement."
+            echo "::warning title=Aperçu sans photo de preuve::MEDIA_BASE (Variables) et/ou MEDIA_WRITE_KEY (Secrets) ne sont pas configurés. La photo de remise ne peut pas être enregistrée, donc la livraison ne peut pas être prouvée à la porte — l'écran le dit clairement. Le scellé, lui, ne demande plus de photo (ROUTE-DIRECTE)."
           else
             echo "media:     $EXPO_PUBLIC_SERA_MEDIA_BASE"
           fi

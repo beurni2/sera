@@ -280,3 +280,41 @@ describe('VRAI-ROUTE — the confirmation stamp and the machine-carried code (20
     expect(a?.codeVerification).toBeNull();
   });
 });
+
+describe('ROUTE-DIRECTE — the machine-carried seal is bounded by its OWN shape', () => {
+  const withScelle = (v: unknown) =>
+    riderSessionFromBody({
+      ok: true,
+      rider: {
+        riderId: 'r-1', displayName: 'Boss', certified: true, privacyAckOk: true,
+        assignment: {
+          assignmentId: 'a-1', taskId: 't-1', orderId: 'o-1', status: 'acknowledged',
+          codeScelle: v,
+        },
+      },
+    });
+
+  it('accepts the minted SC- shape and nothing else', () => {
+    expect(withScelle('SC-4K7M-9PQR')?.assignment?.codeScelle).toBe('SC-4K7M-9PQR');
+  });
+
+  /**
+   * ⚠ THE SUBSTITUTION THIS PARSER EXISTS TO REFUSE. The pickup code is one of
+   * the four secrets and rides the SAME read. A parser that accepted either
+   * shape in either slot would let one stand in for the other — « the four
+   * secrets are never substituted », enforced here by shape, not by trust.
+   */
+  it('⚠ REFUSES a pickup-code shape in the seal slot — never a substitution', () => {
+    expect(withScelle('K7M-9PQ')?.assignment?.codeScelle).toBeNull();
+  });
+
+  it('refuses anything else: wrong length, ambiguous letters, lowercase, junk, non-strings', () => {
+    for (const bad of ['SC-4K7M-9PQ', 'SC-4K7M-9PQRS', 'SC-4k7m-9pqr', 'SC-4I7M-9PQR', 'SC-4O7M-9PQR', 'SC-4K7M9PQR', '', 'SC--', 42, null, {}, ['SC-4K7M-9PQR']]) {
+      expect(withScelle(bad)?.assignment?.codeScelle, String(bad)).toBeNull();
+    }
+  });
+
+  it('an absent seal is null, never invented', () => {
+    expect(withScelle(undefined)?.assignment?.codeScelle).toBeNull();
+  });
+});

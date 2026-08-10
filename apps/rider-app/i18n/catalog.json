@@ -720,6 +720,12 @@
     "screenClass": "status"
   },
   {
+    "key": "seal.reessayer",
+    "fr": "Réessayer",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
     "key": "seal.single_use",
     "fr": "usage unique",
     "register": "neutral",
