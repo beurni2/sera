@@ -385,15 +385,49 @@ export class CustodySpine {
     return this.pendingOfflineEvidence.length > 0;
   }
 
-  /** Step 12b — ValidationDecision (SE5.3). GPS-only can NEVER validate. */
+  /**
+   * Step 12b — ValidationDecision (SE5.3).
+   *
+   * ═══ ⚠ PORTE-SANS-PHOTO (founder ruling 2026-08-10) — « for the door photo I
+   * want it gone » ═══
+   *
+   * WHAT THIS USED TO DO, AND WHY IT WAS AN INTERPRETATION, NOT THE SPEC.
+   * It read `const gpsOnly = bundle.artifacts.length === 0` and held any
+   * photo-less bundle for review with the reason `gps_never_sole_proof`. But
+   * the governing text is SE-I07 (Spec l.39): « **Location is supporting
+   * evidence, not proof. No verdict rests solely on GPS.** » It forbids a
+   * verdict resting SOLELY ON GPS. It nowhere requires an artifact — the
+   * equation « no photo ⇒ GPS only » was this line's own reading.
+   *
+   * WHAT CARRIES THE VERDICT NOW, and why SE-I07 is intact rather than waived:
+   * the `buyerDropCode`, consumed at `confirmDropAndEmitEligibility` below. It
+   * is a secret only the BUYER holds, presented by the buyer at the door, and
+   * a carrier can never present it for them (the rider door has no
+   * `/delivery/decide`, and the code is single-use at the registry). A verdict
+   * standing on that does not rest on GPS at all — it rests on the one party
+   * whose word the whole delivery is for. That is a STRONGER non-GPS leg than
+   * a photograph, which proves only that a camera was pointed at something.
+   *
+   * SO THE SPEC TEXT IS UNCHANGED and needs no amendment: no canon document is
+   * edited by this ruling, and the four byte-identical copies of
+   * `Sera-Build-Spec.md` do not move.
+   *
+   * WHAT IS GENUINELY LOST, named rather than buried: the door no longer
+   * produces an IMAGE of the handover. Nothing here fabricates one to fill the
+   * gap — `artifactCount` simply records 0.
+   *
+   * ⚠ AND WHAT MUST NOT BE READ INTO THIS: the bundle is still REQUIRED
+   * (`validation_before_evidence`, one line down), still chain-bound and
+   * seal-bound at `submitDeliveryEvidence`, and the drop still refuses without
+   * the buyer's code. « No photo » never becomes « no evidence ».
+   */
   decideValidation(at: string):
     | { ok: true; decision: ValidationDecision; event: PlatformEvent | null }
     | { ok: false; reason: SpineRefusal } {
     if (this.evidenceSubmitted === null) return { ok: false, reason: 'validation_before_evidence' };
     const bundle = this.evidenceSubmitted;
-    const gpsOnly = bundle.artifacts.length === 0;
-    const result = gpsOnly ? 'review_hold' : 'validated';
-    const reasons = gpsOnly ? ['gps_never_sole_proof'] : [];
+    const result = 'validated';
+    const reasons: readonly string[] = [];
     const decision = ValidationDecisionSchema.parse({ taskId: bundle.taskId, result, reasons });
     this.decision = decision;
     this.ledger.append({

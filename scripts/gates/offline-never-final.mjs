@@ -44,5 +44,17 @@ if (fixture.confirmation === 'queued_offline') {
 }
 if (!submitted.ok || submitted.pending) { console.error('server-confirmed evidence unexpectedly pending/refused'); process.exit(2); }
 const decided = spine.decideValidation(T);
-console.log(`OK: server-confirmed evidence validated (${decided.ok ? decided.decision.result : 'refused'}); offline finality is unrepresentable here`);
-process.exit(decided.ok ? 0 : 2);
+// ⚠ ASSERT WHAT IT SAYS, NOT THAT IT SPOKE. This read `process.exit(decided.ok ? 0 : 2)`
+// — a decision merely EXISTING passed the gate, whatever its result. Harmless while
+// the artifact count forced the outcome; blind the moment that test was removed
+// (PORTE-SANS-PHOTO, 2026-08-10), which is exactly when a silent inversion would hide.
+if (!decided.ok) {
+  console.error(`offline-never-final REFUSED — server-confirmed evidence produced no decision: ${decided.reason}`);
+  process.exit(2);
+}
+if (decided.decision.result !== 'validated') {
+  console.error(`offline-never-final REFUSED — server-confirmed evidence decided '${decided.decision.result}', expected 'validated'`);
+  process.exit(2);
+}
+console.log(`OK: server-confirmed evidence validated (${decided.decision.result}); offline finality is unrepresentable here`);
+process.exit(0);

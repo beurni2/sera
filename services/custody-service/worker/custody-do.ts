@@ -868,12 +868,18 @@ export class CustodyDO {
    * FOUNDER RULING 2 (2026-08-10) — AUTO-DECIDE, the deterministic half of
    * « evidence supports, never releases ». When an evidence bundle LANDS, the
    * object runs the spine's own `decideValidation` at once, as a SECOND
-   * LOGGED COMMAND: the policy is already pure (photo present → validated;
-   * artifacts empty → review_hold, GPS never sole proof), so waiting for an
-   * operator to ask the question added a human pause to a computation. Money
-   * still moves ONLY at `/delivery/drop`, on the buyer's own code — this
-   * decides, it releases nothing, and a review_hold still parks the order for
-   * ops exactly as before.
+   * LOGGED COMMAND: the policy is pure, so waiting for an operator to ask the
+   * question added a human pause to a computation. Money still moves ONLY at
+   * `/delivery/drop`, on the buyer's own code — this decides, it releases
+   * nothing.
+   *
+   * ⚠ THE POLICY IT RELAYS CHANGED (PORTE-SANS-PHOTO, founder ruling
+   * 2026-08-10). This comment used to read « photo present → validated;
+   * artifacts empty → review_hold, GPS never sole proof ». The door photo is
+   * gone, so the spine no longer grades on the artifact count at all — see
+   * `custody-spine.ts` `decideValidation` for what carries the verdict now
+   * (the buyer's own drop code, consumed at the door). This method is a RELAY
+   * and needed no code change: it applies whatever the spine decides.
    *
    * IDEMPOTENT BY THE LOG: the command id is derived from the evidence act's
    * own id, so a crash between the two commits is healed on the evidence

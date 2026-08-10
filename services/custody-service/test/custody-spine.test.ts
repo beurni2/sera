@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { PICKUP_VERIFICATION_POLICY_V1 } from '../src/pickup-verification-policy.js';
 import { CustodySpine } from '../src/custody-spine.js';
@@ -132,30 +133,78 @@ describe('delivery + SE5.3 — validation gates the drop code; eligibility exact
     expect(spine.ledger.currentCustodian(CHAIN.package_id)).toBe('courier:r-1');
   });
 
-  it('GPS-ONLY evidence can NEVER validate → review_hold with gps_never_sole_proof; hold releases NOTHING', () => {
+  it('⚠ PORTE-SANS-PHOTO — a photo-less bundle VALIDATES, and the verdict rests on the buyer’s code, never on GPS', () => {
+    /**
+     * FOUNDER RULING (2026-08-10): « for the door photo I want it gone ».
+     *
+     * SE-I07 (Spec l.39) is what governs, and it is UNCHANGED: « Location is
+     * supporting evidence, not proof. No verdict rests solely on GPS. » The
+     * retired code read `gpsOnly = artifacts.length === 0` — it EQUATED « no
+     * photo » with « GPS only », which is an interpretation the spec text
+     * never made.
+     *
+     * So this test now pins the invariant properly, in two halves: the photo
+     * is not what validates, and THE BUYER'S CODE IS STILL WHAT RELEASES.
+     */
     const spine = spineWithCourierCustody();
     spine.submitDeliveryEvidence(evidenceBundle({ artifacts: [], coarseLocation: 'zone:Gounghin' }), 'server_confirmed', T);
     const decided = spine.decideValidation(T);
-    expect(decided.ok && decided.decision.result).toBe('review_hold');
+    expect(decided.ok && decided.decision.result).toBe('validated');
     if (!decided.ok) return;
-    expect(decided.decision.reasons).toEqual(['gps_never_sole_proof']);
-    expect(decided.event?.name).toBe('delivery.held_for_review.v1');
-    expect(spine.confirmDropAndEmitEligibility('drop-9042', T)).toEqual({ ok: false, reason: 'not_validated' });
+    expect(decided.decision.reasons).toEqual([]);
+    // Still no public event at the decision — the ONE delivery.validated.v1
+    // is the eligibility signal AFTER the drop code, never here.
+    expect(decided.event).toBeNull();
     expect(spine.allEvents().filter((e) => e.name === 'delivery.validated.v1')).toHaveLength(0);
+
+    // ⚠ THE HALF THAT CARRIES SE-I07 NOW. A validated decision releases
+    // NOTHING on its own: a wrong code is refused, the package stays with the
+    // courier, and no eligibility signal exists.
+    expect(spine.confirmDropAndEmitEligibility('pas-le-bon-code', T)).toEqual({ ok: false, reason: 'drop_code_refused' });
     expect(spine.ledger.currentCustodian(CHAIN.package_id)).toBe('courier:r-1');
+    expect(spine.allEvents().filter((e) => e.name === 'delivery.validated.v1')).toHaveLength(0);
+
+    // …and the BUYER's own code is what moves it, photo or no photo.
+    const done = spine.confirmDropAndEmitEligibility('drop-9042', T);
+    expect(done.ok, JSON.stringify(done)).toBe(true);
+    expect(spine.ledger.currentCustodian(CHAIN.package_id)).toBe('customer');
+    expect(spine.allEvents().filter((e) => e.name === 'delivery.validated.v1')).toHaveLength(1);
   });
 
-  it('a hold resolved to REJECTED emits delivery.refused.v1 and releases NOTHING — and is not a terminal machine state', () => {
+  it('⚠ the REJECTION path is now DORMANT, and its guard is what still holds', () => {
+    /**
+     * ⚠ THIS TEST LOST ITS SUBJECT, AND IS NOT DELETED FOR IT.
+     *
+     * `resolveHoldAsRejected` requires `decision.result === 'review_hold'`, and
+     * after PORTE-SANS-PHOTO the artifact count was the ONLY producer of
+     * `review_hold` in the whole service. So the rejection path — and
+     * `delivery.refused.v1` with it — is unreachable from any live flow today.
+     *
+     * That is a REAL loss of coverage and it is named here rather than left to
+     * be discovered: E2's failure-complete work (the refusal ladder, ops
+     * rejection) is what re-opens it, and when a second `review_hold` producer
+     * lands, THIS test must be re-seeded from it and its original assertions
+     * restored — `delivery.refused.v1` emitted, the drop refused, zero
+     * `delivery.validated.v1`.
+     *
+     * What is still live and still asserted: the GUARD. A validated decision
+     * can never be flipped into a rejection, which is the property that stops
+     * a released delivery being retro-actively refused.
+     */
     const spine = spineWithCourierCustody();
     spine.submitDeliveryEvidence(evidenceBundle({ artifacts: [], coarseLocation: 'zone:Gounghin' }), 'server_confirmed', T);
-    spine.decideValidation(T);
-    const rejected = spine.resolveHoldAsRejected(['damaged_on_arrival_claim'], T);
-    expect(rejected.ok && rejected.event.name).toBe('delivery.refused.v1');
-    expect(spine.confirmDropAndEmitEligibility('drop-9042', T)).toEqual({ ok: false, reason: 'not_validated' });
-    expect(spine.allEvents().filter((e) => e.name === 'delivery.validated.v1')).toHaveLength(0);
-    // resolveHold on a non-held decision refuses closed — unknown transitions have no home here.
+    expect(spine.decideValidation(T).ok).toBe(true);
+    expect(spine.resolveHoldAsRejected(['damaged_on_arrival_claim'], T))
+      .toEqual({ ok: false, reason: 'unknown_transition' });
+    // …and with no decision at all, likewise closed.
     const spine2 = spineWithCourierCustody();
     expect(spine2.resolveHoldAsRejected(['x'], T)).toEqual({ ok: false, reason: 'unknown_transition' });
+    // The dormancy is asserted, not assumed: nothing in the spine produces a
+    // hold any more. If a future change re-introduces one, this fails and the
+    // test above it must be restored.
+    const src = readFileSync(new URL('../src/custody-spine.ts', import.meta.url), 'utf8');
+    expect(src.match(/'review_hold'/g) ?? [], 'a new review_hold producer means the rejection path is live again')
+      .toHaveLength(1);
   });
 
   it('happy validation: exactly ONE delivery.validated.v1 exists per order — the eligibility signal, after the drop code', () => {

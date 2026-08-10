@@ -52,7 +52,11 @@ function optionBSpine(): CustodySpine {
   const e = spine.submitDeliveryEvidence({ taskId: CHAIN.task_id, packageId: CHAIN.package_id, custodySealId: 'seal-b-1', artifacts: [{ ref: 'media/drop.jpg', sha256: SHA, mimeType: 'image/jpeg' }], capturedAt: T }, 'server_confirmed', T);
   if (!e.ok) throw new Error('setup evidence');
   const d = spine.decideValidation(T);
+  // Same blindness as the offline gate carried: `if (!d.ok)` asserts a decision
+  // exists, never what it says. The Option-B door tests below all assume this
+  // spine is VALIDATED; say so, or a silent inversion passes here too.
   if (!d.ok) throw new Error('setup decision');
+  if (d.decision.result !== 'validated') throw new Error(`setup decision expected validated, got ${d.decision.result}`);
   return spine;
 }
 

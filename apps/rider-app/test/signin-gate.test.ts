@@ -454,9 +454,13 @@ describe('⚠ the ports are CALLED, not merely present (blockers A1 + A2, round 
     expect(takePhotoBody, 'a short-circuited keep').not.toMatch(/if \(false|&& outcome\.ok\) keep/);
     // …and the two keeps are the two act states, not a shared scratch value.
     expect(app).toMatch(/evidenceBundleId: verifyBundleId/);
-    // ROUTE-DIRECTE: the seal carries no photo at all now, so the second keep
-    // is the DOOR's — the one photo the delivery still cannot go without.
-    expect(app).toMatch(/onPress=\{\(\) => takePhoto\(setDropArt\)\}/);
+    /**
+     * PORTE-SANS-PHOTO (2026-08-10): the door camera is gone too, so there is
+     * exactly ONE keep left in the app — the pickup one. That single bridge is
+     * the whole of what this test protects now.
+     */
+    expect(app.match(/keep\(\{ ref: outcome\.ref/g), 'one keep, one camera').toHaveLength(1);
+    expect(app, 'the door camera must be gone').not.toMatch(/setDropArt/);
   });
 
   it('⚠ TWO cameras, and the pickup one only when a check says « Non »', () => {
@@ -469,10 +473,17 @@ describe('⚠ the ports are CALLED, not merely present (blockers A1 + A2, round 
      *   · the DOOR camera, which the delivery still cannot go without.
      * The seal camera is GONE — declaration and call site both.
      */
-    expect(app.match(/takePhoto\(/g), 'two call sites, not three').toHaveLength(2);
+    /**
+     * ⚠ ONE CAMERA IN THE WHOLE APP — and this is the assertion that now
+     * carries the founder's rule end to end. « photo capture is optional and
+     * only required when one the 3 answers is non » (2026-08-10), plus « for
+     * the door photo I want it gone » — so: not at the seal, not at the door,
+     * once at pickup and only on a reported difference.
+     */
+    expect(app.match(/takePhoto\(/g), 'ONE call site: the pickup difference camera').toHaveLength(1);
     expect(app, 'the verification photo').toMatch(/onPress=\{\(\) => takePhoto\(\(art\) => setVerifyBundleId\(art\.ref\)\)\}/);
-    expect(app, 'the handoff photo').toMatch(/onPress=\{\(\) => takePhoto\(setDropArt\)\}/);
     expect(app, 'the seal camera must be gone entirely').not.toMatch(/setSealPhotoRefs/);
+    expect(app, 'the door camera must be gone entirely').not.toMatch(/setDropArt/);
     // No FasoActCode photo fold survives — the seal was the only one.
     expect(app.match(/photo=\{\{/g), 'no act-code photo fold remains').toBeNull();
     expect(app, 'the verify camera, mounted only on a reported difference').toMatch(
@@ -498,11 +509,19 @@ describe('⚠ the ports are CALLED, not merely present (blockers A1 + A2, round 
     expect(app, 'the verify send never waits on the photo').toMatch(
       /disabled=\{!allAnswered \|\| verifyPhase\.kind === 'working' \|\| capturing\}/,
     );
-    // THE DOOR still shuts until the BUCKET holds it — never « the camera
-    // opened », which is what re-admits the fabricated-ref bug.
-    expect(app, 'the door send waits on a stored, hashed photo').toMatch(
-      /dropArt === null \|\| dropArt\.sha256 === null \|\| capturing/,
-    );
+    /**
+     * ⚠ AND THE DOOR SENDS AN EMPTY LIST — never a fabricated artifact to fill
+     * the space the camera left. That is A7's lesson at the third and last
+     * place it could have been broken.
+     */
+    expect(app, 'the door bundle carries no artifact').toMatch(/artifacts: \[\],/);
+    expect(app, '…and is fired by the arrival, not a tap').toMatch(/sendDeliveryEvidence\(\);/);
+    expect(app, '…once, and never over a held bundle').toMatch(/!evidenceIsHeld\(evidencePhase\)\s*$/m);
+    // Same dep-array law as the seal: a stale array is a dead primary action.
+    const preuveEffect = app.slice(app.indexOf('const preuveAuto ='), app.indexOf('const sendDrop'));
+    expect(preuveEffect, 'every value the effect reads must be a dependency')
+      .toContain('}, [WIRED, preuveAuto, sendDeliveryEvidence]);');
+    expect(app, 'a retry the rider can tap at the door').toMatch(/label=\{t\('delivery\.preuve_reessayer'\)\}/);
     expect(kit).toMatch(/ready =[^;]*photoReady/);
     // A disabled primary action must always name what is missing.
     expect(kit).toMatch(/photo !== undefined && !photo\.taken \? <Body>\{photo\.neededLabel\}/);

@@ -24,7 +24,14 @@ import type { CustodyAnswer } from '../src/net/custody-acts';
  * inspection ... buyerDropCode entered last ». After the seal, the rider's
  * screen becomes the ROAD: one primary action « En route » (a real transit
  * fact), then the destination with ONE primary action « Je suis arrivé » (a
- * real arrival fact), and only then the delivery photo and the buyer's code.
+ * real arrival fact), and then the buyer's code.
+ *
+ * ⚠ « and only then the delivery photo and the buyer's code » is what this
+ * header used to say. PORTE-SANS-PHOTO (founder ruling 2026-08-10, « for the
+ * door photo I want it gone ») removed the photo from the door entirely: the
+ * evidence bundle still goes — chain-bound, seal-bound, fired by the arrival —
+ * but it carries no artifact, and the rider meets no camera there.
+ *
  * And the pickup code stopped being a phone call: it is machine-carried on the
  * session read, presented by the act itself, never typed, never displayed.
  *
@@ -37,7 +44,7 @@ const app = readFileSync(join(import.meta.dirname, '..', 'App.tsx'), 'utf8');
 const recorded = (body: Record<string, unknown>): CustodyAnswer => ({ kind: 'recorded', duplicate: false, body });
 const answered = (answer: CustodyAnswer): ActPhase => ({ kind: 'answered', answer });
 
-describe('VRAI-ROUTE — the held-package arm runs seal -> En route -> arrivé -> photo -> code', () => {
+describe('VRAI-ROUTE — the held-package arm runs seal -> En route -> arrivé -> code', () => {
   // The whole wired held-package arm, between its two gates.
   const held = app.slice(
     app.indexOf('packageIsHeld(sealPhase, remembered) ?'),
@@ -58,10 +65,19 @@ describe('VRAI-ROUTE — the held-package arm runs seal -> En route -> arrivé -
     expect(at('!roadArrived(arrivePhase, remembered) ? (')).toBeLessThan(at('!evidenceIsHeld(evidencePhase) ? ('));
   });
 
-  it('the screens render in the l.63 order: En route, arrivé, photo, code — each after the last', () => {
+  it('the screens render in the l.63 order: En route, arrivé, code — each after the last', () => {
     expect(at("route.en_route_action")).toBeLessThan(at("route.arrive_action"));
-    expect(at("route.arrive_action")).toBeLessThan(at("delivery.photo_hint"));
-    expect(at("delivery.photo_hint")).toBeLessThan(at("delivery.code_title"));
+    expect(at("route.arrive_action")).toBeLessThan(at("delivery.code_title"));
+    /**
+     * ⚠ AND NO CAMERA STANDS BETWEEN THE ARRIVAL AND THE CODE. This is the
+     * founder's flow asserted as an ABSENCE — « je suis arrivé » then « le code
+     * de la cliente », nothing in between. An absence is exactly what a source
+     * scan is good for, and exactly what a re-introduced photo screen would
+     * trip on.
+     */
+    expect(held, 'the door photo hint must be gone').not.toContain('delivery.photo_hint');
+    expect(held, 'and its camera with it').not.toContain('setDropArt');
+    expect(held, 'and its send button').not.toContain('delivery.evidence_send');
   });
 
   it('the arrival screen shows the destination — the same landmark-first lines', () => {

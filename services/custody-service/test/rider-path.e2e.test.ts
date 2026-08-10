@@ -513,19 +513,30 @@ describe('SE-LIVE-5c — the rider’s delivery acts, the real Worker, the ledge
     });
     expect(decide.status, 'a carrier must never validate their own delivery').toBe(404);
 
-    // ── the handoff evidence, through the app's own port ───────────────────
+    /**
+     * ── the handoff evidence, through the app's own port ──────────────────
+     *
+     * ⚠ PORTE-SANS-PHOTO (founder ruling 2026-08-10): NO ARTIFACT. The door
+     * has no camera any more, so the bundle the app sends carries an EMPTY
+     * artifacts list — bound to the chain and the seal, never fabricated.
+     */
     const evidence = await acts.submitDeliveryEvidence(
       { commandId: 'cmd-liv3-evidence', orderId: ORDER3, custodySealId: SEAL,
         taskId: chain!.taskId, packageId: chain!.packageId,
-        artifacts: [{ ref: 'media/tok-liv3-door', sha256: 'b'.repeat(64), mimeType: 'image/jpeg' }],
+        artifacts: [],
         capturedAt: '2026-08-08T18:00:00.000Z' },
       RIDER_CODE,
     );
     expect(evidence.kind, JSON.stringify(evidence)).toBe('recorded');
     expect(evidenceHeld(evidence), 'the Worker’s own word: evidence_recorded').toBe(true);
 
-    // ── the founder's decision, via HIS door ───────────────────────────────
-    expect(await ops(m, '/ops/delivery/decide', { orderId: ORDER3, command_id: 'cmd-liv3-decide' })).toBe(200);
+    /**
+     * ⚠ AND NO OPS STEP. The founder's flow is « Je suis arrivé » → the
+     * buyer's code; nobody is at a console in between. The object's own
+     * auto-decide runs on the evidence commit, so this walk uses the RIDER'S
+     * credentials from end to end — which is exactly what has to be true on a
+     * phone in Ouagadougou at 19h.
+     */
 
     // ── the buyer's code, LAST, on the rider's device ──────────────────────
     const wrong = await acts.confirmDrop(

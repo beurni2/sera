@@ -329,40 +329,63 @@ describe('VRAI-ROUTE — the whole road, machine-armed, in the rider her own han
   }, 60_000);
 });
 
-describe('auto-decide holds the line — a hold still parks the money', () => {
+describe('PORTE-SANS-PHOTO — the door has no camera, and the buyer’s code is what releases', () => {
   const inbox: ShopInbox = { progress: [], transit: [] };
 
-  it('an evidence bundle with NO artifact auto-decides review_hold, and the drop refuses not_validated', async () => {
-    const mf = boot(freshDir('hold'), inbox);
-    const O = 'ord-vrai-hold';
-    const SEAL = 'SEAL-HOLD-1';
-    await machineArmed(mf, O, 'PICKUP-HOLD-1', 'DROP-HOLD-1');
+  it('⚠ a bundle with NO artifact auto-decides VALIDATED, and only the right code moves custody', async () => {
+    /**
+     * FOUNDER RULING (2026-08-10): « for the door photo I want it gone ».
+     *
+     * ⚠ THIS TEST IS THE ONE THAT WOULD HAVE CAUGHT A HALF-DONE RULING. It
+     * drives the REAL Worker through the REAL rider door: if the door, the
+     * auto-decide relay, or the spine still graded on the artifact count, the
+     * drop below would refuse `not_validated` and every rider in Ouagadougou
+     * would be stuck one screen from « Livré ».
+     *
+     * It asks the LEDGER for the verdict, never the response.
+     */
+    const mf = boot(freshDir('sansphoto'), inbox);
+    const O = 'ord-vrai-sansphoto';
+    const SEAL = 'SEAL-SANSPHOTO-1';
+    await machineArmed(mf, O, 'PICKUP-SANSPHOTO-1', 'DROP-SANSPHOTO-1');
     expect((await call(mf, 'POST', '/rider/verification', RIDER_CODE, {
-      orderId: O, command_id: 'v1', presentedPickupCode: 'PICKUP-HOLD-1',
-      checkResults: ALL_PASS, dwellSec: 150, evidenceBundleId: 'ev-hold',
+      orderId: O, command_id: 'v1', presentedPickupCode: 'PICKUP-SANSPHOTO-1',
+      checkResults: ALL_PASS, dwellSec: 150, evidenceBundleId: 'sans-photo',
     })).status).toBe(200);
     expect((await call(mf, 'POST', '/rider/custody/begin', RIDER_CODE, {
-      orderId: O, command_id: 'b1', custodySealId: SEAL, sealPhotoRefs: ['p1'],
+      orderId: O, command_id: 'b1', custodySealId: SEAL, sealPhotoRefs: [],
     })).status).toBe(200);
 
-    // GPS-only: artifacts empty. The object decides review_hold ON ITS OWN...
+    // The bundle the app now sends at the door: bound to the chain and the
+    // seal, carrying NO artifact.
     expect((await call(mf, 'POST', '/rider/delivery/evidence', RIDER_CODE, {
       orderId: O, command_id: 'e1',
       bundle: { taskId: `task-${O}`, packageId: `pkg-${O}`, custodySealId: SEAL, artifacts: [], capturedAt: '2026-08-10T10:00:00.000Z' },
     })).status).toBe(200);
 
-    // ...and a hold RELEASES NOTHING: the right code cannot move custody.
-    const drop = await call(mf, 'POST', '/rider/delivery/drop', RIDER_CODE, {
-      orderId: O, command_id: 'd1', dropCode: 'DROP-HOLD-1',
+    // ⚠ SE-I07 IS STILL WHAT HOLDS. A validated decision releases NOTHING on
+    // its own — a wrong code is refused and the package stays with the rider.
+    const faux = await call(mf, 'POST', '/rider/delivery/drop', RIDER_CODE, {
+      orderId: O, command_id: 'd0', dropCode: 'PAS-LE-BON',
     });
-    expect(drop.status).toBe(409);
-    expect(drop.json).toMatchObject({ ok: false, reason: 'not_validated' });
+    expect(faux.status).toBe(409);
+    expect(faux.json).toMatchObject({ ok: false, reason: 'drop_code_refused' });
+    expect((await call(mf, 'GET', `/ops/ledger?orderId=${O}`, OPS)).json['currentCustodian'])
+      .toBe(`courier:${RIDER}`);
 
-    // The hold is ON THE RECORD, not just implied by a refusal.
+    // …and the BUYER's own code is what completes it.
+    const drop = await call(mf, 'POST', '/rider/delivery/drop', RIDER_CODE, {
+      orderId: O, command_id: 'd1', dropCode: 'DROP-SANSPHOTO-1',
+    });
+    expect(drop.status, JSON.stringify(drop.json)).toBe(200);
+
+    // THE LEDGER, not the response: validated with no reasons, and the
+    // package is with the customer.
     const ledger = await call(mf, 'GET', `/ops/ledger?orderId=${O}`, OPS);
     const decision = (ledger.json['entries'] as { kind: string; payload: Json }[])
       .filter((e) => e.kind === 'validation_decision').at(-1)!;
-    expect(decision.payload).toMatchObject({ result: 'review_hold', reasons: ['gps_never_sole_proof'] });
+    expect(decision.payload).toMatchObject({ result: 'validated', reasons: [] });
+    expect(ledger.json['currentCustodian']).toBe('customer');
     await mf.dispose();
   }, 60_000);
 

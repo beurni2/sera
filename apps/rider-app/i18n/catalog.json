@@ -1339,9 +1339,27 @@
   },
   {
     "key": "delivery.body",
-    "fr": "Vous êtes chez la cliente. D'abord la photo de remise, ensuite son code.",
+    "fr": "Vous êtes chez la cliente. Demandez-lui son code pour finir.",
     "register": "neutral",
     "screenClass": "instruction"
+  },
+  {
+    "key": "delivery.preuve_titre",
+    "fr": "Séra note votre arrivée",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "delivery.preuve_note",
+    "fr": "Un instant. Le code de la cliente arrive juste après.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "delivery.preuve_reessayer",
+    "fr": "Réessayer",
+    "register": "neutral",
+    "screenClass": "label"
   },
   {
     "key": "delivery.photo_hint",

@@ -422,7 +422,6 @@ export default function App() {
    *  losing the remise (« il manque des repères »). */
   const [sealSaisi, setSealSaisi] = useState<string | null>(null);
   const [livraisonIds, setLivraisonIds] = useState<{ taskId: string; packageId: string } | null>(null);
-  const [dropArt, setDropArt] = useState<{ ref: string; sha256: string | null; mimeType: string } | null>(null);
   const [evidencePhase, setEvidencePhase] = useState<ActPhase>(ACT_IDLE);
   const [dropPhase, setDropPhase] = useState<ActPhase>(ACT_IDLE);
   /** `capturedAt` is part of the bundle custody FINGERPRINTS, so it is minted
@@ -972,16 +971,25 @@ export default function App() {
     if (chain !== null) setLivraisonIds(chain);
   }, [sealPhase]);
 
+  /**
+   * ═══ PORTE-SANS-PHOTO (founder ruling 2026-08-10) — « for the door photo I
+   * want it gone » ═══
+   *
+   * The bundle still goes: it is what binds this delivery to its chain and its
+   * seal, and `validation_before_evidence` refuses the drop without it. What
+   * is gone is the ARTIFACT — an empty list, never a fabricated ref (A7's
+   * lesson, kept exactly as it was kept at the seal).
+   *
+   * ⚠ AND THE KEY IS ORDER-ONLY NOW. It used to carry the photo's ref; with no
+   * ref there is nothing else to vary, and a key that varied per attempt over
+   * content custody FINGERPRINTS would answer every retry with
+   * `409 command_id_reused_with_other_content` — which the screen reads as
+   * « Séra a refusé ». Same law as the seal: one attempt, one id, retry safe.
+   */
   const sendDeliveryEvidence = useCallback(() => {
     if (riderCode === null || liveAssignment === null) return;
     if (livraisonIds === null || sealPourRemise === null) return;
-    // ⚠ NO PHOTO, NO EVIDENCE — and no HASH, no evidence either: the canon
-    // artifact carries the content hash, and a fabricated hex would be the
-    // exact fiction A7 banned. A device with no SHA-256 road is told so.
-    if (dropArt === null || dropArt.sha256 === null) return;
-    // Captured OUTSIDE the closure so the null-guard's narrowing holds.
-    const artifact = { ref: dropArt.ref, sha256: dropArt.sha256, mimeType: dropArt.mimeType };
-    const attempt = attemptFor(`delivery-evidence|${liveAssignment.orderId}|${artifact.ref}`);
+    const attempt = attemptFor(`delivery-evidence|${liveAssignment.orderId}`);
     const held = capturedAtFor.current.get(attempt.id) ?? new Date().toISOString();
     capturedAtFor.current.set(attempt.id, held);
     runAct(setEvidencePhase, () =>
@@ -992,13 +1000,33 @@ export default function App() {
           custodySealId: sealPourRemise,
           taskId: livraisonIds.taskId,
           packageId: livraisonIds.packageId,
-          artifacts: [artifact],
+          artifacts: [],
           capturedAt: held,
         },
         riderCode,
       ),
     );
-  }, [custodyActs, riderCode, liveAssignment, livraisonIds, sealPourRemise, dropArt, runAct, attemptFor]);
+  }, [custodyActs, riderCode, liveAssignment, livraisonIds, sealPourRemise, runAct, attemptFor]);
+
+  /**
+   * The bundle, fired by the ARRIVAL rather than by a tap — the founder's flow
+   * is « Je suis arrivé » → the buyer's code, with nothing in between.
+   *
+   * ⚠ SAME THREE GUARDS AS THE SEAL, FOR THE SAME REASON. `evidenceIsHeld`
+   * (this session's answer) stops a second send, `kind === 'idle'` stops a
+   * re-fire while one is in flight, and the ids must both exist — so a course
+   * missing them lands on the honest `delivery.ids_missing` card instead of on
+   * an effect that silently returns and leaves a rider staring at nothing.
+   */
+  const preuveAuto = roadArrived(arrivePhase, remembered)
+    && !evidenceIsHeld(evidencePhase)
+    && evidencePhase.kind === 'idle'
+    && livraisonIds !== null
+    && sealPourRemise !== null;
+  useEffect(() => {
+    if (!WIRED || !preuveAuto) return;
+    sendDeliveryEvidence();
+  }, [WIRED, preuveAuto, sendDeliveryEvidence]);
 
   const sendDrop = useCallback(
     (dropCode: string) => {
@@ -1846,6 +1874,18 @@ export default function App() {
                             ) : null}
                           </>
                         ) : !evidenceIsHeld(evidencePhase) ? (
+                          /**
+                           * ═══ PORTE-SANS-PHOTO — THERE IS NO PHOTO SCREEN AT
+                           * THE DOOR ANY MORE (founder ruling 2026-08-10) ═══
+                           *
+                           * « for the door photo I want it gone. » So this arm
+                           * is not a screen the rider works either: it is the
+                           * half-second while the bundle the arrival fired
+                           * registers itself, and the honest sentence for the
+                           * ways it can fail to land. On success
+                           * `evidenceIsHeld` flips and the buyer's code screen
+                           * takes over.
+                           */
                           <>
                             <FasoPosterTitle>{t('delivery.title')}</FasoPosterTitle>
                             <FasoBody>{t('delivery.body')}</FasoBody>
@@ -1856,46 +1896,40 @@ export default function App() {
                               <FasoCard>
                                 <FasoBody>{t('delivery.ids_missing')}</FasoBody>
                               </FasoCard>
-                            ) : (
-                              <>
-                                <FasoCard>
-                                  <FasoBody>{t('delivery.photo_hint')}</FasoBody>
-                                  {dropArt !== null ? <FasoBody>{t('photo.taken')}</FasoBody> : null}
-                                  {(() => {
-                                    const key = captureIssueKey(captureIssue);
-                                    return key === undefined ? null : <FasoBody>{t(key)}</FasoBody>;
-                                  })()}
-                                  <FasoSecondaryButton
-                                    label={t(dropArt !== null ? 'photo.retake' : 'photo.take')}
-                                    onPress={() => takePhoto(setDropArt)}
-                                  />
-                                  {/* A device with no SHA-256 road cannot sign
-                                      the photo — said plainly, never a dead
-                                      button over an act that cannot go. */}
-                                  {dropArt !== null && dropArt.sha256 === null ? (
-                                    <FasoBody>{t('delivery.no_hash')}</FasoBody>
-                                  ) : null}
-                                </FasoCard>
-                                <FasoPrimaryButton
-                                  label={t(evidencePhase.kind === 'working' ? 'acts.sending' : 'delivery.evidence_send')}
-                                  disabled={
-                                    dropArt === null || dropArt.sha256 === null || capturing ||
-                                    evidencePhase.kind === 'working'
-                                  }
-                                  onPress={sendDeliveryEvidence}
-                                />
-                                {evidencePhase.kind === 'answered' ? (
-                                  (() => {
-                                    const o = evidenceOutcome(evidencePhase.answer);
-                                    return (
+                            ) : evidencePhase.kind === 'answered' ? (
+                              (() => {
+                                const o = evidenceOutcome(evidencePhase.answer);
+                                return (
+                                  <>
+                                    <FasoCard>
                                       <FasoStatusChip
                                         tone={o.tone === 'ok' ? 'ok' : o.tone === 'waiting' ? 'info' : 'bad'}
                                         label={t(o.title)}
                                       />
-                                    );
-                                  })()
-                                ) : null}
-                              </>
+                                      {/* ⚠ THE HINT WAS BEING SWALLOWED HERE,
+                                          alone among the five acts. An offline
+                                          submit showed « Pas de réseau. » and
+                                          dropped « Réessayez ici même » — the
+                                          one line that tells the rider the
+                                          button below is real. */}
+                                      {o.hint === undefined ? null : <FasoBody>{t(o.hint)}</FasoBody>}
+                                    </FasoCard>
+                                    {/* The same retry law as the seal: offered
+                                        only where retrying can work. A named
+                                        refusal keeps its sentence and no lever.
+                                        Safe to press — the command is keyed on
+                                        the order alone, so it replays. */}
+                                    {o.tone === 'waiting' ? (
+                                      <FasoPrimaryButton
+                                        label={t('delivery.preuve_reessayer')}
+                                        onPress={sendDeliveryEvidence}
+                                      />
+                                    ) : null}
+                                  </>
+                                );
+                              })()
+                            ) : (
+                              <FasoPendingNotice title={t('delivery.preuve_titre')} lines={[t('delivery.preuve_note')]} />
                             )}
                           </>
                         ) : (
