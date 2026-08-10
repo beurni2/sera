@@ -70,9 +70,11 @@ export type CaptureOutcome =
    * ⚠ THE BUCKET REFUSED THIS BUILD'S WRITE KEY (founder report 2026-08-10 —
    * the seal photo never left the phone, and the screen said « Réessayez »).
    *
-   * `POST /media` answers 401 when `X-Write-Key` does not equal the Worker's
-   * `MEDIA_WRITE_SECRET` (media-service `rejectUnauthorizedWrite` →
-   * `keyAuthorizedAgainst`, one identical 401). That is a CONFIGURATION fact,
+   * `POST /media` answers 401 — and ONLY 401 — when `X-Write-Key` does not
+   * equal the Worker's `MEDIA_WRITE_SECRET` (media-service
+   * `rejectUnauthorizedWrite` → `keyAuthorizedAgainst` → `unauthorized()`; a
+   * wrong key, an absent header and an unset secret all land on that same
+   * status). That is a CONFIGURATION fact,
    * not a network one: three places must hold the same value — the Worker
    * secret, this app's `MEDIA_WRITE_KEY`, and Boutik+'s
    * `EXPO_PUBLIC_MEDIA_WRITE_KEY` — and when they drift, EVERY upload from
@@ -211,9 +213,13 @@ export function httpEvidenceCapture(
           const detail = typeof body?.['reason'] === 'string' ? (body['reason'] as string) : 'rejected';
           return { ok: false, reason: 'rejected', detail };
         }
-        // The write gate said no. Retrying cannot change a key mismatch, so
-        // this must never wear the « Réessayez » sentence (see `refused_key`).
-        if (res.status === 401 || res.status === 403) return { ok: false, reason: 'refused_key' };
+        // ⚠ 401 ONLY, AND ON PURPOSE. The write gate answers exactly this one
+        // status for a wrong key, a missing key and an unset secret alike
+        // (`service-auth` → `unauthorized()`), so 401 IS « this build's key ».
+        // A 403 on that path comes from something else entirely — Access, a
+        // WAF, a rate limiter — and naming it « cette version » would send the
+        // rider to Séra with a cause that is not true. It stays `unreachable`.
+        if (res.status === 401) return { ok: false, reason: 'refused_key' };
         return { ok: false, reason: 'unreachable' };
       } catch {
         return { ok: false, reason: 'unreachable' };

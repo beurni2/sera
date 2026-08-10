@@ -27,9 +27,12 @@ interface FakePlayerRec {
   calls: string[];
   emit(status: FakeStatus): void;
   removed: boolean;
-  /** Has the native counterpart been let go? Every native call after this
-   *  point throws, exactly as expo-modules-core does. */
+  /** DETACHED — `release()` only. Every native call after this point throws,
+   *  exactly as expo-modules-core does. */
   mort: boolean;
+  /** The MODULE's strong reference dropped — `remove()` only. The shared
+   *  object stays attached, so this alone frees nothing deterministically. */
+  sorti: boolean;
 }
 
 /**
@@ -49,8 +52,19 @@ interface FakePlayerRec {
  * moment a rider accepts a course, so that throw unmounted the app: the blank
  * white screen the founder hit.
  *
- * THE FAKE NOW ENFORCES THE REAL BOUND. Both deallocators kill the object, and
- * every native call afterwards throws the way the native side does.
+ * ⚠ AND THE TWO DEALLOCATORS ARE NOT THE SAME ACT — the fake must not flatten
+ * them, or « leaving never throws » would be provable by simply deleting the
+ * one that frees:
+ *
+ *   · `remove()`  drops the MODULE's strong reference and NOTHING else
+ *     (iOS `AudioComponentRegistry` removes a dictionary entry; Android
+ *     `players.remove(player.id)`). The shared object stays attached, so a
+ *     native call after it still works.
+ *   · `release()` DETACHES. That is what frees the native player now rather
+ *     than at the whim of the JS finaliser — and it is why anything native
+ *     after it throws. It is itself safe on an already-detached object.
+ *
+ * The fake models exactly that, so the ORDER is what the suite proves.
  */
 function fakeModule() {
   const made: FakePlayerRec[] = [];
@@ -63,10 +77,13 @@ function fakeModule() {
         calls: [],
         removed: false,
         mort: false,
+        sorti: false,
         emit(status) { listener?.(status); },
       };
       made.push(rec);
-      /** Every native call goes through here — a dead shared object throws. */
+      /** Every native call goes through here — a DETACHED shared object throws
+       *  (expo-modules-core resolves the owner through the shared-object
+       *  registry and raises NativeSharedObjectNotFound when it is gone). */
       const natif = (nom: string, fn?: () => void): void => {
         if (rec.mort) {
           throw new Error(`Unable to find the native object associated with the given JavaScript object (${nom})`);
@@ -78,11 +95,13 @@ function fakeModule() {
         play: () => natif('play'),
         pause: () => natif('pause'),
         seekTo: (s: number) => { natif(`seek:${s}`); },
-        // `release()` DETACHES: it is the JS-side escape hatch, and everything
-        // native after it is dead. `remove()` frees the player natively — and
-        // is itself a native call, so it throws once the object is detached.
-        release: () => natif('release', () => { rec.mort = true; }),
-        remove: () => natif('remove', () => { rec.mort = true; }),
+        // ⚠ NOT a native call, and the ONLY thing that detaches. Safe to call
+        // on an object already released — the C++ side guards on native state.
+        release: () => { rec.calls.push('release'); rec.mort = true; },
+        // A native call that drops the module's reference. It does NOT detach,
+        // so `release()` after it still works — and it THROWS if `release()`
+        // came first, which is exactly the crash this file exists to pin.
+        remove: () => natif('remove', () => { rec.sorti = true; }),
         addListener: (event: 'playbackStatusUpdate', fn: (s: FakeStatus) => void) => {
           expect(event, 'expo-audio names this event `playbackStatusUpdate`').toBe('playbackStatusUpdate');
           listener = fn;
@@ -138,9 +157,10 @@ describe('COURSE-BRIEF — the buyer’s repère plays on the rider’s screen',
     const port = repereAudioOver(mod);
     await port.play('https://media.example/media/11111111-2222-4333-8444-555555555555');
     port.stop();
-    // ONE deallocation call, not two: `release()` then `remove()` is a native
-    // call on a detached object, which is the throw that blanked the screen.
-    expect(mod.made[0]?.calls).toEqual(['play', 'pause', 'remove']);
+    // THE ORDER IS THE FIX. `release()` LAST: it detaches, so anything native
+    // after it throws — and it is what frees the native player deterministically
+    // instead of leaving it to the JS finaliser on a 1 GB phone.
+    expect(mod.made[0]?.calls).toEqual(['play', 'pause', 'remove', 'release']);
     expect(mod.made[0]?.removed, 'a live status listener on a released player leaks too').toBe(true);
   });
 });
@@ -170,7 +190,10 @@ describe('ÉCRAN BLANC — leaving the screen can never take the app down with i
     // Before the fix this threw on `remove()` after `release()` had detached
     // the object, and the effect that called it blanked the screen.
     expect(() => port.stop()).not.toThrow();
-    expect(mod.made[0]?.mort, 'the native player must still actually be freed').toBe(true);
+    // …and it is STILL freed both ways: the module lets go of it, and the
+    // shared object is detached so the native player deallocates now.
+    expect(mod.made[0]?.sorti, 'the module must let go of the player').toBe(true);
+    expect(mod.made[0]?.mort, 'and it must be DETACHED, or freeing waits on the GC').toBe(true);
   });
 
   it('a SECOND stop is quiet — the effect re-runs, and a dead player is not an error', async () => {
@@ -181,6 +204,7 @@ describe('ÉCRAN BLANC — leaving the screen can never take the app down with i
     expect(() => port.stop()).not.toThrow();
     // …and it never reaches back into the freed object to do it again.
     expect(mod.made[0]?.calls.filter((c) => c === 'remove')).toHaveLength(1);
+    expect(mod.made[0]?.calls.filter((c) => c === 'release')).toHaveLength(1);
   });
 
   it('stop() with NO player never touched anything to begin with', () => {

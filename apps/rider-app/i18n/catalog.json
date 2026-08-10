@@ -1303,7 +1303,7 @@
   },
   {
     "key": "photo.cle_refusee",
-    "fr": "Séra n'accepte pas les photos de cette version. Appelez Séra : ce n'est pas votre téléphone.",
+    "fr": "Séra a refusé la photo de cette version. Prévenez Séra : le problème ne vient pas de votre téléphone.",
     "register": "neutral",
     "screenClass": "status"
   },

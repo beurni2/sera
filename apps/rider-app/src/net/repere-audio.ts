@@ -131,10 +131,25 @@ export function repereAudioOver(mod: AudioModule): RepereAudioPort {
    * integration look healthier than it was. It is certified to the real bounds
    * now, and it goes red against the code above.
    *
-   * SO: one deallocation call (`remove()` — expo-audio's own « Remove the
-   * player from memory to free up resources »), the reference dropped BEFORE
-   * any native call so nothing can reach a dead object twice, and each call in
-   * its own guard. A player that is already gone is not an error; leaving the
+   * SO: THE SAME THREE CALLS, IN THE ORDER THAT WORKS, EACH GUARDED, and the
+   * reference dropped BEFORE any of them so nothing can reach a dead object
+   * twice. `release()` goes LAST because it is the one that detaches — and
+   * only that ordering keeps BOTH properties:
+   *
+   *   · `pause()`  — stop the sound (native).
+   *   · `remove()` — expo-audio's own « Remove the player from memory to free
+   *     up resources ». It drops the MODULE's strong reference only
+   *     (`AudioComponentRegistry` on iOS, `players.remove(id)` on Android);
+   *     it does not detach the shared object.
+   *   · `release()` — detaches JS from native, which is what actually lets the
+   *     native player deallocate NOW instead of whenever Hermes gets round to
+   *     finalising. It cannot throw (`SharedObject.cpp` guards on
+   *     `hasNativeState`), and nothing native follows it.
+   *
+   * Dropping `release()` altogether would have made freeing GC-dependent — ten
+   * repères across a shift waiting on a finaliser, on a 1 GB Android. That is
+   * the leak this file's own comment warns about; the fix is the order, not
+   * the amputation. A player that is already gone is not an error; leaving the
    * screen is never allowed to take the app down with it.
    */
   const detach = (): void => {
@@ -157,6 +172,12 @@ export function repereAudioOver(mod: AudioModule): RepereAudioPort {
       mort.remove?.();
     } catch {
       // The memory is the platform's problem from here; a rider's screen is not.
+    }
+    try {
+      mort.release?.();
+    } catch {
+      // Documented as safe on an already-detached object; guarded anyway,
+      // because this runs in a React effect and nothing here may ever throw.
     }
   };
   return {
