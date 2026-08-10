@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Miniflare } from 'miniflare';
@@ -52,6 +52,8 @@ const RIDER_CODE = 'SR-PATH-0001-0002';
 const RIDER = 'rider-path-0001';
 const ORDER = 'ord-path-0001';
 const PKG = 'pkg-path-0001';
+/** The rider app, from here — the screen whose sentences this file asserts. */
+const RIDER_APP = join(import.meta.dirname, '..', '..', '..', 'apps', 'rider-app');
 const SEAL = 'SEAL-PATH-0001';
 
 /** media-service `IMAGE_STANDARD_MAX_DIM` / `IMAGE_MIN_DIM` / `IMAGE_MAX_BYTES`. */
@@ -286,15 +288,46 @@ describe('⚠ THE RIDER TAKES CUSTODY — the app’s own ports, the real Worker
   it('⚠ an unauthenticated upload is refused, and then no act can go', async () => {
     // The founder rotates MEDIA_WRITE_SECRET and the repo key is not updated —
     // or is simply never set, which is fail-closed by design. Every rider on
-    // the channel: camera opens, bytes upload, 401, « La photo n'est pas
-    // partie. Réessayez. », send disabled, custody never begins.
+    // the channel: camera opens, bytes upload, 401, send disabled, custody
+    // never begins.
     const wrongKey = httpEvidenceCapture(
       'https://bucket.invalid', 'the-wrong-key',
       cameraOf(3264, 2448, true), online, bucketFetch as never,
     );
     const shot = await wrongKey.captureAndUpload();
     expect(shot.ok).toBe(false);
-    expect(shot.ok === false ? shot.reason : '').toBe('unreachable');
+    /**
+     * ⚠ FOUNDER REPORT (2026-08-10) — « the sera screen got stuck at votre
+     * course asking me to take a picture ». THIS TEST DESCRIBED HIS BUG A WEEK
+     * EARLY AND THEN PINNED THE WRONG ANSWER AS CORRECT.
+     *
+     * A 401 used to fall through to `unreachable`, which the screen renders as
+     * « La photo n'est pas partie. Réessayez. » — and he did, standing at a
+     * stall, for as long as he was willing to. Retrying cannot fix a key
+     * mismatch: it is the same 401 every time, for ever.
+     *
+     * `refused_key` is its own outcome now, and it carries the one true
+     * instruction: this is not your phone, call Séra.
+     */
+    expect(shot.ok === false ? shot.reason : '').toBe('refused_key');
+  });
+
+  it('⚠ …and the rider READS the true sentence, not « Réessayez »', () => {
+    /**
+     * The outcome only matters if the screen says the right thing. `App.tsx`'s
+     * `captureIssueKey` is the one mapping from outcome → catalog key, and the
+     * catalog is the one place the words live: both are asserted here, so a
+     * new outcome with no sentence — or a sentence that tells a rider to keep
+     * tapping — fails rather than shipping.
+     */
+    const app = readFileSync(join(RIDER_APP, 'App.tsx'), 'utf8');
+    expect(app).toContain("if (issue.reason === 'refused_key') return 'photo.cle_refusee';");
+    const catalog = JSON.parse(readFileSync(join(RIDER_APP, 'i18n/catalog.json'), 'utf8')) as { key: string; fr: string }[];
+    const phrase = catalog.find((e) => e.key === 'photo.cle_refusee');
+    expect(phrase, 'the outcome has no sentence — the rider would see a crash, not a state').toBeDefined();
+    expect(phrase?.fr, 'it must send the rider to Séra').toContain('Séra');
+    // The whole point: never the advice that cannot come true.
+    expect(phrase?.fr.toLowerCase()).not.toContain('réessayez');
   });
 
   it('⚠ REPRODUCES ROUND THREE: with no device resize the bucket refuses, and the seal cannot go', async () => {

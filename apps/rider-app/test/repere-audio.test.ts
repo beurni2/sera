@@ -27,8 +27,31 @@ interface FakePlayerRec {
   calls: string[];
   emit(status: FakeStatus): void;
   removed: boolean;
+  /** Has the native counterpart been let go? Every native call after this
+   *  point throws, exactly as expo-modules-core does. */
+  mort: boolean;
 }
 
+/**
+ * ═══ ⚠ ÉCRAN BLANC — WHY THIS FAKE CHANGED (founder, 2026-08-10) ═══
+ *
+ * The old fake had NO `remove()` on the player and a `release()` that only
+ * pushed a string. The real `AudioPlayer` has BOTH — `remove()` is a raw
+ * native binding (`AudioModule.types.d.ts` l.176 over
+ * `requireNativeModule('ExpoAudio')`), and `release()` is
+ * `SharedObject.release()`, documented as: « Any subsequent calls to native
+ * functions of the object will throw an error as it is no longer associated
+ * with its native counterpart. »
+ *
+ * So `pause() → release() → remove()` threw on every real detach, while these
+ * tests stayed green over it — §9.8, a mock that made the integration look
+ * healthier than it was. `stop()` runs inside a React effect at the exact
+ * moment a rider accepts a course, so that throw unmounted the app: the blank
+ * white screen the founder hit.
+ *
+ * THE FAKE NOW ENFORCES THE REAL BOUND. Both deallocators kill the object, and
+ * every native call afterwards throws the way the native side does.
+ */
 function fakeModule() {
   const made: FakePlayerRec[] = [];
   return {
@@ -39,14 +62,27 @@ function fakeModule() {
         url,
         calls: [],
         removed: false,
+        mort: false,
         emit(status) { listener?.(status); },
       };
       made.push(rec);
+      /** Every native call goes through here — a dead shared object throws. */
+      const natif = (nom: string, fn?: () => void): void => {
+        if (rec.mort) {
+          throw new Error(`Unable to find the native object associated with the given JavaScript object (${nom})`);
+        }
+        rec.calls.push(nom);
+        fn?.();
+      };
       return {
-        play: () => rec.calls.push('play'),
-        pause: () => rec.calls.push('pause'),
-        seekTo: (s: number) => { rec.calls.push(`seek:${s}`); },
-        release: () => rec.calls.push('release'),
+        play: () => natif('play'),
+        pause: () => natif('pause'),
+        seekTo: (s: number) => { natif(`seek:${s}`); },
+        // `release()` DETACHES: it is the JS-side escape hatch, and everything
+        // native after it is dead. `remove()` frees the player natively — and
+        // is itself a native call, so it throws once the object is detached.
+        release: () => natif('release', () => { rec.mort = true; }),
+        remove: () => natif('remove', () => { rec.mort = true; }),
         addListener: (event: 'playbackStatusUpdate', fn: (s: FakeStatus) => void) => {
           expect(event, 'expo-audio names this event `playbackStatusUpdate`').toBe('playbackStatusUpdate');
           listener = fn;
@@ -93,7 +129,7 @@ describe('COURSE-BRIEF — the buyer’s repère plays on the rider’s screen',
     await port.play('https://media.example/media/11111111-2222-4333-8444-555555555551');
     await port.play('https://media.example/media/11111111-2222-4333-8444-555555555552');
     expect(mod.made).toHaveLength(2);
-    expect(mod.made[0]?.calls).toContain('release');
+    expect(mod.made[0]?.calls).toContain('remove');
     expect(mod.made[1]?.calls).toEqual(['play']);
   });
 
@@ -102,8 +138,85 @@ describe('COURSE-BRIEF — the buyer’s repère plays on the rider’s screen',
     const port = repereAudioOver(mod);
     await port.play('https://media.example/media/11111111-2222-4333-8444-555555555555');
     port.stop();
-    expect(mod.made[0]?.calls).toEqual(['play', 'pause', 'release']);
+    // ONE deallocation call, not two: `release()` then `remove()` is a native
+    // call on a detached object, which is the throw that blanked the screen.
+    expect(mod.made[0]?.calls).toEqual(['play', 'pause', 'remove']);
     expect(mod.made[0]?.removed, 'a live status listener on a released player leaks too').toBe(true);
+  });
+});
+
+/**
+ * ═══ ⚠ ÉCRAN BLANC — « the screen goes all white and blank » ═══
+ *
+ * FOUNDER REPORT (2026-08-10): « On sera app when I tap accept button to accept
+ * the order the screen goes all white and blank ».
+ *
+ * The tap changes the assignment to `acknowledged`, which flips `repereVisible`
+ * false, which fires `if (!repereVisible) repereAudio?.stop()` — a PASSIVE
+ * REACT EFFECT. A throw there has no boundary above it: React unmounts the
+ * whole tree and the rider is left with a blank screen and no course.
+ *
+ * So these tests do not ask « did it release ». They ask the only question the
+ * screen cares about: CAN LEAVING EVER THROW? The answer must be no, on a live
+ * player, on a dead one, and on the second stop in a row.
+ */
+describe('ÉCRAN BLANC — leaving the screen can never take the app down with it', () => {
+  const NOTE = 'https://media.example/media/11111111-2222-4333-8444-555555555555';
+
+  it('stop() on a LIVE player does not throw — this is the accept-tap crash', async () => {
+    const mod = fakeModule();
+    const port = repereAudioOver(mod);
+    await port.play(NOTE);
+    // Before the fix this threw on `remove()` after `release()` had detached
+    // the object, and the effect that called it blanked the screen.
+    expect(() => port.stop()).not.toThrow();
+    expect(mod.made[0]?.mort, 'the native player must still actually be freed').toBe(true);
+  });
+
+  it('a SECOND stop is quiet — the effect re-runs, and a dead player is not an error', async () => {
+    const mod = fakeModule();
+    const port = repereAudioOver(mod);
+    await port.play(NOTE);
+    port.stop();
+    expect(() => port.stop()).not.toThrow();
+    // …and it never reaches back into the freed object to do it again.
+    expect(mod.made[0]?.calls.filter((c) => c === 'remove')).toHaveLength(1);
+  });
+
+  it('stop() with NO player never touched anything to begin with', () => {
+    const mod = fakeModule();
+    expect(() => repereAudioOver(mod).stop()).not.toThrow();
+    expect(mod.made).toHaveLength(0);
+  });
+
+  it('pause() on a player the OS already reclaimed does not throw — it runs off a tap', async () => {
+    const mod = fakeModule();
+    const port = repereAudioOver(mod);
+    await port.play(NOTE);
+    // The phone got hot and the platform freed the player under us.
+    (mod.made[0] as { mort: boolean }).mort = true;
+    expect(() => port.pause()).not.toThrow();
+  });
+
+  it('a SECOND note replaces the first without throwing — the same detach, mid-play', async () => {
+    const mod = fakeModule();
+    const port = repereAudioOver(mod);
+    await port.play('https://media.example/media/11111111-2222-4333-8444-555555555551');
+    // This detach used to throw INSIDE play()'s try, which turned a new course's
+    // repère into an « echec » line and no sound at all.
+    await port.play('https://media.example/media/11111111-2222-4333-8444-555555555552');
+    expect(mod.made).toHaveLength(2);
+    expect(mod.made[1]?.calls, 'the new note must actually play').toEqual(['play']);
+  });
+
+  it('and the row is told the truth after a stop — rest, never a lingering « Pause »', async () => {
+    const mod = fakeModule();
+    const port = repereAudioOver(mod);
+    const vus: RepereAudioEtat[] = [];
+    port.subscribe((e) => vus.push(e));
+    await port.play(NOTE);
+    port.stop();
+    expect(vus.at(-1)).toEqual({ playing: false, seconds: 0, echec: false });
   });
 });
 

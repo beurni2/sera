@@ -66,6 +66,24 @@ export type CaptureOutcome =
   | { readonly ok: false; readonly reason: 'rejected'; readonly detail: string }
   /** The upload did not complete. The photo is not stored, so there is no ref. */
   | { readonly ok: false; readonly reason: 'unreachable' }
+  /**
+   * ⚠ THE BUCKET REFUSED THIS BUILD'S WRITE KEY (founder report 2026-08-10 —
+   * the seal photo never left the phone, and the screen said « Réessayez »).
+   *
+   * `POST /media` answers 401 when `X-Write-Key` does not equal the Worker's
+   * `MEDIA_WRITE_SECRET` (media-service `rejectUnauthorizedWrite` →
+   * `keyAuthorizedAgainst`, one identical 401). That is a CONFIGURATION fact,
+   * not a network one: three places must hold the same value — the Worker
+   * secret, this app's `MEDIA_WRITE_KEY`, and Boutik+'s
+   * `EXPO_PUBLIC_MEDIA_WRITE_KEY` — and when they drift, EVERY upload from
+   * this build is refused, for ever.
+   *
+   * It was folded into `unreachable`, which reads « La photo n'est pas partie.
+   * Réessayez. » — advice that can never come true, given to a rider standing
+   * at a stall with a package they cannot seal. Named separately so the screen
+   * can say the one true thing: stop tapping, call Séra.
+   */
+  | { readonly ok: false; readonly reason: 'refused_key' }
   /** This BUILD has no media bucket configured, so no photo can ever be stored
    *  here. Distinct from 'unreachable' because « réessayez » is false advice:
    *  retrying cannot work, and the camera never even opened. */
@@ -193,6 +211,9 @@ export function httpEvidenceCapture(
           const detail = typeof body?.['reason'] === 'string' ? (body['reason'] as string) : 'rejected';
           return { ok: false, reason: 'rejected', detail };
         }
+        // The write gate said no. Retrying cannot change a key mismatch, so
+        // this must never wear the « Réessayez » sentence (see `refused_key`).
+        if (res.status === 401 || res.status === 403) return { ok: false, reason: 'refused_key' };
         return { ok: false, reason: 'unreachable' };
       } catch {
         return { ok: false, reason: 'unreachable' };

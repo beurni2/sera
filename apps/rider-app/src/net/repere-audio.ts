@@ -107,14 +107,57 @@ export function repereAudioOver(mod: AudioModule): RepereAudioPort {
   const emit = (e: RepereAudioEtat): void => {
     for (const w of watchers) w(e);
   };
+  /**
+   * ═══ ⚠ ÉCRAN BLANC (founder report 2026-08-10) — « when I tap accept button
+   * to accept the order the screen goes all white and blank » ═══
+   *
+   * THIS FUNCTION WAS THE CRASH. It called three native functions in a row on
+   * the same player: `pause()`, then `release()`, then `remove()`. But
+   * `release()` is `SharedObject.release()`, and expo-modules-core documents
+   * exactly what it does: « Any subsequent calls to native functions of the
+   * object will throw an error as it is no longer associated with its native
+   * counterpart. » `remove()` IS a native function (`AudioModule.types` l.176,
+   * a raw binding over `requireNativeModule('ExpoAudio')`). So every detach
+   * with a live player threw.
+   *
+   * AND `stop()` RUNS INSIDE A REACT EFFECT. `repereVisible` flips false the
+   * instant the assignment turns `acknowledged` — the moment the rider taps
+   * « Accepter » — so the effect fired, the throw escaped a passive effect,
+   * React unmounted the whole tree with no boundary above it, and the rider
+   * was left holding a blank white screen with their course gone.
+   *
+   * The old test could not see it: its fake player had NO `remove()` at all
+   * and a `release()` that only pushed a string — a mock that made the
+   * integration look healthier than it was. It is certified to the real bounds
+   * now, and it goes red against the code above.
+   *
+   * SO: one deallocation call (`remove()` — expo-audio's own « Remove the
+   * player from memory to free up resources »), the reference dropped BEFORE
+   * any native call so nothing can reach a dead object twice, and each call in
+   * its own guard. A player that is already gone is not an error; leaving the
+   * screen is never allowed to take the app down with it.
+   */
   const detach = (): void => {
-    sub?.remove?.();
+    try {
+      sub?.remove?.();
+    } catch {
+      // A subscription on an already-dead player is nothing to report.
+    }
     sub = undefined;
-    player?.pause();
-    player?.release?.();
-    player?.remove?.();
+    const mort = player;
     player = null;
     current = null;
+    if (mort === null) return;
+    try {
+      mort.pause();
+    } catch {
+      // Already released by the OS or by a previous detach — nothing to stop.
+    }
+    try {
+      mort.remove?.();
+    } catch {
+      // The memory is the platform's problem from here; a rider's screen is not.
+    }
   };
   return {
     async play(url: string): Promise<void> {
@@ -199,7 +242,15 @@ export function repereAudioOver(mod: AudioModule): RepereAudioPort {
       }
     },
     pause(): void {
-      player?.pause();
+      // Guarded for the same reason `detach` is: this runs straight off a
+      // rider's tap, and a native call that throws out of an event handler
+      // takes the tree down exactly like the one in an effect did. A player the
+      // OS reclaimed under a hot phone is a pause that already happened.
+      try {
+        player?.pause();
+      } catch {
+        // Nothing is playing; the rest state below is the truth either way.
+      }
       // Reported immediately: `playbackStatusUpdate` may not fire again once
       // the sound stops, and a button that waits for an event that never comes
       // is the same dead face this whole change is about.

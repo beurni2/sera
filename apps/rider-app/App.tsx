@@ -475,6 +475,11 @@ export default function App() {
     if (issue.reason === 'rejected') return 'photo.refused';
     // « Réessayez » would be false advice: this build has no bucket at all.
     if (issue.reason === 'unconfigured') return 'photo.unconfigured';
+    // Nor here — the bucket is there and refused this build's key (401). The
+    // rider cannot fix a key from a stall; only Séra can. Founder report
+    // 2026-08-10: the seal photo never left the phone and the screen kept
+    // saying « Réessayez ».
+    if (issue.reason === 'refused_key') return 'photo.cle_refusee';
     return 'photo.lost';
   };
   /** Generous — the rider is framing a parcel, not filling a form — but finite.

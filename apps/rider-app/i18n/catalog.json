@@ -1302,6 +1302,12 @@
     "screenClass": "status"
   },
   {
+    "key": "photo.cle_refusee",
+    "fr": "Séra n'accepte pas les photos de cette version. Appelez Séra : ce n'est pas votre téléphone.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
     "key": "delivery.title",
     "fr": "La remise",
     "register": "neutral",
