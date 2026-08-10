@@ -152,6 +152,23 @@ jobs:
           fi
           printf '%s' "$RIDER_VERIFY_SECRET" | npx --yes wrangler@4 secret put SERA_RIDER_VERIFY_SECRET
 
+      # VRAI-ROUTE (2026-08-10) — logistics PRESENTS this key at custody's
+      # /produce/* door (chain-open at dispatch + arming the machine pickup
+      # code). SAME repo secret custody-deploy arms on its side — one value,
+      # two Workers, or the produce wire refuses 401 and every course parks
+      # `unsendable`. Fail-closed if absent.
+      - name: Arm SERA_PRODUCE_SECRET (piped — skipped only if the repo secret is absent)
+        working-directory: services/logistics-service
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          PRODUCE_SECRET: ${{ secrets.SERA_PRODUCE_SECRET }}
+        run: |
+          if [ -z "$PRODUCE_SECRET" ]; then
+            echo "::warning title=Cle produce NON armée::SERA_PRODUCE_SECRET absent — dispatch cannot open the custody chain or arm the machine pickup code (the produce outbox rests unsendable) until the repo secret is set and this workflow re-dispatched."
+            exit 0
+          fi
+          printf '%s' "$PRODUCE_SECRET" | npx --yes wrangler@4 secret put SERA_PRODUCE_SECRET
+
       # ═══ The F9 assertion: the live Worker must BE the bundle this job built ═══
       # A Workers deploy PROPAGATES; it does not switch — poll up to 180s.
       - name: Assert the live logistics Worker is the bundle this job built
