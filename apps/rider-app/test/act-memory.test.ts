@@ -64,6 +64,20 @@ describe('a killed app puts the rider back where they were', () => {
     expect((await loadActMemory(store, 'ord-1'))?.stage).toBe('none');
   });
 
+  it('VRAI-ROUTE: the road rungs persist and restore, exactly like the first two', async () => {
+    // An app killed between « En route » and the door must restore the road
+    // screen the LEDGER had reached — never re-offer a departure it holds,
+    // and never fall back to a checklist whose pickup code is spent.
+    for (const stage of ['departed', 'arrived'] as const) {
+      const store = fakeStore();
+      await rememberAct(store, { orderId: 'ord-1', stage });
+      expect((await loadActMemory(store, 'ord-1'))?.stage).toBe(stage);
+      // the same exact-key law: order and stage, nothing else on disk.
+      expect(Object.keys(JSON.parse(store.bytes() ?? '{}')['custody-act-memory.v1']).sort())
+        .toEqual(['orderId', 'stage']);
+    }
+  });
+
   it('shares the store without clobbering what else lives there', async () => {
     const store = fakeStore('{"other":"kept"}');
     await rememberAct(store, { orderId: 'ord-1', stage: 'custody_taken' });

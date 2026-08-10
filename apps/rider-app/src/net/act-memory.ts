@@ -40,8 +40,13 @@
  * A test asserts the persisted bytes contain neither secret.
  */
 
-/** The stage this order has reached, as far as the LEDGER told this phone. */
-export type ActStage = 'none' | 'verification_accepted' | 'custody_taken';
+/** The stage this order has reached, as far as the LEDGER told this phone.
+ *  VRAI-ROUTE added the two road rungs between the seal and the door —
+ *  'departed' and 'arrived' — so an app killed mid-road restores the right
+ *  screen instead of re-offering « En route » for a departure the ledger
+ *  already holds. Same law as the first three: only ever what the LEDGER
+ *  answered, and never a secret. */
+export type ActStage = 'none' | 'verification_accepted' | 'custody_taken' | 'departed' | 'arrived';
 
 export interface ActMemory {
   readonly orderId: string;
@@ -87,7 +92,13 @@ export async function loadActMemory(store: ActMemoryStore, orderId: string): Pro
   const stage = m['stage'];
   return {
     orderId,
-    stage: stage === 'verification_accepted' || stage === 'custody_taken' ? stage : 'none',
+    stage:
+      stage === 'verification_accepted' ||
+      stage === 'custody_taken' ||
+      stage === 'departed' ||
+      stage === 'arrived'
+        ? stage
+        : 'none',
   };
 }
 

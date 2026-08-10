@@ -53,11 +53,25 @@ export interface RiderAssignment {
    * RAMASSAGE (founder order 2026-08-09) — the handover code THIS rider says
    * to the supplier at the stall; the supplier's console confirms it before
    * handing the package over (SE5's two-party pickup, the supplier's half).
-   * Logistics-owned, per assignment — NOT one of the four custody secrets;
-   * the typed `pickupVerificationCode` flow is untouched by it. Bounded to
-   * the minted shape so nothing else can wear it on this screen.
+   * Logistics-owned, per assignment — NOT one of the four custody secrets.
+   * Bounded to the minted shape so nothing else can wear it on this screen.
    */
   readonly codeRamassage: string | null;
+  /**
+   * VRAI-ROUTE (founder ruling 2026-08-10, #4 as amended) — when the supplier
+   * confirmed the rider's ramassage code, as logistics tells it. ISO-or-null,
+   * bounded: a byte that does not parse as a date is DROPPED, never shown.
+   */
+  readonly ramassageConfirmeAt: string | null;
+  /**
+   * VRAI-ROUTE (same ruling) — the custody pickupVerificationCode, now
+   * MACHINE-CARRIED: it arrives on this session read and the verification act
+   * presents it itself. The rider never types it and no screen displays it
+   * prominently. Same minted XXX-XXX bound as `codeRamassage`, distinct value.
+   * It is carried in memory with the session, exactly like the rider's own
+   * code — never persisted (the act-memory scan covers the persisted bytes).
+   */
+  readonly codeVerification: string | null;
 }
 
 /** A media pointer and nothing else — mirrors the Worker's own bound, because
@@ -72,6 +86,12 @@ function mediaRefOrNull(v: unknown): string | null {
 const CODE_RAMASSAGE = /^[ABCDEFGHJKMNPQRSTVWXYZ2-9]{3}-[ABCDEFGHJKMNPQRSTVWXYZ2-9]{3}$/;
 function codeRamassageOrNull(v: unknown): string | null {
   return typeof v === 'string' && CODE_RAMASSAGE.test(v) ? v : null;
+}
+
+/** An ISO timestamp or nothing — a byte that is not a date is dropped, the
+ *  same closed-bound law as every other field arriving over the network. */
+function isoOrNull(v: unknown): string | null {
+  return typeof v === 'string' && v.trim() !== '' && !Number.isNaN(Date.parse(v)) ? v : null;
 }
 
 /** The rider's session as logistics tells it — identity + certification +
@@ -144,6 +164,10 @@ export function riderSessionFromBody(body: unknown): RiderSession | null {
           ? (a['preuvePhotoRefs'] as unknown[]).map(mediaRefOrNull).filter((r): r is string => r !== null)
           : [],
         codeRamassage: codeRamassageOrNull(a['codeRamassage']),
+        ramassageConfirmeAt: isoOrNull(a['ramassageConfirmeAt']),
+        // The machine-carried pickup code rides the SAME minted bound as the
+        // ramassage code — anything else is dropped, never presented.
+        codeVerification: codeRamassageOrNull(a['codeVerification']),
       };
     }
   }

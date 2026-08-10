@@ -221,6 +221,14 @@ export class CustodySpine {
     return this.verificationCycle;
   }
 
+  /** VRAI-ROUTE (founder, 2026-08-10) — does the courier hold custody RIGHT
+   *  NOW, as this spine's own replayed state says? The transit routes gate on
+   *  it: « en route » before the seal would be a journey claim about a package
+   *  Séra does not hold. Read-only; no route may write through this. */
+  courierHoldsCustody(): boolean {
+    return this.custodyWithCourier;
+  }
+
   /** Step 11b — seal-after-verification custody transition (SE4.3). */
   beginCustody(args: {
     riderId: string;
@@ -233,7 +241,25 @@ export class CustodySpine {
     if (args.verificationOrderId !== this.chain.order_id) return { ok: false, reason: 'order_ref_mismatch' };
     if (args.riderId === this.supplierId) return { ok: false, reason: 'actor_separation_supplier_is_rider' };
     if (args.sealPhotoRefs.length === 0) return { ok: false, reason: 'no_evidence_refs' };
-    const seal = this.secrets.consume('custody_seal', this.chain.order_id, args.custodySealId, args.at);
+    let seal = this.secrets.consume('custody_seal', this.chain.order_id, args.custodySealId, args.at);
+    if (!seal.ok && seal.reason === 'secret_unknown') {
+      /**
+       * FIRST-USE BINDING (founder program 2026-08-10 — the real end-to-end
+       * loop). The seal is a PHYSICAL sticker: nobody can pre-arm the number
+       * of the one this rider will peel off the roll, so a per-order pre-arm
+       * made every real delivery wait on a founder curl. SE-I05 demands seal
+       * REGISTRATION — and the seal is not one of §5.6's four secrets — so
+       * registration IS this: the digest the rider's authenticated hand
+       * presented is bound here, photographed beside it, logged below, and
+       * equality-checked AGAIN at delivery evidence. A pre-armed seal (the
+       * founder's hand) still wins when present: this branch runs only when
+       * nothing was armed, and a mismatch against an armed seal refuses
+       * exactly as before.
+       */
+      const bound = this.secrets.register('custody_seal', this.chain.order_id, args.custodySealId);
+      if (!bound.ok) return { ok: false, reason: 'seal_already_used' };
+      seal = this.secrets.consume('custody_seal', this.chain.order_id, args.custodySealId, args.at);
+    }
     if (!seal.ok) {
       return { ok: false, reason: seal.reason === 'secret_already_used' ? 'seal_already_used' : 'seal_missing_or_mismatched' };
     }

@@ -1,4 +1,12 @@
-import { custodyBegan, custodyWithCustomer, evidenceHeld, verificationAccepted, type CustodyAnswer } from './custody-acts';
+import {
+  custodyBegan,
+  custodyWithCustomer,
+  evidenceHeld,
+  transitArrived,
+  transitDeparted,
+  verificationAccepted,
+  type CustodyAnswer,
+} from './custody-acts';
 import type { ActStage } from './act-memory';
 
 /**
@@ -43,6 +51,13 @@ export interface ActOutcomeKeys {
 
 /** What to show after a PICKUP VERIFICATION. */
 export function verifyOutcome(answer: CustodyAnswer): ActOutcomeKeys {
+  // MACHINE-CARRIED (founder ruling 2026-08-10): the session has not yet
+  // delivered the verification code — the act refused LOCALLY, before any
+  // byte left the phone. A waiting truth, not a fault: the code arrives once
+  // the supplier confirms the ramassage, and the same send then goes through.
+  if (answer.kind === 'refused' && answer.reason === 'verification_code_missing') {
+    return { title: 'verify.code_manquant', hint: 'verify.code_manquant_hint', tone: 'waiting' };
+  }
   if (answer.kind === 'recorded') {
     return verificationAccepted(answer)
       ? { title: 'acts.verify_accepted', tone: 'ok' }
@@ -62,6 +77,33 @@ export function sealOutcome(answer: CustodyAnswer): ActOutcomeKeys {
       // against a verification that was refused. Never claim the package.
       : { title: 'acts.refused', tone: 'refused' };
   }
+  return sharedOutcome(answer);
+}
+
+/**
+ * VRAI-ROUTE — what to show after « En route » was tapped. A recorded
+ * departure advances the screen, so the sentences that matter here are the
+ * refusals: `custody_not_with_courier` is the ledger saying the seal is not
+ * (or no longer) this rider's — said plainly, never as a generic failure.
+ */
+export function departOutcome(answer: CustodyAnswer): ActOutcomeKeys {
+  if (transitDeparted(answer)) return { title: 'route.depart_note', tone: 'ok' };
+  if (answer.kind === 'refused' && answer.reason === 'custody_not_with_courier') {
+    return { title: 'route.pas_en_garde', hint: 'route.pas_en_garde_hint', tone: 'refused' };
+  }
+  if (answer.kind === 'recorded') return { title: 'acts.refused', tone: 'refused' };
+  return sharedOutcome(answer);
+}
+
+/** VRAI-ROUTE — what to show after « Je suis arrivé » was tapped. Same law:
+ *  `not_departed` gets its own true sentence (the departure must be recorded
+ *  first), everything else reads as the acts around it do. */
+export function arriveOutcome(answer: CustodyAnswer): ActOutcomeKeys {
+  if (transitArrived(answer)) return { title: 'route.arrivee_notee', tone: 'ok' };
+  if (answer.kind === 'refused' && answer.reason === 'not_departed') {
+    return { title: 'route.pas_parti', hint: 'route.pas_parti_hint', tone: 'refused' };
+  }
+  if (answer.kind === 'recorded') return { title: 'acts.refused', tone: 'refused' };
   return sharedOutcome(answer);
 }
 
@@ -161,12 +203,57 @@ export function holdsPackage(phase: ActPhase): boolean {
  * a `CustodyAnswer`; the phone is allowed to remember what it was told, not to
  * invent what it was not.
  */
+/**
+ * The remembered ladder, in the order the road runs: each rung implies every
+ * rung below it, so a phone that remembers 'departed' still knows the package
+ * is held and the verification was accepted. VRAI-ROUTE added the two road
+ * rungs — without this ordering, an app killed mid-road would read
+ * `remembered === 'custody_taken'` as false and drop the rider back onto a
+ * checklist whose pickup code the ledger already consumed.
+ */
+const STAGE_RUNG: Record<ActStage, number> = {
+  none: 0,
+  verification_accepted: 1,
+  custody_taken: 2,
+  departed: 3,
+  arrived: 4,
+};
+
+const rememberedAtLeast = (remembered: ActStage, rung: ActStage): boolean =>
+  STAGE_RUNG[remembered] >= STAGE_RUNG[rung];
+
 export function sealScreenIsDue(phase: ActPhase, remembered: ActStage): boolean {
   if (phase.kind === 'answered') return maySeal(phase);
-  return remembered === 'verification_accepted' || remembered === 'custody_taken';
+  return rememberedAtLeast(remembered, 'verification_accepted');
 }
 
 export function packageIsHeld(phase: ActPhase, remembered: ActStage): boolean {
   if (phase.kind === 'answered') return holdsPackage(phase);
-  return remembered === 'custody_taken';
+  return rememberedAtLeast(remembered, 'custody_taken');
+}
+
+/** VRAI-ROUTE — has the departure been recorded (this session's answer first,
+ *  the remembered rung only where there is none — memory never outranks a
+ *  live answer)? Gates the arrival screen the way `packageIsHeld` gates the
+ *  road: on the LEDGER's word, never on a tap. */
+export function roadDeparted(phase: ActPhase, remembered: ActStage): boolean {
+  if (phase.kind === 'answered') return transitDeparted(phase.answer);
+  return rememberedAtLeast(remembered, 'departed');
+}
+
+/** VRAI-ROUTE — has the arrival been recorded? Only then do the delivery
+ *  photo and the buyer's code render (Spec l.63: arrival precedes them). */
+export function roadArrived(phase: ActPhase, remembered: ActStage): boolean {
+  if (phase.kind === 'answered') return transitArrived(phase.answer);
+  return rememberedAtLeast(remembered, 'arrived');
+}
+
+/** The two answered-only questions the remember effect asks — a stage is
+ *  written from the LEDGER's answer, never from a send or a memory. */
+export function departDone(phase: ActPhase): boolean {
+  return phase.kind === 'answered' && transitDeparted(phase.answer);
+}
+
+export function arriveDone(phase: ActPhase): boolean {
+  return phase.kind === 'answered' && transitArrived(phase.answer);
 }

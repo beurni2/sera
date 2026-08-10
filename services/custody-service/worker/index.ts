@@ -66,6 +66,13 @@ export interface Env {
   readonly LOGISTICS?: { fetch: (request: Request) => Promise<Response> };
   /** The key to logistics' `/verify/` door. Custody's own, not the founder's. */
   readonly SERA_RIDER_VERIFY_SECRET?: string;
+  /**
+   * VRAI-ROUTE — the two producer keys (see PRODUCE_ROUTES below). Both are
+   * wrangler SECRETS, the founder's alone to set; a Worker deployed before
+   * one is set refuses that door entirely, with the same identical 401.
+   */
+  readonly SERA_PRODUCE_SECRET?: string;
+  readonly SHOP_ARM_SECRET?: string;
 }
 
 const BEARER_PREFIX = 'Bearer ';
@@ -116,12 +123,50 @@ const BEARER_PREFIX = 'Bearer ';
  * validate their own delivery (evidence supports, never releases) — and
  * `/secrets/arm`, `/order/open` and every read stay founder-only as before.
  */
+/**
+ * VRAI-ROUTE (founder, 2026-08-10) — TWO more rider acts, each with its
+ * clause: `/transit/depart` and `/transit/arrive` are the journey facts Build
+ * Spec §63 names (« transit … arrival ») — the « En route » and « Je suis
+ * arrivé » buttons on the rider's own phone. They are not custody
+ * transitions, they carry no secret, and the object refuses each unless the
+ * SPINE corroborates it (custody-with-courier; departed). Everything else on
+ * the object stays exactly as closed as before.
+ */
 const RIDER_ROUTES: ReadonlySet<string> = new Set([
   'POST /verification',
   'POST /custody/begin',
+  'POST /transit/depart',
+  'POST /transit/arrive',
   'POST /delivery/evidence',
   'POST /delivery/drop',
 ]);
+
+/**
+ * ═══ VRAI-ROUTE — THE TWO PRODUCER DOORS, each opening almost nothing ═══
+ *
+ * The chain used to be opened and armed by the FOUNDER'S key alone, which
+ * made every live delivery wait on his hands. The founder's ruling (2026-08-10)
+ * moves both acts onto machine roads — and each road gets its OWN key and its
+ * OWN allowlist, because the four-secrets law (Build Spec §5.6, « never
+ * substituted ») must hold at the door, not by politeness:
+ *
+ *   · `/produce/*`      — LOGISTICS' key (`SERA_PRODUCE_SECRET`). Opens the
+ *     chain at dispatch (`/order/open`) and arms the machine-carried
+ *     `pickup_verification_code` it mints at assign. It can NEVER arm the
+ *     buyer's drop code: logistics is the carrier's book, and the carrier
+ *     must never hold the buyer's secret.
+ *   · `/produce-shop/*` — SHOP+'S key (`SHOP_ARM_SECRET`). Arms the
+ *     `buyer_drop_code` minted at payment confirmation — and NOTHING else:
+ *     not the pickup code (Shop+ is not the carrier), not `/order/open`
+ *     (Shop+ does not know the dispatch chain).
+ *
+ * Neither door can arm `custody_seal` — the seal is register-at-begin now
+ * (the rider's typed seal binds on first use; see custody-spine.ts). Neither
+ * door reaches a read, a verification, or any delivery act. The kind check
+ * below is the enforcement, not the comment.
+ */
+const PRODUCE_ROUTES: ReadonlySet<string> = new Set(['POST /order/open', 'POST /secrets/arm']);
+const PRODUCE_SHOP_ROUTES: ReadonlySet<string> = new Set(['POST /secrets/arm']);
 
 async function timingSafeEqual(a: string, b: string): Promise<boolean> {
   const enc = new TextEncoder();
@@ -209,6 +254,12 @@ export default {
      * the body is ignored on this path.
      */
     const riderPath = url.pathname.startsWith('/rider/');
+    // `/produce-shop/` does not start with `/produce/` (the next byte is `-`,
+    // not `/`), so the two prefixes are disjoint — but they are still tested
+    // in this order so a future rename cannot silently shadow the stricter
+    // door with the looser one.
+    const produceShopPath = url.pathname.startsWith('/produce-shop/');
+    const producePath = !produceShopPath && url.pathname.startsWith('/produce/');
     let attestedRider: string | null = null;
 
     if (riderPath) {
@@ -262,6 +313,16 @@ export default {
         return unauthorized();
       }
       attestedRider = riderId.trim();
+    } else if (produceShopPath || producePath) {
+      // The allowlist first, answered as `not_found` — same discipline as the
+      // rider door: a producer key must not become a way to enumerate routes.
+      const routes = produceShopPath ? PRODUCE_SHOP_ROUTES : PRODUCE_ROUTES;
+      const stripped = url.pathname.replace(/^\/produce(-shop)?/, '');
+      if (!routes.has(`${request.method} ${stripped}`)) {
+        return Response.json({ ok: false, reason: 'not_found' }, { status: 404 });
+      }
+      const key = produceShopPath ? env.SHOP_ARM_SECRET : env.SERA_PRODUCE_SECRET;
+      if (!(await authorized(request, key))) return unauthorized();
     } else if (!url.pathname.startsWith('/ops/')) {
       return Response.json({ ok: false, reason: 'not_found' }, { status: 404 });
     } else if (!(await authorized(request, env.SERA_CUSTODY_OPS_SECRET))) {
@@ -287,8 +348,27 @@ export default {
       return Response.json({ ok: false, reason: 'order_id_not_usable' }, { status: 400 });
     }
 
+    /**
+     * ⚠ THE KIND CHECK IS THE FOUR-SECRETS LAW AT THE DOOR. Each producer key
+     * arms exactly ONE kind; anything else — including the other door's kind,
+     * and the seal, which no door pre-arms any more — is refused here, before
+     * the object is ever reached. Enforced at the router because the object
+     * cannot know which door a command came through, and « never substituted »
+     * (Build Spec §5.6) must not depend on two remote services behaving.
+     */
+    if ((produceShopPath || producePath) && url.pathname.endsWith('/secrets/arm')) {
+      const kind =
+        parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
+          ? (parsed as Record<string, unknown>)['kind']
+          : undefined;
+      const armable = produceShopPath ? 'buyer_drop_code' : 'pickup_verification_code';
+      if (kind !== armable) {
+        return Response.json({ ok: false, reason: 'kind_not_armable_at_this_door' }, { status: 403 });
+      }
+    }
+
     const stub = env.CUSTODY.get(env.CUSTODY.idFromName(orderId));
-    const inner = new Request(`https://custody${url.pathname.replace(/^\/(ops|rider)/, '')}${url.search}`, {
+    const inner = new Request(`https://custody${url.pathname.replace(/^\/(ops|rider|produce-shop|produce)/, '')}${url.search}`, {
       method: request.method,
       headers: {
         'Content-Type': 'application/json',

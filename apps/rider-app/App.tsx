@@ -64,6 +64,12 @@ import { refusServiceKey, resolveShiftActs } from './src/net/shift-acts';
  *  the rider took no photo. Never shaped like a bundle ref (blocker A7). */
 const SANS_PHOTO = 'sans-photo';
 
+/** VRAI-ROUTE — the attempt-key slot while the session has not yet delivered
+ *  the machine-carried verification code. Nothing is sent in that state (the
+ *  port refuses locally, by name), so this value never reaches the wire; it
+ *  only keys the attempt so a code arriving later is a NEW attempt. */
+const SANS_CODE = 'sans-code';
+
 const MOI_POLL_MS = 20_000;
 import { resolveCustodyActs } from './src/net/resolveCustodyActs';
 import { httpSosSender } from './src/net/sos-wire';
@@ -95,6 +101,10 @@ ensureCsprng();
 import { deliveryChainOf, mintActId, type CustodyAnswer } from './src/net/custody-acts';
 import {
   ACT_IDLE,
+  arriveDone,
+  arriveOutcome,
+  departDone,
+  departOutcome,
   dropDone,
   dropOutcome,
   evidenceIsHeld,
@@ -102,6 +112,8 @@ import {
   holdsPackage,
   maySeal,
   packageIsHeld,
+  roadArrived,
+  roadDeparted,
   sealScreenIsDue,
   sealOutcome,
   verifyOutcome,
@@ -366,8 +378,11 @@ export default function App() {
   /**
    * ═══ SE-LIVE-4c-vi · THE RIDER'S TWO ACTS, ON THE REAL LEDGER ═══
    *
-   * Founder rulings (2026-08-07): the DISPATCHER gives the rider the pickup
-   * code (spoken on the phone), and the SEAL ID IS TYPED off the seal.
+   * Founder rulings (2026-08-07): the SEAL ID IS TYPED off the seal. AMENDED
+   * 2026-08-10 (#4 as amended): the pickup code stopped being a phone call —
+   * it is MACHINE-CARRIED, arriving on the session read (`codeVerification`)
+   * once the supplier confirms the ramassage, and the verification act
+   * presents it itself. The rider never types it and no screen displays it.
    *
    * ⚠ THE COMMAND ID IS MINTED ONCE PER ACT, at the moment the rider opens
    * the screen, and every retry in this session reuses it — custody dedupes on
@@ -385,6 +400,10 @@ export default function App() {
   const custodyActs = useMemo(() => resolveCustodyActs(net), [net]);
   const [verifyPhase, setVerifyPhase] = useState<ActPhase>(ACT_IDLE);
   const [sealPhase, setSealPhase] = useState<ActPhase>(ACT_IDLE);
+  /** VRAI-ROUTE — the two transit facts' phases, same shape as every act:
+   *  idle → working → answered, and only the LEDGER's answer moves a screen. */
+  const [departPhase, setDepartPhase] = useState<ActPhase>(ACT_IDLE);
+  const [arrivePhase, setArrivePhase] = useState<ActPhase>(ACT_IDLE);
   /**
    * ═══ RIDER-DELIVERY-SCREEN — what the delivery act needs, kept from the
    * moments that produced it (live-session state, deliberately) ═══
@@ -707,11 +726,18 @@ export default function App() {
    */
   useEffect(() => {
     if (dwellOrderId === null) return;
-    const stage: ActStage | null = holdsPackage(sealPhase)
-      ? 'custody_taken'
-      : maySeal(verifyPhase)
-        ? 'verification_accepted'
-        : null;
+    // VRAI-ROUTE: the road rungs sit ABOVE the seal on the ladder, so the
+    // highest ledger-confirmed rung wins — an app killed between « En route »
+    // and the door restores the arrival screen, not a spent checklist.
+    const stage: ActStage | null = arriveDone(arrivePhase)
+      ? 'arrived'
+      : departDone(departPhase)
+        ? 'departed'
+        : holdsPackage(sealPhase)
+          ? 'custody_taken'
+          : maySeal(verifyPhase)
+            ? 'verification_accepted'
+            : null;
     if (stage === null) return;
     setRemembered(stage);
     void rememberAct(actMemoryStore, {
@@ -720,7 +746,7 @@ export default function App() {
       orderId: dwellOrderId,
       stage,
     }).catch(() => setPersistFailed(true));
-  }, [dwellOrderId, verifyPhase, sealPhase, actMemoryStore]);
+  }, [dwellOrderId, verifyPhase, sealPhase, departPhase, arrivePhase, actMemoryStore]);
 
   const runAct = useCallback(
     (set: (p: ActPhase) => void, act: () => Promise<CustodyAnswer>) => {
@@ -736,8 +762,18 @@ export default function App() {
   );
 
   const sendVerification = useCallback(
-    (pickupCode: string) => {
+    () => {
       if (riderCode === null || liveAssignment === null) return;
+      /**
+       * VRAI-ROUTE (founder ruling 2026-08-10, #4 as amended) — the pickup
+       * code stopped being a phone call. It is MACHINE-CARRIED: `/rider/moi`
+       * delivers it (`codeVerification`) once the supplier confirms the
+       * ramassage, and the act presents it itself. The rider never types it,
+       * and no screen displays it. When the session carries none, the PORT
+       * refuses locally by name and the screen says what is missing — never
+       * an empty string on the wire, never a silent dead button.
+       */
+      const codeVerification = liveAssignment.codeVerification;
       /**
        * ⚠ FOUNDER RULING (2026-08-09) — THE PHOTO IS OPTIONAL HERE, AND ONLY
        * HERE. « camera capture is optional, and it's used only in case if
@@ -765,14 +801,14 @@ export default function App() {
        * A new photo is a new attempt, not a retry of the old one.
        */
       const attempt = attemptFor(
-        `verify|${liveAssignment.orderId}|${pickupCode}|${verifyBundleId ?? SANS_PHOTO}|${JSON.stringify(checks)}`,
+        `verify|${liveAssignment.orderId}|${codeVerification ?? SANS_CODE}|${verifyBundleId ?? SANS_PHOTO}|${JSON.stringify(checks)}`,
       );
       runAct(setVerifyPhase, () =>
         custodyActs.verifyPickup(
           {
             commandId: attempt.id,
             orderId: liveAssignment.orderId,
-            presentedPickupCode: pickupCode,
+            presentedPickupCode: codeVerification,
             /**
              * The bundle names REAL BYTES when the rider photographed a
              * difference. When the package matched and no photo was taken, the
@@ -828,6 +864,29 @@ export default function App() {
     },
     [custodyActs, riderCode, liveAssignment, runAct, attemptFor, sealPhotoRefs],
   );
+
+  /**
+   * VRAI-ROUTE — « En route » and « Je suis arrivé » are REAL transit facts
+   * (Spec l.63: « custody begins → transit (one current stop) → arrival »).
+   * A tap is not the fact: the LEDGER's answer is, and only it advances the
+   * screen (`roadDeparted`/`roadArrived` read the answer; the remembered rung
+   * fills a relaunch's gap and never outranks a live answer). One command id
+   * per order and act for the session, so a double tap or a lost response
+   * replays custody's recorded answer instead of writing a second transition.
+   * NEVER queued offline — the port refuses honestly and the rider retries
+   * here, with signal.
+   */
+  const sendDepart = useCallback(() => {
+    if (riderCode === null || liveAssignment === null) return;
+    const attempt = attemptFor(`depart|${liveAssignment.orderId}`);
+    runAct(setDepartPhase, () => custodyActs.depart(riderCode, liveAssignment.orderId, attempt.id));
+  }, [custodyActs, riderCode, liveAssignment, runAct, attemptFor]);
+
+  const sendArrive = useCallback(() => {
+    if (riderCode === null || liveAssignment === null) return;
+    const attempt = attemptFor(`arrive|${liveAssignment.orderId}`);
+    runAct(setArrivePhase, () => custodyActs.arrive(riderCode, liveAssignment.orderId, attempt.id));
+  }, [custodyActs, riderCode, liveAssignment, runAct, attemptFor]);
 
   /** RIDER-DELIVERY-SCREEN — the BEGIN answer names the chain this phone now
    *  holds (task + package, identifiers only); keep it for the delivery act.
@@ -1632,7 +1691,85 @@ export default function App() {
                         <FasoCard>
                           <ProofLine label={t('acts.custody_taken')} />
                         </FasoCard>
-                        {!evidenceIsHeld(evidencePhase) ? (
+                        {/**
+                          * ═══ VRAI-ROUTE (founder ruling 2026-08-10) — THE ROAD
+                          * IS REAL ═══
+                          *
+                          * Spec l.63: « custody begins → transit (one current
+                          * stop) → arrival + buyer inspection … buyerDropCode
+                          * entered last ». After the seal the screen becomes
+                          * the ROAD: one primary action « En route » (a real
+                          * transit fact on the ledger), then the destination
+                          * with ONE primary action « Je suis arrivé » (a real
+                          * arrival fact), and only then the delivery photo and
+                          * the buyer's code. Each screen advances on the
+                          * LEDGER's answer, never on the tap; a refusal or an
+                          * offline gets its honest sentence in place.
+                          */}
+                        {!roadDeparted(departPhase, remembered) ? (
+                          <>
+                            <FasoPosterTitle>{t('route.depart_titre')}</FasoPosterTitle>
+                            <FasoBody>{t('route.depart_body')}</FasoBody>
+                            <FasoPrimaryButton
+                              label={t(departPhase.kind === 'working' ? 'acts.sending' : 'route.en_route_action')}
+                              disabled={departPhase.kind === 'working'}
+                              onPress={sendDepart}
+                            />
+                            {departPhase.kind === 'answered' ? (
+                              (() => {
+                                const o = departOutcome(departPhase.answer);
+                                return (
+                                  <>
+                                    <FasoStatusChip
+                                      tone={o.tone === 'ok' ? 'ok' : o.tone === 'waiting' ? 'info' : 'bad'}
+                                      label={t(o.title)}
+                                    />
+                                    {o.hint === undefined ? null : <FasoBody>{t(o.hint)}</FasoBody>}
+                                  </>
+                                );
+                              })()
+                            ) : null}
+                          </>
+                        ) : !roadArrived(arrivePhase, remembered) ? (
+                          <>
+                            <FasoPosterTitle>{t('route.arrivee_titre')}</FasoPosterTitle>
+                            {/* The destination leads — the same landmark-first
+                                card as everywhere (SE0.3: repère, indications,
+                                zone; the GPS pin never leads). */}
+                            {assignmentLines !== null ? (
+                              <FasoLandmarkCard
+                                zone={assignmentLines[2]}
+                                lines={assignmentLines}
+                                repereLabel={t('assignment.landmark_label')}
+                                indicationsLabel={t('repere.indications')}
+                              />
+                            ) : (
+                              <FasoCard>
+                                <ProofLine label={t('assignment.no_landmark')} />
+                              </FasoCard>
+                            )}
+                            <FasoBody>{t('route.arrivee_body')}</FasoBody>
+                            <FasoPrimaryButton
+                              label={t(arrivePhase.kind === 'working' ? 'acts.sending' : 'route.arrive_action')}
+                              disabled={arrivePhase.kind === 'working'}
+                              onPress={sendArrive}
+                            />
+                            {arrivePhase.kind === 'answered' ? (
+                              (() => {
+                                const o = arriveOutcome(arrivePhase.answer);
+                                return (
+                                  <>
+                                    <FasoStatusChip
+                                      tone={o.tone === 'ok' ? 'ok' : o.tone === 'waiting' ? 'info' : 'bad'}
+                                      label={t(o.title)}
+                                    />
+                                    {o.hint === undefined ? null : <FasoBody>{t(o.hint)}</FasoBody>}
+                                  </>
+                                );
+                              })()
+                            ) : null}
+                          </>
+                        ) : !evidenceIsHeld(evidencePhase) ? (
                           <>
                             <FasoPosterTitle>{t('delivery.title')}</FasoPosterTitle>
                             <FasoBody>{t('delivery.body')}</FasoBody>
@@ -1803,50 +1940,58 @@ export default function App() {
                       ))}
                       {preuveUrls.length > 0 ? <FasoBody>{t('check.aide_photos')}</FasoBody> : null}
                       {!allAnswered ? <FasoBody>{t('verify.answer_all')}</FasoBody> : null}
-                      <FasoActCode
-                        strings={{
-                          title: t('verify.code_title'),
-                          hint: t('verify.code_hint'),
-                          placeholder: t('verify.code_placeholder'),
-                          action: t('verify.action_send'),
-                          working: t('acts.sending'),
-                        }}
-                        working={verifyPhase.kind === 'working'}
-                        {...(ecartConstate
-                          ? {
-                              photo: {
-                                // A DIFFERENCE WAS REPORTED — the camera appears,
-                                // and its sentence says what the picture is for.
-                                hint: t('verify.photo_ecart'),
-                                // The camera is OFFERED here, never demanded:
-                                // « Envoyer » stays alive with no photo.
-                                optional: true,
-                                takeLabel: t('photo.take'),
-                                retakeLabel: t('photo.retake'),
-                                takenLabel: t('photo.taken'),
-                                // Never « photo requise »: it is offered, not demanded.
-                                neededLabel: t('verify.photo_facultative'),
-                                taken: verifyBundleId !== null,
-                                busy: capturing,
-                                issue: (() => {
-                                  const key = captureIssueKey(captureIssue);
-                                  return key === undefined ? undefined : t(key);
-                                })(),
-                                onPress: () => takePhoto((art) => setVerifyBundleId(art.ref)),
-                              },
-                            }
-                          : {})}
-                        outcome={
-                          verifyPhase.kind === 'answered'
-                            ? (() => {
-                                const o = verifyOutcome(verifyPhase.answer);
-                                return { title: t(o.title), hint: o.hint === undefined ? undefined : t(o.hint), tone: o.tone };
-                              })()
-                            : undefined
-                        }
-                        onSubmit={sendVerification}
-                        canSend={allAnswered}
+                      {/**
+                        * VRAI-ROUTE (founder ruling 2026-08-10) — THE TYPED
+                        * PICKUP-CODE FIELD IS GONE. The code is machine-carried:
+                        * it rides the session read and the act presents it
+                        * itself. The checklist stays (SE §6.1 — objective
+                        * checks); one quiet line names the mechanism; the code
+                        * itself is never displayed. The camera stays exactly as
+                        * ruled on 2026-08-09: offered only when a check was
+                        * answered « Non », never demanded.
+                        */}
+                      {ecartConstate ? (
+                        <FasoCard>
+                          {/* A DIFFERENCE WAS REPORTED — the camera appears,
+                              and its sentence says what the picture is for. */}
+                          <FasoBody>{t('verify.photo_ecart')}</FasoBody>
+                          {verifyBundleId !== null ? <FasoBody>{t('photo.taken')}</FasoBody> : null}
+                          {(() => {
+                            const key = captureIssueKey(captureIssue);
+                            return key === undefined ? null : <FasoBody>{t(key)}</FasoBody>;
+                          })()}
+                          <FasoSecondaryButton
+                            label={t(verifyBundleId !== null ? 'photo.retake' : 'photo.take')}
+                            onPress={() => takePhoto((art) => setVerifyBundleId(art.ref))}
+                          />
+                          {/* Offered, never demanded — the send below never
+                              waits on this photo. */}
+                          <FasoBody>{t('verify.photo_facultative')}</FasoBody>
+                        </FasoCard>
+                      ) : null}
+                      <FasoBody>{t('verify.par_sera')}</FasoBody>
+                      <FasoPrimaryButton
+                        label={t(verifyPhase.kind === 'working' ? 'acts.sending' : 'verify.action_send')}
+                        // Gated on ANSWERED (never on all-conforme), locked
+                        // while in flight or while the camera is out — and
+                        // NEVER on the photo: it is facultative by ruling.
+                        disabled={!allAnswered || verifyPhase.kind === 'working' || capturing}
+                        onPress={sendVerification}
                       />
+                      {verifyPhase.kind === 'answered' ? (
+                        (() => {
+                          const o = verifyOutcome(verifyPhase.answer);
+                          return (
+                            <>
+                              <FasoStatusChip
+                                tone={o.tone === 'ok' ? 'ok' : o.tone === 'waiting' ? 'info' : 'bad'}
+                                label={t(o.title)}
+                              />
+                              {o.hint === undefined ? null : <FasoBody>{t(o.hint)}</FasoBody>}
+                            </>
+                          );
+                        })()
+                      ) : null}
                     </>
                   )}
                 </>

@@ -44,6 +44,15 @@ export interface Env {
   /** SE-LIVE-4b-ii — the custody Worker's key to `/verify/`. Its own door. */
   readonly SERA_RIDER_VERIFY_SECRET?: string;
   readonly SERA_CONSOLE_ORIGIN?: string;
+  /**
+   * VRAI-ROUTE (founder, 2026-08-10) — the custody Worker over a service
+   * binding, and the key to ITS `/produce/*` door. Read by LogisticsDO (the
+   * DO shares this env): at dispatch it opens the custody chain and arms the
+   * machine-carried pickup code, at-least-once. Binding is transport; the
+   * secret is `wrangler secret put`, the founder's alone.
+   */
+  readonly CUSTODY?: { fetch(request: Request): Promise<Response> };
+  readonly SERA_PRODUCE_SECRET?: string;
 }
 
 const BEARER_PREFIX = 'Bearer ';

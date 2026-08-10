@@ -3,7 +3,15 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { bytesFromBase64 } from '../src/net/evidence-capture';
 import { createManualConnectivity } from '../src/offline/connectivity';
-import { custodyBegan, httpCustodyActs, mintActId, verificationAccepted, type CustodyAnswer } from '../src/net/custody-acts';
+import {
+  custodyBegan,
+  httpCustodyActs,
+  mintActId,
+  transitArrived,
+  transitDeparted,
+  verificationAccepted,
+  type CustodyAnswer,
+} from '../src/net/custody-acts';
 
 /**
  * SE-LIVE-4c-iii · the rider's two custody acts.
@@ -287,6 +295,126 @@ describe('a refusal, a dead server and a dead code are three different answers',
     const answer = await answerFor({ ok: false, reason: 'no_evidence_refs' }, 200);
     expect(answer).toEqual({ kind: 'refused', reason: 'no_evidence_refs' });
     expect(custodyBegan(answer)).toBe(false);
+  });
+});
+
+describe('VRAI-ROUTE — the two transit facts, on the same door with the same discipline', () => {
+  async function captureTransit(run: (p: ReturnType<typeof httpCustodyActs>) => Promise<CustodyAnswer>) {
+    const seen: { url?: string | undefined; auth?: string | undefined; body?: Record<string, unknown> | undefined; answer?: CustodyAnswer } = {};
+    const port = httpCustodyActs('https://custody.dev/', online(), async (url, init) => {
+      seen.url = url;
+      seen.auth = new Headers(init?.headers).get('Authorization') ?? undefined;
+      seen.body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return json({ ok: true, status: 'departed' });
+    });
+    seen.answer = await run(port);
+    return seen;
+  }
+
+  it('posts the departure to /rider/transit/depart — Bearer, and EXACTLY orderId + command_id', async () => {
+    const seen = await captureTransit((p) => p.depart('SR-ABCD-EFGH-JKMN', 'ord-9', 'cmd-t1' as never));
+    expect(seen.url).toBe('https://custody.dev/rider/transit/depart');
+    expect(seen.auth).toBe('Bearer SR-ABCD-EFGH-JKMN');
+    // toEqual pins the WHOLE body: no riderId, no `at`, no secret — a transit
+    // fact carries only which order and which command.
+    expect(seen.body).toEqual({ orderId: 'ord-9', command_id: 'cmd-t1' });
+  });
+
+  it('posts the arrival to /rider/transit/arrive with the same shape', async () => {
+    const seen = await captureTransit((p) => p.arrive('SR-ABCD-EFGH-JKMN', 'ord-9', 'cmd-t2' as never));
+    expect(seen.url).toBe('https://custody.dev/rider/transit/arrive');
+    expect(seen.auth).toBe('Bearer SR-ABCD-EFGH-JKMN');
+    expect(seen.body).toEqual({ orderId: 'ord-9', command_id: 'cmd-t2' });
+  });
+
+  it('NEVER queued offline: both acts refuse honestly and nothing is sent', async () => {
+    let called = 0;
+    const port = httpCustodyActs('https://custody.dev', offline(), async () => {
+      called += 1;
+      return json({ ok: true, status: 'departed' });
+    });
+    expect(await port.depart('CODE', 'ord-1', 'cmd-1' as never)).toEqual({ kind: 'offline' });
+    expect(await port.arrive('CODE', 'ord-1', 'cmd-2' as never)).toEqual({ kind: 'offline' });
+    expect(called).toBe(0);
+  });
+
+  it("custody's refusals come back by name, and neither ever reads as departed/arrived", async () => {
+    const answerFor = async (body: unknown, status: number, act: 'depart' | 'arrive'): Promise<CustodyAnswer> => {
+      const port = httpCustodyActs('https://c.dev', online(), async () => json(body, status));
+      return act === 'depart' ? port.depart('C', 'ord-1', 'cmd-1' as never) : port.arrive('C', 'ord-1', 'cmd-1' as never);
+    };
+    // depart before the seal: the ledger says the package is not this rider's.
+    const notHeld = await answerFor({ ok: false, reason: 'custody_not_with_courier' }, 409, 'depart');
+    expect(notHeld).toEqual({ kind: 'refused', reason: 'custody_not_with_courier' });
+    expect(transitDeparted(notHeld)).toBe(false);
+    // arrive before depart: the departure must be recorded first.
+    const notDeparted = await answerFor({ ok: false, reason: 'not_departed' }, 409, 'arrive');
+    expect(notDeparted).toEqual({ kind: 'refused', reason: 'not_departed' });
+    expect(transitArrived(notDeparted)).toBe(false);
+    // the standard transport outcomes hold for both acts.
+    expect(await answerFor({ error: 'unauthorized' }, 401, 'depart')).toEqual({ kind: 'unauthorized' });
+    expect(await answerFor({ ok: false, reason: 'custody_object_unavailable' }, 503, 'arrive')).toEqual({
+      kind: 'unreachable',
+      reason: 'custody_object_unavailable',
+    });
+  });
+
+  it('a replay answers deja — the same recorded fact, never a second transition', async () => {
+    const port = httpCustodyActs('https://c.dev', online(), async () =>
+      json({ ok: true, status: 'deja', duplicate: true }),
+    );
+    const replayed = await port.depart('C', 'ord-1', 'cmd-1' as never);
+    expect(replayed).toMatchObject({ kind: 'recorded', duplicate: true });
+    expect(transitDeparted(replayed)).toBe(true);
+    expect(transitArrived(await port.arrive('C', 'ord-1', 'cmd-1' as never))).toBe(true);
+  });
+
+  it('only the named status (or its replay) counts — nothing else is a road fact', () => {
+    const recorded = (body: Record<string, unknown>): CustodyAnswer => ({ kind: 'recorded', duplicate: false, body });
+    expect(transitDeparted(recorded({ ok: true, status: 'departed' }))).toBe(true);
+    expect(transitArrived(recorded({ ok: true, status: 'arrived' }))).toBe(true);
+    const neither: CustodyAnswer[] = [
+      recorded({ ok: true }),
+      recorded({ ok: true, status: 'custody_with_courier' }),
+      { kind: 'offline' },
+      { kind: 'unauthorized' },
+      { kind: 'unreachable' },
+      { kind: 'refused', reason: 'custody_not_with_courier' },
+      { kind: 'refused', reason: 'not_departed' },
+    ];
+    for (const answer of neither) {
+      const label = `${answer.kind}/${'reason' in answer ? answer.reason : JSON.stringify('body' in answer ? answer.body : '')}`;
+      expect(`${label} departed=${transitDeparted(answer)} arrived=${transitArrived(answer)}`).toBe(`${label} departed=false arrived=false`);
+    }
+    // and each fact is ITS OWN: an arrival is not a departure, nor the reverse.
+    expect(transitDeparted(recorded({ ok: true, status: 'arrived' }))).toBe(false);
+    expect(transitArrived(recorded({ ok: true, status: 'departed' }))).toBe(false);
+  });
+});
+
+describe('VRAI-ROUTE — the machine-carried verification code (founder ruling 2026-08-10)', () => {
+  it('a session with no code refuses LOCALLY by name, and nothing leaves the phone', async () => {
+    let called = 0;
+    const port = httpCustodyActs('https://c.dev', online(), async () => {
+      called += 1;
+      return json({ ok: true });
+    });
+    for (const missing of [null, '']) {
+      const answer = await port.verifyPickup({ ...VERIFY, presentedPickupCode: missing }, 'CODE');
+      expect(answer).toEqual({ kind: 'refused', reason: 'verification_code_missing' });
+    }
+    // Not a byte on the wire: an empty string is never sent to be refused.
+    expect(called).toBe(0);
+  });
+
+  it('a carried code still travels exactly as before', async () => {
+    let body: Record<string, unknown> | undefined;
+    const port = httpCustodyActs('https://c.dev', online(), async (_u, init) => {
+      body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return json({ ok: true, kind: 'accepted' });
+    });
+    await port.verifyPickup({ ...VERIFY, presentedPickupCode: 'KDF-347' }, 'CODE');
+    expect(body?.['presentedPickupCode']).toBe('KDF-347');
   });
 });
 

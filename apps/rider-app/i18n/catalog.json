@@ -1062,24 +1062,6 @@
     "screenClass": "instruction"
   },
   {
-    "key": "verify.code_title",
-    "fr": "Code de ramassage",
-    "register": "neutral",
-    "screenClass": "label"
-  },
-  {
-    "key": "verify.code_hint",
-    "fr": "Le code que Séra vous a donné au téléphone.",
-    "register": "neutral",
-    "screenClass": "instruction"
-  },
-  {
-    "key": "verify.code_placeholder",
-    "fr": "Tapez le code",
-    "register": "neutral",
-    "screenClass": "label"
-  },
-  {
     "key": "verify.action_send",
     "fr": "Envoyer la vérification",
     "register": "neutral",
@@ -1522,5 +1504,95 @@
     "fr": "Photo facultative",
     "register": "neutral",
     "screenClass": "label"
+  },
+  {
+    "key": "verify.par_sera",
+    "fr": "Rien à taper ici. Séra vérifie la course pour vous.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "verify.code_manquant",
+    "fr": "Séra attend encore l'accord du fournisseur.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "verify.code_manquant_hint",
+    "fr": "Dès que le fournisseur confirme le ramassage, vous pouvez envoyer. Réessayez dans un instant.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "route.depart_titre",
+    "fr": "Colis scellé. La route est à vous.",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "route.depart_body",
+    "fr": "Appuyez quand vous partez. Séra note votre départ.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "route.en_route_action",
+    "fr": "En route",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "route.depart_note",
+    "fr": "Départ noté.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "route.arrivee_titre",
+    "fr": "En route vers la cliente",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "route.arrivee_body",
+    "fr": "Appuyez quand vous êtes devant la cliente. Rien d'autre à faire en chemin.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "route.arrive_action",
+    "fr": "Je suis arrivé",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "route.arrivee_notee",
+    "fr": "Arrivée notée.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "route.pas_en_garde",
+    "fr": "Séra dit que le colis n'est pas sous votre garde.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "route.pas_en_garde_hint",
+    "fr": "Enregistrez d'abord le scellé. Ensuite, repartez d'ici.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "route.pas_parti",
+    "fr": "Séra n'a pas encore noté votre départ.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "route.pas_parti_hint",
+    "fr": "Réessayez dans un instant. Si rien ne change, appelez Séra.",
+    "register": "neutral",
+    "screenClass": "instruction"
   }
 ]

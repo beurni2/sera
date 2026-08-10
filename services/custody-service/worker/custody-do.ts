@@ -151,6 +151,38 @@ interface EligibilityOutbox {
 }
 const ELIGIBILITY_OUTBOX_KEY = 'custody:eligibility-outbox:v1';
 
+/**
+ * VRAI-ROUTE (founder, 2026-08-10) — the rider's two journey facts, so the
+ * buyer's tracking stops being a simulation. « Departed » and « arrived » are
+ * NOT custody transitions (one custodian, unchanged — the courier holds the
+ * package the whole road); they are journey facts the spec's own chain names
+ * (« transit … arrival », Build Spec:63), kept OUTSIDE the spine's command
+ * log so the hardened custody record stays exactly what five verifier rounds
+ * bound. First-wins each; attribution recorded with each.
+ */
+interface TransitRecord {
+  departedAt?: string;
+  departedBy?: string;
+  arrivedAt?: string;
+  arrivedBy?: string;
+}
+const TRANSIT_KEY = 'custody:transit:v1';
+
+/**
+ * The transit facts travel to Shop+ on the SAME wire and discipline as the
+ * eligibility signal (SE-LIVE-5a): its own key so neither wire can mask the
+ * other's fate, at-least-once, alarm-driven, `unsendable_no_config` an honest
+ * rest re-armed by a replayed act. Plain service facts — the funding-intake
+ * precedent — never a canon event.
+ */
+interface TransitOutboxRow {
+  status: 'pending' | 'delivered' | 'unsendable_no_config';
+  attempts: number;
+  body: { orderId: string; stage: 'en_route' | 'arrivee'; asOf: string };
+}
+type TransitOutbox = Partial<Record<'en_route' | 'arrivee', TransitOutboxRow>>;
+const TRANSIT_OUTBOX_KEY = 'custody:transit-outbox:v1';
+
 interface CustodyHead {
   /**
    * ⚠ VERIFIER BLOCKER (round 4) — THE CHAIN IS BOUND TOO. This object writes
@@ -722,8 +754,25 @@ export class CustodyDO {
    * settlement truth and silence would be a lie about money.
    */
   async alarm(): Promise<void> {
+    // VRAI-ROUTE — two wires, one alarm, independent state (the storefront
+    // worker's own three-outbox precedent): the eligibility signal and the
+    // transit facts each keep their own status and attempt count, so one
+    // being down never marks the other delivered or re-sends it. The alarm
+    // re-arms while EITHER is pending, on the higher attempt count's rung.
+    const eligibilityPending = await this.flushEligibility();
+    const transitPending = await this.flushTransit();
+    const attempts = Math.max(eligibilityPending, transitPending);
+    if (attempts > 0) {
+      const backoffMs = Math.min(30_000 * 2 ** Math.min(attempts, 7), 3_600_000);
+      await this.state.storage.setAlarm(Date.now() + backoffMs).catch(() => undefined);
+    }
+  }
+
+  /** The eligibility wire, exactly as SE-LIVE-5a shipped it — returns the
+   *  post-attempt count while pending, 0 when done or resting. */
+  private async flushEligibility(): Promise<number> {
     const outbox = await this.state.storage.get<EligibilityOutbox>(ELIGIBILITY_OUTBOX_KEY);
-    if (outbox === undefined || outbox.status !== 'pending') return;
+    if (outbox === undefined || outbox.status !== 'pending') return 0;
     const shop = this.env.SHOP_PROGRESS;
     const secret = this.env.SHOP_PROGRESS_SECRET ?? '';
     if (shop === undefined || secret === '') {
@@ -733,7 +782,7 @@ export class CustodyDO {
         ...outbox,
         status: 'unsendable_no_config',
       } satisfies EligibilityOutbox);
-      return;
+      return 0;
     }
     let delivered = false;
     try {
@@ -755,14 +804,97 @@ export class CustodyDO {
         status: 'delivered',
         attempts,
       } satisfies EligibilityOutbox);
-      return;
+      return 0;
     }
     await this.state.storage.put(ELIGIBILITY_OUTBOX_KEY, {
       ...outbox,
       attempts,
     } satisfies EligibilityOutbox);
-    const backoffMs = Math.min(30_000 * 2 ** Math.min(attempts, 7), 3_600_000);
-    await this.state.storage.setAlarm(Date.now() + backoffMs).catch(() => undefined);
+    return attempts;
+  }
+
+  /** The transit wire — each stage row drained independently; a 404 from
+   *  Shop+ (order not yet registered there) is a RETRY like any outage:
+   *  `res.ok` alone decides, the confirmed-order wire's own law. */
+  private async flushTransit(): Promise<number> {
+    const outbox = (await this.state.storage.get<TransitOutbox>(TRANSIT_OUTBOX_KEY)) ?? {};
+    const shop = this.env.SHOP_PROGRESS;
+    const secret = this.env.SHOP_PROGRESS_SECRET ?? '';
+    let worst = 0;
+    let changed = false;
+    for (const stage of ['en_route', 'arrivee'] as const) {
+      const row = outbox[stage];
+      if (row === undefined || row.status !== 'pending') continue;
+      if (shop === undefined || secret === '') {
+        outbox[stage] = { ...row, status: 'unsendable_no_config' };
+        changed = true;
+        continue;
+      }
+      let delivered = false;
+      try {
+        const res = await shop.fetch(new Request('https://shop/fulfillment/transit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${secret}` },
+          body: JSON.stringify(row.body),
+        }));
+        delivered = res.ok;
+      } catch {
+        delivered = false;
+      }
+      const attempts = row.attempts + 1;
+      outbox[stage] = { ...row, status: delivered ? 'delivered' : 'pending', attempts };
+      changed = true;
+      if (!delivered) worst = Math.max(worst, attempts);
+    }
+    if (changed) await this.state.storage.put(TRANSIT_OUTBOX_KEY, outbox);
+    return worst;
+  }
+
+  /** The at-least-once recovery hook for ONE transit stage — the same law the
+   *  eligibility outbox learned from the drop route: a replayed act is the one
+   *  moment that can revive a stranded or config-starved row without
+   *  inventing a scheduler. */
+  private async rearmTransitStage(stage: 'en_route' | 'arrivee'): Promise<void> {
+    const outbox = (await this.state.storage.get<TransitOutbox>(TRANSIT_OUTBOX_KEY)) ?? {};
+    const row = outbox[stage];
+    if (row === undefined || row.status === 'delivered') return;
+    if ((await this.state.storage.getAlarm()) !== null) return;
+    outbox[stage] = { ...row, status: 'pending' };
+    await this.state.storage.put(TRANSIT_OUTBOX_KEY, outbox);
+    await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
+  }
+
+  /**
+   * FOUNDER RULING 2 (2026-08-10) — AUTO-DECIDE, the deterministic half of
+   * « evidence supports, never releases ». When an evidence bundle LANDS, the
+   * object runs the spine's own `decideValidation` at once, as a SECOND
+   * LOGGED COMMAND: the policy is already pure (photo present → validated;
+   * artifacts empty → review_hold, GPS never sole proof), so waiting for an
+   * operator to ask the question added a human pause to a computation. Money
+   * still moves ONLY at `/delivery/drop`, on the buyer's own code — this
+   * decides, it releases nothing, and a review_hold still parks the order for
+   * ops exactly as before.
+   *
+   * IDEMPOTENT BY THE LOG: the command id is derived from the evidence act's
+   * own id, so a crash between the two commits is healed on the evidence
+   * REDELIVERY (the duplicate branch calls this too), and a rebuilt object
+   * replays both rows in order. `/delivery/decide` stays for ops — a second
+   * ask re-computes the same decision from the same bundle.
+   */
+  private async autoDecideAfterEvidence(evidenceCommandId: string): Promise<void> {
+    const cmd: CustodyCommand = {
+      kind: 'decide_validation',
+      command_id: `auto-decide-${evidenceCommandId}`,
+      at: new Date().toISOString(),
+    };
+    if (this.priorFor(cmd).kind !== 'none') return;
+    const applied = this.apply(this.spine!, cmd) as
+      | { ok: true; decision: { result: string; reasons: string[] } }
+      | { ok: false; reason?: string };
+    const recorded: RecordedOutcome = applied.ok
+      ? { httpStatus: 200, body: { ok: true, result: applied.decision.result, reasons: applied.decision.reasons } }
+      : { httpStatus: 409, body: { ok: false, reason: applied.reason ?? 'refused' } };
+    await this.commit(cmd, recorded);
   }
 
   /** Persist the log ATOMICALLY WITH nothing else — the log IS the state.
@@ -1515,6 +1647,75 @@ export class CustodyDO {
     }
 
     /**
+     * ═══ VRAI-ROUTE — THE RIDER'S TWO JOURNEY FACTS (Build-Spec §63) ═══
+     *
+     * « transit (one current stop) → arrival » — the chain names both moments
+     * and until now neither existed anywhere: the buyer's tracking simulated
+     * them. These are LEDGER-ADJACENT FACTS, not custody transitions (the
+     * courier holds the package the whole road, SE-I04 untouched), so they
+     * live OUTSIDE the spine's command log — the hardened custody record
+     * stays exactly what five verifier rounds bound — under their own key,
+     * first-wins each, attribution recorded with each.
+     *
+     * The gates are REAL, not decorative: depart demands the spine actually
+     * says custody-with-courier (a rider cannot narrate a road before the
+     * seal), arrive demands departed. A replay answers `deja` with the
+     * ORIGINAL instant — and doubles as the recovery hook that revives a
+     * stranded outbox row, the drop route's own precedent.
+     */
+    if (request.method === 'POST' && (pathname === '/transit/depart' || pathname === '/transit/arrive')) {
+      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      if (body === null || !isBoundedStr(body['command_id'], MAX_ID)) return malformed();
+      const doorRider = request.headers.get('X-Rider-Authenticated');
+      const actor = doorRider !== null && doorRider !== '' ? doorRider : CUSTODY_ACTOR;
+      const transit = (await this.state.storage.get<TransitRecord>(TRANSIT_KEY)) ?? {};
+      if (pathname === '/transit/depart') {
+        if (transit.departedAt !== undefined) {
+          await this.rearmTransitStage('en_route');
+          return Response.json({ ok: true, status: 'deja', at: transit.departedAt });
+        }
+        if (!this.spine.courierHoldsCustody()) {
+          return Response.json({ ok: false, reason: 'custody_not_with_courier' }, { status: 409 });
+        }
+        const at = new Date().toISOString();
+        const outbox = (await this.state.storage.get<TransitOutbox>(TRANSIT_OUTBOX_KEY)) ?? {};
+        outbox.en_route = {
+          status: 'pending',
+          attempts: 0,
+          body: { orderId: this.chain.order_id, stage: 'en_route', asOf: at },
+        };
+        // ONE WRITE — the fact and its wire commit together or not at all
+        // (the commit path's own « ONE WRITE, NOT TWO » law).
+        await this.state.storage.put({
+          [TRANSIT_KEY]: { ...transit, departedAt: at, departedBy: actor } satisfies TransitRecord,
+          [TRANSIT_OUTBOX_KEY]: outbox,
+        });
+        await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
+        return Response.json({ ok: true, status: 'departed', at });
+      }
+      if (transit.arrivedAt !== undefined) {
+        await this.rearmTransitStage('arrivee');
+        return Response.json({ ok: true, status: 'deja', at: transit.arrivedAt });
+      }
+      if (transit.departedAt === undefined) {
+        return Response.json({ ok: false, reason: 'not_departed' }, { status: 409 });
+      }
+      const at = new Date().toISOString();
+      const outbox = (await this.state.storage.get<TransitOutbox>(TRANSIT_OUTBOX_KEY)) ?? {};
+      outbox.arrivee = {
+        status: 'pending',
+        attempts: 0,
+        body: { orderId: this.chain.order_id, stage: 'arrivee', asOf: at },
+      };
+      await this.state.storage.put({
+        [TRANSIT_KEY]: { ...transit, arrivedAt: at, arrivedBy: actor } satisfies TransitRecord,
+        [TRANSIT_OUTBOX_KEY]: outbox,
+      });
+      await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
+      return Response.json({ ok: true, status: 'arrived', at });
+    }
+
+    /**
      * ═══ SE-LIVE-5a — THE DELIVERY ACTS (SE-I05 · Build-Spec §63/§115) ═══
      *
      * Three doors on the same command-log discipline as every act above
@@ -1557,7 +1758,13 @@ export class CustodyDO {
         at: (body['at'] as string | undefined) ?? new Date().toISOString(),
       };
       const prior = this.priorFor(cmd);
-      if (prior.kind === 'duplicate') return this.replayOutcome(prior.outcome, cmd);
+      if (prior.kind === 'duplicate') {
+        // The redelivery is ALSO the crash-recovery hook for the auto-decide
+        // below: evidence committed, decide did not — heal it here, exactly
+        // as the drop route revives its outbox on a replayed drop.
+        if (prior.outcome.httpStatus === 200) await this.autoDecideAfterEvidence(cmd.command_id);
+        return this.replayOutcome(prior.outcome, cmd);
+      }
       if (prior.kind === 'conflict') {
         return Response.json({ ok: false, reason: 'command_id_reused_with_other_content' }, { status: 409 });
       }
@@ -1569,6 +1776,13 @@ export class CustodyDO {
         ? { httpStatus: 200, body: { ok: true, status: 'evidence_recorded' } }
         : { httpStatus: 409, body: { ok: false, reason: applied.reason ?? 'refused' } };
       await this.commit(cmd, recorded);
+      // FOUNDER RULING 2 — the decision follows the evidence in the SAME
+      // request, as its own logged command (see autoDecideAfterEvidence).
+      // AFTER the evidence commit, deliberately: only synchronous code and
+      // storage puts sit between the two, so the input gate holds and no
+      // other act can interleave; a crash between them is healed on the
+      // evidence redelivery above.
+      if (applied.ok) await this.autoDecideAfterEvidence(cmd.command_id);
       return Response.json(recorded.body, { status: recorded.httpStatus });
     }
 
@@ -1780,8 +1994,13 @@ export class CustodyDO {
             recorded: row.outcome.httpStatus === 200,
           };
         });
+      // VRAI-ROUTE — the journey facts ride the same read, WITH their actors:
+      // a fact this object records must be readable (the round-5 law), and
+      // « who said the road started » is an attestation like any other.
+      const transit = (await this.state.storage.get<TransitRecord>(TRANSIT_KEY)) ?? {};
       return Response.json({
         ok: true,
+        transit,
         /**
          * ⚠ THE BLANKET LABEL IS GONE — VERIFIER BLOCKER (4b round 1). It read
          * `attribution: 'founder_attested'` over the whole response, justified

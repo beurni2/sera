@@ -237,3 +237,46 @@ describe('RAMASSAGE — the handover code reaches the rider, bounded, and the sc
     expect(app).toContain("<FasoBody>{t('ramassage.dire')}</FasoBody>");
   });
 });
+
+describe('VRAI-ROUTE — the confirmation stamp and the machine-carried code (2026-08-10)', () => {
+  const rider = {
+    riderId: 'r', displayName: 'r', certified: true, privacyAckOk: true, noticeVersion: 'v1',
+    shift: null,
+    assignment: {
+      assignmentId: 'as-1', taskId: 't-1', orderId: 'o-1', status: 'acknowledged',
+      ackDeadline: null, window: null, location: null,
+      repereAudioRef: null, preuvePhotoRefs: [], codeRamassage: null,
+      ramassageConfirmeAt: '2026-08-10T12:00:00.000Z', codeVerification: 'KDF-347',
+    },
+  };
+  const vue = (a: Record<string, unknown>) =>
+    riderSessionFromBody({ ok: true, rider: { ...rider, assignment: a } })?.assignment;
+
+  it('parses both fields when the wire carries them well-formed', () => {
+    const a = vue(rider.assignment);
+    expect(a?.ramassageConfirmeAt).toBe('2026-08-10T12:00:00.000Z');
+    expect(a?.codeVerification).toBe('KDF-347');
+  });
+
+  it('codeVerification rides the SAME minted bound as codeRamassage — anything else is dropped', () => {
+    for (const bad of ['<script>', 'kdf-347', 'KDF347', 'KDF-3470', 'IOL-000', '', 42, null, undefined]) {
+      expect(vue({ ...rider.assignment, codeVerification: bad })?.codeVerification, JSON.stringify(bad)).toBeNull();
+    }
+    // the unambiguous alphabet holds: I, O, L, 0 and 1 never appear.
+    expect(vue({ ...rider.assignment, codeVerification: 'ABC-234' })?.codeVerification).toBe('ABC-234');
+  });
+
+  it('ramassageConfirmeAt is ISO-or-null — a byte that is not a date is dropped', () => {
+    for (const bad of ['not-a-date', '', '   ', 42, true, {}, null, undefined]) {
+      expect(vue({ ...rider.assignment, ramassageConfirmeAt: bad })?.ramassageConfirmeAt, JSON.stringify(bad)).toBeNull();
+    }
+  });
+
+  it('an old Worker sending neither field still yields a whole session', () => {
+    const { ramassageConfirmeAt: _c, codeVerification: _v, ...old } = rider.assignment;
+    const a = vue(old);
+    expect(a?.orderId).toBe('o-1');
+    expect(a?.ramassageConfirmeAt).toBeNull();
+    expect(a?.codeVerification).toBeNull();
+  });
+});

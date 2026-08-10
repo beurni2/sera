@@ -110,6 +110,27 @@ const SNAP_BRIEFS = 'snap:briefs:v1';
  * a taken-back one leaves its code answering only « non confirmé ».
  */
 const SNAP_RAMASSAGE = 'snap:ramassage:v1';
+/**
+ * VRAI-ROUTE (founder ruling 4, 2026-08-10, one-way amendment) — the
+ * MACHINE-CARRIED `pickupVerificationCode`. The reverse reveal is RETIRED:
+ * the supplier confirms the RIDER's ramassage code on his card, and that is
+ * the whole human handshake. SE-I05's pickup code still exists and still
+ * gates custody — but no human ever reads or types it again: this book mints
+ * it at assign, arms custody with it over `/produce/*`, and hands it to the
+ * rider's APP on `/rider/moi`, which presents it inside the verification act.
+ * Keyed by assignmentId: a re-assigned course mints and re-arms a fresh one.
+ * Plaintext at rest behind the founder's door — the CODE-REVU precedent.
+ */
+const SNAP_CODE_VERIFICATION = 'snap:code-verification:v1';
+/**
+ * VRAI-ROUTE (founder ruling 3) — « the chain opens itself at dispatch. »
+ * The at-least-once outbox that carries TWO producer calls to the custody
+ * Worker for each assigned order: `/produce/order/open` (the chain, with the
+ * supplier Boutik+ named on its readiness fact) then `/produce/secrets/arm`
+ * (the machine pickup code). Its OWN key inside the snapshot batch, so the
+ * row commits atomically with the assignment that armed it.
+ */
+const SNAP_CUSTODY_OUTBOX = 'snap:custody-outbox:v1';
 const CODEHASH_PREFIX = 'codehash:';
 const RIDERCODE_PREFIX = 'ridercode:';
 
@@ -127,6 +148,29 @@ interface ReadinessFact {
   ready: boolean;
   asOf: string;
   stale: boolean;
+  /** VRAI-ROUTE — WHO the package comes from, said by Boutik+ itself on the
+   *  readiness fact (server to server). Custody's chain-open requires it;
+   *  Séra never guesses a supplier. Optional: facts posted before the
+   *  producer learned to say it are still lawful facts. */
+  supplierRef?: string;
+}
+
+/**
+ * One row per assigned order on its way into custody. `phase` is the road
+ * position; `rest` is an HONEST parking reason (missing config or missing
+ * supplier), re-checked on every flush — reviving is only ever an alarm.
+ */
+interface CustodyProduceRow {
+  phase: 'open' | 'arm' | 'done';
+  rest: 'none' | 'no_config' | 'no_supplier';
+  attempts: number;
+  taskId: string;
+  assignmentId: string;
+  paymentMode: string;
+  /** The machine pickup code PLAINTEXT — custody hashes at its door and
+   *  never stores it; this row lives behind this object's own storage. */
+  code: string;
+  supplierRef?: string;
 }
 
 interface ProjectionsSnapshot {
@@ -174,6 +218,14 @@ function mintRiderCode(): string {
   return `SR-${raw.slice(0, 4)}-${raw.slice(4, 8)}-${raw.slice(8, 12)}`;
 }
 
+/** VRAI-ROUTE — the machine-carried pickup code: the SAME `XXX-XXX` shape as
+ *  the ramassage code (the wire contract the rider app parses), minted
+ *  independently. Single-use at custody's registry; presented only by the
+ *  app, inside an authenticated verification act. */
+function mintCodeVerification(): string {
+  return mintCodeRamassage();
+}
+
 /** The one 401 — IDENTICAL to the router's, for every rider-door rejection. */
 function unauthorized(): Response {
   return Response.json({ error: 'unauthorized' }, { status: 401 });
@@ -209,6 +261,15 @@ function isMediaRef(v: unknown): v is string {
   return typeof v === 'string' && MEDIA_REF.test(v) && !v.includes('..');
 }
 
+/** What this object reaches outward for — the custody Worker's producer door.
+ *  TRANSPORT over a service binding; the door still gates on the secret. */
+export interface LogisticsObjectEnv {
+  readonly CUSTODY?: { fetch(request: Request): Promise<Response> };
+  /** The key to custody's `/produce/*` door; `wrangler secret put`, the
+   *  founder's alone. Unset ⇒ the outbox rests honestly, nothing is lost. */
+  readonly SERA_PRODUCE_SECRET?: string;
+}
+
 export class LogisticsDO {
   private loaded = false;
   private leaseState: LeaseAuthorityState = emptyLeaseState();
@@ -216,15 +277,23 @@ export class LogisticsDO {
   private readinessFacts: Record<string, ReadinessFact> = {};
   /** COURSE-BRIEF, keyed by taskId — beside the canon task, never on it. */
   private briefs: Record<string, CourseBrief> = {};
-  /** RAMASSAGE — assignmentId → the handover code its rider's app shows. */
-  private ramassage: Record<string, { code: string }> = {};
+  /** RAMASSAGE — assignmentId → the handover code its rider's app shows, and
+   *  (VRAI-ROUTE) the instant the supplier CONFIRMED it, first-wins. */
+  private ramassage: Record<string, { code: string; confirmeAt?: string }> = {};
+  /** VRAI-ROUTE — assignmentId → the machine-carried pickup code. */
+  private codesVerification: Record<string, { code: string }> = {};
+  /** VRAI-ROUTE — orderId → its producer row on the road into custody. */
+  private custodyOutbox: Record<string, CustodyProduceRow> = {};
   private queue!: ReadyQueue;
   private registry!: RiderRegistry;
   private witness!: GrantedLeaseWitness;
   private book!: AssignmentBook;
   private dispatch!: LeasedDispatch;
 
-  constructor(private readonly state: DurableObjectState) {}
+  constructor(
+    private readonly state: DurableObjectState,
+    private readonly env: LogisticsObjectEnv = {},
+  ) {}
 
   /** The async boundary of leased-assignment.ts, satisfied in-object: the
    * SAME pure decideLease, against THIS object's one lease state. The DO's
@@ -252,7 +321,7 @@ export class LogisticsDO {
 
   private async ensureLoaded(): Promise<void> {
     if (this.loaded) return;
-    const keys = [SNAP_QUEUE, SNAP_REGISTRY, SNAP_BOOK, SNAP_LEASE, SNAP_WITNESS, SNAP_PROJECTIONS, SNAP_BRIEFS, SNAP_RAMASSAGE];
+    const keys = [SNAP_QUEUE, SNAP_REGISTRY, SNAP_BOOK, SNAP_LEASE, SNAP_WITNESS, SNAP_PROJECTIONS, SNAP_BRIEFS, SNAP_RAMASSAGE, SNAP_CODE_VERIFICATION, SNAP_CUSTODY_OUTBOX];
     const stored = await this.state.storage.get<unknown>(keys);
     const lease = stored.get(SNAP_LEASE) as LeaseAuthorityState | undefined;
     this.leaseState = lease ?? emptyLeaseState();
@@ -260,7 +329,9 @@ export class LogisticsDO {
     this.fundingFacts = projections?.funding ?? {};
     this.readinessFacts = projections?.readiness ?? {};
     this.briefs = (stored.get(SNAP_BRIEFS) as Record<string, CourseBrief> | undefined) ?? {};
-    this.ramassage = (stored.get(SNAP_RAMASSAGE) as Record<string, { code: string }> | undefined) ?? {};
+    this.ramassage = (stored.get(SNAP_RAMASSAGE) as Record<string, { code: string; confirmeAt?: string }> | undefined) ?? {};
+    this.codesVerification = (stored.get(SNAP_CODE_VERIFICATION) as Record<string, { code: string }> | undefined) ?? {};
+    this.custodyOutbox = (stored.get(SNAP_CUSTODY_OUTBOX) as Record<string, CustodyProduceRow> | undefined) ?? {};
     this.queue = new ReadyQueue(this.projections());
     const queueSnap = stored.get(SNAP_QUEUE) as ReadyQueueSnapshot | undefined;
     if (queueSnap !== undefined) this.queue.restore(queueSnap);
@@ -294,7 +365,104 @@ export class LogisticsDO {
       [SNAP_PROJECTIONS]: { funding: this.fundingFacts, readiness: this.readinessFacts },
       [SNAP_BRIEFS]: this.briefs,
       [SNAP_RAMASSAGE]: this.ramassage,
+      [SNAP_CODE_VERIFICATION]: this.codesVerification,
+      [SNAP_CUSTODY_OUTBOX]: this.custodyOutbox,
     });
+  }
+
+  /**
+   * VRAI-ROUTE — the producer wire into custody, at-least-once. Two calls per
+   * order, strictly ordered (custody refuses an arm before its chain is
+   * open): `/produce/order/open`, then `/produce/secrets/arm` with the
+   * machine pickup code. `res.ok` alone decides — custody's open answers
+   * `already_open` 200 on a redelivery and its arm replays its recorded
+   * answer, so a retry can never double anything. A 4xx is a producer bug
+   * and stays a repeating refusal in both Workers' logs (the eligibility
+   * wire's own taxonomy). Missing config or a readiness fact that never
+   * named its supplier are HONEST rests, re-checked every flush.
+   */
+  private async flushCustodyProduce(): Promise<number> {
+    const custody = this.env.CUSTODY;
+    const key = this.env.SERA_PRODUCE_SECRET ?? '';
+    let worst = 0;
+    let changed = false;
+    for (const [orderId, row] of Object.entries(this.custodyOutbox)) {
+      if (row.phase === 'done') continue;
+      if (custody === undefined || key === '') {
+        if (row.rest !== 'no_config') {
+          this.custodyOutbox[orderId] = { ...row, rest: 'no_config' };
+          changed = true;
+        }
+        continue;
+      }
+      if (row.supplierRef === undefined) {
+        if (row.rest !== 'no_supplier') {
+          this.custodyOutbox[orderId] = { ...row, rest: 'no_supplier' };
+          changed = true;
+        }
+        continue;
+      }
+      const next: CustodyProduceRow = { ...row, rest: 'none' };
+      const post = async (path: string, body: unknown): Promise<boolean> => {
+        try {
+          const res = await custody.fetch(new Request(`https://custody${path}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+            body: JSON.stringify(body),
+          }));
+          return res.ok;
+        } catch {
+          return false;
+        }
+      };
+      if (next.phase === 'open') {
+        const opened = await post('/produce/order/open', {
+          orderId,
+          taskId: next.taskId,
+          // Single-package pilot (founder ruling 3): the package id is the
+          // order's own, and the correlation is the order's own — the same
+          // shapes the founder's hand used to type at the ops door.
+          packageId: `pkg-${orderId}`,
+          correlationId: `corr-${orderId}`,
+          supplierId: next.supplierRef,
+          paymentMode: next.paymentMode,
+        });
+        if (opened) next.phase = 'arm';
+      }
+      if (next.phase === 'arm') {
+        const armed = await post('/produce/secrets/arm', {
+          orderId,
+          command_id: `arm-pickup-${next.assignmentId}`,
+          kind: 'pickup_verification_code',
+          secret: next.code,
+        });
+        if (armed) next.phase = 'done';
+      }
+      next.attempts = row.attempts + 1;
+      this.custodyOutbox[orderId] = next;
+      changed = true;
+      if (next.phase !== 'done') worst = Math.max(worst, next.attempts);
+    }
+    if (changed) await this.state.storage.put(SNAP_CUSTODY_OUTBOX, this.custodyOutbox);
+    return worst;
+  }
+
+  /** Reviving is only ever an alarm: the flush re-judges every rest itself.
+   *  Called from the founder's board read and from a replayed assign — the
+   *  house recovery law (a redelivered act revives a stranded wire). */
+  private async reviveCustodyProduce(): Promise<void> {
+    if (!Object.values(this.custodyOutbox).some((r) => r.phase !== 'done')) return;
+    if ((await this.state.storage.getAlarm()) !== null) return;
+    await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
+  }
+
+  async alarm(): Promise<void> {
+    await this.ensureLoaded();
+    const pending = await this.flushCustodyProduce();
+    if (pending > 0) {
+      const backoffMs = Math.min(30_000 * 2 ** Math.min(pending, 7), 3_600_000);
+      await this.state.storage.setAlarm(Date.now() + backoffMs).catch(() => undefined);
+    }
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -382,7 +550,10 @@ export class LogisticsDO {
         !isStr(body['orderId']) ||
         typeof body['ready'] !== 'boolean' ||
         !isIso(body['asOf']) ||
-        (body['stale'] !== undefined && typeof body['stale'] !== 'boolean')
+        (body['stale'] !== undefined && typeof body['stale'] !== 'boolean') ||
+        // VRAI-ROUTE — refused, not ignored: a supplierRef that is present
+        // but not a usable string is a malformed fact, never a silent drop.
+        (body['supplierRef'] !== undefined && !isStr(body['supplierRef']))
       ) {
         return malformed();
       }
@@ -391,6 +562,7 @@ export class LogisticsDO {
         ready: body['ready'] as boolean,
         asOf: body['asOf'] as string,
         stale: (body['stale'] as boolean | undefined) ?? false,
+        ...(body['supplierRef'] !== undefined ? { supplierRef: (body['supplierRef'] as string).trim() } : {}),
       };
       // Same ordering law as funding: an older redelivered fact never wins.
       const stored = this.readinessFacts[orderId];
@@ -398,6 +570,13 @@ export class LogisticsDO {
         return Response.json({ ok: true, orderId, applied: false, reason: 'older_fact_ignored' });
       }
       this.readinessFacts[orderId] = incoming;
+      // VRAI-ROUTE — a producer row parked on « no_supplier » learns its
+      // supplier from the redelivered fact and gets back on the road.
+      const parked = this.custodyOutbox[orderId];
+      if (parked !== undefined && parked.phase !== 'done' && parked.supplierRef === undefined && incoming.supplierRef !== undefined) {
+        this.custodyOutbox[orderId] = { ...parked, supplierRef: incoming.supplierRef };
+        await this.reviveCustodyProduce();
+      }
       return Response.json({ ok: true, orderId, applied: true });
     }
 
@@ -415,6 +594,9 @@ export class LogisticsDO {
        * outcome is fully visible in the very board it returns.
        */
       await this.dispatch.expireDue(now);
+      // VRAI-ROUTE — the founder's daily read doubles as the recovery hook
+      // for a producer row parked before its config or supplier existed.
+      await this.reviveCustodyProduce();
       return Response.json({ ok: true, board: this.board() });
     }
     if (request.method === 'POST' && pathname === '/ops/riders') {
@@ -585,6 +767,36 @@ export class LogisticsDO {
       // console that could read it here would make the check theatre.
       if (!outcome.duplicate && this.ramassage[outcome.assignment.assignmentId] === undefined) {
         this.ramassage[outcome.assignment.assignmentId] = { code: mintCodeRamassage() };
+      }
+      /**
+       * VRAI-ROUTE — dispatch is the moment the custody chain opens itself.
+       * A fresh course mints the machine pickup code and arms the producer
+       * row; the row rides the SAME persist batch as the book, so the
+       * assignment and its road into custody commit together. A duplicate
+       * replay mints nothing — but it DOES revive a resting row, the house
+       * recovery law. Re-assign after a take-back overwrites the order's row
+       * with the fresh assignment's code: custody's registry replaces an
+       * unconsumed pickup code on re-arm, so the dead course's code dies.
+       */
+      if (!outcome.duplicate) {
+        if (this.codesVerification[outcome.assignment.assignmentId] === undefined) {
+          this.codesVerification[outcome.assignment.assignmentId] = { code: mintCodeVerification() };
+        }
+        this.custodyOutbox[outcome.assignment.orderId] = {
+          phase: 'open',
+          rest: 'none',
+          attempts: 0,
+          taskId: outcome.assignment.taskId,
+          assignmentId: outcome.assignment.assignmentId,
+          paymentMode: this.fundingFacts[outcome.assignment.orderId]?.paymentMode ?? 'FULL_PREPAY',
+          code: this.codesVerification[outcome.assignment.assignmentId]!.code,
+          ...(this.readinessFacts[outcome.assignment.orderId]?.supplierRef !== undefined
+            ? { supplierRef: this.readinessFacts[outcome.assignment.orderId]!.supplierRef as string }
+            : {}),
+        };
+        await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
+      } else {
+        await this.reviveCustodyProduce();
       }
       return Response.json({ ok: true, assignment: outcome.assignment, lease: outcome.lease, duplicate: outcome.duplicate });
     }
@@ -910,6 +1122,18 @@ export class LogisticsDO {
         attendu !== undefined && donne !== '' && donne === normaliseCodeRamassage(attendu)
           ? 'confirme'
           : 'non_confirme';
+      /**
+       * VRAI-ROUTE — the CONFIRMED handshake is a fact the rider's own screen
+       * turns on (« En route » appears only after the supplier confirmed the
+       * code — the founder's sequence). First-wins: a supplier re-typing the
+       * same code re-hears « confirmé » but the instant never moves.
+       */
+      if (verdict === 'confirme' && active !== undefined) {
+        const rec = this.ramassage[active.assignmentId];
+        if (rec !== undefined && rec.confirmeAt === undefined) {
+          this.ramassage[active.assignmentId] = { ...rec, confirmeAt: now };
+        }
+      }
       return Response.json({ ok: true, verdict });
     }
 
@@ -1190,6 +1414,17 @@ export class LogisticsDO {
               preuvePhotoRefs: this.briefs[assignment.taskId]?.preuvePhotoRefs ?? [],
               /** RAMASSAGE — shown to its OWN rider, said to the supplier. */
               codeRamassage: this.ramassage[assignment.assignmentId]?.code ?? null,
+              /**
+               * VRAI-ROUTE — the two facts the rider's JOURNEY screens turn
+               * on. `ramassageConfirmeAt` is when the supplier confirmed the
+               * handshake (the « En route » button appears then, never
+               * before); `codeVerification` is the machine-carried pickup
+               * code the app presents INSIDE the custody verification act —
+               * the rider never reads or types it, and no other read
+               * carries it.
+               */
+              ramassageConfirmeAt: this.ramassage[assignment.assignmentId]?.confirmeAt ?? null,
+              codeVerification: this.codesVerification[assignment.assignmentId]?.code ?? null,
             },
     };
   }

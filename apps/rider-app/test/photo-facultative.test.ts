@@ -32,9 +32,15 @@ describe('PHOTO-FACULTATIVE — a conforming pickup sends WITHOUT a photo', () =
 
   it('the camera is offered ONLY when a check is answered « Non »', () => {
     expect(app).toContain('const ecartConstate = POLICY_CHECK_IDS.some((id) => checks[id] === false);');
-    expect(app).toContain('{...(ecartConstate');
-    // …and it is never labelled as required.
-    expect(app).toContain("neededLabel: t('verify.photo_facultative')");
+    // VRAI-ROUTE (founder ruling 2026-08-10) moved the fold out of
+    // FasoActCode — the typed pickup-code field is gone — but the camera card
+    // is still mounted only on a reported difference…
+    expect(app).toContain('{ecartConstate ? (');
+    // …and it is still announced as facultative, never demanded.
+    expect(app).toContain("<FasoBody>{t('verify.photo_facultative')}</FasoBody>");
+    // The send never waits on the photo: the gate reads the checklist and the
+    // flight, and nothing else.
+    expect(app).toContain("disabled={!allAnswered || verifyPhase.kind === 'working' || capturing}");
   });
 
   it('⚠ the SEAL photo stays MANDATORY — custody never begins without a picture', () => {

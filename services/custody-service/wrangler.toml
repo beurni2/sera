@@ -67,3 +67,12 @@ new_sqlite_classes = ["PackageClaimDO"]
 [[services]]
 binding = "LOGISTICS"
 service = "logistics-service"
+
+# VRAI-ROUTE (founder, 2026-08-10) — TWO NEW SECRETS, no new binding here:
+#   · SERA_PRODUCE_SECRET — logistics' key to /produce/* (chain-open at
+#     dispatch + arming the machine-carried pickup code). Also set on the
+#     logistics Worker, which presents it.
+#   · SHOP_ARM_SECRET     — Shop+'s key to /produce-shop/secrets/arm (arming
+#     the buyer's drop code, minted at payment confirmation). Also set on the
+#     storefront Worker, which presents it.
+# Both via `wrangler secret put`, piped, the founder's alone — never [vars].

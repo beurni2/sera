@@ -24,3 +24,12 @@ class_name = "LogisticsDO"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["LogisticsDO"]
+
+# VRAI-ROUTE (founder, 2026-08-10) — « the chain opens itself at dispatch. »
+# The custody Worker over a SERVICE BINDING (the SUPPLY_BASE / error-1042
+# lesson: never a public-URL Worker-to-Worker fetch). TRANSPORT ONLY —
+# custody's /produce/* door gates on SERA_PRODUCE_SECRET, set on BOTH Workers
+# via `wrangler secret put`, piped, the founder's alone — never here.
+[[services]]
+binding = "CUSTODY"
+service = "custody-service"

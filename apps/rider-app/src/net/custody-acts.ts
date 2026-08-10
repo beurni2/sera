@@ -117,11 +117,18 @@ export type CustodyAnswer =
   | { readonly kind: 'unreachable'; readonly reason?: string | undefined };
 
 /** SE4.2 — objective conformity only (SE-I12). The checks mirror
- *  `POLICY_CHECK_IDS`; the SERVICE owns the policy and judges them. */
+ *  `POLICY_CHECK_IDS`; the SERVICE owns the policy and judges them.
+ *
+ *  FOUNDER RULING (2026-08-10, #4 as amended): `presentedPickupCode` is now
+ *  MACHINE-CARRIED — it arrives on the rider's session read (`codeVerification`
+ *  on `/rider/moi`) and the caller passes it from there; the rider never types
+ *  it. `null` = the session did not carry one yet (the supplier has not
+ *  confirmed the ramassage, or an old Worker) — the act then refuses LOCALLY
+ *  with a named outcome; an empty string is never sent. */
 export interface VerifyPickupAct {
   readonly commandId: CommandId;
   readonly orderId: string;
-  readonly presentedPickupCode: string;
+  readonly presentedPickupCode: string | null;
   readonly evidenceBundleId: string;
   readonly dwellSec: number;
   readonly checkResults: Partial<Record<PolicyCheckId, boolean>>;
@@ -168,6 +175,16 @@ export const mintActId = (): CommandId => mintCommandId();
 export interface CustodyActsPort {
   verifyPickup(act: VerifyPickupAct, code: string): Promise<CustodyAnswer>;
   beginCustody(act: BeginCustodyAct, code: string): Promise<CustodyAnswer>;
+  /**
+   * VRAI-ROUTE — the two TRANSIT FACTS (Spec l.63: « custody begins → transit
+   * (one current stop) → arrival »). Same auth, same door, same discipline as
+   * the four acts around them: NEVER queued offline (the header's law — these
+   * are live custody statements, and offline is an honest refusal), minted
+   * command_id reused on retry, `at` never sent. No secret travels in either
+   * body — only the order and the command identity.
+   */
+  depart(code: string, orderId: string, commandId: CommandId): Promise<CustodyAnswer>;
+  arrive(code: string, orderId: string, commandId: CommandId): Promise<CustodyAnswer>;
   submitDeliveryEvidence(act: DeliveryEvidenceAct, code: string): Promise<CustodyAnswer>;
   confirmDrop(act: ConfirmDropAct, code: string): Promise<CustodyAnswer>;
 }
@@ -222,6 +239,13 @@ export function httpCustodyActs(
 
   return {
     async verifyPickup(act, code) {
+      // MACHINE-CARRIED (founder ruling 2026-08-10): the session did not carry
+      // the code — refuse HERE, by name, before any byte leaves the phone. The
+      // server would refuse an empty string anyway; sending one would burn a
+      // request to learn what this phone already knows.
+      if (act.presentedPickupCode === null || act.presentedPickupCode === '') {
+        return { kind: 'refused', reason: 'verification_code_missing' };
+      }
       return post('/rider/verification', code, {
         orderId: act.orderId,
         command_id: act.commandId,
@@ -241,6 +265,21 @@ export function httpCustodyActs(
         command_id: act.commandId,
         custodySealId: act.custodySealId,
         sealPhotoRefs: [...act.sealPhotoRefs],
+      });
+    },
+    async depart(code, orderId, commandId) {
+      return post('/rider/transit/depart', code, {
+        orderId,
+        command_id: commandId,
+        // NOTHING ELSE. No riderId (the door supplies the identity), no `at`
+        // (custody stamps its own clock), and no secret — a transit fact
+        // carries only which order and which command.
+      });
+    },
+    async arrive(code, orderId, commandId) {
+      return post('/rider/transit/arrive', code, {
+        orderId,
+        command_id: commandId,
       });
     },
     async submitDeliveryEvidence(act, code) {
@@ -341,4 +380,27 @@ export function deliveryChainOf(answer: CustodyAnswer): { taskId: string; packag
 export function evidenceHeld(answer: CustodyAnswer): boolean {
   if (answer.kind === 'recorded' && answer.body['status'] === 'evidence_recorded') return true;
   return answer.kind === 'refused' && answer.reason === 'evidence_already_submitted';
+}
+
+/**
+ * VRAI-ROUTE — did the LEDGER record the departure? Only its own word does:
+ * `status: 'departed'`, or `'deja'` — the replay of a command it already
+ * applied, which is the same recorded fact, not a second one. Everything else
+ * (offline, unreachable, a refusal, a tap) leaves the rider NOT departed,
+ * which is the honest state.
+ */
+export function transitDeparted(answer: CustodyAnswer): boolean {
+  return (
+    answer.kind === 'recorded' &&
+    (answer.body['status'] === 'departed' || answer.body['status'] === 'deja')
+  );
+}
+
+/** VRAI-ROUTE — did the LEDGER record the arrival? Same law as the departure:
+ *  `status: 'arrived'` or the `'deja'` replay, and nothing else. */
+export function transitArrived(answer: CustodyAnswer): boolean {
+  return (
+    answer.kind === 'recorded' &&
+    (answer.body['status'] === 'arrived' || answer.body['status'] === 'deja')
+  );
 }

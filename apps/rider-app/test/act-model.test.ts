@@ -121,7 +121,7 @@ describe('every outcome has real words behind it', () => {
 
   it('the screen strings for both acts exist', () => {
     for (const key of [
-      'verify.code_title', 'verify.code_hint', 'verify.code_placeholder', 'verify.action_send',
+      'verify.action_send', 'verify.par_sera',
       'seal.id_title', 'seal.id_hint', 'seal.id_placeholder', 'seal.action_send',
       'acts.sending',
     ]) {
@@ -129,11 +129,16 @@ describe('every outcome has real words behind it', () => {
     }
   });
 
-  it('the pickup-code hint says where the code comes from — the dispatcher', () => {
-    // Founder ruling: « the dispatcher will give it to rider ». A rider who
-    // does not know where to get the code cannot start.
-    expect(t('verify.code_hint')).toContain('Séra');
-    expect(t('verify.code_hint')).toContain('téléphone');
+  it('VRAI-ROUTE (2026-08-10): the typed pickup-code strings are GONE — the code is machine-carried', () => {
+    // The 2026-08-07 ruling (« the dispatcher will give it to rider », spoken
+    // on the phone) was superseded: the code rides the session read and the
+    // act presents it itself. The field's strings must not survive in the
+    // catalog, and the quiet line names the mechanism without showing a code.
+    for (const gone of ['verify.code_title', 'verify.code_hint', 'verify.code_placeholder']) {
+      expect(() => t(gone)).toThrow(/missing catalog string/);
+    }
+    expect(t('verify.par_sera')).toContain('Séra');
+    expect(t('verify.par_sera')).toContain('Rien à taper');
   });
 
   it('the seal hint says to read it off the seal being applied', () => {

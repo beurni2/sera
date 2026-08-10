@@ -308,9 +308,11 @@ describe('⚠ an unfinished checklist can never reach the pickup code (A4 + A8)'
 
   it('the send is gated on ANSWERED, not on all-conforme', () => {
     // `allChecked` (all true) would block a legitimate refusal; `allAnswered`
-    // blocks only an unfinished list.
+    // blocks only an unfinished list. VRAI-ROUTE (2026-08-10): the typed code
+    // field is gone, so the gate now lives on the primary button itself —
+    // still ANSWERED, still never the photo.
     expect(app).toMatch(/const allAnswered = POLICY_CHECK_IDS\.every\(\(id\) => checks\[id\] !== undefined\)/);
-    expect(app).toMatch(/canSend=\{allAnswered\}/);
+    expect(app).toMatch(/disabled=\{!allAnswered \|\| verifyPhase\.kind === 'working' \|\| capturing\}/);
   });
 
   it('and the screen says what is missing rather than a dead button', () => {
@@ -379,7 +381,9 @@ describe('⚠ the ports are CALLED, not merely present (blockers A1 + A2, round 
      * `noUnusedLocals` is off, so the compiler is silent about the orphaned
      * sender too. Only this can catch it.
      */
-    expect(app, 'the verification act').toMatch(/onSubmit=\{sendVerification\}/);
+    // VRAI-ROUTE (2026-08-10): the verification's gesture is the primary
+    // button itself now — the typed field (and its onSubmit) are gone.
+    expect(app, 'the verification act').toMatch(/onPress=\{sendVerification\}/);
     expect(app, 'the seal act').toMatch(/onSubmit=\{sendSeal\}/);
     // And the senders really call the ports, in the arm that renders them.
     expect(app).toMatch(/const sendVerification = useCallback\(/);
@@ -409,39 +413,40 @@ describe('⚠ the ports are CALLED, not merely present (blockers A1 + A2, round 
     // `const takePhoto = useCallback(`. Three acts now: verification, seal,
     // and RIDER-DELIVERY-SCREEN's handoff proof.
     expect(app.match(/takePhoto\(/g)).toHaveLength(3);
-    expect(app, 'the verification photo').toMatch(/onPress: \(\) => takePhoto\(\(art\) => setVerifyBundleId\(art\.ref\)\)/);
+    expect(app, 'the verification photo').toMatch(/onPress=\{\(\) => takePhoto\(\(art\) => setVerifyBundleId\(art\.ref\)\)\}/);
     expect(app, 'the seal photo').toMatch(/onPress: \(\) => takePhoto\(\(art\) => setSealPhotoRefs\(\[art\.ref\]\)\)/);
     expect(app, 'the handoff photo').toMatch(/onPress=\{\(\) => takePhoto\(setDropArt\)\}/);
     /**
-     * …and both FasoActCode photo folds are still mounted — but the VERIFY one
-     * is now CONDITIONAL by founder ruling (2026-08-09): « camera capture is
-     * optional, and it's used only in case if product on pick up is different
-     * from the photos », so it is spread in only when a check was answered
-     * « Non ». The seal's fold stays unconditional (he kept that photo
-     * mandatory), which is why exactly one `photo={{` remains.
+     * …and the SEAL's FasoActCode photo fold is still mounted, unconditional
+     * (the founder kept that photo mandatory) — exactly one `photo={{`
+     * remains. The VERIFY camera left FasoActCode with the typed field
+     * (VRAI-ROUTE, 2026-08-10) but keeps its 2026-08-09 ruling: an inline
+     * card, mounted only when a check was answered « Non ».
      */
     expect(app.match(/photo=\{\{/g), 'the seal fold, always mounted').toHaveLength(1);
-    expect(app, 'the verify fold, mounted only on a reported difference').toMatch(
-      /\{\.\.\.\(ecartConstate\s*\?\s*\{\s*photo: \{/,
+    expect(app, 'the verify camera, mounted only on a reported difference').toMatch(
+      /\{ecartConstate \? \(/,
     );
   });
 
   it('the send stays shut until the BUCKET holds the photo, and says why — where the photo is REQUIRED', () => {
     // `taken` must read the ref the bucket returned — never « the camera
-    // opened », which would re-admit the fabricated-ref bug (A7).
-    expect(app).toMatch(/taken: verifyBundleId !== null/);
+    // opened », which would re-admit the fabricated-ref bug (A7). On the
+    // verify card (inline since VRAI-ROUTE) the same truth drives the
+    // take/retake label and the « Photo enregistrée. » line.
+    expect(app).toMatch(/label=\{t\(verifyBundleId !== null \? 'photo\.retake' : 'photo\.take'\)\}/);
+    expect(app).toMatch(/\{verifyBundleId !== null \? <FasoBody>\{t\('photo\.taken'\)\}<\/FasoBody> : null\}/);
     expect(app).toMatch(/taken: sealPhotoRefs\.length > 0/);
     /**
-     * ⚠ THE GATE NOW HAS AN OPT-OUT, and it is the founder's ruling
-     * (2026-08-09): the PICKUP camera is offered, never demanded, so its fold
-     * passes `optional: true` and « Envoyer » stays alive with no photo.
-     * Without it, offering the fold silently disabled the send while the only
-     * sentence on screen read « Photo facultative » — a button that lied.
-     * The SEAL fold passes no such flag, so custody still cannot begin
-     * without a picture; that is the half this pin now protects.
+     * The founder's 2026-08-09 ruling stands under the new layout: the PICKUP
+     * camera is offered, never demanded — the verify send's gate never reads
+     * the photo at all — while the SEAL fold (still FasoActCode) passes no
+     * opt-out, so custody still cannot begin without a picture.
      */
     expect(kit).toMatch(/const photoReady = photo === undefined \|\| photo\.optional === true \|\| photo\.taken/);
-    expect(app, 'the pickup fold opts out').toMatch(/optional: true/);
+    expect(app, 'the verify send never waits on the photo').toMatch(
+      /disabled=\{!allAnswered \|\| verifyPhase\.kind === 'working' \|\| capturing\}/,
+    );
     const sealFold = app.slice(app.indexOf("taken: sealPhotoRefs.length > 0") - 400, app.indexOf("taken: sealPhotoRefs.length > 0") + 200);
     expect(sealFold, 'the seal fold must NEVER opt out').not.toMatch(/optional: true/);
     expect(kit).toMatch(/ready =[^;]*photoReady/);
