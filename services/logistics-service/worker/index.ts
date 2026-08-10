@@ -12,9 +12,11 @@ export { LogisticsDO };
  *     the expire-due sweep — plus the preserved raw authority command route
  *     POST /authority/dispatch (AssignmentLeaseDO's exact contract, now
  *     gated: SE-I01's singular authority was never meant to answer strangers).
- *   · INTAKE door (`SERA_INTAKE_SECRET`): /intake/* — task_ready events and
- *     the funding/readiness facts (SE-LIVE-2 wires the real Shop+/Boutik+
- *     producers to it; until then NOTHING admits — fail-closed projections).
+ *   · INTAKE door (`SERA_INTAKE_SECRET`): /intake/* — task_ready events, the
+ *     funding/readiness facts (SE-LIVE-2 wires the real Shop+/Boutik+
+ *     producers to it; until then NOTHING admits — fail-closed projections),
+ *     and the ramassage VERDICT door (`/intake/ramassage/verify`, asked by
+ *     Boutik+'s offer-service for its supplier — founder, 2026-08-09).
  *   · RIDER door (personal codes): /rider/* — resolved INSIDE the DO where
  *     the code hashes live; one uniform 401 for every rejection.
  *
