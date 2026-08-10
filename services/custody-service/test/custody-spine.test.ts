@@ -83,9 +83,41 @@ describe('custody spine — SE4.3 seal-after-verification, refuse closed everywh
       .toEqual({ ok: false, reason: 'order_ref_mismatch' });
     expect(spine.beginCustody({ riderId: 'sup-1', verificationOrderId: CHAIN.order_id, custodySealId: 'seal-e1-0001', sealPhotoRefs: ['x'], at: T }))
       .toEqual({ ok: false, reason: 'actor_separation_supplier_is_rider' });
-    expect(spine.beginCustody({ riderId: 'r-1', verificationOrderId: CHAIN.order_id, custodySealId: 'seal-e1-0001', sealPhotoRefs: [], at: T }))
-      .toEqual({ ok: false, reason: 'no_evidence_refs' });
     expect(spine.ledger.currentCustodian(CHAIN.package_id)).toBe('seller:sup-1'); // nothing moved
+  });
+
+  it('⚠ FOUNDER OVERRIDE 2026-08-10 — a seal with NO PHOTO now begins custody', () => {
+    /**
+     * « terminate that sealing code and the sealing photo proof requirement …
+     * photo capture is optional and only required when one the 3 answers is
+     * non. » The `no_evidence_refs` guard that stood here is lifted for the
+     * SEAL, and only for the seal.
+     *
+     * SE-I05 is untouched, and this test proves it in the same breath: the
+     * verification must still be ACCEPTED first, and the seal must still be
+     * registered — custody moves only when both are true.
+     */
+    const spine = freshSpine();
+    // No verification yet ⇒ still refused closed, photo or no photo.
+    expect(spine.beginCustody({ riderId: 'r-1', verificationOrderId: CHAIN.order_id, custodySealId: 'seal-e1-0001', sealPhotoRefs: [], at: T }))
+      .toEqual({ ok: false, reason: 'verification_not_accepted' });
+    expect(spine.ledger.currentCustodian(CHAIN.package_id)).toBe('seller:sup-1');
+
+    spine.verifyPickup({ orderId: CHAIN.order_id, riderId: 'r-1', checkResults: allPass, dwellSec: 150, evidenceBundleId: 'eb-1' }, 'pvc-4711', T);
+    const began = spine.beginCustody({ riderId: 'r-1', verificationOrderId: CHAIN.order_id, custodySealId: 'seal-e1-0001', sealPhotoRefs: [], at: T });
+    expect(began.ok, JSON.stringify(began)).toBe(true);
+    // …and the LEDGER, not the answer, says the rider holds it.
+    expect(spine.ledger.currentCustodian(CHAIN.package_id)).toBe('courier:r-1');
+  });
+
+  it('⚠ …and the seal is still SINGLE-USE and still equality-bound', () => {
+    // What the photo never protected, and what still does: the seal cannot be
+    // spent twice, so a second course cannot ride the first one's seal.
+    const spine = freshSpine();
+    spine.verifyPickup({ orderId: CHAIN.order_id, riderId: 'r-1', checkResults: allPass, dwellSec: 150, evidenceBundleId: 'eb-1' }, 'pvc-4711', T);
+    expect(spine.beginCustody({ riderId: 'r-1', verificationOrderId: CHAIN.order_id, custodySealId: 'seal-e1-0001', sealPhotoRefs: [], at: T }).ok).toBe(true);
+    expect(spine.beginCustody({ riderId: 'r-1', verificationOrderId: CHAIN.order_id, custodySealId: 'seal-e1-0001', sealPhotoRefs: [], at: T }))
+      .toEqual({ ok: false, reason: 'seal_already_used' });
   });
 });
 

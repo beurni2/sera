@@ -226,6 +226,37 @@ function mintCodeVerification(): string {
   return mintCodeRamassage();
 }
 
+/**
+ * ⚠ ROUTE-DIRECTE (founder ruling 2026-08-10) — THE SEAL STOPPED BEING A
+ * SCREEN. « terminate that sealing code and the sealing photo proof
+ * requirement … after the code is confirmed from supplier the next screen is
+ * prendre la route ».
+ *
+ * So the seal id is MACHINE-CARRIED, exactly as he already ruled the pickup
+ * code to be: minted here at dispatch, delivered on `/rider/moi`, presented by
+ * the app inside an authenticated `beginCustody`. The rider never reads it,
+ * never types it, and no screen displays it.
+ *
+ * ⚠ A DELIBERATELY DIFFERENT SHAPE from `XXX-XXX`. The pickup code and the
+ * seal ride the same read, and « the four secrets are never substituted » —
+ * so they must not be confusable for a parser, a log, or a human reading a
+ * bug report. `SC-XXXX-XXXX` cannot be mistaken for a pickup code, and the
+ * app's parser refuses each against its own shape.
+ *
+ * It is NOT one of §5.6's four secrets (custody-spine says so where it binds
+ * the seal on first use), and its job is identity, not secrecy: single-use at
+ * the registry, and equality-checked against the delivery evidence at the door.
+ * Minting it server-side is what makes it survive an app restart — the value
+ * arrives fresh on every `/rider/moi`, so a killed phone can still finish the
+ * remise instead of hitting « il manque des repères ».
+ */
+function mintCodeScelle(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(8));
+  let raw = '';
+  for (let i = 0; i < bytes.length; i += 1) raw += CODE_ALPHABET[(bytes[i] as number) % CODE_ALPHABET.length];
+  return `SC-${raw.slice(0, 4)}-${raw.slice(4, 8)}`;
+}
+
 /** The one 401 — IDENTICAL to the router's, for every rider-door rejection. */
 function unauthorized(): Response {
   return Response.json({ error: 'unauthorized' }, { status: 401 });
@@ -280,8 +311,12 @@ export class LogisticsDO {
   /** RAMASSAGE — assignmentId → the handover code its rider's app shows, and
    *  (VRAI-ROUTE) the instant the supplier CONFIRMED it, first-wins. */
   private ramassage: Record<string, { code: string; confirmeAt?: string }> = {};
-  /** VRAI-ROUTE — assignmentId → the machine-carried pickup code. */
-  private codesVerification: Record<string, { code: string }> = {};
+  /** VRAI-ROUTE — assignmentId → the machine-carried pickup code, and
+   *  (ROUTE-DIRECTE) the machine-carried seal id minted with it. `scelle` is
+   *  OPTIONAL on the type so a snapshot written before this field restores
+   *  without inventing one — a course composed then answers `null` and says so
+   *  rather than sealing with a value nobody minted. */
+  private codesVerification: Record<string, { code: string; scelle?: string }> = {};
   /** VRAI-ROUTE — orderId → its producer row on the road into custody. */
   private custodyOutbox: Record<string, CustodyProduceRow> = {};
   private queue!: ReadyQueue;
@@ -330,7 +365,7 @@ export class LogisticsDO {
     this.readinessFacts = projections?.readiness ?? {};
     this.briefs = (stored.get(SNAP_BRIEFS) as Record<string, CourseBrief> | undefined) ?? {};
     this.ramassage = (stored.get(SNAP_RAMASSAGE) as Record<string, { code: string; confirmeAt?: string }> | undefined) ?? {};
-    this.codesVerification = (stored.get(SNAP_CODE_VERIFICATION) as Record<string, { code: string }> | undefined) ?? {};
+    this.codesVerification = (stored.get(SNAP_CODE_VERIFICATION) as Record<string, { code: string; scelle?: string }> | undefined) ?? {};
     this.custodyOutbox = (stored.get(SNAP_CUSTODY_OUTBOX) as Record<string, CustodyProduceRow> | undefined) ?? {};
     this.queue = new ReadyQueue(this.projections());
     const queueSnap = stored.get(SNAP_QUEUE) as ReadyQueueSnapshot | undefined;
@@ -780,7 +815,13 @@ export class LogisticsDO {
        */
       if (!outcome.duplicate) {
         if (this.codesVerification[outcome.assignment.assignmentId] === undefined) {
-          this.codesVerification[outcome.assignment.assignmentId] = { code: mintCodeVerification() };
+          // ROUTE-DIRECTE — the pickup code and the seal are minted together,
+          // in the same batch as the assignment, so a course can never exist
+          // with a road into custody but no seal to travel it on.
+          this.codesVerification[outcome.assignment.assignmentId] = {
+            code: mintCodeVerification(),
+            scelle: mintCodeScelle(),
+          };
         }
         this.custodyOutbox[outcome.assignment.orderId] = {
           phase: 'open',
@@ -1525,6 +1566,15 @@ export class LogisticsDO {
                */
               ramassageConfirmeAt: this.ramassage[assignment.assignmentId]?.confirmeAt ?? null,
               codeVerification: this.codesVerification[assignment.assignmentId]?.code ?? null,
+              /**
+               * ROUTE-DIRECTE — the machine-carried seal id. The app registers
+               * custody with it the moment the verification is accepted, with
+               * no screen and no photo (founder ruling 2026-08-10), and
+               * presents the SAME value again in the delivery evidence at the
+               * door. `null` on a course composed before this existed: honest,
+               * never a seal nobody minted.
+               */
+              codeScelle: this.codesVerification[assignment.assignmentId]?.scelle ?? null,
             },
     };
   }

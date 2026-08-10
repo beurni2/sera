@@ -416,6 +416,10 @@ export default function App() {
    * scans the persisted bytes), so an app killed mid-course loses the ids and
    * the screen says so honestly instead of inventing them.
    */
+  /** The seal this course travels on. Set when the app registered custody —
+   *  and, since ROUTE-DIRECTE made it machine-carried, recoverable from the
+   *  SESSION after a phone restart, which is what stops a killed app from
+   *  losing the remise (« il manque des repères »). */
   const [sealSaisi, setSealSaisi] = useState<string | null>(null);
   const [livraisonIds, setLivraisonIds] = useState<{ taskId: string; packageId: string } | null>(null);
   const [dropArt, setDropArt] = useState<{ ref: string; sha256: string | null; mimeType: string } | null>(null);
@@ -467,7 +471,6 @@ export default function App() {
    */
   const evidence = useMemo(() => resolveEvidenceCapture(expoPhotoSource, net), [net]);
   const [verifyBundleId, setVerifyBundleId] = useState<string | null>(null);
-  const [sealPhotoRefs, setSealPhotoRefs] = useState<readonly string[]>([]);
   const [captureIssue, setCaptureIssue] = useState<CaptureOutcome | null>(null);
   const captureIssueKey = (issue: CaptureOutcome | null): string | undefined => {
     if (issue === null || issue.ok) return undefined;
@@ -841,34 +844,81 @@ export default function App() {
     [custodyActs, riderCode, liveAssignment, checks, runAct, attemptFor, verifyBundleId],
   );
 
+  /**
+   * ═══ ROUTE-DIRECTE (founder ruling 2026-08-10) — THE SEAL IS NO LONGER A
+   * SCREEN, AND NO LONGER A PHOTO ═══
+   *
+   * « I told you terminate that sealing code and the sealing photo proof
+   * requirement. I told you after the code is confirmed from supplier the next
+   * screen is prendre la route… » He is right that the flow he specified had
+   * no seal step in it, and I built one in anyway.
+   *
+   * So the seal happens WITHOUT the rider: the id is machine-carried on
+   * `/rider/moi` (`codeScelle`, minted by logistics beside the pickup code),
+   * and custody is registered the instant the LEDGER accepts the verification.
+   * The rider taps « Envoyer la vérification » and the next thing they see is
+   * « Prendre la route ».
+   *
+   * ⚠ AN ACT THAT FIRES WITHOUT A TAP MUST NOT FIRE TWICE. Three things hold
+   * that: `packageIsHeld` (this session's answer OR the remembered rung, so a
+   * relaunch mid-course does not re-seal), the `working` guard, and the
+   * command_id — `attemptFor` keys it on order+seal, so even a duplicate send
+   * is the SAME command and custody replays its recorded answer instead of
+   * moving custody twice.
+   *
+   * ⚠ NO SEAL ID, NO ACT. `codeScelle` is null on a course composed before
+   * logistics minted them; the app then sends NOTHING and the screen says so.
+   * It never invents one — A7's lesson, kept exactly.
+   */
   const sendSeal = useCallback(
     (sealId: string) => {
       if (riderCode === null || liveAssignment === null) return;
-      // ⚠ NO PHOTO, NO SEAL (A7) — the spine refuses `no_evidence_refs`, and
-      // sending a fabricated ref to dodge that guard is what shipped before.
-      if (sealPhotoRefs.length === 0) return;
-      // RIDER-DELIVERY-SCREEN — the seal id the rider typed is ALSO the one
-      // the delivery-evidence bundle must present at the door. Kept here, on
-      // the phone, for that later act; it is only ever USED once the ledger
-      // said custody began.
+      // The seal id the ledger binds is ALSO the one the delivery-evidence
+      // bundle must present at the door. It comes from the SESSION now, so a
+      // phone killed mid-course gets it back on the next read instead of
+      // losing the remise.
       setSealSaisi(sealId);
-      const attempt = attemptFor(`seal|${liveAssignment.orderId}|${sealId}|${sealPhotoRefs.join(',')}`);
+      const attempt = attemptFor(`seal|${liveAssignment.orderId}|${sealId}`);
       runAct(setSealPhase, () =>
         custodyActs.beginCustody(
           {
             commandId: attempt.id,
             orderId: liveAssignment.orderId,
             custodySealId: sealId,
-            // The seal photo is the proof-photo moment; capture is not wired
-            // yet, so this names the same stable bundle the verification does.
-            sealPhotoRefs,
+            // FOUNDER OVERRIDE 2026-08-10: no photo at the seal. An EMPTY list
+            // is honest — the spine's guard was lifted for it, and nothing here
+            // fabricates a ref to fill the gap (that was blocker A7).
+            sealPhotoRefs: [],
           },
           riderCode,
         ),
       );
     },
-    [custodyActs, riderCode, liveAssignment, runAct, attemptFor, sealPhotoRefs],
+    [custodyActs, riderCode, liveAssignment, runAct, attemptFor],
   );
+
+  /**
+   * The seal, fired by the LEDGER's acceptance rather than by a tap. Keyed on
+   * the accepted verification, guarded on custody not already being held.
+   */
+  const scelleAuto = sealScreenIsDue(verifyPhase, remembered)
+    && !packageIsHeld(sealPhase, remembered)
+    && sealPhase.kind === 'idle'
+    && (liveAssignment?.codeScelle ?? null) !== null;
+  useEffect(() => {
+    if (!WIRED || !scelleAuto) return;
+    const scelle = liveAssignment?.codeScelle ?? null;
+    if (scelle === null) return;
+    sendSeal(scelle);
+  }, [WIRED, scelleAuto, liveAssignment, sendSeal]);
+
+  /**
+   * The seal the DELIVERY evidence must present at the door — the same value
+   * custody bound at pickup. This session's own act first; the session read
+   * second, because `/rider/moi` carries it on every poll and that is what
+   * survives an OS kill mid-course.
+   */
+  const sealPourRemise = sealSaisi ?? liveAssignment?.codeScelle ?? null;
 
   /**
    * VRAI-ROUTE — « En route » and « Je suis arrivé » are REAL transit facts
@@ -905,7 +955,7 @@ export default function App() {
 
   const sendDeliveryEvidence = useCallback(() => {
     if (riderCode === null || liveAssignment === null) return;
-    if (livraisonIds === null || sealSaisi === null) return;
+    if (livraisonIds === null || sealPourRemise === null) return;
     // ⚠ NO PHOTO, NO EVIDENCE — and no HASH, no evidence either: the canon
     // artifact carries the content hash, and a fabricated hex would be the
     // exact fiction A7 banned. A device with no SHA-256 road is told so.
@@ -920,7 +970,7 @@ export default function App() {
         {
           commandId: attempt.id,
           orderId: liveAssignment.orderId,
-          custodySealId: sealSaisi,
+          custodySealId: sealPourRemise,
           taskId: livraisonIds.taskId,
           packageId: livraisonIds.packageId,
           artifacts: [artifact],
@@ -929,7 +979,7 @@ export default function App() {
         riderCode,
       ),
     );
-  }, [custodyActs, riderCode, liveAssignment, livraisonIds, sealSaisi, dropArt, runAct, attemptFor]);
+  }, [custodyActs, riderCode, liveAssignment, livraisonIds, sealPourRemise, dropArt, runAct, attemptFor]);
 
   const sendDrop = useCallback(
     (dropCode: string) => {
@@ -1778,7 +1828,7 @@ export default function App() {
                           <>
                             <FasoPosterTitle>{t('delivery.title')}</FasoPosterTitle>
                             <FasoBody>{t('delivery.body')}</FasoBody>
-                            {livraisonIds === null || sealSaisi === null ? (
+                            {livraisonIds === null || sealPourRemise === null ? (
                               /* The ids the bundle must name are gone (an app
                                  killed mid-course, or a Worker that predates
                                  the chain answer). Honest, and never guessed. */
@@ -1854,46 +1904,42 @@ export default function App() {
                       </>
                     )
                   ) : sealScreenIsDue(verifyPhase, remembered) ? (
+                    /**
+                     * ═══ ROUTE-DIRECTE — THERE IS NO SEAL SCREEN ANY MORE ═══
+                     *
+                     * Founder ruling 2026-08-10: « terminate that sealing code
+                     * and the sealing photo proof requirement … the next screen
+                     * is prendre la route ». So this arm is not a screen the
+                     * rider works — it is the half-second while the seal the
+                     * app carried registers itself, and the honest sentence for
+                     * the two ways that can fail to complete.
+                     *
+                     * On success the effect above flips `packageIsHeld` and the
+                     * road takes over; nothing here is ever tapped.
+                     */
                     <>
-                    {/* The same omission on the seal arm — « La garde commence
-                        au scellé. Pas une seconde avant. » is the whole point
-                        of the act the rider is about to perform. */}
-                    <FasoPosterTitle>{t('seal.title')}</FasoPosterTitle>
-                    <FasoBody>{t('seal.body')}</FasoBody>
-                    <FasoActCode
-                      strings={{
-                        title: t('seal.id_title'),
-                        hint: t('seal.id_hint'),
-                        placeholder: t('seal.id_placeholder'),
-                        action: t('seal.action_send'),
-                        working: t('acts.sending'),
-                      }}
-                      working={sealPhase.kind === 'working'}
-                      photo={{
-                        hint: t('seal.photo_hint'),
-                        takeLabel: t('photo.take'),
-                        retakeLabel: t('photo.retake'),
-                        takenLabel: t('photo.taken'),
-                        neededLabel: t('photo.needed'),
-                        // The BUCKET holds it — not « the camera opened ».
-                        taken: sealPhotoRefs.length > 0,
-                        busy: capturing,
-                        issue: (() => {
-                          const key = captureIssueKey(captureIssue);
-                          return key === undefined ? undefined : t(key);
-                        })(),
-                        onPress: () => takePhoto((art) => setSealPhotoRefs([art.ref])),
-                      }}
-                      outcome={
-                        sealPhase.kind === 'answered'
-                          ? (() => {
-                              const o = sealOutcome(sealPhase.answer);
-                              return { title: t(o.title), hint: o.hint === undefined ? undefined : t(o.hint), tone: o.tone };
-                            })()
-                          : undefined
-                      }
-                      onSubmit={sendSeal}
-                    />
+                      {liveAssignment.codeScelle === null ? (
+                        /* Logistics minted no seal for this course (composed
+                           before ROUTE-DIRECTE). Never invent one — say it. */
+                        <FasoCard>
+                          <FasoBody>{t('seal.absent')}</FasoBody>
+                        </FasoCard>
+                      ) : sealPhase.kind === 'answered' ? (
+                        (() => {
+                          const o = sealOutcome(sealPhase.answer);
+                          return (
+                            <FasoCard>
+                              <FasoStatusChip
+                                tone={o.tone === 'ok' ? 'ok' : o.tone === 'waiting' ? 'info' : 'bad'}
+                                label={t(o.title)}
+                              />
+                              {o.hint === undefined ? null : <FasoBody>{t(o.hint)}</FasoBody>}
+                            </FasoCard>
+                          );
+                        })()
+                      ) : (
+                        <FasoPendingNotice title={t('seal.auto_titre')} lines={[t('seal.auto_note')]} />
+                      )}
                     </>
                   ) : (
                     <>

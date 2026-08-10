@@ -185,7 +185,21 @@ describe('⚠ a WIRED build shows only what a server said (blocker A3)', () => {
      * no-photo verification now carries a value that says so by name
      * (`sans-photo-…`), which is pinned in photo-facultative.test.ts.
      */
-    expect(app).toMatch(/if \(sealPhotoRefs\.length === 0\) return;/);
+    /**
+     * ⚠ AND THE SEAL HALF IS RETIRED TOO — FOUNDER RULING (2026-08-10):
+     * « terminate that sealing code and the sealing photo proof requirement …
+     * photo capture is optional and only required when one the 3 answers is
+     * non. » The seal is machine-carried and registers itself; there is no
+     * seal screen and no seal photo.
+     *
+     * A7's REAL lesson is what this now pins, and it is stronger than the old
+     * line was: the app sends an EMPTY list — it does not fabricate a ref to
+     * fill the gap, and it does not send a seal it was not given.
+     */
+    expect(app, 'the seal photo list is empty, never invented').toMatch(/sealPhotoRefs: \[\],/);
+    expect(app, 'no seal id, no act — never a made-up seal').toMatch(/if \(scelle === null\) return;/);
+    expect(app, 'the seal comes from the SERVER, not from a screen').toMatch(/liveAssignment\?\.codeScelle/);
+    expect(app, 'the typed seal field is gone').not.toMatch(/seal\.id_placeholder/);
   });
 
   it('⚠ the SOS is actually sent on a wired build (blocker A1)', () => {
@@ -384,7 +398,16 @@ describe('⚠ the ports are CALLED, not merely present (blockers A1 + A2, round 
     // VRAI-ROUTE (2026-08-10): the verification's gesture is the primary
     // button itself now — the typed field (and its onSubmit) are gone.
     expect(app, 'the verification act').toMatch(/onPress=\{sendVerification\}/);
-    expect(app, 'the seal act').toMatch(/onSubmit=\{sendSeal\}/);
+    /**
+     * ⚠ THE SEAL HAS NO GESTURE ANY MORE (ROUTE-DIRECTE, 2026-08-10) — so the
+     * hole this test exists to close moves with it. There is no button to
+     * wire; the CALL SITE is the effect, and an effect that never fires is
+     * exactly the dead-primary-action bug in a new costume. Pin the call, and
+     * pin the condition that lets it fire.
+     */
+    expect(app, 'the seal act is CALLED, with no tap').toMatch(/sendSeal\(scelle\);/);
+    expect(app, '…on the ledger accepting the verification').toMatch(/sealScreenIsDue\(verifyPhase, remembered\)/);
+    expect(app, '…and never twice').toMatch(/!packageIsHeld\(sealPhase, remembered\)/);
     // And the senders really call the ports, in the arm that renders them.
     expect(app).toMatch(/const sendVerification = useCallback\(/);
     expect(app).toMatch(/const sendSeal = useCallback\(/);
@@ -404,26 +427,27 @@ describe('⚠ the ports are CALLED, not merely present (blockers A1 + A2, round 
     expect(takePhotoBody, 'a short-circuited keep').not.toMatch(/if \(false|&& outcome\.ok\) keep/);
     // …and the two keeps are the two act states, not a shared scratch value.
     expect(app).toMatch(/evidenceBundleId: verifyBundleId/);
-    expect(app).toMatch(/sealPhotoRefs/);
+    // ROUTE-DIRECTE: the seal carries no photo at all now, so the second keep
+    // is the DOOR's — the one photo the delivery still cannot go without.
+    expect(app).toMatch(/onPress=\{\(\) => takePhoto\(setDropArt\)\}/);
   });
 
-  it('the photo is actually taken — takePhoto has a caller on all THREE acts', () => {
-    // Declaration alone is what shipped. Demand a real invocation.
-    // `takePhoto(` matches call sites only — the declaration reads
-    // `const takePhoto = useCallback(`. Three acts now: verification, seal,
-    // and RIDER-DELIVERY-SCREEN's handoff proof.
-    expect(app.match(/takePhoto\(/g)).toHaveLength(3);
-    expect(app, 'the verification photo').toMatch(/onPress=\{\(\) => takePhoto\(\(art\) => setVerifyBundleId\(art\.ref\)\)\}/);
-    expect(app, 'the seal photo').toMatch(/onPress: \(\) => takePhoto\(\(art\) => setSealPhotoRefs\(\[art\.ref\]\)\)/);
-    expect(app, 'the handoff photo').toMatch(/onPress=\{\(\) => takePhoto\(setDropArt\)\}/);
+  it('⚠ TWO cameras, and the pickup one only when a check says « Non »', () => {
     /**
-     * …and the SEAL's FasoActCode photo fold is still mounted, unconditional
-     * (the founder kept that photo mandatory) — exactly one `photo={{`
-     * remains. The VERIFY camera left FasoActCode with the typed field
-     * (VRAI-ROUTE, 2026-08-10) but keeps its 2026-08-09 ruling: an inline
-     * card, mounted only when a check was answered « Non ».
+     * FOUNDER RULING, restated 2026-08-10: « photo capture is optional and
+     * only required when one the 3 answers is non ». So the rider meets a
+     * camera in exactly two places, and NEITHER is the seal:
+     *   · the PICKUP camera, mounted only on a reported difference, never
+     *     demanded (his 2026-08-09 ruling, unchanged);
+     *   · the DOOR camera, which the delivery still cannot go without.
+     * The seal camera is GONE — declaration and call site both.
      */
-    expect(app.match(/photo=\{\{/g), 'the seal fold, always mounted').toHaveLength(1);
+    expect(app.match(/takePhoto\(/g), 'two call sites, not three').toHaveLength(2);
+    expect(app, 'the verification photo').toMatch(/onPress=\{\(\) => takePhoto\(\(art\) => setVerifyBundleId\(art\.ref\)\)\}/);
+    expect(app, 'the handoff photo').toMatch(/onPress=\{\(\) => takePhoto\(setDropArt\)\}/);
+    expect(app, 'the seal camera must be gone entirely').not.toMatch(/setSealPhotoRefs/);
+    // No FasoActCode photo fold survives — the seal was the only one.
+    expect(app.match(/photo=\{\{/g), 'no act-code photo fold remains').toBeNull();
     expect(app, 'the verify camera, mounted only on a reported difference').toMatch(
       /\{ecartConstate \? \(/,
     );
@@ -436,19 +460,22 @@ describe('⚠ the ports are CALLED, not merely present (blockers A1 + A2, round 
     // take/retake label and the « Photo enregistrée. » line.
     expect(app).toMatch(/label=\{t\(verifyBundleId !== null \? 'photo\.retake' : 'photo\.take'\)\}/);
     expect(app).toMatch(/\{verifyBundleId !== null \? <FasoBody>\{t\('photo\.taken'\)\}<\/FasoBody> : null\}/);
-    expect(app).toMatch(/taken: sealPhotoRefs\.length > 0/);
     /**
-     * The founder's 2026-08-09 ruling stands under the new layout: the PICKUP
-     * camera is offered, never demanded — the verify send's gate never reads
-     * the photo at all — while the SEAL fold (still FasoActCode) passes no
-     * opt-out, so custody still cannot begin without a picture.
+     * The founder's ruling, twice given (2026-08-09, restated 2026-08-10):
+     * « photo capture is optional and only required when one the 3 answers is
+     * non ». So the PICKUP send never reads the photo at all — and the one
+     * place a photo is still REQUIRED is the door, where the bundle carries
+     * the artifact the validation reads (« GPS never sole proof »).
      */
     expect(kit).toMatch(/const photoReady = photo === undefined \|\| photo\.optional === true \|\| photo\.taken/);
     expect(app, 'the verify send never waits on the photo').toMatch(
       /disabled=\{!allAnswered \|\| verifyPhase\.kind === 'working' \|\| capturing\}/,
     );
-    const sealFold = app.slice(app.indexOf("taken: sealPhotoRefs.length > 0") - 400, app.indexOf("taken: sealPhotoRefs.length > 0") + 200);
-    expect(sealFold, 'the seal fold must NEVER opt out').not.toMatch(/optional: true/);
+    // THE DOOR still shuts until the BUCKET holds it — never « the camera
+    // opened », which is what re-admits the fabricated-ref bug.
+    expect(app, 'the door send waits on a stored, hashed photo').toMatch(
+      /dropArt === null \|\| dropArt\.sha256 === null \|\| capturing/,
+    );
     expect(kit).toMatch(/ready =[^;]*photoReady/);
     // A disabled primary action must always name what is missing.
     expect(kit).toMatch(/photo !== undefined && !photo\.taken \? <Body>\{photo\.neededLabel\}/);

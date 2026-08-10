@@ -72,6 +72,17 @@ export interface RiderAssignment {
    * code — never persisted (the act-memory scan covers the persisted bytes).
    */
   readonly codeVerification: string | null;
+  /**
+   * ROUTE-DIRECTE (founder ruling 2026-08-10) — « terminate that sealing code
+   * and the sealing photo proof requirement ». The custody seal id is
+   * MACHINE-CARRIED like the pickup code above: it arrives on this read, the
+   * app registers custody with it the moment the verification is accepted, and
+   * presents the SAME value in the delivery evidence at the door. No screen
+   * shows it, nobody types it. Its own `SC-XXXX-XXXX` shape, deliberately not
+   * the pickup code's `XXX-XXX`, so the two can never be confused for each
+   * other on the one read that carries both.
+   */
+  readonly codeScelle: string | null;
 }
 
 /** A media pointer and nothing else — mirrors the Worker's own bound, because
@@ -86,6 +97,15 @@ function mediaRefOrNull(v: unknown): string | null {
 const CODE_RAMASSAGE = /^[ABCDEFGHJKMNPQRSTVWXYZ2-9]{3}-[ABCDEFGHJKMNPQRSTVWXYZ2-9]{3}$/;
 function codeRamassageOrNull(v: unknown): string | null {
   return typeof v === 'string' && CODE_RAMASSAGE.test(v) ? v : null;
+}
+
+/** ROUTE-DIRECTE — the minted seal shape (`SC-XXXX-XXXX`, same unambiguous
+ *  alphabet) and nothing else. Deliberately NOT `CODE_RAMASSAGE`: the two ride
+ *  the same read, and a parser that accepts either would let one stand in for
+ *  the other. */
+const CODE_SCELLE = /^SC-[ABCDEFGHJKMNPQRSTVWXYZ2-9]{4}-[ABCDEFGHJKMNPQRSTVWXYZ2-9]{4}$/;
+function codeScelleOrNull(v: unknown): string | null {
+  return typeof v === 'string' && CODE_SCELLE.test(v) ? v : null;
 }
 
 /** An ISO timestamp or nothing — a byte that is not a date is dropped, the
@@ -168,6 +188,10 @@ export function riderSessionFromBody(body: unknown): RiderSession | null {
         // The machine-carried pickup code rides the SAME minted bound as the
         // ramassage code — anything else is dropped, never presented.
         codeVerification: codeRamassageOrNull(a['codeVerification']),
+        // Its OWN bound — a pickup code arriving in this slot is dropped, not
+        // sealed with. « The four secrets are never substituted » is enforced
+        // here by shape, not by trust in the sender.
+        codeScelle: codeScelleOrNull(a['codeScelle']),
       };
     }
   }

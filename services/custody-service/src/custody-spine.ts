@@ -240,7 +240,42 @@ export class CustodySpine {
     if (!this.verificationAccepted) return { ok: false, reason: 'verification_not_accepted' };
     if (args.verificationOrderId !== this.chain.order_id) return { ok: false, reason: 'order_ref_mismatch' };
     if (args.riderId === this.supplierId) return { ok: false, reason: 'actor_separation_supplier_is_rider' };
-    if (args.sealPhotoRefs.length === 0) return { ok: false, reason: 'no_evidence_refs' };
+    /**
+     * ═══ ⚠ FOUNDER OVERRIDE (2026-08-10) — THE SEAL PHOTO IS NO LONGER
+     * REQUIRED, AND THE SEAL IS NO LONGER A SCREEN ═══
+     *
+     * « I told you terminate that sealing code and the sealing photo proof
+     * requirement. I told you after the code is confirmed from supplier the
+     * next screen is prendre la route then the je suis arrivé screen then the
+     * asking code from buyer screen. » Reaffirmed after I quoted the governing
+     * text back to him; recorded in JOURNAL.md as HIS decision, not mine.
+     *
+     * WHAT THIS DEPARTS FROM, NAMED EXACTLY. Sera Build Spec §6.2 step 6
+     * (« `custodySealId` + package photos recorded ») and the guard that stood
+     * here, whose reason was « a seal with no photo proves nothing ». SE-I05
+     * itself is UNTOUCHED — « Custody begins only after rider pickup
+     * verification AND custody-seal registration » still holds in full: the
+     * verification must still be `accepted` (line above), the seal id is still
+     * registered, still single-use, still equality-checked against the
+     * delivery evidence at the door. What is gone is the PHOTO half of §6.2
+     * step 6, and only that.
+     *
+     * WHAT STILL PROVES THE PICKUP. The rider's checklist (§6.1 objective
+     * conformity) is unchanged and still gated on `accepted`; the supplier's
+     * readiness photos ride the course; the optional difference-photo on the
+     * verification screen is still offered; and the DELIVERY photo at the door
+     * is untouched and still mandatory. The custody record keeps its
+     * `photoRefs` field — now often empty, never fabricated. A7's real lesson
+     * survives intact: an EMPTY list is honest, a made-up `ev-<uuid>` is not,
+     * and nothing anywhere invents a ref.
+     *
+     * The CI gate `custody-after-verification-and-seal`
+     * (`scripts/gates/custody-transition.mjs`) asserts verification-accepted +
+     * seal-registered and has never asserted photos — it stays green, and it
+     * stays the thing that fails if anyone tries to begin custody without a
+     * verification or without a seal.
+     */
+
     let seal = this.secrets.consume('custody_seal', this.chain.order_id, args.custodySealId, args.at);
     if (!seal.ok && seal.reason === 'secret_unknown') {
       /**

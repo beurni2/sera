@@ -1534,10 +1534,23 @@ export class CustodyDO {
         return malformed();
       }
       const refs = body['sealPhotoRefs'] as unknown[];
-      // Evidence refs are identifiers, bounded like every other one. An empty
-      // list is refused by the spine (`no_evidence_refs`) — the seal moment is
-      // the proof-photo moment, and a seal with no photo proves nothing.
-      if (refs.length === 0 || refs.length > MAX_CHECKS) return malformed('seal_photo_refs_out_of_bounds');
+      /**
+       * ⚠ ROUTE-DIRECTE (founder ruling 2026-08-10) — AN EMPTY LIST IS LAWFUL
+       * HERE NOW. « terminate that sealing code and the sealing photo proof
+       * requirement … photo capture is optional and only required when one the
+       * 3 answers is non. »
+       *
+       * ⚠ AND THIS LINE IS WHY THE RULING NEEDED A SEAM TEST. Lifting the
+       * spine's `no_evidence_refs` guard changed NOTHING for a rider: the door
+       * refused `[]` as `seal_photo_refs_out_of_bounds` before the spine was
+       * ever reached, and 394 app tests plus the whole gate board stayed green
+       * over a seal that could still never go. « A port that is called is not a
+       * port that can succeed. »
+       *
+       * The UPPER bound stays — refs are identifiers and stay bounded — and so
+       * does every per-ref check below. Only the floor moved.
+       */
+      if (refs.length > MAX_CHECKS) return malformed('seal_photo_refs_out_of_bounds');
       for (const r of refs) {
         if (!isBoundedStr(r, MAX_ID) || hasControlChar(r as string)) return malformed('seal_photo_ref_not_usable');
       }

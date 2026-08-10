@@ -118,6 +118,9 @@ const WIN = { start: T, end: '2026-08-10T16:00:00.000Z' };
 // The wire contract the rider app parses: the SAME XXX-XXX shape as the
 // ramassage code, a distinct value.
 const FORME_PV = /^[ABCDEFGHJKMNPQRSTVWXYZ2-9]{3}-[ABCDEFGHJKMNPQRSTVWXYZ2-9]{3}$/;
+/** ROUTE-DIRECTE — the machine-carried SEAL, in its own deliberately distinct
+ *  shape. Same read as the pickup code, so the two must never be confusable. */
+const FORME_SC = /^SC-[ABCDEFGHJKMNPQRSTVWXYZ2-9]{4}-[ABCDEFGHJKMNPQRSTVWXYZ2-9]{4}$/;
 const ALL_PASS = { produit_conforme: true, quantite_complete: true, emballage_intact: true };
 
 async function courseConfiee(
@@ -169,6 +172,21 @@ describe('dispatch opens the chain and arms the machine code on the REAL custody
     const assignment = moi.session.assignment as unknown as Json;
     const pv = assignment['codeVerification'] as string;
     expect(pv, 'the machine pickup code must ride /rider/moi').toMatch(FORME_PV);
+    /**
+     * ⚠ ROUTE-DIRECTE (founder ruling 2026-08-10) — THE SEAL RIDES THE SAME
+     * READ. « terminate that sealing code … the next screen is prendre la
+     * route ». The rider never types a seal, so if this value does not arrive
+     * the app registers NOTHING and the road never opens — which is exactly
+     * the class of dead-end this file exists to make impossible.
+     *
+     * This is the PARSED session, so it proves the whole chain at once: minted
+     * by logistics, carried on the wire, and ACCEPTED by the app's own bounded
+     * parser. A shape the parser refuses arrives here as `null`.
+     */
+    const sc = assignment['codeScelle'] as string;
+    expect(sc, 'the machine seal must ride /rider/moi, parsed').toMatch(FORME_SC);
+    expect(sc, 'and it must never be confusable with the pickup code').not.toMatch(FORME_PV);
+    expect(sc).not.toBe(pv);
     expect(assignment['ramassageConfirmeAt']).toBeNull();
 
     // The chain custody holds is EXACTLY the one dispatch composed: an
@@ -262,5 +280,14 @@ describe('dispatch opens the chain and arms the machine code on the REAL custody
       headers: { Authorization: `Bearer ${OPS}` },
     });
     expect((await ridersRes.text()).includes(pv)).toBe(false);
+
+    // ROUTE-DIRECTE — the SEAL is held to the same rule. It is not one of the
+    // four secrets, but it is the thing the delivery evidence is checked
+    // against, and a board that prints it hands a stranger the whole course.
+    const sc = (moi.session.assignment as unknown as Json)['codeScelle'] as string;
+    expect(sc).toMatch(FORME_SC);
+    expect((await (await mf.dispatchFetch('http://logistics/ops/board', {
+      headers: { Authorization: `Bearer ${OPS}` },
+    })).text()).includes(sc), 'the board must never carry the seal').toBe(false);
   }, 60_000);
 });

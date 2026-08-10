@@ -285,6 +285,93 @@ describe('⚠ THE RIDER TAKES CUSTODY — the app’s own ports, the real Worker
       .toBe(`courier:${RIDER}`);
   }, 30_000);
 
+  it('⚠ ROUTE-DIRECTE — custody begins with NO PHOTO, on the app’s own port, and the LEDGER says so', async () => {
+    /**
+     * FOUNDER RULING (2026-08-10): « terminate that sealing code and the
+     * sealing photo proof requirement … photo capture is optional and only
+     * required when one the 3 answers is non. »
+     *
+     * THIS IS THE SEAM THE RULING CROSSES. The app sends `sealPhotoRefs: []`;
+     * the real Worker's door parses it; the real spine decides. Until this
+     * test, « the guard was lifted » was a source edit nothing exercised —
+     * and a door that rejects an empty array before the spine ever sees it
+     * would have left every rider stuck at the seal with 394 tests green.
+     *
+     * It asks the LEDGER, not the response.
+     */
+    const m2 = new Miniflare({
+      modules: true,
+      scriptPath: 'dist-worker/worker.mjs',
+      compatibilityDate: '2025-07-05',
+      compatibilityFlags: ['nodejs_compat'],
+      durableObjects: { CUSTODY: 'CustodyDO', PACKAGE_CLAIM: 'PackageClaimDO' },
+      durableObjectsPersist: mkdtempSync(join(tmpdir(), 'sera-route-directe-')),
+      serviceBindings: {
+        LOGISTICS: async (request: Request): Promise<Response> => {
+          if ((request.headers.get('Authorization') ?? '') !== `Bearer ${VERIFY_KEY}`) {
+            return Response.json({ error: 'unauthorized' }, { status: 401 });
+          }
+          const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+          return String(body?.['code'] ?? '') === RIDER_CODE
+            ? Response.json({ ok: true, riderId: RIDER })
+            : Response.json({ error: 'unauthorized' }, { status: 401 });
+        },
+      },
+      bindings: { SERA_CUSTODY_OPS_SECRET: OPS, SERA_RIDER_VERIFY_SECRET: VERIFY_KEY },
+    });
+    const O = 'ord-route-directe';
+    const P = 'pkg-route-directe';
+    const CODE = 'PICKUP-ROUTE-DIRECTE';
+    const opsTo = async (path: string, body: unknown): Promise<number> =>
+      (await m2.dispatchFetch(`http://custody${path}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${OPS}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })).status;
+    expect(await opsTo('/ops/order/open', {
+      orderId: O, taskId: 'task-rd', packageId: P, correlationId: 'corr-rd', supplierId: 'sup-rd',
+    })).toBe(200);
+    expect(await opsTo('/ops/secrets/arm', {
+      orderId: O, command_id: 'arm-rd-pickup', kind: 'pickup_verification_code', secret: CODE,
+    })).toBe(200);
+
+    const acts = httpCustodyActs('http://custody', online, ((url: string, init?: RequestInit) =>
+      m2.dispatchFetch(url, init as never)) as unknown as typeof globalThis.fetch as never);
+
+    // The checklist, all three conforming — so by his ruling NO camera was
+    // ever offered, and the app has no photo to send.
+    const verified = await acts.verifyPickup(
+      { commandId: 'rd-verify', orderId: O, presentedPickupCode: CODE, evidenceBundleId: 'sans-photo', dwellSec: 150, checkResults: ALL_PASS },
+      RIDER_CODE,
+    );
+    expect(verificationAccepted(verified), JSON.stringify(verified)).toBe(true);
+
+    // ⚠ THE MACHINE-CARRIED SEAL, WITH AN EMPTY PHOTO LIST. Never pre-armed
+    // here — this is the first-use binding path the rider actually walks.
+    const began = await acts.beginCustody(
+      { commandId: 'rd-seal', orderId: O, custodySealId: 'SC-4K7M-9PQR', sealPhotoRefs: [] },
+      RIDER_CODE,
+    );
+    expect(custodyBegan(began), `custody refused a photo-free seal: ${JSON.stringify(began)}`).toBe(true);
+
+    // ── ASK THE LEDGER ────────────────────────────────────────────────────
+    const led = await m2.dispatchFetch(`http://custody/ops/ledger?orderId=${O}`, {
+      headers: { Authorization: `Bearer ${OPS}` },
+    });
+    expect(String(((await led.json()) as Record<string, unknown>)['currentCustodian'] ?? ''))
+      .toBe(`courier:${RIDER}`);
+
+    // …and SE-I05's surviving half still bites: the seal is single-use, so a
+    // second course cannot ride this one.
+    const again = await acts.beginCustody(
+      { commandId: 'rd-seal-2', orderId: O, custodySealId: 'SC-4K7M-9PQR', sealPhotoRefs: [] },
+      RIDER_CODE,
+    );
+    expect(custodyBegan(again), 'a spent seal must not begin custody twice').toBe(false);
+
+    await m2.dispose();
+  }, 30_000);
+
   it('⚠ an unauthenticated upload is refused, and then no act can go', async () => {
     // The founder rotates MEDIA_WRITE_SECRET and the repo key is not updated —
     // or is simply never set, which is fail-closed by design. Every rider on

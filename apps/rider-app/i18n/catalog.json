@@ -702,6 +702,24 @@
     "screenClass": "instruction"
   },
   {
+    "key": "seal.auto_titre",
+    "fr": "Séra enregistre le scellé",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "seal.auto_note",
+    "fr": "Un instant. La route s’ouvre juste après.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "seal.absent",
+    "fr": "Cette course n’a pas de scellé. Appelez Séra avant de partir.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
     "key": "seal.single_use",
     "fr": "usage unique",
     "register": "neutral",

@@ -9,6 +9,34 @@ Format per entry:
 
 ---
 
+## 2026-08-10 · ROUTE-DIRECTE — the seal stops being a screen and a photo; the road starts at the supplier's confirmation · IN-REVIEW (branch, awaiting founder)
+**Founder, twice (2026-08-10):** « I told you terminate that sealing code and the sealing photo proof requirement. I told you after the code is confirmed from supplier the next screen is prendre la route then the je suis arrivé screen then the asking code from buyer screen. I thought you built that already » — and, restating: « photo capture is optional and only required when one the 3 answers is non ».
+
+**MY ERROR, NAMED.** His VRAI-ROUTE order of 2026-08-10 02:59 lists three screens after the supplier confirms — « en route », « je suis arrivé », the buyer's code — and no seal among them. I built the road gated behind `packageIsHeld`, i.e. behind the seal, which inserted a screen he never asked for and which demanded a number he had no way to produce and a photo that was 401-ing. He did not use the words « terminate the sealing code » before today; **he did specify a flow with no seal in it, and I built one in anyway.** That is mine.
+
+**§7 was raised and CLOSED BY HIM.** I quoted SE-I05 and §6.2 step 6 back to him and offered the choice; he declined the question and repeated the instruction. Recorded here as **HIS decision, not mine**, per §6bis (« if the user repeats or reaffirms it, treat that as their decision »).
+
+**WHAT DEPARTS FROM CANON — exactly, and only:** §6.2 step 6's PHOTO half (« `custodySealId` + package photos recorded »). **SE-I05 is untouched and still enforced everywhere:** the verification must still be `accepted` before custody, the seal is still registered, still single-use, still equality-checked against the delivery evidence at the door. The CI gate `custody-after-verification-and-seal` never asserted photos — it stays green and still fails a custody-begin with no verification or no seal. **The canon docs in `/docs` are NOT edited** (they are drift-checked against `platform-contracts`); the divergence lives here until he rules on the canon text itself. **Flagged for him: `Sera-Build-Spec.md` §6.2 step 6 now describes something the code deliberately does not do.**
+
+**WHAT CHANGED, PER SURFACE**
+- **Rider app — the seal screen is deleted.** No typed number, no camera. Custody registers itself the instant the LEDGER accepts the verification (`sendSeal(scelle)` fired from an effect keyed on `sealScreenIsDue`, guarded by `!packageIsHeld` + the `working` flag + the content-keyed `command_id`, so it cannot fire twice). What the rider sees between « Envoyer la vérification » and « Prendre la route » is a pending notice, or one honest sentence if the seal is absent.
+- **The seal id is MACHINE-CARRIED**, exactly as he already ruled the pickup code: logistics mints `SC-XXXX-XXXX` beside `codeVerification` at dispatch and delivers it on `/rider/moi` as `codeScelle`. Deliberately a different shape from the pickup code's `XXX-XXX` — they ride the same read, and « the four secrets are never substituted » is enforced by the app's parser *by shape*, not by trust. **Side effect worth having:** the seal now survives an OS kill (it arrives fresh on every poll), so a phone killed mid-course no longer loses the remise to « il manque des repères ».
+- **`sealPhotoRefs: []`** — an EMPTY list, never a fabricated ref. A7's actual lesson is kept and now pinned harder than the old guard pinned it.
+- **The pickup camera is unchanged and stays exactly as he ruled**: offered only inside the `ecartConstate` arm — i.e. only once an answer is « Non » — and never demanded by the send.
+
+**⚠ THE SEAM TEST CAUGHT A REAL BLOCKER, which is the whole reason it exists.** Lifting the SPINE's `no_evidence_refs` guard changed **nothing** for a rider: `custody-do.ts` refused `[]` at the DOOR as `seal_photo_refs_out_of_bounds` before the spine ever ran. Tests + typecheck + the gate board were all green over a seal that could still never go — « a port that is called is not a port that can succeed », almost word for word. The door's floor is lifted; its UPPER bound and every per-ref check are untouched, and both halves are now asserted.
+
+**EVIDENCE**
+- `rider-path.e2e.test.ts` — the app's OWN `httpCustodyActs` against the REAL custody Worker in miniflare: checklist all-conforming → verification accepted → `beginCustody` with `sealPhotoRefs: []` on a first-use-bound seal → **the LEDGER names `courier:rider-path-0001`** → a second attempt on the spent seal refuses. 8/8.
+- `vrai-produce.e2e.test.ts` — the app's OWN session port against the REAL logistics Worker: `codeScelle` rides `/rider/moi`, survives the app's bounded parser, is not confusable with the pickup code, and never appears on `/ops/board` or `/ops/riders`. 3/3.
+- `custody-begin.e2e.test.ts` — the door accepts a photo-free seal (ledger asked, not the response) and still refuses a flood of refs. 12/12.
+- `custody-spine.test.ts` — a photo-free seal begins custody, but only after an ACCEPTED verification, and the seal is still single-use. 19/19.
+- Whole repo: `pnpm test` **15/15 tasks**, rider-app **394/394**, logistics **193/193**, custody **216/216** · `pnpm typecheck` 11/11 · `bash scripts/run-gates.sh` → **ALL GATES GREEN**, including the contracts drift-check and the French copy-lint on the three new catalog strings.
+
+**STILL OPEN — one thing, and he needs to decide it, not me.** His screen list also omits the DOOR photo, and I did **not** remove it, on purpose: `decideValidation` grades a zero-artifact bundle `review_hold` with reason `gps_never_sole_proof` (Spec l.179 lists « GPS never sole proof » as a build-failing gate), and the drop code requires `decision.result === 'validated'` (`custody-spine.ts:457`). So removing the door photo would leave the rider unable to enter the buyer's code at all — the exact dead end he is angry about, one screen later. Named to him in the report; nothing built either way.
+
+**Pending:** his answer on the door photo · the canon-text question on §6.2 step 6 · merge + deploy approval, and this one needs **three** deploys (custody, logistics, sera preview) because the change crosses all three.
+
 ## 2026-08-10 · ECRAN-BLANC — the accept tap crashed the rider app; the seal photo told the rider to retry a refusal · IN-REVIEW (branch, awaiting founder)
 **Founder report (2026-08-10):** « On sera app when I tap accept button to accept the order the screen goes all white and blank, and after I gave the code to the supplier and he confirmed the sera screen got stuck at votre course asking me to take a picture and for another code » (+ two screenshots).
 

@@ -199,14 +199,42 @@ describe('custody begins only after verification AND seal (SE-I05)', () => {
     await mf.dispose();
   });
 
-  it('a seal with no photo is refused — the seal moment is the proof moment', async () => {
+  it('⚠ ROUTE-DIRECTE — a seal with NO PHOTO is accepted at the DOOR, and custody begins', async () => {
+    /**
+     * FOUNDER RULING (2026-08-10): « terminate that sealing code and the
+     * sealing photo proof requirement … photo capture is optional and only
+     * required when one the 3 answers is non. »
+     *
+     * ⚠ THIS TEST IS WHERE THE RULING WOULD HAVE DIED SILENTLY. Lifting the
+     * SPINE's guard changed nothing for a rider — the DOOR refused `[]` as
+     * `seal_photo_refs_out_of_bounds` before the spine ever ran. It is asserted
+     * here at the door, and end-to-end through the app's own port in
+     * `rider-path.e2e.test.ts`.
+     */
     const dir = freshDir('nophoto');
     const mf = boot(dir);
     await armedOrder(mf);
     expect((await verifyPickup(mf)).status).toBe(200);
     const bare = await beginCustody(mf, ORDER, { sealPhotoRefs: [] });
-    expect(bare.status).toBe(400);
-    expect(bare.json).toMatchObject({ reason: 'seal_photo_refs_out_of_bounds' });
+    expect(bare.status, JSON.stringify(bare.json)).toBe(200);
+    // The LEDGER, not the answer.
+    const led = await mf.dispatchFetch(`http://custody/ops/ledger?orderId=${ORDER}`, {
+      headers: { Authorization: `Bearer ${OPS}` },
+    });
+    expect(String(((await led.json()) as Record<string, unknown>)['currentCustodian'] ?? '')).toMatch(/^courier:/);
+    await mf.dispose();
+  });
+
+  it('⚠ …but the UPPER bound holds — refs are still identifiers, still bounded', async () => {
+    // Only the floor moved. A caller stuffing the seal with refs is still
+    // refused by name, and per-ref bounds below it are untouched.
+    const dir = freshDir('toomanyphotos');
+    const mf = boot(dir);
+    await armedOrder(mf);
+    expect((await verifyPickup(mf)).status).toBe(200);
+    const flood = await beginCustody(mf, ORDER, { sealPhotoRefs: Array.from({ length: 200 }, (_v, i) => `media/p-${i}`) });
+    expect(flood.status).toBe(400);
+    expect(flood.json).toMatchObject({ reason: 'seal_photo_refs_out_of_bounds' });
     await mf.dispose();
   });
 

@@ -43,8 +43,26 @@ describe('PHOTO-FACULTATIVE — a conforming pickup sends WITHOUT a photo', () =
     expect(app).toContain("disabled={!allAnswered || verifyPhase.kind === 'working' || capturing}");
   });
 
-  it('⚠ the SEAL photo stays MANDATORY — custody never begins without a picture', () => {
-    // The founder kept this one on the record; it is the load-bearing half.
-    expect(app).toContain('if (sealPhotoRefs.length === 0) return;');
+  it('⚠ THE SEAL PHOTO IS RETIRED — the founder ruled it out, twice', () => {
+    /**
+     * « terminate that sealing code and the sealing photo proof requirement »
+     * (2026-08-10), and, restated: « photo capture is optional and only
+     * required when one the 3 answers is non ». The seal now registers itself
+     * from a machine-carried id with an EMPTY photo list — honest, never a
+     * fabricated ref (A7's actual lesson), and never a camera at pickup for a
+     * package that matched.
+     */
+    expect(app, 'no seal camera').not.toContain('setSealPhotoRefs');
+    expect(app, 'no photo gate on the seal').not.toContain('if (sealPhotoRefs.length === 0) return;');
+    expect(app, 'an empty list, not an invented ref').toContain('sealPhotoRefs: [],');
+    expect(app, 'and no seal screen for the rider to work').not.toContain("t('seal.id_title')");
+  });
+
+  it('⚠ …and the ONE camera at pickup is still the difference camera', () => {
+    // The whole of his rule in one assertion: the pickup camera exists only
+    // inside the `ecartConstate` arm — i.e. only once an answer was « Non ».
+    const ecart = app.slice(app.indexOf('{ecartConstate ? ('), app.indexOf('{ecartConstate ? (') + 1400);
+    expect(ecart).toContain('takePhoto((art) => setVerifyBundleId(art.ref))');
+    expect(ecart).toContain("t('verify.photo_facultative')");
   });
 });
