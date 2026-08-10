@@ -77,15 +77,27 @@ jobs:
           git config --global --add url."https://x-access-token:${{ secrets.PLATFORM_CONTRACTS_READ_TOKEN }}@github.com/beurni2/platform-contracts".insteadOf "git@github.com:beurni2/platform-contracts"
       - run: pnpm install --frozen-lockfile
         if: steps.token.outputs.present == 'true'
-      - name: Say which Séra this build can reach (URLs are public; never keys)
+      - name: Say which Séra this build can reach — and REFUSE to publish a demo build
         if: steps.token.outputs.present == 'true'
         run: |
+          # ⚠ THIS FAILS. IT USED TO WARN, AND THE WARNING WAS A TRAP.
+          #
+          # Founder ruling 2026-08-10 (« for the preview trap make it fail »),
+          # on the verifier's finding: `isWired()` reads these very variables,
+          # so a preview published without them is not « the app, unconfigured »
+          # — it is the DEMO WORLD, a different application with different
+          # screens. It still walks the seal screen this repo has now abolished
+          # twice, and a rider (or the founder, testing) cannot tell the two
+          # apart from the phone.
+          #
+          # A publish that silently swaps the product for a mock is worse than
+          # no publish. So: no Séra, no preview.
           if [ -z "$EXPO_PUBLIC_SERA_LOGISTICS_BASE" ] || [ -z "$EXPO_PUBLIC_SERA_CUSTODY_BASE" ]; then
-            echo "::warning title=Aperçu non relié à Séra::LOGISTICS_BASE et/ou CUSTODY_BASE ne sont pas configurés (Settings → Variables). L'aperçu se lance, mais aucun code coursier ne pourra ouvrir de session et aucune course ne pourra être vérifiée — l'écran le dit clairement."
-          else
-            echo "logistics: $EXPO_PUBLIC_SERA_LOGISTICS_BASE"
-            echo "custody:   $EXPO_PUBLIC_SERA_CUSTODY_BASE"
+            echo "::error title=Aperçu refusé — pas relié à Séra::LOGISTICS_BASE et/ou CUSTODY_BASE ne sont pas configurés (Settings → Variables). Sans eux, l'aperçu publié serait l'application de DÉMONSTRATION, pas la vraie : d'autres écrans, aucune course réelle, et rien sur le téléphone ne le dit. Publication annulée."
+            exit 1
           fi
+          echo "logistics: $EXPO_PUBLIC_SERA_LOGISTICS_BASE"
+          echo "custody:   $EXPO_PUBLIC_SERA_CUSTODY_BASE"
           # The photo is not optional equipment: no bucket ⇒ no ref ⇒ the seal
           # cannot be registered, so custody never begins on this build. Warn
           # in the same voice, and never print the key itself.
