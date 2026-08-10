@@ -34,7 +34,7 @@ import React from 'react';
  * A test that asserts a colour here would be asserting a fiction. There is no
  * colour here.
  *
- * ⚠ AND ITS SURFACE IS CERTIFIED, NOT GUESSED. `test/rendu-harness.test.tsx`
+ * ⚠ AND ITS SURFACE IS CERTIFIED, NOT GUESSED. `test/rendu-harness.test.ts`
  * sweeps every `from 'react-native'` import in the app tree and fails if this
  * file does not export it — so a new import cannot silently arrive as
  * `undefined` and render nothing while a test passes over it.

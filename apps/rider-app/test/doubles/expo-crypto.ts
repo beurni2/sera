@@ -18,6 +18,18 @@ export async function digestStringAsync(_alg: string, data: string): Promise<str
   for (const b of hash) hex += b.toString(16).padStart(2, '0');
   return hex;
 }
+/**
+ * ⚠ THE REAL `digest`, ADDED BECAUSE THE SWEEP CAUGHT ITS ABSENCE.
+ * `ensureSha256` builds the device's `crypto.subtle.digest` shim out of this
+ * one call. Node already carries WebCrypto so that branch does not run here —
+ * but a double missing a member the app calls is precisely the hole the
+ * certification test exists to name, and « it happens not to run today » is
+ * not a reason to leave it undefined. It hashes for real.
+ */
+export async function digest(_alg: string, data: ArrayBuffer): Promise<ArrayBuffer> {
+  return webcrypto.subtle.digest('SHA-256', data);
+}
+
 export function randomUUID(): string {
   return webcrypto.randomUUID();
 }

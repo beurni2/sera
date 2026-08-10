@@ -80,7 +80,9 @@ function custody(opts: {
 } = {}): Route {
   return (path) => {
     if (path === '/rider/verification') {
-      return opts.onVerify?.() ?? { status: 200, json: { ok: true, status: 'recorded', kind: 'accepted' } };
+      // `custody-do.ts` sends `{ ok, kind, ledgerSeq, chainValid }` here — no
+      // `status` key. An invented one is exactly what this file forbids itself.
+      return opts.onVerify?.() ?? { status: 200, json: { ok: true, kind: 'accepted', ledgerSeq: 1, chainValid: true } };
     }
     if (path === '/rider/custody/begin') {
       return opts.onBegin?.() ?? {
@@ -210,8 +212,17 @@ describe('⚠ ROUTE-DIRECTE — the seal fires itself, and the road opens', () =
     await s.press('Oui', 1);
     await s.press('Oui', 0);
     await s.press('Envoyer la vérification');
-    await s.settle();
-    await s.settle();
+    /**
+     * ⚠ IT MUST POLL, NOT SETTLE — and the first cut of this test did not.
+     * `settle()` only flushes microtasks; the auto-seal effect is keyed on
+     * `liveAssignment`, which only changes when `/rider/moi` answers again. So
+     * the scenario in this test's own title was never executed: a verifier
+     * removed BOTH once-only guards from `scelleAuto`, making the app
+     * re-register custody on every 20 s poll, and all six tests stayed green.
+     * §9.7, in the middle of the custody path.
+     */
+    await s.poll();
+    await s.poll();
     expect(w.calls.filter((c) => c.path === '/rider/custody/begin')).toHaveLength(1);
   });
 

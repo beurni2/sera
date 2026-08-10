@@ -143,21 +143,55 @@ export async function mountRider(): Promise<Screen> {
    * its first cut, which would have made « the rider can answer the checks »
    * unprovable while looking fine.
    */
-  const pressables = (): ReactTestInstance[] =>
-    tree.root.findAll((n) => typeof n.props['onPress'] === 'function', { deep: true });
+  /** Anything the app rendered that carries text — the pool a rider looks at. */
+  const textNodes = (): ReactTestInstance[] =>
+    tree.root.findAll((n) => typeof n.type === 'string' && textOf(n) !== '', { deep: true });
+
+  /**
+   * ⚠ UNPRESSABLE IS NOT PRESSABLE. `pointerEvents="none"` is a NATIVE prop,
+   * not layout, and it is a real way a control renders while no thumb can
+   * reach it — so the harness honours it even though it honours nothing about
+   * appearance. (Layout-based unreachability — `display:'none'`, zero height —
+   * remains outside this harness by its stated bound; the double has no
+   * layout to consult.)
+   */
+  const unreachable = (n: ReactTestInstance): boolean => {
+    let cur: ReactTestInstance | null = n;
+    while (cur !== null) {
+      if (cur.props['pointerEvents'] === 'none') return true;
+      cur = (cur.parent as ReactTestInstance | null) ?? null;
+    }
+    return false;
+  };
 
   /** Every control carrying this label, in render order. `nth` exists because
    *  the checklist asks three questions and each offers « Oui » — pressing the
    *  first one three times answers one question and silently leaves two
    *  unanswered, which is exactly the kind of false green this file exists to
    *  stop. */
-  const allByLabel = (label: string): ReactTestInstance[] => {
-    const hits = pressables().filter((p) => textOf(p).includes(label));
-    // Innermost wins: a card that WRAPS a button also contains its text, and
-    // pressing the wrapper is not what a rider's thumb does. Render order is
-    // preserved so `nth` still means « the third one down the screen ».
-    return hits.filter((h) => !hits.some((other) => other !== h && h.findAll((n) => n === other).length > 0));
-  };
+  /** Everything CARRYING the label, innermost-first. Innermost wins: a card
+   *  that wraps a button also contains its text, and pressing the wrapper is
+   *  not what a rider's thumb does. Render order is preserved so `nth` still
+   *  means « the third one down the screen ». */
+  const innermost = (hits: ReactTestInstance[]): ReactTestInstance[] =>
+    hits.filter((h) => !hits.some((other) => other !== h && h.findAll((n) => n === other).length > 0));
+
+  /** Any node carrying the label, pressable or not — used ONLY to tell
+   *  « not on screen » apart from « on screen and dead ». */
+  const allWithText = (label: string): ReactTestInstance[] =>
+    innermost(textNodes().filter((p) => textOf(p).includes(label)));
+
+  /**
+   * The CONTROLS carrying the label. Innermost is computed WITHIN the pressable
+   * set, not across every text node — a `<Pressable onPress>` wrapping a
+   * `<Text>` is the normal shape of a button, and taking the innermost node
+   * overall would find the Text, which has no handler, and report every button
+   * in the app as dead.
+   */
+  const allByLabel = (label: string): ReactTestInstance[] =>
+    innermost(textNodes().filter(
+      (p) => typeof p.props['onPress'] === 'function' && textOf(p).includes(label),
+    ));
   const findByLabel = (label: string, nth = 0): ReactTestInstance | null =>
     allByLabel(label)[nth] ?? null;
 
@@ -167,17 +201,38 @@ export async function mountRider(): Promise<Screen> {
     shows: (fragment) => screen.texts().some((t) => t.includes(fragment)),
     canPress: (label) => {
       const p = findByLabel(label);
-      return p !== null && p.props['disabled'] !== true;
+      return p !== null && p.props['disabled'] !== true && !unreachable(p);
     },
-    press: async (label, nth = 0) => {
-      const p = findByLabel(label, nth);
-      if (p === null) {
-        const n = allByLabel(label).length;
+    press: async (label, nth) => {
+      const controls = allByLabel(label);
+      if (controls.length === 0) {
+        // ⚠ RENDERED BUT NOT PRESSABLE is its own diagnosis, and it is the
+        // whole thesis of this harness: « the button is not there » and « the
+        // button does nothing » must never look the same.
+        const inert = allWithText(label);
         throw new Error(
-          n === 0
-            ? `no control labelled « ${label} ». On screen: ${JSON.stringify(screen.texts())}`
-            : `« ${label} » has ${n} control(s); asked for #${nth}`,
+          inert.length > 0
+            ? `« ${label} » is ON SCREEN but has NO onPress — a dead control is exactly what this harness exists to catch`
+            : `no control labelled « ${label} ». On screen: ${JSON.stringify(screen.texts())}`,
         );
+      }
+      /**
+       * ⚠ AMBIGUITY IS REFUSED, the same way `type()` refuses it. Pressing the
+       * first of several same-labelled controls silently is how a test passes
+       * having pressed the wrong thing — a verifier proved it by planting a
+       * decoy « Réessayer plus tard » beside the real retry.
+       */
+      if (nth === undefined && controls.length > 1) {
+        throw new Error(
+          `« ${label} » matches ${controls.length} controls — pass an index (the checklist asks three questions and each offers « Oui »)`,
+        );
+      }
+      const p = controls[nth ?? 0];
+      if (p === undefined) {
+        throw new Error(`« ${label} » has ${controls.length} control(s); asked for #${String(nth)}`);
+      }
+      if (unreachable(p)) {
+        throw new Error(`« ${label} » is rendered but unreachable (pointerEvents="none")`);
       }
       expect(p.props['disabled'], `« ${label} » is on screen but disabled`).not.toBe(true);
       const onPress = p.props['onPress'] as (() => void) | undefined;

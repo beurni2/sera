@@ -19,7 +19,7 @@ const at = (p: string): string => fileURLToPath(new URL(p, import.meta.url));
  * `expo-*`). NOTHING of this app's own code is aliased — the screens, the
  * ports, the models and the catalog under test are the real files, and the
  * doubles' bounds are stated in `test/doubles/react-native.tsx` and enforced
- * by `test/rendu-harness.test.tsx`.
+ * by `test/rendu-harness.test.ts`.
  */
 export default defineConfig({
   test: {
