@@ -367,6 +367,57 @@ export class LeasedDispatch {
     return { ...outcome, leaseReleased: release.ok };
   }
 
+  /**
+   * PURGE-ESSAI — the founder RETIRES one order from the dispatch board
+   * (founder ruling 2026-08-10: « board yes, custody no »). Book, queue, lease
+   * and witness move together, here, because they are the three stores SE-I01
+   * keeps in step: forgetting a dispatch row while THE authority still holds
+   * its lease would leave the rider reading `assignable` on the board and
+   * being refused `rider_already_leased` at the door, for ever.
+   *
+   * Ordering is deliberate: the book and the queue are forgotten first (so no
+   * read can see a half-purged course), then every task the order ever had —
+   * the queue's rows AND the tasks the removed assignments name, unioned, so a
+   * lease can never be missed by a row that was already gone — is released at
+   * THE authority with the honest cause 'retire'. A `no_active_lease` refusal
+   * is absorbed: it IS « no lease was active », the ordinary case for a course
+   * that already ended.
+   *
+   * The lease HISTORY stays: leases are append-only at the authority, and a
+   * released record naming a retired task is the truthful account of what
+   * happened. It blocks nothing — only ACTIVE leases are ever consulted, and a
+   * task id is CSPRNG-minted per compose, never reused.
+   *
+   * CUSTODY IS NOT TOUCHED, anywhere in this path — no custody store is
+   * reachable from this orchestrator, and the founder's ruling keeps the
+   * custody ledger's append-only proof exactly where it is (Ten Laws #3).
+   */
+  async forgetOrder(orderId: string): Promise<{
+    taskIds: string[];
+    assignments: AssignmentRecord[];
+    leasesReleased: number;
+  }> {
+    const assignments = this.deps.book.forgetOrder(orderId);
+    const queueTaskIds = this.deps.queue.forgetOrder(orderId);
+    const taskIds = [...new Set([...queueTaskIds, ...assignments.map((a) => a.taskId)])];
+    for (const assignment of assignments) this.deps.witness.revoke(assignment.lease);
+    let leasesReleased = 0;
+    for (const taskId of taskIds) {
+      const release = await this.deps.authority.send({
+        kind: 'release',
+        // Deterministic and task-scoped: a task id is minted once and never
+        // reused, so this id can never replay another course's release.
+        command_id: `retire-${taskId}`,
+        taskId,
+        cause: 'retire',
+      });
+      if (!release.ok) continue;
+      leasesReleased += 1;
+      if (release.lease !== undefined) this.deps.witness.revoke(refOf(release.lease));
+    }
+    return { taskIds, assignments, leasesReleased };
+  }
+
   /** Completion: the delivery closed — the lease releases with the honest
    * cause 'completed'. (No timestamp: the release command carries none by
    * design; the ledgered truth of WHEN lives with the custody records.) */

@@ -33,7 +33,13 @@ export type LeaseStatus = 'active' | 'released' | 'expired';
  * and shared shapes only): when the book refuses an assignment after the
  * grant, the orchestrator releases with the honest cause, never a borrowed
  * one. */
-export type ReleaseCause = 'declined' | 'completed' | 'reschedule_closed' | 'grant_rolled_back' | 'taken_back';
+export type ReleaseCause =
+  | 'declined'
+  | 'completed'
+  | 'reschedule_closed'
+  | 'grant_rolled_back'
+  | 'taken_back'
+  | 'retire';
 
 const RELEASE_CAUSES: readonly ReleaseCause[] = [
   'declined',
@@ -45,6 +51,13 @@ const RELEASE_CAUSES: readonly ReleaseCause[] = [
   // above) — this is that release, with its own honest cause on the LOCAL
   // record, never a borrowed one and never a canon event name.
   'taken_back',
+  // PURGE-ESSAI (founder ruling 2026-08-10): the founder RETIRED a test course
+  // from the board — the dispatch row is forgotten, so the lease it held must
+  // end, or SE-I01's authority keeps a rider and a task leased to a course
+  // that no longer exists. Its own honest cause: it is not a take-back (no
+  // course is being taken off the road for someone else to run), and borrowing
+  // 'taken_back' would put a false sentence on the audit record.
+  'retire',
 ];
 
 /**

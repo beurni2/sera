@@ -37,6 +37,22 @@ import {
   type CodesUi,
 } from './rider-codes';
 import { logisticsBase, resolveRiderCodes } from './rider-codes-port';
+import {
+  RETRAIT_IDLE,
+  aEchoue,
+  annuler,
+  avancer,
+  commencer,
+  coursesView,
+  demandeKey,
+  demander,
+  enVol,
+  etatKey,
+  terminer,
+  type CoursesRead,
+  type RetraitUi,
+} from './courses';
+import { resolveCourses } from './courses-port';
 
 /**
  * WO-6.1 — the dispatch-console RESKINNED on Grand Teint (ui-tokens v0.9.0,
@@ -388,6 +404,49 @@ style.textContent = `
   .bg-ground-done { margin: 0; color: var(--ink); background: var(--sand); border-left: var(--hair-strong) solid var(--accent-strong); padding: var(--space-xs) var(--space-sm); font-weight: ${typo.scale.bodyStrong.wght}; }
   .bg-maker-checker { margin: 0; color: var(--ink); border-left: calc(var(--hair-strong) * 2) solid var(--accent-strong); padding: var(--space-xs) var(--space-sm); font-size: var(--type-body); }
   .drill-status { margin: var(--space-md) 0 0 0; color: var(--muted); font-size: var(--type-label); font-weight: ${typo.scale.label.wght}; letter-spacing: var(--ls-label); text-transform: uppercase; }
+  /* PURGE-ESSAI — the courses desk. Retiring is DESTRUCTIVE, so its levers
+     WHISPER (the underlined secondary grammar the demo levers use) and never
+     wear the filled ink of a primary action. Only the confirmation, once he
+     has asked for it on purpose, is loud — and it is loud in danger, not in
+     accent, so it can never be mistaken for the assign button. */
+  .courses-desk { display: grid; gap: var(--space-sm); }
+  .courses-state { margin: 0; font-size: var(--type-body); color: var(--ink); }
+  .courses-hint { margin: 0; font-size: var(--type-label); color: var(--muted); }
+  .courses-notice { margin: 0; font-size: var(--type-label); color: var(--danger); }
+  .courses-row {
+    display: grid; gap: var(--space-xs); padding: var(--space-sm) 0;
+    border-bottom: var(--hair) solid var(--hairline);
+  }
+  .courses-row-order { margin: 0; font-size: var(--type-row); color: var(--ink); }
+  .courses-row-etat {
+    margin: 0; color: var(--muted); font-size: var(--type-label);
+    font-weight: ${typo.scale.label.wght}; letter-spacing: var(--ls-label); text-transform: uppercase;
+  }
+  .courses-actions { display: flex; gap: var(--space-lg); flex-wrap: wrap; padding-top: var(--space-sm); }
+  button.courses-retirer, button.courses-tout, button.courses-relire, button.courses-annuler {
+    min-height: var(--touch); border: 0; background: none; color: var(--accent-strong);
+    font-size: var(--type-label); font-weight: ${typo.scale.label.wght};
+    letter-spacing: var(--ls-label); text-transform: uppercase; text-decoration: underline;
+    cursor: pointer; padding: 0; justify-self: start;
+  }
+  button.courses-retirer:disabled, button.courses-tout:disabled, button.courses-relire:disabled {
+    color: var(--muted); cursor: not-allowed; opacity: 0.6;
+  }
+  .courses-confirme {
+    border: calc(var(--hair-strong) * 2) solid var(--danger); background: var(--paper);
+    padding: var(--space-lg); display: grid; gap: var(--space-xs);
+  }
+  .courses-confirme-titre {
+    margin: 0; color: var(--danger); font-size: var(--type-title);
+    font-weight: ${typo.scale.title.wght}; letter-spacing: var(--ls-label); text-transform: uppercase;
+  }
+  .courses-confirme-ligne { margin: 0; font-size: var(--type-body); color: var(--ink); }
+  button.courses-confirmer {
+    min-height: var(--touch); padding: 0 var(--space-xl); border: 0; border-radius: var(--radius-btn);
+    background: var(--danger); color: var(--on-ink); font-size: var(--type-row);
+    font-weight: ${typo.scale.title.wght}; letter-spacing: var(--ls-label); text-transform: uppercase;
+    cursor: pointer; justify-self: start; margin-top: var(--space-sm);
+  }
 `;
 document.head.appendChild(style);
 
@@ -925,7 +984,8 @@ if (app) {
    * no screen anywhere could mint one. The routes had existed since SE-LIVE-1
    * with no surface; the only way in was a curl carrying the ops secret.
    *
-   * ⚠ THE ONLY LIVE SECTION IN THIS CONSOLE. Everything above is sandbox. This
+   * ONE OF THE TWO LIVE SECTIONS IN THIS CONSOLE (with « Courses du
+   * tableau » above it); everything higher is sandbox. This
    * talks to the real logistics Worker, so it is gated behind the founder's own
    * key and every state it can be in is designed: not-configured, key-asked,
    * key-refused, loading, failed, empty, list.
@@ -1033,6 +1093,10 @@ if (app) {
         opsKey = typed;
         input.value = '';
         void refreshCodes();
+        // ONE key door for the whole live half of this console — the courses
+        // desk below opens on the same key, so it reads the board now rather
+        // than sitting on « entrez la clé » next to an open codes desk.
+        void refreshCourses();
       };
       open.addEventListener('click', enter);
       input.addEventListener('keydown', (e) => {
@@ -1057,6 +1121,10 @@ if (app) {
         opsKey = null;
         codesRead = { kind: 'loading' };
         renderCodes();
+        // Same one door: dropping the key closes the courses desk too, rather
+        // than leaving a board on screen that no key can act on any more.
+        coursesRead = { kind: 'loading' };
+        renderCourses();
       });
       codesSection.appendChild(again);
       return;
@@ -1178,9 +1246,211 @@ if (app) {
   }
 
   renderCodes();
-  main.append(codesHeading, codesSection);
 
+  /* ───────────── PURGE-ESSAI — LES COURSES DU TABLEAU (live) ─────────────
+   *
+   * FOUNDER RULING (2026-08-10): « remove all of them … cause i want to use
+   * new products again », and for Séra « BOARD YES, CUSTODY NO ». This is the
+   * second live section in this console: it reads the REAL `/ops/board` and
+   * lets him retire one test course at a time, on the same ops key as the
+   * codes desk above.
+   *
+   * THE DESTRUCTIVE DISCIPLINE, stated where the buttons are: retiring is
+   * NEVER the primary action here — the levers are the whispering secondary
+   * grammar. Nothing is removed without a confirmation that NAMES what leaves
+   * and says, in words, that the custody proof is untouched. « Tout retirer »
+   * is a LOOP IN THIS SCREEN over the rows he can see, one call per order, and
+   * a course that refuses is named (« cette course n'a pas pu être retirée »)
+   * instead of being skipped in silence. The board is RE-READ at the end — the
+   * desk never claims a removal it has not seen for itself.
+   */
+  const coursesHeading = document.createElement('h2');
+  coursesHeading.textContent = t('courses.section');
+  const coursesSection = document.createElement('section');
+  coursesSection.className = 'courses-desk';
 
+  let coursesRead: CoursesRead = { kind: 'loading' };
+  let retrait: RetraitUi = RETRAIT_IDLE;
+
+  const coursesPort = () => resolveCourses(opsKey ?? '');
+
+  async function refreshCourses(): Promise<void> {
+    if (opsKey === null) {
+      renderCourses();
+      return;
+    }
+    coursesRead = { kind: 'loading' };
+    renderCourses();
+    const answer = await coursesPort().board();
+    coursesRead =
+      answer.kind === 'ok'
+        ? { kind: 'ok', courses: answer.value }
+        : answer.kind === 'bad_key'
+          ? { kind: 'bad_key' }
+          : { kind: 'failed' };
+    renderCourses();
+  }
+
+  /** The sweep: ONE door call per order, in turn. A refused course is recorded
+   *  and the run carries on — losing the whole sweep to one refusal would hide
+   *  the ones that did leave. */
+  async function lancerRetrait(): Promise<void> {
+    const started = commencer(retrait);
+    if (started === null) return;
+    retrait = started.ui;
+    renderCourses();
+    for (const orderId of started.orderIds) {
+      const answer = await coursesPort().retirer(orderId);
+      retrait = avancer(retrait, orderId, answer.kind === 'ok');
+      renderCourses();
+      // A refused key ends the run: every remaining call would refuse too, and
+      // marking them all « échoué » would blame the courses for the door.
+      if (answer.kind === 'bad_key') {
+        retrait = terminer(retrait);
+        coursesRead = { kind: 'bad_key' };
+        renderCourses();
+        return;
+      }
+    }
+    retrait = terminer(retrait);
+    await refreshCourses();
+  }
+
+  function renderCourses(): void {
+    coursesSection.replaceChildren();
+
+    if (logisticsBase() === '') {
+      coursesSection.append(
+        line('courses-state', t('codes.pas_relie')),
+        line('courses-hint', t('courses.pas_relie_aide')),
+      );
+      return;
+    }
+    if (opsKey === null) {
+      coursesSection.appendChild(line('courses-state', t('courses.cle_dabord')));
+      return;
+    }
+    if (coursesRead.kind === 'bad_key') {
+      coursesSection.append(
+        line('courses-state', t('codes.cle_refusee')),
+        line('courses-hint', t('codes.cle_refusee_aide')),
+      );
+      return;
+    }
+
+    coursesSection.appendChild(line('courses-hint', t('courses.intro')));
+
+    // THE CONFIRMATION, and while it is on screen it is the only thing that
+    // can act: the row levers below render disabled, so a second tap on the
+    // course he is already being asked about cannot start a second removal.
+    const demande = retrait.demande;
+    if (demande !== null) {
+      const card = document.createElement('div');
+      card.className = 'courses-confirme';
+      card.append(
+        line('courses-confirme-titre', t(demandeKey(demande))),
+        // WHAT will leave, NAMED — every order, spelled out. A bare count
+        // ( « 3 courses » ) would ask him to confirm a number; he confirms
+        // commandes, and he must be able to recognise them.
+        line('courses-confirme-ligne', demande.orderIds.join(' · ')),
+        line('courses-confirme-ligne', t('courses.confirmer_detail')),
+        // The custody sentence is not decoration: « board yes, custody no » is
+        // the founder's own ruling, and he reads it before every removal.
+        line('courses-confirme-ligne', t('courses.confirmer_garde')),
+      );
+      const oui = document.createElement('button');
+      oui.className = 'courses-confirmer';
+      oui.textContent = t('courses.confirmer');
+      oui.addEventListener('click', () => {
+        void lancerRetrait();
+      });
+      const non = document.createElement('button');
+      non.className = 'courses-annuler';
+      non.textContent = t('courses.annuler');
+      non.addEventListener('click', () => {
+        retrait = annuler(retrait);
+        renderCourses();
+      });
+      card.append(oui, non);
+      coursesSection.appendChild(card);
+    }
+
+    // The honest in-flight line — « 2 sur 5 », never a spinner that says
+    // nothing about how far a destructive sweep has gone.
+    const encours = retrait.encours;
+    if (encours !== null) {
+      coursesSection.appendChild(
+        line('courses-state', `${t('courses.en_cours')} — ${encours.faits} ${t('courses.sur')} ${encours.total}`),
+      );
+    }
+
+    const view = coursesView(coursesRead);
+    if (view === null) return;
+    if (view.kind !== 'liste') {
+      coursesSection.appendChild(line('courses-state', t(view.message)));
+      if (view.kind === 'failed') coursesSection.appendChild(line('courses-hint', t('courses.echec_aide')));
+      if (view.kind === 'empty') coursesSection.appendChild(line('courses-hint', t('courses.vide_aide')));
+    } else {
+      const bloque = enVol(retrait) || retrait.demande !== null;
+      for (const course of view.courses) {
+        const row = document.createElement('div');
+        row.className = 'courses-row';
+        const etat =
+          course.riderName === undefined
+            ? t(etatKey(course))
+            : `${t(etatKey(course))} ${course.riderName}`;
+        row.append(line('courses-row-order', course.orderId), line('courses-row-etat', etat));
+        // A course that did NOT leave says so on its own row — never a silent
+        // skip, and never a whole-desk error that hides which one survived.
+        if (aEchoue(retrait, course.orderId)) {
+          row.appendChild(line('courses-notice', t('courses.ligne_echec')));
+        }
+        const retirer = document.createElement('button');
+        retirer.className = 'courses-retirer';
+        retirer.textContent = t('courses.retirer');
+        retirer.disabled = bloque;
+        retirer.addEventListener('click', () => {
+          retrait = demander(retrait, { kind: 'une', orderIds: [course.orderId] });
+          renderCourses();
+        });
+        row.appendChild(retirer);
+        coursesSection.appendChild(row);
+      }
+      const actions = document.createElement('div');
+      actions.className = 'courses-actions';
+      const tout = document.createElement('button');
+      tout.className = 'courses-tout';
+      tout.textContent = t('courses.tout_retirer');
+      tout.disabled = bloque;
+      tout.addEventListener('click', () => {
+        retrait = demander(retrait, { kind: 'toutes', orderIds: view.courses.map((c) => c.orderId) });
+        renderCourses();
+      });
+      actions.appendChild(tout);
+      coursesSection.appendChild(actions);
+    }
+
+    // Always a way to ask the board again — after a failed read, and after a
+    // sweep, the truth is one tap away rather than a page reload.
+    const relire = document.createElement('button');
+    relire.className = 'courses-relire';
+    relire.textContent = t('courses.relire');
+    relire.disabled = enVol(retrait);
+    relire.addEventListener('click', () => {
+      void refreshCourses();
+    });
+    coursesSection.appendChild(relire);
+  }
+
+  renderCourses();
+  /**
+   * THE COURSES DESK SITS ABOVE THE CODES DESK, AND BOTH SIT AT THE BOTTOM.
+   * A dispatcher's screen is ordered by urgency and neither of these is live
+   * work: one cleans the board, the other hands out identities. The codes desk
+   * stays LAST (its own e2e pins that), and this one lands just above it — the
+   * two administrative sections together, under everything operational.
+   */
+  main.append(coursesHeading, coursesSection, codesHeading, codesSection);
 
   // The REAL service-side deadline, ONE sweep for BOTH stores (WO-4.3).
   setInterval(() => {

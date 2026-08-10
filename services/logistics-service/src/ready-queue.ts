@@ -207,6 +207,34 @@ export class ReadyQueue {
     return [...this.tasks.values()].filter((q) => q.status === 'queued');
   }
 
+  /**
+   * PURGE-ESSAI (founder ruling 2026-08-10) — the founder clears a TEST order
+   * off the board. Every task row this order ever had leaves the queue,
+   * whatever its status: a `closed_taken_back` row is exactly as much residue
+   * on his board as a `queued` one.
+   *
+   * This is a FORGET, not a closure — the closure statuses above all keep the
+   * row so nothing resurrects it; here the row itself goes, so there is
+   * nothing left to resurrect. The caller (LeasedDispatch.forgetOrder) is what
+   * keeps the lease and the book in step; this store only forgets its own.
+   *
+   * ⚠ `processedCommandIds` IS DELIBERATELY LEFT INTACT. It is the idempotency
+   * ledger, and one command id can legitimately name tasks of two different
+   * orders (a founder re-running a saved compose against a second order falls
+   * through the correlation replay lookup and admits a fresh task under the
+   * same id). Dropping ids here would weaken dedupe for an order nobody
+   * purged. Nothing is stranded by keeping them: `onTaskReady`'s replay branch
+   * already falls through to a fresh admission when no LIVE task matches, and
+   * after this purge no task matches at all.
+   */
+  forgetOrder(orderId: string): string[] {
+    const taskIds = [...this.tasks.entries()]
+      .filter(([, queued]) => queued.orderId === orderId)
+      .map(([taskId]) => taskId);
+    for (const taskId of taskIds) this.tasks.delete(taskId);
+    return taskIds;
+  }
+
   /** SE-LIVE-1 — durable composition, ADDITIVE ONLY: the LogisticsDO persists
    * this store as a plain snapshot and rebuilds it on wake. The snapshot is
    * the WHOLE truth of this store; no admission behavior changes. */

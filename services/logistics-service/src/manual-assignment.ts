@@ -406,6 +406,32 @@ export class AssignmentBook {
     return this.assignments.get(assignmentId);
   }
 
+  /**
+   * PURGE-ESSAI (founder ruling 2026-08-10) — every assignment this order ever
+   * carried leaves the book, whatever its status, and the removed records are
+   * RETURNED so the orchestrator can release what they hold: the witness ref
+   * on each one, and the lease at THE authority. A purge that dropped the row
+   * and left the lease active would strand SE-I01's authority — the rider
+   * would read `assignable` on the board and be refused `rider_already_leased`
+   * at the door for ever. That is why this method hands the records back
+   * instead of swallowing them.
+   *
+   * Custody is untouched, by construction: this store has never held a custody
+   * surface (Ten Laws #3). A purge here removes a DISPATCH row; whatever the
+   * custody ledger recorded stays recorded, on its own append-only chain.
+   *
+   * ⚠ `appliedCommandIds` IS DELIBERATELY LEFT INTACT — the same reasoning as
+   * the queue's dedupe set. `assign()`'s replay law already re-evaluates when
+   * the remembered assignment is no longer active, and a forgotten record
+   * reads exactly as « not active »: a replayed command lands on a fresh
+   * evaluation, never on a dead outcome.
+   */
+  forgetOrder(orderId: string): AssignmentRecord[] {
+    const removed = [...this.assignments.values()].filter((a) => a.orderId === orderId);
+    for (const record of removed) this.assignments.delete(record.assignmentId);
+    return removed;
+  }
+
   /** SE-LIVE-1 — durable composition, ADDITIVE ONLY: full-store snapshot for
    * the LogisticsDO (AssignOutcome carries only JSON-plain data, including
    * the canonical event). No assignment rule above changes. */

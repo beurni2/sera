@@ -718,5 +718,143 @@
     "fr": "Renseignez l'adresse du service pour ouvrir les codes coursiers.",
     "register": "neutral",
     "screenClass": "instruction"
+  },
+  {
+    "key": "courses.section",
+    "fr": "Courses du tableau",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "courses.intro",
+    "fr": "Ce que Séra a vraiment sur le tableau.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "courses.pas_relie_aide",
+    "fr": "Renseignez l'adresse du service pour voir le tableau.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "courses.cle_dabord",
+    "fr": "Entrez la clé plus haut pour voir le tableau.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "courses.chargement",
+    "fr": "Un instant…",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "courses.echec",
+    "fr": "Le tableau n'a pas répondu.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "courses.echec_aide",
+    "fr": "Vérifiez la connexion, puis réessayez.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "courses.vide",
+    "fr": "Aucune course sur le tableau.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "courses.vide_aide",
+    "fr": "Le tableau est propre.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "courses.etat_attente",
+    "fr": "En attente d'un coursier",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "courses.etat_confiee",
+    "fr": "Confiée à",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "courses.retirer",
+    "fr": "Retirer",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "courses.tout_retirer",
+    "fr": "Tout retirer",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "courses.confirmer_une",
+    "fr": "Retirer cette course du tableau ?",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "courses.confirmer_toutes",
+    "fr": "Retirer toutes les courses du tableau ?",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "courses.confirmer_detail",
+    "fr": "La course, le coursier et les signaux de cette commande quittent le tableau.",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "courses.confirmer_garde",
+    "fr": "La preuve de garde n'est pas touchée.",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "courses.confirmer",
+    "fr": "Oui, retirer",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "courses.annuler",
+    "fr": "Annuler",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "courses.en_cours",
+    "fr": "Retrait en cours",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "courses.sur",
+    "fr": "sur",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "courses.ligne_echec",
+    "fr": "Cette course n'a pas pu être retirée.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "courses.relire",
+    "fr": "Relire le tableau",
+    "register": "neutral",
+    "screenClass": "label"
   }
 ]

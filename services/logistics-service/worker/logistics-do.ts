@@ -883,6 +883,106 @@ export class LogisticsDO {
       });
     }
     /**
+     * ═══ PURGE-ESSAI — THE FOUNDER RETIRES ONE TEST COURSE FROM THE BOARD ═══
+     *
+     * FOUNDER RULING (2026-08-10): « products on my ops console and suppliers
+     * console that i used for the testing, remove all of them … cause i want
+     * to use new products again », and, asked what Séra should clear:
+     * « BOARD YES, CUSTODY NO ». So this door clears the DISPATCH board for
+     * ONE order and touches no custody record — the custody ledger is
+     * append-only proof on no console (Ten Laws #3), and nothing here can
+     * reach it.
+     *
+     * It also finally answers the journalled debt « the Séra dispatch board
+     * does not clear on course completion »: a delivered or abandoned test
+     * course had no exit at all, so it sat on the board for ever.
+     *
+     * ⚠ ONE ORDER PER CALL, ON PURPOSE. There is no « retirer tout » on this
+     * server, and there must not be: a single command that could empty the
+     * whole board is one fat finger away from erasing a live one. The console
+     * loops its own visible rows and calls this door once per order, so every
+     * removal is a named, individually refusable act.
+     *
+     * WHAT LEAVES (for this orderId and nothing else): every queue task row
+     * whatever its status · every assignment, with its witness ref revoked and
+     * its lease released at THE authority (cause 'retire' — a stranded lease
+     * would leave the rider unassignable for ever, SE-I01) · the ramassage and
+     * machine-pickup-code entries of those assignments · the course brief ·
+     * the custody-produce outbox row · AND BOTH PROJECTION FACTS. Without the
+     * last two the order walks straight back onto `/ops/a-preparer` as
+     * composable and the purge means nothing.
+     *
+     * WHAT STAYS: rider registry rows, rider codes, SOS incidents, the lease
+     * HISTORY (append-only, and only ACTIVE leases are ever consulted), the
+     * dedupe ledgers, and every other order's everything.
+     *
+     * ⚠ TWO HONEST BOUNDS, STATED RATHER THAN HIDDEN. (1) If the producers
+     * (Shop+ funding, Boutik+ readiness) re-post their at-least-once facts for
+     * a retired order, the order reappears on `/ops/a-preparer` — this door
+     * clears Séra's copy, it cannot un-say what an upstream service keeps
+     * saying. (2) If the custody chain already opened for this order, it stays
+     * open on the custody Worker: that is exactly what « board yes, custody
+     * no » means, and the console's confirmation says so before the tap.
+     *
+     * `command_id` is REQUIRED for shape-consistency with every ops door and
+     * is deliberately UNUSED — idempotency here is by STATE: a re-run finds
+     * nothing left and answers `inconnu` 200, which is strictly stronger for a
+     * one-way act. An order the book never knew answers the SAME `inconnu`, so
+     * a re-run of the console's sweep converges instead of erroring.
+     */
+    if (request.method === 'POST' && pathname === '/ops/order/retirer') {
+      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      if (body === null || !isStr(body['command_id']) || !isStr(body['orderId'])) return malformed();
+      const orderId = (body['orderId'] as string).trim();
+      const hasTask = this.queue.snapshot().tasks.some(([, queued]) => queued.orderId === orderId);
+      const hasAssignment = this.book.snapshot().assignments.some(([, record]) => record.orderId === orderId);
+      const hasFunding = this.fundingFacts[orderId] !== undefined;
+      const hasReadiness = this.readinessFacts[orderId] !== undefined;
+      const hasOutbox = this.custodyOutbox[orderId] !== undefined;
+      if (!hasTask && !hasAssignment && !hasFunding && !hasReadiness && !hasOutbox) {
+        return Response.json({ ok: true, status: 'inconnu' });
+      }
+      // Book + queue + lease + witness move together — the orchestrator owns
+      // that trio, never this route reaching behind a core's back.
+      const swept = await this.dispatch.forgetOrder(orderId);
+      let briefs = 0;
+      for (const taskId of swept.taskIds) {
+        if (this.briefs[taskId] === undefined) continue;
+        delete this.briefs[taskId];
+        briefs += 1;
+      }
+      let ramassage = 0;
+      let codesVerification = 0;
+      for (const assignment of swept.assignments) {
+        if (this.ramassage[assignment.assignmentId] !== undefined) {
+          delete this.ramassage[assignment.assignmentId];
+          ramassage += 1;
+        }
+        if (this.codesVerification[assignment.assignmentId] !== undefined) {
+          delete this.codesVerification[assignment.assignmentId];
+          codesVerification += 1;
+        }
+      }
+      if (hasOutbox) delete this.custodyOutbox[orderId];
+      if (hasFunding) delete this.fundingFacts[orderId];
+      if (hasReadiness) delete this.readinessFacts[orderId];
+      return Response.json({
+        ok: true,
+        status: 'retire',
+        removed: {
+          tasks: swept.taskIds.length,
+          assignments: swept.assignments.length,
+          leases: swept.leasesReleased,
+          briefs,
+          ramassage,
+          codesVerification,
+          custodyOutbox: hasOutbox ? 1 : 0,
+          funding: hasFunding ? 1 : 0,
+          readiness: hasReadiness ? 1 : 0,
+        },
+      });
+    }
+    /**
      * ═══ SE-LIVE-2c — THE FOUNDER COMPOSES THE DELIVERY TASK ═══
      *
      * FOUNDER RULING (2026-08-06, option 1): the buyer gives Shop+ only
