@@ -32,7 +32,9 @@
     "@babel/core": "^7.25.2",
     "@platform/i18n": "git+https://github.com/beurni2/platform-contracts.git#199bc2ab172dbbf93b446af35445e17f5a0f3f35&path:packages/i18n",
     "@types/react": "~19.1.0",
+    "@types/react-test-renderer": "^19.1.0",
     "babel-preset-expo": "~54.0.11",
+    "react-test-renderer": "19.1.0",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"
   }

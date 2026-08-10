@@ -9,6 +9,38 @@ Format per entry:
 
 ---
 
+## 2026-08-10 · RENDU-RÉEL — the rider's screens can be DRIVEN now, not just read · IN-REVIEW (branch, awaiting founder)
+**Founder (2026-08-10):** « Yes go ahead and do it » — the gap I had named three times in one day.
+
+**THE GAP, STATED PLAINLY.** `apps/rider-app` had no vitest config and no renderer. Every one of its 398 tests was a source scan or a pure-model unit, so **no test in this repo had ever mounted a screen.** Three bugs shipped through that hole today, all the same shape — a screen that renders and cannot be used:
+- a throw inside a passive effect that unmounted the whole tree (« écran blanc » — the founder's own report);
+- an act that fires by itself and can never fire again, leaving « Réessayez » over nothing to tap (twice: the seal, then the door bundle);
+- a dep array trimmed to `[WIRED]`, which would have stopped the seal firing for **every rider alive**, with the board green (the verifier's mutation).
+Each was caught by a person or a verifier. None by the suite. « Is the string in the file » cannot see any of them, because all three are React semantics.
+
+**WHAT WAS BUILT**
+- `vitest.config.ts` — the first one this app has had. It aliases **native boundaries only**: `react-native`, `react-native-svg`, and four `expo-*`. **No app code is aliased** — `App.tsx`, the ports, the parsers, the models and the catalog under test are the shipped files.
+- `test/doubles/*` — the doubles, each with its bound written at the top. The react-native one provides component identity, prop pass-through and the press/change handlers, **and nothing else**: no layout, no styling, no measurement. A test written on it may never claim appearance, and `test/rendu-harness.test.ts` asserts that warning is still legible, sweeps every `from 'react-native'` import in the app tree against the double's exports, and fails if one is missing — so a new import cannot arrive as `undefined` and render nothing while tests pass over the hole.
+- `test/rendu.tsx` — the harness. Mounts the real App, drives it by pressing and typing, and **fakes only `globalThis.fetch`**. So a test here exercises screen → state → real port → wire → real bounded parser → screen: every layer above the Worker. It refuses ambiguity by design — `press` throws naming what IS on screen, and a control with no `onPress` throws by name, because « the button is not there » and « the button did nothing » must never look the same.
+- `test/rendu-course.test.tsx` — the rider's day, walked: sign in → accept → the checklist → the wait for the supplier → the poll that brings his confirmation → the seal firing itself → the road → arrival → the buyer's code → « Livré ».
+
+**⚠ THREE THINGS THE HARNESS TAUGHT ME WHILE I BUILT IT — each one a §9.8 in miniature, found because the screen refused to lie:**
+1. **My own fake failed contract-certification.** I wrote `chain: { taskId, packageId }`; the Worker sends `task_id` / `package_id`, which is what `deliveryChainOf` reads. The door screen answered « il manque des repères » until I matched the real shape. Every status string in that fake is now the one `custody-do.ts` actually sets.
+2. **A control is anything with an `onPress`, not a `Pressable`.** The checklist's « Oui »/« Non » are `<Text onPress accessibilityRole="button">`. My first harness could not see them — « the rider can answer the checks » would have been unprovable while looking fine.
+3. **`require('expo-audio')` had to be hooked at MODULE RESOLUTION.** Vite hands the app a real Node `require`, so a `globalThis` shim is never consulted: the call reached node_modules, died on `ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`, was swallowed by the resolver's own catch, and the screen showed « cette version ne peut pas la lire ». Green, and proving nothing — **the écran blanc would have sat outside its own harness.** `Module._load` is hooked instead, which is where Metro puts the native module.
+
+**⚠ AND THE `expo-audio` DOUBLE IS DELIBERATELY HARSH.** `release()` detaches and every native call after it throws, exactly as expo-modules-core documents and the native sources do. A kinder double would make the founder's crash unreproducible, which would defeat the entire slice.
+
+**EVIDENCE — THREE MUTATIONS, each anchor confirmed matched before running:**
+- **G — the original `detach()` restored** (`pause → release → remove`): the écran-blanc test goes RED with the real native error, `Unable to find the native object associated with the given JavaScript object (remove)`, thrown on the accept tap. **The founder's bug, reproduced in CI.**
+- **H — the seal effect's deps trimmed to `[WIRED]`**: **5 red**, and the failure message is the symptom itself — the rider frozen on « Séra enregistre le scellé / Un instant. La route s'ouvre juste après. » The old source-scan caught this by matching dep-array TEXT; this catches it by the rider being stuck.
+- **I — the door retry's `unauthorized` clause removed** (the verifier's BLOCKER-1): RED on « no control labelled Réessayer », with the dead-end screen printed in the failure.
+- Board: rider-app **408/408 across 45 files** (up from 398/42) · `pnpm test` 15/15 tasks · `pnpm typecheck` 11/11 · `bash scripts/run-gates.sh` **ALL GATES GREEN**.
+
+**WHAT THIS DOES NOT COVER, said rather than implied:** appearance (unchanged — the token-fidelity, contrast and anatomy scans keep that job, and the founder's eyes keep the rest); the demo/unwired tree; and the Workers themselves, which remain the miniflare seam tests' job. The harness is one layer, and it is the layer that was missing.
+
+**Pending:** the ONE verifier pass, then merge + deploy approval. **No deploy is needed for this slice** — it is tests and test infrastructure only; no product code changed.
+
 ## 2026-08-10 · PORTE-SANS-PHOTO — the door loses its camera; the buyer's code is what releases · IN-REVIEW (branch, awaiting founder)
 **Founder (2026-08-10):** « merge and deploy and for the door photo I want it gone, and yes for the preview trap make it fail ». The merge + all three deploys are done (see the ROUTE-DIRECTE entry below); this is the door photo and the preview gate.
 
