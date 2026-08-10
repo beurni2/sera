@@ -9,6 +9,19 @@ Format per entry:
 
 ---
 
+## 2026-08-10 · STANDING ORDER — the screen is DRIVEN, never only read · LAW
+**Founder:** « Make it a law from now on every build and fix should uses this tool for tests before merge and deploy ask. »
+
+Written into `§6bis` of `CLAUDE.md` and `AGENTS.md` in **all four repos**, byte-identical (`b0c23c14`), in one commit each — the parity rule of §6.
+
+**What it says, in short:** any build or fix touching a user-facing screen ends with a RENDU-RÉEL walk — mount the real screen, press the real controls, assert the person reaches the next step — before merge and deploy are asked for. It names the four questions a walk must answer, requires a walk for every new screen in the same slice that builds it, and requires that **every screen bug the founder reports gets its walk written FIRST, red, before the fix.** Its bound is absolute: it may never claim anything about appearance. Where no harness exists yet (Boutik+ supplier app, Shop+ buyer PWA, Séra dispatch console) the first slice touching a screen there builds the equivalent, or says in the report that it did not and why.
+
+**The slice sequence is now:** tests + typecheck + gate board green → **the screen walk** → the end-to-end seam test against the real service → the ONE fresh-context verifier pass → commit + push → report, then WAIT.
+
+**Why he gave it:** one day, three bugs, all reaching his hand through a fully green board — the white screen on « Accepter », an automatic act with no retry (twice), and a dep array that would have stopped the seal firing for every rider. None visible to a source scan.
+
+---
+
 ## 2026-08-10 · RENDU-RÉEL — the rider's screens can be DRIVEN now, not just read · IN-REVIEW (branch, awaiting founder)
 **Founder (2026-08-10):** « Yes go ahead and do it » — the gap I had named three times in one day.
 
