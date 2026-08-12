@@ -671,6 +671,66 @@ export class LogisticsDO {
       this.registry.register({ ...existing, certified: body['certified'] as boolean });
       return Response.json({ ok: true, rider: this.registry.rider(existing.riderId) });
     }
+    /**
+     * ═══ RETIRER UN COURSIER — the roster removal (founder, 2026-08-12) ═══
+     *
+     * « add a way to remove riders as well on coursiers. » The desk could
+     * revoke a CODE — lock them out, keep the row — and had no way to erase the
+     * row itself. This is the second act, and it is the destructive one.
+     *
+     * ⚠ IT REFUSES A RIDER WHO IS CARRYING, BY NAME. Law 3: one current
+     * custodian. Removing a rider mid-course would leave a parcel whose
+     * custodian does not exist — unowned, and unassignable to anyone else,
+     * because `ridersCarrying()` is exactly the set the assign path consults.
+     * That is the stranding the rider app paid for this week, and it is not
+     * being rebuilt on the ops side. `rider_carrying` is a NAMED refusal, never
+     * a generic failure, so the desk can say WHY and he can act on it: end the
+     * course, or hand the custody over, THEN remove.
+     *
+     * THE CODE DIES WITH THE ROSTER ROW. A one-time code that outlived its
+     * rider would be a live credential belonging to nobody — it authenticates
+     * by hash, so it would keep working. Both keys go in the same act; the
+     * revoke route's own two-key delete is mirrored here rather than called, so
+     * a removal is ONE storage write and cannot half-happen.
+     */
+    if (request.method === 'POST' && pathname === '/ops/riders/remove') {
+      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      if (body === null || !isStr(body['riderId'])) return malformed();
+      const riderId = (body['riderId'] as string).trim();
+      if (this.registry.rider(riderId) === undefined) {
+        return Response.json({ ok: false, reason: 'unknown_rider' }, { status: 404 });
+      }
+      if (this.ridersCarrying().has(riderId)) {
+        return Response.json({ ok: false, reason: 'rider_carrying' }, { status: 409 });
+      }
+      /**
+       * ⚠ THE BOUND OF THIS GUARD, STATED. `ridersCarrying()` reads the
+       * ASSIGNMENT BOOK — the same active set the assign path consults — and
+       * that is the whole custody signal THIS service holds. Package-level
+       * custody lives in custody-service, and logistics cannot see it: I first
+       * wrote a second check against `shift().heldPackageIds` and the typecheck
+       * refused it, because that field is on the SE3.2 end-shift DECLARATION,
+       * not on `ShiftState`. Guessing a field into existence to look thorough
+       * is worse than one guard that is real.
+       *
+       * What that leaves: a rider with no live assignment but an unresolved
+       * package hand-off would pass here. The end-shift path already refuses
+       * `custody_would_be_orphaned` for exactly that case, so such a rider
+       * cannot be off-shift-and-holding through the front door — but this is
+       * named rather than assumed away, and closing it properly means asking
+       * custody-service, which is its own slice.
+       */
+      const code = await this.state.storage.get<{ hash: string }>(`${RIDERCODE_PREFIX}${riderId}`);
+      const keys = [`${RIDERCODE_PREFIX}${riderId}`];
+      if (code !== undefined) keys.push(`${CODEHASH_PREFIX}${code.hash}`);
+      await this.state.storage.delete(keys);
+      this.registry.remove(riderId);
+      // No explicit persist: `fetch` persists after EVERY non-GET (see the
+      // wrapper), which is why `/ops/riders` and `/ops/riders/certify` do not
+      // call it either. A second write here would be a second durable put for
+      // one act.
+      return Response.json({ ok: true, status: 'removed', codeRevoked: code !== undefined });
+    }
     if (request.method === 'GET' && pathname === '/ops/riders') {
       // Same `assignable` semantics as the board — one meaning, both doors.
       const carrying = this.ridersCarrying();

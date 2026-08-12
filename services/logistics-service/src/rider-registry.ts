@@ -82,6 +82,37 @@ export class RiderRegistry {
     if (!this.shifts.has(record.riderId)) this.shifts.set(record.riderId, { status: 'off_shift' });
   }
 
+  /**
+   * ═══ RETIRER UN COURSIER — remove a rider from the roster ═══
+   *
+   * Founder, 2026-08-12: « add a way to remove riders as well on coursiers. »
+   * The desk could already REVOKE a rider's code — which locks them out while
+   * leaving them on the roster, the exact distinction the supplier desk drew
+   * between cutting access and erasing. This is the second act.
+   *
+   * ⚠ THE CALLER MUST REFUSE A RIDER WHO STILL HOLDS CUSTODY. This method is
+   * the store's mechanical delete and knows nothing about the assignment book;
+   * « one current custodian » (Law 3) is enforced at the ROUTE, where the book
+   * is readable. A rider removed mid-course would leave a parcel whose
+   * custodian does not exist — the parcel unowned and dispatch unable to
+   * reassign it, which is the same stranding the rider app just paid for.
+   *
+   * THE CUSTODY EXCEPTION LOG IS NOT TOUCHED, deliberately. Those entries are
+   * AUDIT EVIDENCE of a custody hand-off that really happened, naming the
+   * dispatcher who acknowledged it and the package's next owner. Erasing them
+   * with the rider would destroy the proof that the hand-off was lawful — the
+   * record outlives the roster row, exactly as a settlement record outlives a
+   * quote.
+   *
+   * Answers whether anything was removed, so the caller can tell « removed »
+   * from « there was nobody by that name » and never report a phantom act.
+   */
+  remove(riderId: string): boolean {
+    const existed = this.riders.delete(riderId);
+    this.shifts.delete(riderId);
+    return existed;
+  }
+
   acknowledgePrivacyNotice(riderId: string, noticeVersion: string, ackAt: string): boolean {
     const rider = this.riders.get(riderId);
     if (!rider) return false;
