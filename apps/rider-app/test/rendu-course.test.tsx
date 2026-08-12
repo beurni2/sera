@@ -297,6 +297,36 @@ describe('⚠ PORTE-SANS-PHOTO — arrival goes straight to the buyer’s code',
     expect(s.shows('Livré. Merci.')).toBe(true);
   });
 
+  /**
+   * ═══ AND IT IS NOT A DEAD END (verifier BLOCKER, 2026-08-12) ═══
+   *
+   * « Livré. Merci. » was the last thing a real rider could do. The celebration's
+   * only handler was `() => void 0`, there is no timer, the stack is `[START]` so
+   * the header carries no back, and the footer and tab bar are `!WIRED`. Every
+   * delivery ended on an inert screen whose only live control was SOS.
+   *
+   * The first fix edited the `delivered` screen — which lives in the DEMO arm and
+   * a wired build never renders. This walk mounts the WIRED tree, which is the
+   * one a rider installs, and presses the way out.
+   */
+  it('⚠ « Livré. Merci. » is NOT a dead end — the rider closes it and is back in service', async () => {
+    const state = freshCourse();
+    const { s } = await toTheDoor([logistics(state), custody()], state);
+    await s.type(DROP);
+    await s.press('Confirmer la remise');
+    expect(s.shows('Livré. Merci.'), 'the delivery landed').toBe(true);
+
+    // The screen SAYS where the tap lands, before he taps it.
+    expect(s.shows('Vous revenez en service, prêt pour une autre course.')).toBe(true);
+    // …and the way out is present AND pressable — not a hidden gesture on a scrim.
+    expect(s.canPress('Terminer cette course'), 'a named way out must be tappable').toBe(true);
+    await s.press('Terminer cette course');
+
+    // The celebration is gone: he is back on his live view, available.
+    expect(s.shows('Livré. Merci.'), 'the closing screen was left, not repainted').toBe(false);
+    s.unmount();
+  });
+
 
   it('⚠ a ROTATED rider code at the door is not a dead end — the verifier’s blocker, driven', async () => {
     const state = freshCourse();

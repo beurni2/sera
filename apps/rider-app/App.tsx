@@ -1817,8 +1817,42 @@ export default function App() {
                      * sentence, not an error wall.
                      */
                     dropDone(dropPhase) ? (
+                      /**
+                       * ═══ THE END OF A COURSE HAD NO WAY OUT (verifier BLOCKER,
+                       *     2026-08-12) — AND IT WAS THE SHIPPED BUILD ═══
+                       *
+                       * Founder: « once delivery … is confirmé … make it close
+                       * nicely and return to the initial state waiting for
+                       * another order. » The first attempt edited the `delivered`
+                       * screen — which lives in the DEMO arm of this tree and is
+                       * never rendered by a wired build. THIS is the screen a
+                       * real rider reaches, and it was a dead end: the
+                       * celebration's only handler was `() => void 0`, there is
+                       * no timer, the stack is `[START]` so the header carries no
+                       * back, and the footer and tab bar are both `!WIRED`. After
+                       * every real delivery the only live control left on screen
+                       * was SOS.
+                       *
+                       * Clearing the act's phase is what closes it: this arm is
+                       * chosen by `dropDone(dropPhase)`, so returning the phase to
+                       * idle returns him to his live view — in a wired build that
+                       * IS the waiting state, since the whole tree is one screen
+                       * driven by `/rider/moi`.
+                       *
+                       * TWO WAYS OUT ON PURPOSE, and neither is a hidden gesture:
+                       * the scrim still answers a tap (it always looked like it
+                       * should), and a NAMED primary button says what it does. A
+                       * screen whose only exit is « tap somewhere » is the same
+                       * failure one step quieter.
+                       */
                       <FasoCard>
-                        <FasoCelebration label={t('delivery.done')} sublabel={t('delivery.done_next')} onDone={() => void 0} />
+                        <FasoCelebration
+                          label={t('delivery.done')}
+                          sublabel={t('delivery.done_next')}
+                          onDone={() => setDropPhase(ACT_IDLE)}
+                        />
+                        <Text style={styles.deliveredRetour}>{t('delivered.retour_service')}</Text>
+                        <FasoPrimaryButton label={t('delivered.fermer')} onPress={() => setDropPhase(ACT_IDLE)} />
                       </FasoCard>
                     ) : (
                       <>
