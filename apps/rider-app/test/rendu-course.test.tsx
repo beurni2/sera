@@ -297,6 +297,7 @@ describe('⚠ PORTE-SANS-PHOTO — arrival goes straight to the buyer’s code',
     expect(s.shows('Livré. Merci.')).toBe(true);
   });
 
+
   it('⚠ a ROTATED rider code at the door is not a dead end — the verifier’s blocker, driven', async () => {
     const state = freshCourse();
     let evidences = 0;

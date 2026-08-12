@@ -1287,6 +1287,12 @@ export default function App() {
   // « Retour aux courses » lands here, so the list can never sit above a stale
   // course screen (the verifier's push-then-pop route).
   const toCourses = useCallback(() => setStack([START, 'courses']), []);
+  /**
+   * BACK TO WAITING — `service` is the rider's initial, available state, and
+   * `setStack([START])` makes it the WHOLE stack: nothing of the finished course
+   * is left behind to pop back into. The delivered screen's one action uses it.
+   */
+  const enService = useCallback(() => setStack([START]), []);
   const back = useCallback(() => {
     // WO-4.1 rule (journaled; a TOTAL rule after two verifier findings — stale
     // in-course screens must be unreachable BY CONSTRUCTION): a course's truth
@@ -2745,7 +2751,21 @@ export default function App() {
                 <ProofLine label={t('delivered.proof_code')} />
               </FasoCard>
               <FasoQuoteRule>{t('delivered.no_money')}</FasoQuoteRule>
-              <FasoSecondaryButton label={t('nav.retour_courses')} onPress={toCourses} />
+              {/* ═══ THE COURSE CLOSES, AND HE IS BACK IN SERVICE ═══
+                  Founder, 2026-08-12: « once delivery and everything is confirmé
+                  … make it close nicely and return to the initial state waiting
+                  for another order for rider's sera app. »
+
+                  This was « Retour aux courses » — a SECONDARY button onto the
+                  LIST, which left the finished course as one row among others
+                  and made him navigate himself back to being available. The
+                  proof above is unchanged and still his to read; what changed is
+                  the way out. It is now the PRIMARY action, it says what it does
+                  before he taps it, and it lands on `service` — the waiting
+                  screen — because that is the state a rider who has just
+                  delivered is actually in. */}
+              <Text style={styles.deliveredRetour}>{t('delivered.retour_service')}</Text>
+              <FasoPrimaryButton label={t('delivered.fermer')} onPress={enService} />
             </FpIn>
           )}
           </>
@@ -2939,6 +2959,9 @@ const styles = StyleSheet.create({
   refuseNoteText: { color: FASO.dangerFg, fontSize: T.body.size, lineHeight: T.body.size * T.body.lh, fontWeight: '600' },
   validRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   validHead: { alignItems: 'center', gap: spacing.sm, paddingTop: spacing.md },
+  // The sentence above the closing action — quiet, centred, on the same tokens
+  // as every other supporting line here. It says where the tap lands.
+  deliveredRetour: { textAlign: 'center', color: FASO.sub, paddingHorizontal: spacing.md },
   verifyHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingBottom: spacing.sm, borderBottomWidth: interaction.hairline.thin, borderBottomColor: FASO.hairline },
   verifyHeadName: { flex: 1, fontWeight: '700' },
   proofList: { gap: spacing.sm },
