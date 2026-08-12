@@ -1630,5 +1630,17 @@
     "fr": "Réessayez dans un instant. Si rien ne change, appelez Séra.",
     "register": "neutral",
     "screenClass": "instruction"
+  },
+  {
+    "key": "delivered.fermer",
+    "fr": "Revenir en service",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "delivered.retour_service",
+    "fr": "Vous revenez en service, prêt pour une autre course.",
+    "register": "neutral",
+    "screenClass": "status"
   }
 ]

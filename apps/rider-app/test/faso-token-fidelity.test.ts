@@ -45,3 +45,43 @@ describe('WO-FP-SERA — token fidelity: zero hand-copied hex on the Faso compon
     expect(planted.match(HEX)).toContain('#D9A441');
   });
 });
+
+
+describe('FIN-DE-COURSE — the delivered supporting line owns NO type of its own', () => {
+  /**
+   * The verifier caught `deliveredRetour` shipping with colour and spacing
+   * tokens but NO type token — so the sentence fell to RN's 14 dp default while
+   * `proofText` beside it read at 16, under a comment claiming the opposite.
+   * The fix was not to hand-roll fontSize (the snowflake rule 5 forbids) but to
+   * render the line through `FasoBody`, the kit component that owns the scale.
+   *
+   * This pin lives HERE and not in a walk on purpose: the standing order bans
+   * walks from claiming anything about appearance, and type size is appearance.
+   * Token-fidelity is the named home for that class of check.
+   */
+  const app = () => stripComments(readFileSync(join(appDir, 'App.tsx'), 'utf8'));
+
+  it('the retour_service line renders through FasoBody — the scale comes from the kit, never the style', () => {
+    const demoLine = /<FasoBody style=\{styles\.deliveredRetour\}>\{t\('delivered\.retour_service'\)\}<\/FasoBody>/.test(app());
+    expect(demoLine, 'the demo delivered line left FasoBody — RN default type is back').toBe(true);
+    // and no bare-Text rendering of that string survives anywhere
+    expect(/<Text[^>]*>\{t\('delivered\.retour_service'\)\}/.test(app())).toBe(false);
+  });
+
+  it('deliveredRetour carries only its deltas — no hand-rolled type, which would be the snowflake', () => {
+    const style = /deliveredRetour:\s*\{([^}]*)\}/.exec(app())?.[1] ?? 'STYLE NOT FOUND';
+    expect(style).not.toBe('STYLE NOT FOUND');
+    for (const interdit of ['fontSize', 'lineHeight', 'fontFamily', 'fontWeight']) {
+      expect(style.includes(interdit), `deliveredRetour hand-rolls ${interdit} — FasoBody owns the type`).toBe(false);
+    }
+  });
+
+  it('the WIRED ending goes through the celebration action, whose note takes the body scale in the kit', () => {
+    // The wired arm hands its sentence to <FasoCelebration actionNote=...>; the
+    // kit's celNote must resolve type through ty('body', ...) — same scale, one owner.
+    expect(/actionNote=\{t\('delivered\.retour_service'\)\}/.test(app())).toBe(true);
+    const kit = stripComments(readFileSync(join(appDir, 'src/ui/faso-kit.tsx'), 'utf8'));
+    const celNote = /celNote:\s*\{([^}]*)\}/.exec(kit)?.[1] ?? 'STYLE NOT FOUND';
+    expect(celNote.includes("ty('body'"), 'celNote no longer takes the body scale from the bridge').toBe(true);
+  });
+});

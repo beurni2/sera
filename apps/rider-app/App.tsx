@@ -1287,6 +1287,12 @@ export default function App() {
   // « Retour aux courses » lands here, so the list can never sit above a stale
   // course screen (the verifier's push-then-pop route).
   const toCourses = useCallback(() => setStack([START, 'courses']), []);
+  /**
+   * BACK TO WAITING — `service` is the rider's initial, available state, and
+   * `setStack([START])` makes it the WHOLE stack: nothing of the finished course
+   * is left behind to pop back into. The delivered screen's one action uses it.
+   */
+  const enService = useCallback(() => setStack([START]), []);
   const back = useCallback(() => {
     // WO-4.1 rule (journaled; a TOTAL rule after two verifier findings — stale
     // in-course screens must be unreachable BY CONSTRUCTION): a course's truth
@@ -1811,8 +1817,42 @@ export default function App() {
                      * sentence, not an error wall.
                      */
                     dropDone(dropPhase) ? (
+                      /**
+                       * ═══ THE END OF A COURSE HAD NO WAY OUT (verifier BLOCKER,
+                       *     2026-08-12) — AND IT WAS THE SHIPPED BUILD ═══
+                       *
+                       * Founder: « once delivery … is confirmé … make it close
+                       * nicely and return to the initial state waiting for
+                       * another order. » The first attempt edited the `delivered`
+                       * screen — which lives in the DEMO arm of this tree and is
+                       * never rendered by a wired build. THIS is the screen a
+                       * real rider reaches, and it was a dead end: the
+                       * celebration's only handler was `() => void 0`, there is
+                       * no timer, the stack is `[START]` so the header carries no
+                       * back, and the footer and tab bar are both `!WIRED`. After
+                       * every real delivery the only live control left on screen
+                       * was SOS.
+                       *
+                       * Clearing the act's phase is what closes it: this arm is
+                       * chosen by `dropDone(dropPhase)`, so returning the phase to
+                       * idle returns him to his live view — in a wired build that
+                       * IS the waiting state, since the whole tree is one screen
+                       * driven by `/rider/moi`.
+                       *
+                       * TWO WAYS OUT ON PURPOSE, and neither is a hidden gesture:
+                       * the scrim still answers a tap (it always looked like it
+                       * should), and a NAMED primary button says what it does. A
+                       * screen whose only exit is « tap somewhere » is the same
+                       * failure one step quieter.
+                       */
                       <FasoCard>
-                        <FasoCelebration label={t('delivery.done')} sublabel={t('delivery.done_next')} onDone={() => void 0} />
+                        <FasoCelebration
+                          label={t('delivery.done')}
+                          sublabel={t('delivery.done_next')}
+                          actionNote={t('delivered.retour_service')}
+                          actionLabel={t('delivered.fermer')}
+                          onDone={() => setDropPhase(ACT_IDLE)}
+                        />
                       </FasoCard>
                     ) : (
                       <>
@@ -2745,7 +2785,21 @@ export default function App() {
                 <ProofLine label={t('delivered.proof_code')} />
               </FasoCard>
               <FasoQuoteRule>{t('delivered.no_money')}</FasoQuoteRule>
-              <FasoSecondaryButton label={t('nav.retour_courses')} onPress={toCourses} />
+              {/* ═══ THE COURSE CLOSES, AND HE IS BACK IN SERVICE ═══
+                  Founder, 2026-08-12: « once delivery and everything is confirmé
+                  … make it close nicely and return to the initial state waiting
+                  for another order for rider's sera app. »
+
+                  This was « Retour aux courses » — a SECONDARY button onto the
+                  LIST, which left the finished course as one row among others
+                  and made him navigate himself back to being available. The
+                  proof above is unchanged and still his to read; what changed is
+                  the way out. It is now the PRIMARY action, it says what it does
+                  before he taps it, and it lands on `service` — the waiting
+                  screen — because that is the state a rider who has just
+                  delivered is actually in. */}
+              <FasoBody style={styles.deliveredRetour}>{t('delivered.retour_service')}</FasoBody>
+              <FasoPrimaryButton label={t('delivered.fermer')} onPress={enService} />
             </FpIn>
           )}
           </>
@@ -2939,6 +2993,14 @@ const styles = StyleSheet.create({
   refuseNoteText: { color: FASO.dangerFg, fontSize: T.body.size, lineHeight: T.body.size * T.body.lh, fontWeight: '600' },
   validRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   validHead: { alignItems: 'center', gap: spacing.sm, paddingTop: spacing.md },
+  // The sentence above the closing action, on the demo tree's LIGHT card. It
+  // now carries only its deltas — `FasoBody` supplies the type scale and the
+  // ink, which is the whole point of the kit component. Written first as a bare
+  // `<Text>` with colour and spacing tokens but NO type token, so it fell to
+  // RN's 14 dp default while `proofText` beside it read at 16; the comment then
+  // claimed it was "on the same tokens as every other supporting line here",
+  // which was the part that made it invisible. Named by the verifier.
+  deliveredRetour: { textAlign: 'center', paddingHorizontal: spacing.md },
   verifyHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingBottom: spacing.sm, borderBottomWidth: interaction.hairline.thin, borderBottomColor: FASO.hairline },
   verifyHeadName: { flex: 1, fontWeight: '700' },
   proofList: { gap: spacing.sm },

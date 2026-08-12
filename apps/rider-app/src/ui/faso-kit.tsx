@@ -212,7 +212,21 @@ export function ProofSeal() {
  * scrim, the gold proof seal popping in (fpPop, ≤ celebrateMax), the title between
  * two dashed gold rules, an engineered emotional peak with dignity: no confetti-
  * spam, no fake urgency. Tap to dismiss. Reduced-motion safe (FpPop is static). */
-export function Celebration({ label, sublabel, onDone }: { label: string; sublabel: string; onDone: () => void }) {
+export function Celebration({
+  label,
+  sublabel,
+  onDone,
+  actionLabel,
+  actionNote,
+}: {
+  label: string;
+  sublabel: string;
+  onDone: () => void;
+  /** OPTIONAL named way out, rendered INSIDE the scrim. See the note below. */
+  actionLabel?: string | undefined;
+  /** The line above that action, saying where the tap lands. */
+  actionNote?: string | undefined;
+}) {
   return (
     <Pressable style={styles.celScrim} onPress={onDone} accessibilityRole="button">
       <View style={styles.celRule} />
@@ -220,6 +234,26 @@ export function Celebration({ label, sublabel, onDone }: { label: string; sublab
       <Text style={styles.celTitle}>{label}</Text>
       <Text style={styles.celSub}>{sublabel}</Text>
       <View style={styles.celRule} />
+      {/**
+        * ═══ THE WAY OUT LIVES ON THE SCRIM, NEVER BESIDE IT ═══
+        *
+        * `celScrim` is `absoluteFillObject` over an opaque ground, so ANY sibling
+        * placed next to a `<Celebration/>` is COVERED — present in the tree,
+        * pressable in a test that has no layout, and invisible under a real
+        * thumb. That is exactly how the rider's named way out first shipped —
+        * beside this component, not on it — leaving « tap anywhere on the scrim »
+        * as the only exit he could actually find.
+        *
+        * So a screen that needs its ending NAMED passes it here and it renders
+        * on top of the scrim. Omit it and the component is what it always was:
+        * a moment you dismiss with a tap.
+        */}
+      {actionLabel !== undefined && (
+        <View style={styles.celAction}>
+          {actionNote !== undefined && <Text style={styles.celNote}>{actionNote}</Text>}
+          <PrimaryButton label={actionLabel} onPress={onDone} />
+        </View>
+      )}
     </Pressable>
   );
 }
@@ -575,6 +609,12 @@ const styles = StyleSheet.create({
   proofSeal: { width: 78, height: 78, borderRadius: rad('pill'), backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center', shadowColor: C.accent, shadowOpacity: 0.5, shadowRadius: 20, shadowOffset: { width: 0, height: 14 }, elevation: 6 },
   celScrim: { ...StyleSheet.absoluteFillObject, backgroundColor: DARK.celebrationScrim, alignItems: 'center', justifyContent: 'center', gap: 20, paddingHorizontal: 32 },
   celRule: { width: 132, height: 0, borderTopWidth: 3, borderStyle: 'dashed', borderColor: C.accent },
+  // The named ending, ON the scrim. Stretched so the CTA keeps its full width
+  // and its ≥44 px target inside the scrim's own horizontal padding.
+  celAction: { alignSelf: 'stretch', gap: 11 },
+  // Supporting line on the DARK ground — `body`'s ink is for light surfaces and
+  // would read as near-black on near-black here, so this takes the band's text.
+  celNote: { ...ty('body', 'max'), color: DARK.bandText, textAlign: 'center' },
   celSealWrap: { alignItems: 'center' },
   celTitle: { fontFamily: displayFace(800), fontSize: 30, fontWeight: '800', letterSpacing: 30 * 0.02, color: DARK.bandText, textAlign: 'center' },
   celSub: { fontFamily: textFace(700), fontSize: 11, fontWeight: '700', letterSpacing: 11 * 0.12, textTransform: 'uppercase', color: C.accent, textAlign: 'center' },
