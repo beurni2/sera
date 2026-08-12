@@ -1849,10 +1849,10 @@ export default function App() {
                         <FasoCelebration
                           label={t('delivery.done')}
                           sublabel={t('delivery.done_next')}
+                          actionNote={t('delivered.retour_service')}
+                          actionLabel={t('delivered.fermer')}
                           onDone={() => setDropPhase(ACT_IDLE)}
                         />
-                        <Text style={styles.deliveredRetour}>{t('delivered.retour_service')}</Text>
-                        <FasoPrimaryButton label={t('delivered.fermer')} onPress={() => setDropPhase(ACT_IDLE)} />
                       </FasoCard>
                     ) : (
                       <>
@@ -2798,7 +2798,7 @@ export default function App() {
                   before he taps it, and it lands on `service` — the waiting
                   screen — because that is the state a rider who has just
                   delivered is actually in. */}
-              <Text style={styles.deliveredRetour}>{t('delivered.retour_service')}</Text>
+              <FasoBody style={styles.deliveredRetour}>{t('delivered.retour_service')}</FasoBody>
               <FasoPrimaryButton label={t('delivered.fermer')} onPress={enService} />
             </FpIn>
           )}
@@ -2993,9 +2993,14 @@ const styles = StyleSheet.create({
   refuseNoteText: { color: FASO.dangerFg, fontSize: T.body.size, lineHeight: T.body.size * T.body.lh, fontWeight: '600' },
   validRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   validHead: { alignItems: 'center', gap: spacing.sm, paddingTop: spacing.md },
-  // The sentence above the closing action — quiet, centred, on the same tokens
-  // as every other supporting line here. It says where the tap lands.
-  deliveredRetour: { textAlign: 'center', color: FASO.sub, paddingHorizontal: spacing.md },
+  // The sentence above the closing action, on the demo tree's LIGHT card. It
+  // now carries only its deltas — `FasoBody` supplies the type scale and the
+  // ink, which is the whole point of the kit component. Written first as a bare
+  // `<Text>` with colour and spacing tokens but NO type token, so it fell to
+  // RN's 14 dp default while `proofText` beside it read at 16; the comment then
+  // claimed it was "on the same tokens as every other supporting line here",
+  // which was the part that made it invisible. Named by the verifier.
+  deliveredRetour: { textAlign: 'center', paddingHorizontal: spacing.md },
   verifyHead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingBottom: spacing.sm, borderBottomWidth: interaction.hairline.thin, borderBottomColor: FASO.hairline },
   verifyHeadName: { flex: 1, fontWeight: '700' },
   proofList: { gap: spacing.sm },

@@ -319,8 +319,31 @@ describe('⚠ PORTE-SANS-PHOTO — arrival goes straight to the buyer’s code',
     // The screen SAYS where the tap lands, before he taps it.
     expect(s.shows('Vous revenez en service, prêt pour une autre course.')).toBe(true);
     // …and the way out is present AND pressable — not a hidden gesture on a scrim.
-    expect(s.canPress('Terminer cette course'), 'a named way out must be tappable').toBe(true);
-    await s.press('Terminer cette course');
+    expect(s.canPress('Revenir en service'), 'a named way out must be tappable').toBe(true);
+
+    /**
+     * ═══ AND IT IS NOT COVERED. STRUCTURE, NOT APPEARANCE ═══
+     *
+     * The three assertions above were ALL GREEN while the button was invisible.
+     * `Celebration`'s scrim is `absoluteFillObject` over an opaque ground, so the
+     * named action — first shipped as a SIBLING of `<FasoCelebration/>` inside the
+     * same card — rendered underneath it: present in the tree, pressable to a
+     * renderer that has no layout, and unfindable under a real thumb. « Tap
+     * anywhere on the scrim » was the only exit a rider could actually see, which
+     * is the failure this whole test was written to stop, one step quieter.
+     *
+     * This does NOT read a style — the walk may never claim a colour, a size or a
+     * layout, and a check that asserted the scrim's `position` would be exactly
+     * that. It asks a TREE question instead: is the way out INSIDE the
+     * celebration? Everything inside the scrim renders on top of it; everything
+     * beside it is covered. Component identity, no appearance claimed.
+     */
+    const { Celebration } = await import('../src/ui/faso-kit');
+    const celebration = s.tree.root.findByType(Celebration);
+    const wayOutInside = celebration.findAll((n) => n.props['label'] === 'Revenir en service');
+    expect(wayOutInside.length, 'the named way out must live INSIDE the celebration, never beside it').toBe(1);
+
+    await s.press('Revenir en service');
 
     // The celebration is gone: he is back on his live view, available.
     expect(s.shows('Livré. Merci.'), 'the closing screen was left, not repainted').toBe(false);

@@ -1633,7 +1633,7 @@
   },
   {
     "key": "delivered.fermer",
-    "fr": "Terminer cette course",
+    "fr": "Revenir en service",
     "register": "neutral",
     "screenClass": "label"
   },
