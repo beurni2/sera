@@ -685,7 +685,10 @@ export class LogisticsDO {
      * That is the stranding the rider app paid for this week, and it is not
      * being rebuilt on the ops side. `rider_carrying` is a NAMED refusal, never
      * a generic failure, so the desk can say WHY and he can act on it: end the
-     * course, or hand the custody over, THEN remove.
+     * course, or hand the custody over, THEN remove. And because the book is
+     * not custody truth (SE-I04), the door ALSO refuses `428
+     * custody_bound_not_asserted` unless the dispatcher asserts the bound —
+     * see the long note at the guard for the hole that makes that necessary.
      *
      * THE CODE DIES WITH THE ROSTER ROW. A one-time code that outlived its
      * rider would be a live credential belonging to nobody — it authenticates
@@ -704,22 +707,41 @@ export class LogisticsDO {
         return Response.json({ ok: false, reason: 'rider_carrying' }, { status: 409 });
       }
       /**
-       * ⚠ THE BOUND OF THIS GUARD, STATED. `ridersCarrying()` reads the
-       * ASSIGNMENT BOOK — the same active set the assign path consults — and
-       * that is the whole custody signal THIS service holds. Package-level
-       * custody lives in custody-service, and logistics cannot see it: I first
-       * wrote a second check against `shift().heldPackageIds` and the typecheck
-       * refused it, because that field is on the SE3.2 end-shift DECLARATION,
-       * not on `ShiftState`. Guessing a field into existence to look thorough
-       * is worse than one guard that is real.
+       * ⚠ THE BOUND OF THE GUARD ABOVE, STATED TRUTHFULLY (verifier blocker).
+       * `ridersCarrying()` reads the ASSIGNMENT BOOK, and SE-I04 says in the
+       * spec's own words: « task status alone MUST NOT be custody truth ». So
+       * that guard is real but it is NOT the whole answer, and an earlier
+       * version of this comment claimed it was. It is not, for one concrete
+       * reason on this very screen:
        *
-       * What that leaves: a rider with no live assignment but an unresolved
-       * package hand-off would pass here. The end-shift path already refuses
-       * `custody_would_be_orphaned` for exactly that case, so such a rider
-       * cannot be off-shift-and-holding through the front door — but this is
-       * named rather than assumed away, and closing it properly means asking
-       * custody-service, which is its own slice.
+       *   `/ops/order/retirer` — « Vider le tableau » on the Coursiers desk —
+       *   DELETES the assignment row (`forgetOrder`, « every assignment …
+       *   whatever its status ») while deliberately leaving custody open
+       *   (« board yes, custody no »). One tap later the book no longer names
+       *   the rider, `ridersCarrying()` is blind, and a rider on the road with
+       *   a sealed parcel would sail through this door: row erased, code dead,
+       *   custody ledger naming a custodian who no longer exists.
+       *
+       * Logistics genuinely CANNOT see package custody — it is the custody
+       * Worker's ledger. (I first wrote a second check against
+       * `shift().heldPackageIds` and the typecheck refused it: that field is on
+       * the SE3.2 end-shift DECLARATION, not on `ShiftState`. Guessing a field
+       * into existence to look thorough is worse than one guard that is real.)
+       *
+       * So this door does what the take-back door already does for the exact
+       * same bound: it REFUSES unless the dispatcher ASSERTS it — a sentence
+       * agreed to on purpose, never an accident of a generic button. The
+       * console puts the assertion on screen, in words, above the destructive
+       * tap. Ordering is deliberate: `rider_carrying` answers FIRST when the
+       * book can see the truth, because that refusal is the actionable one.
+       *
+       * Whether this door should one day ASK the custody ledger over a service
+       * binding — and stop asking a human to vouch — is the same open founder
+       * decision flagged at `/ops/assignment/take-back`. Flagged, not closed.
        */
+      if (body['custodyNotBegun'] !== true) {
+        return Response.json({ ok: false, reason: 'custody_bound_not_asserted' }, { status: 428 });
+      }
       const code = await this.state.storage.get<{ hash: string }>(`${RIDERCODE_PREFIX}${riderId}`);
       const keys = [`${RIDERCODE_PREFIX}${riderId}`];
       if (code !== undefined) keys.push(`${CODEHASH_PREFIX}${code.hash}`);

@@ -104,8 +104,12 @@ export class RiderRegistry {
    * record outlives the roster row, exactly as a settlement record outlives a
    * quote.
    *
-   * Answers whether anything was removed, so the caller can tell « removed »
-   * from « there was nobody by that name » and never report a phantom act.
+   * Answers whether anything was removed. ⚠ THE CURRENT CALLER DOES NOT READ IT
+   * (verifier minor): `/ops/riders/remove` already answers 404 from its own
+   * `registry.rider()` pre-check, because the 404 must come BEFORE the custody
+   * guards, not after the delete. The boolean is kept because a map delete has
+   * no other way to say « there was nobody by that name » — but it is not what
+   * makes that route honest, and this comment no longer pretends it is.
    */
   remove(riderId: string): boolean {
     const existed = this.riders.delete(riderId);
