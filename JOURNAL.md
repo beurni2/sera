@@ -2107,3 +2107,5 @@ The ONE fresh-context verifier pass returned **1 blocker · 4 major · 5 minor**
 
 **Evidence after the fixes:** logistics **202/202** (9 e2e against the REAL Worker, up from 6) · typecheck clean · gate board **ALL GATES GREEN exit 0**.
 **Mutations, anchor-verified, all three red on the right test:** (1) `persist()` disabled → the durability witness fails · (2) the 428 guard removed → the assertion test AND the purge-then-remove test fail, the second returning `200 removed` for a rider who was 409 a moment earlier — the blocker itself, reproduced · (3) the code deleted inside the refusal → the credential test fails.
+
+**MERGED AND DEPLOYED (founder: « merge and deploy », 2026-08-12).** `main` fast-forwarded `dfeb8d2..9f71a92`; **`logistics-deploy` run 23 → success** on 9f71a92. The live door now refuses `428 custody_bound_not_asserted` on an unasserted removal. *(Not claimed: I did not probe the production Worker — the ops key is the founder's alone. The evidence is the deploy's own green, not a live call.)*
