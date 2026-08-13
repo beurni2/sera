@@ -870,6 +870,20 @@ export class LogisticsDO {
       ) {
         return malformed();
       }
+      /**
+       * PORTE-DISPATCH (verifier MINOR, 2026-08-13) — the payment mode is
+       * SNAPSHOTTED BEFORE the lease-authority hop. The DO's input gate
+       * reopens across that await, so a purge landing in the window could
+       * empty `fundingFacts` between the gate's recheck and the custody-arm
+       * write below — and the old `?? 'FULL_PREPAY'` default would then open
+       * a DOOR order's custody file under the wrong mode, silently unarming
+       * the SE-I11 door-payment gate at the drop. The snapshot predates any
+       * such race; the live read stays as second chance, the default as the
+       * final (unreachable on the admitted road) guard.
+       */
+      const modeAvantHop = this.fundingFacts[
+        this.queue.get((body['taskId'] as string).trim())?.orderId ?? ''
+      ]?.paymentMode;
       const outcome = await this.dispatch.assign({
         command_id: (body['command_id'] as string).trim(),
         taskId: (body['taskId'] as string).trim(),
@@ -912,7 +926,7 @@ export class LogisticsDO {
           attempts: 0,
           taskId: outcome.assignment.taskId,
           assignmentId: outcome.assignment.assignmentId,
-          paymentMode: this.fundingFacts[outcome.assignment.orderId]?.paymentMode ?? 'FULL_PREPAY',
+          paymentMode: modeAvantHop ?? this.fundingFacts[outcome.assignment.orderId]?.paymentMode ?? 'FULL_PREPAY',
           code: this.codesVerification[outcome.assignment.assignmentId]!.code,
           ...(this.readinessFacts[outcome.assignment.orderId]?.supplierRef !== undefined
             ? { supplierRef: this.readinessFacts[outcome.assignment.orderId]!.supplierRef as string }
