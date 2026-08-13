@@ -449,6 +449,12 @@ export class LeasedDispatch {
    * arm's own skip law applies. The deterministic release id is safe here
    * because the book's state gate means this path runs at most once per
    * assignment, and a delivered course's task is never requeued or re-leased.
+   *
+   * ⚠ BOUND (verifier NOTE): the never-retry on duplicate is safe ONLY while
+   * `authority` is the in-process lease decider, whose release can refuse
+   * nothing but `no_active_lease` (= already free). A remote or otherwise
+   * fallible LeaseAuthority substituted here would make `leaseReleased:false`
+   * a stranding, and this arm would need a retry road it deliberately lacks.
    */
   async deliver(orderId: string, at: string): Promise<DeliverOutcome & { leaseReleased: boolean }> {
     const outcome = this.deps.book.deliver(orderId, at);

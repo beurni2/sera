@@ -9,6 +9,25 @@ Format per entry:
 
 ---
 
+## 2026-08-13 · COURSE-LIVRÉE — the delivered terminal, and the wire that frees the rider · IN-REVIEW (branch, awaiting founder)
+**Founder:** « once delivery and everything is confirmé … on rider's sera app make it close nicely and return to the initial state waiting for another order. » The app half was already proven (the rider app resets when `/rider/moi` answers `assignment: null`); this slice is the service half — the structural gap the 2026-08-13 diagnosis named: logistics had NO success terminal, so a finished course stayed `acknowledged` for ever, `/rider/moi` served a dead course, the rider stayed « carrying » (blocking new assigns AND removal).
+
+**BUILT:** `AssignmentStatus` gains the NAMED success terminal `delivered` (SE-I10 bans generic FAILED terminals; the moment mirrored is `custody.transferred_to_customer.v1`) — entered ONLY via custody's provider-truth drop confirmation, never a rider claim. A third at-least-once outbox wire in the custody DO (own key `custody:course-livree-outbox:v1`, own status/attempts, `unsendable_no_config` honest rest, same alarm, bounded backoff) arms in the SAME single put as the eligibility row at the drop commit site and posts to logistics' new `POST /produce/course-livree` — router-gated by the new named secret `SERA_COURSE_LIVREE_SECRET` (the `/verify/` discipline, fail-closed; both deploy workflows arm it piped; NEVER a committed value). Every settled condition answers 200 by name (`livree` / `deja_livree` / `aucune_course`) so the at-least-once sender can stop. `LeasedDispatch.deliver` releases the anchored lease (cause `completed`) and revokes the witness on first application only.
+
+**SEAM (the standing order's own shape):** `course-livree.e2e.test.ts` — real custody bundle against real logistics bundle, mutually service-bound, rider driven through the app's own ports, outcomes asked of the LEDGER: `/rider/moi` null · board clear · `delivered` by name · idempotent replay (no double transition) · `retirer` un-refused · the same rider RE-ASSIGNABLE (proving the lease released at THE authority) · unarmed rest honest and revivable.
+
+**VERIFIER (fresh context: the founder's sentence, the diff, the DoD) — no blockers; 1 MAJOR, 2 MINORs, 3 substantive NOTEs; the stranded-lease and replay-double-arm traces it hunted came back unreachable.** Handled once:
+- **MAJOR — the unarmed-secret rest was practically unrevivable** (the app never redelivers after its 200; re-running the deploy rescans nothing; the deploy warning promised otherwise) → **fixed in code**: the state-duplicate branch (a RE-TYPED drop code, fresh command_id, spine answers `deja_livree`) now runs the same revival hook as the exact replay — the founder's natural recovery works; pinned by a new e2e (mutation: remove the arm, bundle rebuilt → red) — logistics now **211**. The deploy warning now tells the true recovery (posez le secret → redéployez → saisissez le code de remise une nouvelle fois).
+- **MINOR — a revival during another wire's standing backoff alarm was silently lost** (the put sat INSIDE the alarm guard) → fixed in the shared `reviveDropOutboxRows`: the put is unconditional; only the alarm-set is guarded — a standing alarm flushes every pending row when it fires. This heals the eligibility wire's inherited shape too.
+- **MINOR — the order-keyed close's REACHABLE stale window understated** (a pending/resting wire + `/ops/order/retirer` + re-compose of the same orderId would close the NEW rider's course) → bound rewritten at `AssignmentBook.deliver` naming the real variant and the operational guard (never re-use an orderId whose remise was validée); the wire carries no rider identity for the door to cross-check, custody-blind by design. **Journalled, watched — not closed in code.**
+- NOTEs: the commit-site crash comment now states the real mechanism (workerd's output gate, not the hook); `leaseReleased`'s never-retry safety is bound in the docstring to the IN-PROCESS lease authority — a fallible substitute would need the retry road this arm deliberately lacks.
+
+**EVIDENCE (my own runs):** custody **218/218** · logistics **211/211** (fresh bundles both, `pretest` rebundles) · typecheck clean both workers · gate board **ALL GATES GREEN exit 0** · mutations: third-wire arm removed → seam red · router gate forced open → auth test red · `delivered` added to ACTIVE list → moi-null red · state-duplicate revival removed (bundle rebuilt, anchor verified) → re-type e2e red.
+
+**FOUNDER OPS before the wire lives:** one new repo secret in `beurni2/sera` — **`SERA_COURSE_LIVREE_SECRET`** (any strong value; one value serves both Workers; the deploy workflows arm it themselves). Until set: door 401 fail-closed, rows rest honestly, and a re-typed drop code revives everything once armed.
+
+---
+
 ## 2026-08-10 · RETOUR-CONSOLES — a finished delivery never left the outbox · IN-REVIEW (branch, awaiting founder)
 **Founder report:** « once I tap in the buyer's code in rider's sera app nothing happens ».
 

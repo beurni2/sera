@@ -884,6 +884,37 @@ export class CustodyDO {
     return worst;
   }
 
+  /**
+   * The drop wires' revival — shared by the exact-command replay AND the
+   * state-duplicate (re-typed code) branches of `/delivery/drop`. Each row is
+   * judged on its OWN status, so an eligibility row already delivered never
+   * blocks the livree row's revival, nor the reverse; both land in one write.
+   *
+   * ⚠ THE PUT IS UNCONDITIONAL; only the alarm is guarded (verifier MINOR,
+   * 2026-08-13). The old shape put the rows INSIDE the standing-alarm guard,
+   * so a revival arriving while another wire held a long backoff alarm was
+   * silently lost — the rows stayed rested and the alarm's next firing
+   * skipped them. Now the rows go `pending` regardless; a standing alarm
+   * flushes every pending row when it fires, so the guard only needs to stop
+   * a SECOND alarm from stomping the backoff.
+   */
+  private async reviveDropOutboxRows(): Promise<void> {
+    const stranded = await this.state.storage.get<EligibilityOutbox>(ELIGIBILITY_OUTBOX_KEY);
+    const strandedLivree = await this.state.storage.get<CourseLivreeOutbox>(COURSE_LIVREE_OUTBOX_KEY);
+    const revive: Record<string, unknown> = {};
+    if (stranded !== undefined && stranded.status !== 'delivered') {
+      revive[ELIGIBILITY_OUTBOX_KEY] = { ...stranded, status: 'pending' } satisfies EligibilityOutbox;
+    }
+    if (strandedLivree !== undefined && strandedLivree.status !== 'delivered') {
+      revive[COURSE_LIVREE_OUTBOX_KEY] = { ...strandedLivree, status: 'pending' } satisfies CourseLivreeOutbox;
+    }
+    if (Object.keys(revive).length === 0) return;
+    await this.state.storage.put(revive);
+    if ((await this.state.storage.getAlarm()) === null) {
+      await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
+    }
+  }
+
   /** COURSE-LIVRÉE — the third wire's flush, on the eligibility wire's exact
    *  shape: `res.ok` alone decides (the logistics door answers EVERY settled
    *  condition — livree, deja_livree, aucune_course — with a 200, so a retry
@@ -1964,23 +1995,8 @@ export class CustodyDO {
       if (prior.kind === 'duplicate') {
         // The at-least-once recovery hook (the shop outbox's own precedent):
         // a redelivered drop is the one moment that can re-arm a stranded or
-        // config-starved outbox without inventing a scheduler. COURSE-LIVRÉE:
-        // the third wire rides the SAME hook — each row judged on its OWN
-        // status, so an eligibility row already delivered never blocks the
-        // livree row's revival, nor the reverse; both puts land in one write.
-        const stranded = await this.state.storage.get<EligibilityOutbox>(ELIGIBILITY_OUTBOX_KEY);
-        const strandedLivree = await this.state.storage.get<CourseLivreeOutbox>(COURSE_LIVREE_OUTBOX_KEY);
-        const revive: Record<string, unknown> = {};
-        if (stranded !== undefined && stranded.status !== 'delivered') {
-          revive[ELIGIBILITY_OUTBOX_KEY] = { ...stranded, status: 'pending' } satisfies EligibilityOutbox;
-        }
-        if (strandedLivree !== undefined && strandedLivree.status !== 'delivered') {
-          revive[COURSE_LIVREE_OUTBOX_KEY] = { ...strandedLivree, status: 'pending' } satisfies CourseLivreeOutbox;
-        }
-        if (Object.keys(revive).length > 0 && (await this.state.storage.getAlarm()) === null) {
-          await this.state.storage.put(revive);
-          await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
-        }
+        // config-starved outbox without inventing a scheduler.
+        await this.reviveDropOutboxRows();
         return this.replayOutcome(prior.outcome, cmd);
       }
       if (prior.kind === 'conflict') {
@@ -1998,11 +2014,30 @@ export class CustodyDO {
           ? { httpStatus: 200, body: { ok: true, status: 'deja_livree' } }
           : { httpStatus: 200, body: { ok: true, status: 'custody_with_customer' } };
       await this.commit(cmd, recorded);
+      if (applied.ok && applied.duplicate) {
+        /**
+         * ═══ THE STATE-DUPLICATE IS A RECOVERY MOMENT TOO (verifier MAJOR,
+         * 2026-08-13) ═══ A drop RE-TYPED after the app already heard its 200
+         * arrives under a FRESH command_id, so it never reaches the
+         * exact-replay hook above — and that re-typed code is precisely the
+         * founder's natural recovery for a wire that rested
+         * `unsendable_no_config` before the secret was armed. Without this
+         * arm, the rest state was practically unrevivable: the app stops
+         * redelivering once it hears 200, and re-running the deploy workflow
+         * rescans nothing. A spine that answers « deja_livree » is the same
+         * provider-truth moment as the replay; the rows revive on their own
+         * status, exactly as above.
+         */
+        await this.reviveDropOutboxRows();
+      }
       if (applied.ok && !applied.duplicate) {
         // The spine emitted the ONE eligibility signal for this order — put
-        // it on the wire, at-least-once. The put is AFTER commit: a crash
-        // between the two loses only the outbox rows, and the duplicate-drop
-        // recovery hook above re-arms them from the redelivery. COURSE-LIVRÉE:
+        // it on the wire, at-least-once. The put is AFTER commit; workerd's
+        // output gate holds the response across these same-object writes, so
+        // the commit-then-arm window admits no externally visible partial
+        // state (the revival hooks re-arm rows that EXIST — they do not
+        // recreate a row a crash prevented from ever being written; the
+        // output gate is what makes that window unreachable). COURSE-LIVRÉE:
         // the third wire arms HERE, at the same provider-truth commit site —
         // its own row, its own key, riding the SAME single put as the
         // eligibility row (« ONE WRITE, NOT TWO », the commit path's law), so

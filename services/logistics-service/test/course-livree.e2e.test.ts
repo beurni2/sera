@@ -421,4 +421,50 @@ describe('the wire rests honestly without its key, and a replayed drop revives i
     expect(probe.json).toMatchObject({ ok: true, status: 'deja_livree' });
     expect((probe.json['assignment'] as Json)['status']).toBe('delivered');
   }, 120_000);
+
+  it('a RE-TYPED code (fresh command_id) also revives the resting row — the state-duplicate is a recovery moment', async () => {
+    /**
+     * ═══ VERIFIER MAJOR (2026-08-13), PINNED ═══ The rider app stops
+     * redelivering the moment it hears its 200, so the exact-replay hook
+     * above may NEVER fire for a row that rested unarmed — and the founder's
+     * actual recovery is typing the drop code again, which arrives under a
+     * FRESH command_id and lands in the spine's state-duplicate branch
+     * (« deja_livree »). Before the fix that branch revived nothing and the
+     * rest state was practically unrevivable; this walk drives the re-typed
+     * road end to end and asks the LOGISTICS ledger for the rider's freedom.
+     */
+    const hold: Hold = {};
+    spawnLogistics(hold);
+    const custodyDir = mkdtempSync(join(tmpdir(), 'course-livree-custody-retype-'));
+    spawnCustody(hold, custodyDir, { livreeWired: false });
+    const logistics = hold.logistics!;
+
+    const O = 'ord-livree-retype-1';
+    const { code } = await courseConfiee(logistics, O, 'rider-livree-retype', 'r2');
+    await routeJusquAuDrop(hold.custody!, logistics, O, code, 'r2', 'DROP-LIVREE-RETYPE');
+
+    await new Promise((r) => setTimeout(r, 2_000));
+    expect(await moiAssignment(logistics, code), 'unarmed, the course must rest live').not.toBeNull();
+
+    // The founder arms the secret; the rider (or he) types the code AGAIN —
+    // a NEW command_id, never the app outbox's original.
+    await hold.custody!.dispose();
+    live = live.filter((m) => m !== hold.custody);
+    spawnCustody(hold, custodyDir);
+    const retype = await riderCustody(hold.custody!, '/rider/delivery/drop', code, {
+      orderId: O, command_id: 'r2-d-retype', dropCode: 'DROP-LIVREE-RETYPE',
+    });
+    expect(retype.status).toBe(200);
+    expect(retype.json['status'], 'the spine answers the re-typed code by state').toBe('deja_livree');
+
+    let assignment: unknown = 'unread';
+    for (let i = 0; i < 80; i += 1) {
+      assignment = await moiAssignment(logistics, code);
+      if (assignment === null) break;
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    expect(assignment, 'the re-typed code must revive the wire and free the rider').toBeNull();
+    const probe = await livreeDoor(logistics, LIVREE_KEY, { orderId: O, command_id: 'probe-retype', at: T });
+    expect(probe.json).toMatchObject({ ok: true, status: 'deja_livree' });
+  }, 120_000);
 });

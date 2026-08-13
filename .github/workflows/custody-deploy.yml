@@ -141,7 +141,7 @@ jobs:
           LIVREE_SECRET: ${{ secrets.SERA_COURSE_LIVREE_SECRET }}
         run: |
           if [ -z "$LIVREE_SECRET" ]; then
-            echo "::warning title=Fil course-livrée NON armé::SERA_COURSE_LIVREE_SECRET absent — une remise confirmée ne libère JAMAIS le coursier (la course reste sur son écran et il reste « en course » au tableau). Rien n'est perdu : la file repart dès que le secret est posé et ce workflow relancé. Même valeur sur les deux Workers."
+            echo "::warning title=Fil course-livrée NON armé::SERA_COURSE_LIVREE_SECRET absent — une remise confirmée ne libère JAMAIS le coursier (la course reste sur son écran et il reste « en course » au tableau). Rien n'est perdu, mais relancer ce workflow ne suffit pas : posez le secret, redéployez, puis SAISISSEZ LE CODE DE REMISE UNE NOUVELLE FOIS sur la commande touchée — cette validation relance la file. Même valeur sur les deux Workers."
             exit 0
           fi
           printf '%s' "$LIVREE_SECRET" | npx --yes wrangler@4 secret put SERA_COURSE_LIVREE_SECRET

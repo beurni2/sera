@@ -349,14 +349,16 @@ export class AssignmentBook {
    * assigned, returned to the queue, taken back — answers the named
    * `no_active_course`, a PERMANENT condition the door must turn into a 200.
    *
-   * ⚠ THE BOUND OF ORDER-KEYED IDEMPOTENCY, stated rather than hidden: if a
-   * DELIVERED order is retired from the board (`forgetOrder` erases the
-   * delivered record too) and then re-composed and re-assigned, a stale
-   * redelivery of the OLD drop confirmation would land on the NEW course.
-   * Reaching that window takes the founder retiring an already-delivered
-   * order and re-dispatching the same orderId while custody's ledger still
-   * reads `customer` — the custody wire marks its row delivered on first
-   * success precisely so it stops redelivering long before then.
+   * ⚠ THE BOUND OF ORDER-KEYED IDEMPOTENCY, stated rather than hidden — and
+   * the REACHABLE variant named (verifier, 2026-08-13): the wire's drop
+   * confirmation for this orderId may still be UNSENT (logistics down, or
+   * resting unarmed) while the course sits stuck on the board; the founder's
+   * natural clean-up is `/ops/order/retirer`, and if the same orderId is then
+   * re-composed and re-assigned, the late-arriving OLD confirmation closes
+   * the NEW rider's live course. The wire body carries no rider identity for
+   * the door to cross-check (custody attributes the drop, but the assignment
+   * is custody-blind by design), so the guard is operational: do not re-use
+   * an orderId whose remise was already validée. Journalled, watched.
    *
    * The QUEUE ROW is deliberately untouched: the task stays `assigned`, so a
    * delivered order can never be re-composed by accident (`/ops/task` refuses
