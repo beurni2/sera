@@ -16,6 +16,7 @@ import {
   type AssignmentRecord,
 } from '../src/manual-assignment.js';
 import {
+  ADMITTED_PAYMENT_MODES,
   ReadyQueue,
   type FundingCheck,
   type IntakeProjections,
@@ -1375,7 +1376,10 @@ export class LogisticsDO {
       const attente = Object.entries(this.fundingFacts)
         .filter(([orderId, fact]) => {
           if (withTask.has(orderId)) return false;
-          if (fact.status !== 'funded' || fact.stale || fact.paymentMode !== 'FULL_PREPAY') return false;
+          // PORTE-DISPATCH (2026-08-13): the SAME two-mode admission as the
+          // compose gate (ADMITTED_PAYMENT_MODES) — a funded+ready door order
+          // must appear on the founder's list; an unknown mode stays off it.
+          if (fact.status !== 'funded' || fact.stale || !ADMITTED_PAYMENT_MODES.includes(fact.paymentMode)) return false;
           const readiness = this.readinessFacts[orderId];
           return readiness !== undefined && readiness.ready && !readiness.stale;
         })

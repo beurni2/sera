@@ -192,7 +192,9 @@ describe('intake — FAIL-CLOSED projections until real facts arrive (SE1.1 thro
     expect(replay.json).toMatchObject({ ok: true, admitted: true, duplicate: true });
   });
 
-  it('E1 admits FULL_PREPAY only; cancelled and producer-marked-stale refuse closed with their own reasons', async () => {
+  // PORTE-DISPATCH (2026-08-13): the door mode now admits; CASH_ON_DOOR below
+  // is an UNKNOWN mode and pins the fail-closed refusal at this door.
+  it('an UNKNOWN payment mode, cancelled, and producer-marked-stale refuse closed with their own reasons', async () => {
     await fundOrder(mf, 'order-cod', { paymentMode: 'CASH_ON_DOOR' });
     await readyOrder(mf, 'order-cod');
     const cod = await call(mf, 'POST', '/intake/task-ready', intakeAuth, readyEvent('cmd-cod', 'task-cod', 'order-cod'));

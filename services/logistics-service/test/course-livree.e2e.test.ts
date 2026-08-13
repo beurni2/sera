@@ -166,8 +166,17 @@ const LOC = { zone: 'Zogona, Ouagadougou', landmark: "À l'échangeur", directio
 const WIN = { start: T, end: '2026-08-13T16:00:00.000Z' };
 const ALL_PASS = { produit_conforme: true, quantite_complete: true, emballage_intact: true };
 
-async function courseConfiee(mf: Miniflare, orderId: string, riderId: string, prefix: string, composeId?: string) {
-  await intake(mf, '/intake/funding', { orderId, status: 'funded', paymentMode: 'FULL_PREPAY', asOf: T });
+async function courseConfiee(
+  mf: Miniflare,
+  orderId: string,
+  riderId: string,
+  prefix: string,
+  composeId?: string,
+  // PORTE-DISPATCH: the door mode walks the SAME road — the fact arrives
+  // exactly as Shop+ posts it, mode verbatim, no amount.
+  paymentMode = 'FULL_PREPAY',
+) {
+  await intake(mf, '/intake/funding', { orderId, status: 'funded', paymentMode, asOf: T });
   await intake(mf, '/intake/readiness', { orderId, ready: true, asOf: T, supplierRef: 'supplier-livree-1' });
   const composed = await ops(mf, '/ops/task', { command_id: composeId ?? `${prefix}-t`, orderId, location: LOC, window: WIN });
   expect(composed['ok'], JSON.stringify(composed)).toBe(true);
@@ -346,6 +355,78 @@ describe('COURSE-LIVRÉE — the seam, end to end, and the rider walks free', ()
     // Malformed stays a 400 — a producer bug is a repeating refusal, honestly.
     expect((await livreeDoor(logistics, LIVREE_KEY, { orderId: 'ord-x' })).status).toBe(400);
   }, 60_000);
+});
+
+describe('PORTE-DISPATCH — a pay-at-door order becomes dispatchable (founder bug 2026-08-13)', () => {
+  /**
+   * FOUNDER BUG (2026-08-13): « the creer course is not working if the buyer
+   * chooses the pay at the door. » Shop+ confirms a door order on its
+   * D-funded leg and posts {orderId, status:'funded', paymentMode:
+   * quote.paymentMode, asOf} to /intake/funding; only Séra's stale E1
+   * FULL_PREPAY-only bound refused it — at the compose gate AND on the
+   * founder's /ops/a-preparer list. This walk drives the whole dispatch road
+   * for the door mode on the real bundles: intake → the awaiting list NAMES
+   * it → compose admits → assign admits → the rider accepts → custody's file
+   * opens HOLDING the door mode. That last fact is asked of custody's own
+   * persisted chain (an IDENTICAL re-open absorbs `already_open`; the same
+   * chain re-asked under FULL_PREPAY refuses by name), never of the produce
+   * response. Downstream stays custody's: its SE-I11 door-payment gate is
+   * pinned in custody-service/test/door-flow.test.ts.
+   */
+  const DOOR = 'DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR';
+
+  it('door-funded + ready → listed on /ops/a-preparer → compose, assign, accept run → custody opens the file with the door mode', async () => {
+    const hold: Hold = {};
+    spawnLogistics(hold);
+    spawnCustody(hold, mkdtempSync(join(tmpdir(), 'course-livree-custody-porte-')));
+    const logistics = hold.logistics!;
+    const custody = hold.custody!;
+
+    const O = 'ord-porte-dispatch-1';
+    // The fact EXACTLY as Shop+ posts it: status funded, mode verbatim, no amount.
+    await intake(logistics, '/intake/funding', { orderId: O, status: 'funded', paymentMode: DOOR, asOf: T });
+    await intake(logistics, '/intake/readiness', { orderId: O, ready: true, asOf: T, supplierRef: 'supplier-livree-1' });
+
+    // The founder's awaiting list must NAME the door order — before the fix
+    // it never appeared, so « créer la course » had nothing to start from.
+    const attente = (await ops(logistics, '/ops/a-preparer'))['attente'] as Json[];
+    expect(
+      attente.find((r) => r['orderId'] === O),
+      'a funded+ready door order must appear on /ops/a-preparer',
+    ).toMatchObject({ orderId: O, paymentMode: DOOR });
+
+    // Compose + assign + accept — the same helper the FULL_PREPAY seam walks,
+    // on the door mode (before the fix: 422 payment_mode_not_available_e1 at compose).
+    const { code, taskId } = await courseConfiee(logistics, O, 'rider-porte-1', 'pd1', undefined, DOOR);
+    expect(await moiAssignment(logistics, code)).not.toBeNull();
+
+    // The custody file opens off the real produce wire…
+    await attendreChaine(custody, O);
+    // …and custody HOLDS the door mode. Its chain equality includes
+    // paymentMode, so the identical re-open absorbing while the FULL_PREPAY
+    // re-ask refuses is custody's own storage answering which mode it holds.
+    const chainOpen = async (paymentMode: string): Promise<{ status: number; json: Json }> => {
+      const res = await custody.dispatchFetch('http://custody/ops/order/open', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${CUSTODY_OPS}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId: O,
+          taskId,
+          packageId: `pkg-${O}`,
+          correlationId: `corr-${O}`,
+          supplierId: 'supplier-livree-1',
+          paymentMode,
+        }),
+      });
+      return { status: res.status, json: (await res.json()) as Json };
+    };
+    const held = await chainOpen(DOOR);
+    expect(held.status, JSON.stringify(held.json)).toBe(200);
+    expect(held.json['status']).toBe('already_open');
+    const denied = await chainOpen('FULL_PREPAY');
+    expect(denied.status).toBe(409);
+    expect(denied.json).toMatchObject({ ok: false, reason: 'chain_already_open_with_other_ids' });
+  }, 120_000);
 });
 
 describe('REFUS-NOMMÉ — the compose door re-asked for a DELIVERED course (contract certification for the Boutik+ console)', () => {

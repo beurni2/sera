@@ -15,6 +15,24 @@ import {
  * §3-misbehaving mocks until E1 assembly).
  */
 
+/**
+ * PORTE-DISPATCH (2026-08-13) — the payment modes this platform KNOWS, both
+ * verbatim off the real wire (Shop+ order-do.ts posts `quote.paymentMode`;
+ * spec §5.5: `paymentMode ∈ {FULL_PREPAY, DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR}`).
+ * The E1 FULL_PREPAY-only bound is RETIRED — founder: « the creer course is
+ * not working if the buyer chooses the pay at the door. » Shop+ opened
+ * pay-at-door (Option B) to every buyer and posts 'funded' ONLY once its own
+ * per-mode confirm law held, so the per-mode funding truth stays the
+ * PRODUCER's (SE-I02: funded per mode; SE-I09: Séra never computes proceeds —
+ * the gate asks « funded per mode? », never « how much? »). Any mode NOT
+ * named here keeps the named E1 refusal: fail-closed for the unknown, never
+ * allow-all.
+ */
+export const ADMITTED_PAYMENT_MODES: readonly string[] = [
+  'FULL_PREPAY',
+  'DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR',
+];
+
 export interface FundingCheck {
   status: 'funded' | 'unfunded' | 'cancelled' | 'unknown';
   paymentMode: string;
@@ -159,7 +177,10 @@ export class ReadyQueue {
     const funding = this.projections.funding.check(orderId);
     if (funding.status === 'cancelled') return 'order_cancelled';
     if (funding.stale) return 'funding_projection_stale';
-    if (funding.paymentMode !== 'FULL_PREPAY') return 'payment_mode_not_available_e1';
+    // PORTE-DISPATCH (2026-08-13): both known modes admit — see
+    // ADMITTED_PAYMENT_MODES for the E1 bound's retirement and the founder's
+    // sentence. The refusal keeps its name; it now guards the UNKNOWN mode.
+    if (!ADMITTED_PAYMENT_MODES.includes(funding.paymentMode)) return 'payment_mode_not_available_e1';
     if (funding.status !== 'funded') return 'not_funded_for_mode';
     const readiness = this.projections.readiness.check(orderId);
     if (readiness.stale) return 'readiness_projection_stale';

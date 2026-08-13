@@ -102,7 +102,16 @@ describe('intake — the happy admission and its refusals', () => {
     expect(queue.onTaskReady(taskReadyEvent(), T)).toEqual({ admitted: false, reason: 'order_cancelled' });
   });
 
-  it('non-FULL_PREPAY funding at E1 → refused closed', () => {
+  /**
+   * PORTE-DISPATCH (founder bug 2026-08-13): « the creer course is not working
+   * if the buyer chooses the pay at the door. » The E1 FULL_PREPAY-only bound
+   * is retired: Shop+ posts 'funded' only when ITS per-mode confirm law held
+   * (SE-I02 funded-per-mode; SE-I09 — the gate asks « funded per mode? »,
+   * never « how much? »), so BOTH known modes admit. The named E1 refusal
+   * stays for any mode this platform does not know — fail-closed, never
+   * allow-all.
+   */
+  it('PORTE-DISPATCH: a funded + fresh DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR fact ADMITS', () => {
     const funding = new MockShopPlusFunding({});
     const readiness = new MockBoutikReadiness({});
     funding.initiateCheckout(ORDER, 'DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR', CORR);
@@ -110,7 +119,43 @@ describe('intake — the happy admission and its refusals', () => {
     readiness.recordOrderKnown(ORDER, CORR);
     readiness.confirmReadiness(canonicalReadiness(), T);
     const queue = new ReadyQueue({ funding, readiness });
+    expect(queue.onTaskReady(taskReadyEvent(), T)).toMatchObject({ admitted: true, duplicate: false });
+    expect(queue.queuedTasks()).toHaveLength(1);
+  });
+
+  it('PORTE-DISPATCH: an UNFUNDED door order refuses not_funded_for_mode — the producer has not vouched yet', () => {
+    const funding = new MockShopPlusFunding({});
+    const readiness = new MockBoutikReadiness({});
+    funding.initiateCheckout(ORDER, 'DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR', CORR);
+    readiness.recordOrderKnown(ORDER, CORR);
+    readiness.confirmReadiness(canonicalReadiness(), T);
+    const queue = new ReadyQueue({ funding, readiness });
+    expect(queue.onTaskReady(taskReadyEvent(), T)).toEqual({ admitted: false, reason: 'not_funded_for_mode' });
+    expect(queue.queuedTasks()).toHaveLength(0);
+  });
+
+  it('PORTE-DISPATCH: a STALE door projection refuses funding_projection_stale — mode admission never weakens staleness', () => {
+    const funding = new MockShopPlusFunding({ staleFirstNReads: 1 });
+    const readiness = new MockBoutikReadiness({});
+    funding.initiateCheckout(ORDER, 'DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR', CORR);
+    funding.confirmFunding(ORDER, 'collect-42', T);
+    readiness.recordOrderKnown(ORDER, CORR);
+    readiness.confirmReadiness(canonicalReadiness(), T);
+    const queue = new ReadyQueue({ funding, readiness });
+    expect(queue.onTaskReady(taskReadyEvent(), T)).toEqual({ admitted: false, reason: 'funding_projection_stale' });
+    expect(queue.queuedTasks()).toHaveLength(0);
+  });
+
+  it('PORTE-DISPATCH fail-closed pin: an UNKNOWN mode refuses payment_mode_not_available_e1 — the gate names its modes and can never silently become allow-all', () => {
+    const funding = new MockShopPlusFunding({});
+    const readiness = new MockBoutikReadiness({});
+    funding.initiateCheckout(ORDER, 'CASH_ON_DOOR', CORR);
+    funding.confirmFunding(ORDER, 'collect-42', T);
+    readiness.recordOrderKnown(ORDER, CORR);
+    readiness.confirmReadiness(canonicalReadiness(), T);
+    const queue = new ReadyQueue({ funding, readiness });
     expect(queue.onTaskReady(taskReadyEvent(), T)).toEqual({ admitted: false, reason: 'payment_mode_not_available_e1' });
+    expect(queue.queuedTasks()).toHaveLength(0);
   });
 
   it('a non-canonical task payload refuses closed; a foreign event name refuses closed', () => {
