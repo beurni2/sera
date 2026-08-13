@@ -253,3 +253,79 @@ describe('manual assignment — §2.3 step 10, refuse closed everywhere', () => 
     expect(w2.book.decline('as-1', 'server_confirmed', T)).toEqual({ ok: false, reason: 'not_active' });
   });
 });
+
+describe('COURSE-LIVRÉE — the delivered terminal at the store', () => {
+  const DROP_AT = '2026-07-09T13:00:00.000Z';
+
+  it('an ACKNOWLEDGED course delivers: named success terminal, deliveredAt = the drop instant, one-active scanner stays empty', () => {
+    const { book } = world();
+    book.assign(assignCmd());
+    book.acknowledge('as-1', 'server_confirmed');
+    const outcome = book.deliver(ORDER, DROP_AT);
+    expect(outcome).toMatchObject({ ok: true, duplicate: false });
+    if (!outcome.ok) throw new Error('setup');
+    expect(outcome.assignment).toMatchObject({
+      assignmentId: 'as-1',
+      status: 'delivered',
+      deliveredAt: DROP_AT,
+    });
+    expect(book.get('as-1')!.status).toBe('delivered');
+    expect(book.findOneActiveViolations()).toEqual([]);
+  });
+
+  it('idempotent BY STATE: a redelivered confirmation answers duplicate and moves nothing — including the recorded instant', () => {
+    const { book } = world();
+    book.assign(assignCmd());
+    book.acknowledge('as-1', 'server_confirmed');
+    expect(book.deliver(ORDER, DROP_AT)).toMatchObject({ ok: true, duplicate: false });
+    const again = book.deliver(ORDER, '2026-07-09T14:30:00.000Z');
+    expect(again).toMatchObject({ ok: true, duplicate: true });
+    if (!again.ok) throw new Error('setup');
+    expect(again.assignment.deliveredAt).toBe(DROP_AT);
+  });
+
+  it('no active course — never assigned, or already returned to the queue — answers the NAMED no_active_course, a settled condition', () => {
+    const { book } = world();
+    // Never assigned at all.
+    expect(book.deliver(ORDER, DROP_AT)).toEqual({ ok: false, reason: 'no_active_course' });
+    // Assigned, then declined back to the queue: the course ended another way.
+    book.assign(assignCmd());
+    book.decline('as-1', 'server_confirmed', T);
+    expect(book.deliver(ORDER, DROP_AT)).toEqual({ ok: false, reason: 'no_active_course' });
+  });
+
+  it('after delivery the rider is FREE at the store: a fresh course for the same rider assigns without a one-active refusal', () => {
+    const { book, queue, witness } = world();
+    book.assign(assignCmd());
+    book.acknowledge('as-1', 'server_confirmed');
+    expect(book.deliver(ORDER, DROP_AT)).toMatchObject({ ok: true, duplicate: false });
+    // A second ready task (same world, second order is overkill at store
+    // level: the one-active law is per rider AND per task, and the delivered
+    // record must count against neither).
+    queue.onTaskReady(
+      {
+        name: 'logistics.task_ready.v1',
+        envelope: { command_id: 'cmd-ready-2', correlation_id: CORR, aggregateVersion: 2, actor: 'test', serverTime: T, version: '1' },
+        payload: {
+          task: {
+            type: 'delivery', id: 'task-2', orderId: ORDER,
+            location: { pin: { lat: 12.37, lng: -1.52 }, zone: 'Gounghin', landmark: 'Face à la pharmacie', directions: '', maskedRelay: '' },
+            window: { start: T, end: '2026-07-09T14:00:00.000Z' }, status: 'ready',
+          },
+        },
+      },
+      T,
+    );
+    witness.grant({ taskId: 'task-2', riderId: 'r-1', version: 1 });
+    const second = book.assign(
+      assignCmd({
+        command_id: 'cmd-assign-2',
+        taskId: 'task-2',
+        newAssignmentId: 'as-2',
+        lease: { taskId: 'task-2', riderId: 'r-1', version: 1 },
+      }),
+    );
+    expect(second).toMatchObject({ ok: true, duplicate: false });
+    expect(book.findOneActiveViolations()).toEqual([]);
+  });
+});

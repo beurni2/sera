@@ -67,6 +67,15 @@ export interface Env {
   /** The key to logistics' `/verify/` door. Custody's own, not the founder's. */
   readonly SERA_RIDER_VERIFY_SECRET?: string;
   /**
+   * COURSE-LIVRÉE (founder, 2026-08-13) — the key to logistics' `/produce/`
+   * door: the CustodyDO's third outbox wire posts the provider-truth drop
+   * confirmation there, which closes the course as `delivered` and frees the
+   * rider. Read by the DO (it shares this env), presented over the LOGISTICS
+   * binding above. `wrangler secret put` on BOTH Workers, the founder's
+   * alone; unset ⇒ the wire rests honestly (`unsendable_no_config`).
+   */
+  readonly SERA_COURSE_LIVREE_SECRET?: string;
+  /**
    * VRAI-ROUTE — the two producer keys (see PRODUCE_ROUTES below). Both are
    * wrangler SECRETS, the founder's alone to set; a Worker deployed before
    * one is set refuses that door entirely, with the same identical 401.

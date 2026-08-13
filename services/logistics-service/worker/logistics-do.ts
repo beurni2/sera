@@ -1432,6 +1432,61 @@ export class LogisticsDO {
       return Response.json({ ok: true, riderId: record.riderId });
     }
 
+    /**
+     * ═══ COURSE-LIVRÉE — CUSTODY'S DROP CONFIRMATION FREES THE RIDER ═══
+     *
+     * Founder (2026-08-13): « once delivery and everything is confirmé … on
+     * rider's sera app make it close nicely and return to the initial state
+     * waiting for another order ». The app half already holds (it resets when
+     * `/rider/moi` answers `assignment: null`); THIS is the service half: the
+     * custody Worker's at-least-once outbox posts here from its
+     * provider-truth `/delivery/drop` commit — the moment the custody domain
+     * knows `custody.transferred_to_customer.v1` — and the course ends as the
+     * NAMED SUCCESS `delivered` (SE-I10 bans generic FAILED terminals; a
+     * named success is lawful).
+     *
+     * NEVER FROM A RIDER'S HAND: a carrier must never validate their own
+     * delivery. The router opens `/produce/*` only under
+     * `SERA_COURSE_LIVREE_SECRET` (custody's own key, its own door — the
+     * `/verify/` discipline), and the rider road cannot reach it: a
+     * `/rider/produce/...` path falls through the rider block's allowlist to
+     * its 404.
+     *
+     * EVERY SETTLED CONDITION ANSWERS 200, BY NAME. The sender retries on
+     * `!res.ok` for ever (bounded backoff, never gives up), so a permanent
+     * condition returned as 4xx/5xx would be hammered until the end of time:
+     * `livree` (the transition happened, lease released, rider free),
+     * `deja_livree` (idempotent replay — the book's state answers), and
+     * `aucune_course` (no active course for this order: never assigned,
+     * returned to the queue, or taken back — nothing to close, and saying so
+     * settles the wire honestly). Only a malformed body is a 400: that is a
+     * producer bug, and a repeating refusal in both Workers' logs is the
+     * eligibility wire's own taxonomy for it.
+     */
+    if (request.method === 'POST' && pathname === '/produce/course-livree') {
+      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      if (body === null || !isStr(body['command_id']) || !isStr(body['orderId']) || !isIso(body['at'])) {
+        return malformed();
+      }
+      const outcome = await this.dispatch.deliver((body['orderId'] as string).trim(), body['at'] as string);
+      if (!outcome.ok) {
+        return Response.json({ ok: true, status: 'aucune_course' });
+      }
+      return Response.json({
+        ok: true,
+        status: outcome.duplicate ? 'deja_livree' : 'livree',
+        leaseReleased: outcome.leaseReleased,
+        assignment: {
+          assignmentId: outcome.assignment.assignmentId,
+          taskId: outcome.assignment.taskId,
+          orderId: outcome.assignment.orderId,
+          riderId: outcome.assignment.riderId,
+          status: outcome.assignment.status,
+          deliveredAt: outcome.assignment.deliveredAt ?? null,
+        },
+      });
+    }
+
     // ── Rider door (personal code — resolved HERE, hashes live with the book) ──
     if (pathname.startsWith('/rider/')) {
       const header = request.headers.get('Authorization') ?? '';

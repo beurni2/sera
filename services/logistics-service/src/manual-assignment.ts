@@ -44,7 +44,18 @@ export type AssignmentStatus =
   /** COURSE-REPRISE: the dispatcher took the course back — a NAMED terminal
    * (never a generic « failed »), valid from any active status including
    * `acknowledged`, which until this had no exit at all. */
-  | 'taken_back_by_dispatch';
+  | 'taken_back_by_dispatch'
+  /** COURSE-LIVRÉE (founder, 2026-08-13): « once delivery and everything is
+   * confirmé … on rider's sera app make it close nicely and return to the
+   * initial state waiting for another order ». The NAMED SUCCESS terminal —
+   * SE-I10 bans generic FAILED terminals, and until this the book had no
+   * success exit at all: a finished course stayed `acknowledged` for ever,
+   * the rider read « carrying » on every door, and `/rider/moi` served a
+   * dead course. Entered ONLY on custody's provider-truth drop confirmation
+   * (`custody.transferred_to_customer.v1` is the custody-domain moment this
+   * mirrors) — never on a rider's claim: a carrier must never validate their
+   * own delivery. */
+  | 'delivered';
 
 export interface AssignmentRecord {
   assignmentId: string;
@@ -64,6 +75,11 @@ export interface AssignmentRecord {
    * whole account. Absent on every record that was never taken back. */
   takenBackAt?: string;
   takenBackBy?: string;
+  /** COURSE-LIVRÉE audit — the drop instant custody's wire carried (the
+   * provider-truth moment, not this book's clock). Same LOCAL-field law as
+   * `takenBackAt`: the custody domain owns the canon event; this record is
+   * the dispatch book's own account. Absent unless status is 'delivered'. */
+  deliveredAt?: string;
 }
 
 export type AssignOutcome =
@@ -91,6 +107,12 @@ export type DeclineOutcome =
 export type TakeBackOutcome =
   | { ok: true; duplicate: boolean; assignment: AssignmentRecord }
   | { ok: false; reason: 'unknown_assignment' | 'not_active' };
+
+export type DeliverOutcome =
+  | { ok: true; duplicate: boolean; assignment: AssignmentRecord }
+  /** A PERMANENT condition, never an error: the at-least-once sender must
+   * hear a settled answer, or it hammers a 4xx/5xx for ever. */
+  | { ok: false; reason: 'no_active_course' };
 
 const ACTIVE_STATUSES: readonly AssignmentStatus[] = ['active_unacknowledged', 'ack_pending_offline', 'acknowledged'];
 
@@ -315,6 +337,48 @@ export class AssignmentBook {
     this.queue.closeTakenBack(assignment.taskId);
     this.aggregateVersion += 1;
     return { ok: true, duplicate: false, assignment: takenBack };
+  }
+
+  /**
+   * COURSE-LIVRÉE — custody's provider-truth drop confirmation closes the
+   * course. By ORDER ID, deliberately: the caller is the custody file, which
+   * is keyed by order and knows no assignmentId. Idempotent BY STATE (the
+   * take-back door's own law, strictly stronger than a command ledger for a
+   * one-way act): a redelivered confirmation finds the course already
+   * `delivered` and answers duplicate; an order with NO active course — never
+   * assigned, returned to the queue, taken back — answers the named
+   * `no_active_course`, a PERMANENT condition the door must turn into a 200.
+   *
+   * ⚠ THE BOUND OF ORDER-KEYED IDEMPOTENCY, stated rather than hidden: if a
+   * DELIVERED order is retired from the board (`forgetOrder` erases the
+   * delivered record too) and then re-composed and re-assigned, a stale
+   * redelivery of the OLD drop confirmation would land on the NEW course.
+   * Reaching that window takes the founder retiring an already-delivered
+   * order and re-dispatching the same orderId while custody's ledger still
+   * reads `customer` — the custody wire marks its row delivered on first
+   * success precisely so it stops redelivering long before then.
+   *
+   * The QUEUE ROW is deliberately untouched: the task stays `assigned`, so a
+   * delivered order can never be re-composed by accident (`/ops/task` refuses
+   * `order_already_has_task`) and never resurfaces on `/ops/a-preparer`.
+   * `/ops/order/retirer` remains the clean-up door. No platform event: the
+   * canon delivery moment (`custody.transferred_to_customer.v1`) is the
+   * CUSTODY domain's to emit, and it already did — this record's own
+   * `deliveredAt` is the dispatch book's account.
+   */
+  deliver(orderId: string, at: string): DeliverOutcome {
+    const already = [...this.assignments.values()].find(
+      (a) => a.orderId === orderId && a.status === 'delivered',
+    );
+    if (already !== undefined) return { ok: true, duplicate: true, assignment: already };
+    const active = [...this.assignments.values()].find(
+      (a) => a.orderId === orderId && ACTIVE_STATUSES.includes(a.status),
+    );
+    if (active === undefined) return { ok: false, reason: 'no_active_course' };
+    const delivered: AssignmentRecord = { ...active, status: 'delivered', deliveredAt: at };
+    this.assignments.set(active.assignmentId, delivered);
+    this.aggregateVersion += 1;
+    return { ok: true, duplicate: false, assignment: delivered };
   }
 
   /** Unacknowledged past deadline → back to the queue (assignment.expired.v1).

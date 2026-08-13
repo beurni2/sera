@@ -12,6 +12,7 @@ import type {
   AssignmentBook,
   AssignmentRecord,
   DeclineOutcome,
+  DeliverOutcome,
   LeaseRef,
   TakeBackOutcome,
 } from './manual-assignment.js';
@@ -433,6 +434,33 @@ export class LeasedDispatch {
       if (release.lease !== undefined) this.deps.witness.revoke(refOf(release.lease));
     }
     return { taskIds, assignments, leasesReleased };
+  }
+
+  /**
+   * COURSE-LIVRÉE — custody's provider-truth drop confirmation ends the
+   * course as the NAMED SUCCESS. The book records `delivered` (idempotent by
+   * state), then — on the FIRST application only — the witness ref is revoked
+   * and the lease releases at THE authority with the honest cause 'completed':
+   * an ANCHORED lease is exempt from every sweep and « ends only by release »
+   * (the anchor ruling), so without this arm the delivered rider would read
+   * `assignable` on the board and be refused `rider_already_leased` at the
+   * door for ever — the exact stranding PURGE-ESSAI names. A duplicate
+   * releases nothing: the first application already did, and the take-back
+   * arm's own skip law applies. The deterministic release id is safe here
+   * because the book's state gate means this path runs at most once per
+   * assignment, and a delivered course's task is never requeued or re-leased.
+   */
+  async deliver(orderId: string, at: string): Promise<DeliverOutcome & { leaseReleased: boolean }> {
+    const outcome = this.deps.book.deliver(orderId, at);
+    if (!outcome.ok || outcome.duplicate) return { ...outcome, leaseReleased: false };
+    this.deps.witness.revoke(outcome.assignment.lease);
+    const release = await this.deps.authority.send({
+      kind: 'release',
+      command_id: `complete-${outcome.assignment.taskId}`,
+      taskId: outcome.assignment.taskId,
+      cause: 'completed',
+    });
+    return { ...outcome, leaseReleased: release.ok };
   }
 
   /** Completion: the delivery closed — the lease releases with the honest

@@ -117,11 +117,13 @@ interface ClaimHeldMarker {
 
 /**
  * What this object reaches outward for: the per-package claim namespace —
- * and, since SE-LIVE-5a, ONE outbound wire: the settlement-eligibility
- * signal to the Shop+ Worker's `/fulfillment/progress` door (at-least-once,
- * alarm-driven). The doctrine « a custody file talks to no other service »
- * is amended by exactly that wire and nothing else: no reads, no queries,
- * one event, one direction.
+ * and the outbound wires, each at-least-once, alarm-driven, one direction:
+ * the settlement-eligibility signal and the transit facts to Shop+
+ * (SE-LIVE-5a / VRAI-ROUTE), and — COURSE-LIVRÉE (founder, 2026-08-13) —
+ * the drop confirmation to LOGISTICS, which closes the course as
+ * `delivered` and frees the rider. The doctrine « a custody file talks to
+ * no other service » is amended by exactly these wires and nothing else:
+ * no reads, no queries, facts out, one direction each.
  */
 export interface CustodyObjectEnv {
   readonly PACKAGE_CLAIM: DurableObjectNamespace;
@@ -136,6 +138,17 @@ export interface CustodyObjectEnv {
   readonly SHOP_PROGRESS?: { fetch(request: Request): Promise<Response> };
   /** = Shop+'s PROGRESS_WRITE_SECRET; `wrangler secret put`, the founder's alone. */
   readonly SHOP_PROGRESS_SECRET?: string;
+  /**
+   * COURSE-LIVRÉE — the logistics Worker over the SAME service binding the
+   * router already holds for `/verify/rider-code` (wrangler.toml:68); this
+   * object reads it for ONE call: `/produce/course-livree`, the drop
+   * confirmation that ends the course. TRANSPORT ONLY — the door gates on
+   * the secret below, because that Worker is publicly addressable.
+   */
+  readonly LOGISTICS?: { fetch(request: Request): Promise<Response> };
+  /** The key to logistics' `/produce/` door; `wrangler secret put` on BOTH
+   *  Workers, the founder's alone. Unset ⇒ the wire rests honestly. */
+  readonly SERA_COURSE_LIVREE_SECRET?: string;
 }
 
 /**
@@ -182,6 +195,25 @@ interface TransitOutboxRow {
 }
 type TransitOutbox = Partial<Record<'en_route' | 'arrivee', TransitOutboxRow>>;
 const TRANSIT_OUTBOX_KEY = 'custody:transit-outbox:v1';
+
+/**
+ * COURSE-LIVRÉE (founder, 2026-08-13) — the THIRD wire: the drop
+ * confirmation to LOGISTICS, which transitions the assignment to its
+ * `delivered` terminal and frees the rider for the next course. Same
+ * discipline as its two siblings, and ITS OWN KEY — « its own key so neither
+ * wire can mask the other's fate », this file's own law: independent status
+ * and attempts, at-least-once, alarm-driven, `unsendable_no_config` an
+ * honest rest re-armed by a replayed drop. Fired from the SAME commit site
+ * as the eligibility row (non-duplicate applied `confirm_drop` — the
+ * provider-truth moment), NEVER from a rider claim: a carrier must never
+ * validate their own delivery, so logistics hears it only from this ledger.
+ */
+interface CourseLivreeOutbox {
+  status: 'pending' | 'delivered' | 'unsendable_no_config';
+  attempts: number;
+  body: { orderId: string; command_id: string; at: string };
+}
+const COURSE_LIVREE_OUTBOX_KEY = 'custody:course-livree-outbox:v1';
 
 interface CustodyHead {
   /**
@@ -754,14 +786,16 @@ export class CustodyDO {
    * settlement truth and silence would be a lie about money.
    */
   async alarm(): Promise<void> {
-    // VRAI-ROUTE — two wires, one alarm, independent state (the storefront
-    // worker's own three-outbox precedent): the eligibility signal and the
-    // transit facts each keep their own status and attempt count, so one
-    // being down never marks the other delivered or re-sends it. The alarm
-    // re-arms while EITHER is pending, on the higher attempt count's rung.
+    // VRAI-ROUTE → COURSE-LIVRÉE — THREE wires, one alarm, independent state
+    // (the storefront worker's own three-outbox precedent): the eligibility
+    // signal, the transit facts and the course-livrée confirmation each keep
+    // their own status and attempt count, so one being down never marks
+    // another delivered or re-sends it. The alarm re-arms while ANY is
+    // pending, on the highest attempt count's rung.
     const eligibilityPending = await this.flushEligibility();
     const transitPending = await this.flushTransit();
-    const attempts = Math.max(eligibilityPending, transitPending);
+    const livreePending = await this.flushCourseLivree();
+    const attempts = Math.max(eligibilityPending, transitPending, livreePending);
     if (attempts > 0) {
       const backoffMs = Math.min(30_000 * 2 ** Math.min(attempts, 7), 3_600_000);
       await this.state.storage.setAlarm(Date.now() + backoffMs).catch(() => undefined);
@@ -848,6 +882,46 @@ export class CustodyDO {
     }
     if (changed) await this.state.storage.put(TRANSIT_OUTBOX_KEY, outbox);
     return worst;
+  }
+
+  /** COURSE-LIVRÉE — the third wire's flush, on the eligibility wire's exact
+   *  shape: `res.ok` alone decides (the logistics door answers EVERY settled
+   *  condition — livree, deja_livree, aucune_course — with a 200, so a retry
+   *  can never double a transition and a permanent condition can never hammer
+   *  for ever); missing binding or secret is the honest `unsendable_no_config`
+   *  rest, re-checked on every flush, revived by a replayed drop. */
+  private async flushCourseLivree(): Promise<number> {
+    const outbox = await this.state.storage.get<CourseLivreeOutbox>(COURSE_LIVREE_OUTBOX_KEY);
+    if (outbox === undefined || outbox.status !== 'pending') return 0;
+    const logistics = this.env.LOGISTICS;
+    const secret = this.env.SERA_COURSE_LIVREE_SECRET ?? '';
+    if (logistics === undefined || secret === '') {
+      await this.state.storage.put(COURSE_LIVREE_OUTBOX_KEY, {
+        ...outbox,
+        status: 'unsendable_no_config',
+      } satisfies CourseLivreeOutbox);
+      return 0;
+    }
+    let delivered = false;
+    try {
+      // The host is a placeholder — a service binding routes by BINDING, and
+      // the logistics Worker reads only the path.
+      const res = await logistics.fetch(new Request('https://logistics/produce/course-livree', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${secret}` },
+        body: JSON.stringify(outbox.body),
+      }));
+      delivered = res.ok;
+    } catch {
+      delivered = false;
+    }
+    const attempts = outbox.attempts + 1;
+    await this.state.storage.put(COURSE_LIVREE_OUTBOX_KEY, {
+      ...outbox,
+      status: delivered ? 'delivered' : 'pending',
+      attempts,
+    } satisfies CourseLivreeOutbox);
+    return delivered ? 0 : attempts;
   }
 
   /** The at-least-once recovery hook for ONE transit stage — the same law the
@@ -1890,14 +1964,21 @@ export class CustodyDO {
       if (prior.kind === 'duplicate') {
         // The at-least-once recovery hook (the shop outbox's own precedent):
         // a redelivered drop is the one moment that can re-arm a stranded or
-        // config-starved outbox without inventing a scheduler.
+        // config-starved outbox without inventing a scheduler. COURSE-LIVRÉE:
+        // the third wire rides the SAME hook — each row judged on its OWN
+        // status, so an eligibility row already delivered never blocks the
+        // livree row's revival, nor the reverse; both puts land in one write.
         const stranded = await this.state.storage.get<EligibilityOutbox>(ELIGIBILITY_OUTBOX_KEY);
-        if (
-          stranded !== undefined &&
-          stranded.status !== 'delivered' &&
-          (await this.state.storage.getAlarm()) === null
-        ) {
-          await this.state.storage.put(ELIGIBILITY_OUTBOX_KEY, { ...stranded, status: 'pending' });
+        const strandedLivree = await this.state.storage.get<CourseLivreeOutbox>(COURSE_LIVREE_OUTBOX_KEY);
+        const revive: Record<string, unknown> = {};
+        if (stranded !== undefined && stranded.status !== 'delivered') {
+          revive[ELIGIBILITY_OUTBOX_KEY] = { ...stranded, status: 'pending' } satisfies EligibilityOutbox;
+        }
+        if (strandedLivree !== undefined && strandedLivree.status !== 'delivered') {
+          revive[COURSE_LIVREE_OUTBOX_KEY] = { ...strandedLivree, status: 'pending' } satisfies CourseLivreeOutbox;
+        }
+        if (Object.keys(revive).length > 0 && (await this.state.storage.getAlarm()) === null) {
+          await this.state.storage.put(revive);
           await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
         }
         return this.replayOutcome(prior.outcome, cmd);
@@ -1920,19 +2001,32 @@ export class CustodyDO {
       if (applied.ok && !applied.duplicate) {
         // The spine emitted the ONE eligibility signal for this order — put
         // it on the wire, at-least-once. The put is AFTER commit: a crash
-        // between the two loses only the outbox row, and the duplicate-drop
-        // recovery hook above re-arms it from the redelivery.
+        // between the two loses only the outbox rows, and the duplicate-drop
+        // recovery hook above re-arms them from the redelivery. COURSE-LIVRÉE:
+        // the third wire arms HERE, at the same provider-truth commit site —
+        // its own row, its own key, riding the SAME single put as the
+        // eligibility row (« ONE WRITE, NOT TWO », the commit path's law), so
+        // the two wires arm together or not at all. Its command_id derives
+        // from the drop command's own id, and `at` is the drop's instant.
         const event = this.spine!
           .allEvents()
           .find((e) => e.name === 'delivery.validated.v1');
+        const armed: Record<string, unknown> = {
+          [COURSE_LIVREE_OUTBOX_KEY]: {
+            status: 'pending',
+            attempts: 0,
+            body: { orderId: this.chain!.order_id, command_id: `livree-${cmd.command_id}`, at: cmd.at },
+          } satisfies CourseLivreeOutbox,
+        };
         if (event !== undefined) {
-          await this.state.storage.put(ELIGIBILITY_OUTBOX_KEY, {
+          armed[ELIGIBILITY_OUTBOX_KEY] = {
             status: 'pending',
             attempts: 0,
             event,
-          } satisfies EligibilityOutbox);
-          await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
+          } satisfies EligibilityOutbox;
         }
+        await this.state.storage.put(armed);
+        await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
       }
       return Response.json(recorded.body, { status: recorded.httpStatus });
     }

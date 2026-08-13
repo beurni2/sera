@@ -33,3 +33,11 @@ new_sqlite_classes = ["LogisticsDO"]
 [[services]]
 binding = "CUSTODY"
 service = "custody-service"
+
+# COURSE-LIVRÉE (founder, 2026-08-13) — ONE NEW SECRET, no new binding:
+#   · SERA_COURSE_LIVREE_SECRET — the CUSTODY Worker's key to THIS Worker's
+#     /produce/course-livree door (the drop-confirmation wire that closes a
+#     course as `delivered` and frees the rider). Gated here, presented by
+#     custody. Same value on both Workers, `wrangler secret put`, piped, the
+#     founder's alone — never [vars]. Unset here ⇒ the door refuses everything
+#     with the one uniform 401 (fail closed).

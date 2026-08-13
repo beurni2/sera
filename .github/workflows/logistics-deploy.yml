@@ -169,6 +169,24 @@ jobs:
           fi
           printf '%s' "$PRODUCE_SECRET" | npx --yes wrangler@4 secret put SERA_PRODUCE_SECRET
 
+      # COURSE-LIVRÉE (2026-08-13) — the key that GATES this Worker's
+      # /produce/course-livree door (custody's drop-confirmation wire, which
+      # closes a course as `delivered` and frees the rider). SAME repo secret
+      # custody-deploy arms on its side — one value, two Workers, or every
+      # confirmation is a 401 and the rider stays « carrying » for ever.
+      # Fail-closed if absent: the door refuses everything with the one 401.
+      - name: Arm SERA_COURSE_LIVREE_SECRET (piped — skipped only if the repo secret is absent)
+        working-directory: services/logistics-service
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          LIVREE_SECRET: ${{ secrets.SERA_COURSE_LIVREE_SECRET }}
+        run: |
+          if [ -z "$LIVREE_SECRET" ]; then
+            echo "::warning title=Porte course-livrée NON armée::SERA_COURSE_LIVREE_SECRET absent — la porte /produce/course-livree refuse tout (fail-closed) et une remise confirmée ne libère jamais le coursier, tant que le secret n'est pas posé et ce workflow relancé. Même valeur sur les deux Workers."
+            exit 0
+          fi
+          printf '%s' "$LIVREE_SECRET" | npx --yes wrangler@4 secret put SERA_COURSE_LIVREE_SECRET
+
       # ═══ The F9 assertion: the live Worker must BE the bundle this job built ═══
       # A Workers deploy PROPAGATES; it does not switch — poll up to 180s.
       - name: Assert the live logistics Worker is the bundle this job built

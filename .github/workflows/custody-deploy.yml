@@ -127,6 +127,25 @@ jobs:
           fi
           printf '%s' "$ARM_SECRET" | npx --yes wrangler@4 secret put SHOP_ARM_SECRET
 
+      # COURSE-LIVRÉE (2026-08-13) — custody PRESENTS this key at logistics'
+      # /produce/course-livree door: the drop confirmation that closes the
+      # course as `delivered` and frees the rider for the next one. ONE repo
+      # secret serves both Workers — logistics-deploy arms the same value on
+      # its side (where the door gates on it). Unarmed here, every finished
+      # course rests `unsendable_no_config` and the rider stays « carrying »
+      # on his console — the RETOUR-CONSOLES silence, on a third wire.
+      - name: Arm SERA_COURSE_LIVREE_SECRET (piped — skipped only if the repo secret is absent)
+        working-directory: services/custody-service
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          LIVREE_SECRET: ${{ secrets.SERA_COURSE_LIVREE_SECRET }}
+        run: |
+          if [ -z "$LIVREE_SECRET" ]; then
+            echo "::warning title=Fil course-livrée NON armé::SERA_COURSE_LIVREE_SECRET absent — une remise confirmée ne libère JAMAIS le coursier (la course reste sur son écran et il reste « en course » au tableau). Rien n'est perdu : la file repart dès que le secret est posé et ce workflow relancé. Même valeur sur les deux Workers."
+            exit 0
+          fi
+          printf '%s' "$LIVREE_SECRET" | npx --yes wrangler@4 secret put SERA_COURSE_LIVREE_SECRET
+
       # ⚠ THE WIRE THAT CARRIES A FINISHED DELIVERY BACK TO THE CONSOLES, AND
       # WHICH WAS NEVER ARMED (founder report 2026-08-10: « once I tap in the
       # buyer's code nothing happens »).

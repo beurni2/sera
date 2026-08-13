@@ -76,3 +76,13 @@ service = "logistics-service"
 #     the buyer's drop code, minted at payment confirmation). Also set on the
 #     storefront Worker, which presents it.
 # Both via `wrangler secret put`, piped, the founder's alone — never [vars].
+
+# COURSE-LIVRÉE (founder, 2026-08-13) — ONE NEW SECRET, no new binding (the
+# LOGISTICS binding above already carries the transport):
+#   · SERA_COURSE_LIVREE_SECRET — THIS Worker's key to logistics'
+#     /produce/course-livree door: the CustodyDO's third outbox wire posts the
+#     provider-truth drop confirmation there, closing the course as
+#     `delivered` and freeing the rider. Also set on the logistics Worker,
+#     which gates the door with it. Same value on both, `wrangler secret put`,
+#     piped, the founder's alone — never [vars]. Unset here ⇒ the wire rests
+#     honestly (`unsendable_no_config`) and a replayed drop revives it.

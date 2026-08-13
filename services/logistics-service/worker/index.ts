@@ -53,6 +53,17 @@ export interface Env {
    */
   readonly CUSTODY?: { fetch(request: Request): Promise<Response> };
   readonly SERA_PRODUCE_SECRET?: string;
+  /**
+   * COURSE-LIVRÉE (founder, 2026-08-13) — the CUSTODY Worker's key to THIS
+   * Worker's `/produce/` door (the drop-confirmation wire that closes a
+   * course as `delivered` and frees the rider). Its own named secret, its own
+   * door — the `/verify/` discipline exactly: not the ops key (custody is not
+   * the founder), not the intake key (custody is not those producers), and
+   * NEVER a rider code (a carrier must never validate their own delivery).
+   * Set on BOTH Workers via `wrangler secret put`, the founder's alone;
+   * unset ⇒ this door refuses everything with the one uniform 401.
+   */
+  readonly SERA_COURSE_LIVREE_SECRET?: string;
 }
 
 const BEARER_PREFIX = 'Bearer ';
@@ -162,6 +173,21 @@ export default {
      */
     if (url.pathname.startsWith('/verify/')) {
       if (!(await authorized(request, env.SERA_RIDER_VERIFY_SECRET))) {
+        return withCors(unauthorized(), request, env);
+      }
+      return withCors(await stub().fetch(request), request, env);
+    }
+
+    /**
+     * COURSE-LIVRÉE — custody's SECOND door into this book, mirroring
+     * `/verify/` above byte for byte: its own key, gated here, transport by
+     * service binding but authenticated like any public route. This is the
+     * at-least-once wire the custody file drives from its provider-truth drop
+     * commit; the DO route behind it answers every settled condition 200 by
+     * name so the sender can stop. Fail-closed: unset secret ⇒ the one 401.
+     */
+    if (url.pathname.startsWith('/produce/')) {
+      if (!(await authorized(request, env.SERA_COURSE_LIVREE_SECRET))) {
         return withCors(unauthorized(), request, env);
       }
       return withCors(await stub().fetch(request), request, env);
