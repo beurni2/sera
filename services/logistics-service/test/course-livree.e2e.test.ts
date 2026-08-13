@@ -114,6 +114,17 @@ async function ops(mf: Miniflare, path: string, body?: unknown): Promise<Json> {
   return (await res.json()) as Json;
 }
 
+/** Same door, but the STATUS comes home too — the REFUS-NOMMÉ certification
+ *  pins a 409's exact bytes, which `ops()` above deliberately flattens. */
+async function opsRaw(mf: Miniflare, path: string, body: unknown): Promise<{ status: number; json: Json }> {
+  const res = await mf.dispatchFetch(`http://logistics${path}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${OPS}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return { status: res.status, json: (await res.json()) as Json };
+}
+
 async function intake(mf: Miniflare, path: string, body: unknown): Promise<Json> {
   const res = await mf.dispatchFetch(`http://logistics${path}`, {
     method: 'POST',
@@ -155,10 +166,10 @@ const LOC = { zone: 'Zogona, Ouagadougou', landmark: "À l'échangeur", directio
 const WIN = { start: T, end: '2026-08-13T16:00:00.000Z' };
 const ALL_PASS = { produit_conforme: true, quantite_complete: true, emballage_intact: true };
 
-async function courseConfiee(mf: Miniflare, orderId: string, riderId: string, prefix: string) {
+async function courseConfiee(mf: Miniflare, orderId: string, riderId: string, prefix: string, composeId?: string) {
   await intake(mf, '/intake/funding', { orderId, status: 'funded', paymentMode: 'FULL_PREPAY', asOf: T });
   await intake(mf, '/intake/readiness', { orderId, ready: true, asOf: T, supplierRef: 'supplier-livree-1' });
-  const composed = await ops(mf, '/ops/task', { command_id: `${prefix}-t`, orderId, location: LOC, window: WIN });
+  const composed = await ops(mf, '/ops/task', { command_id: composeId ?? `${prefix}-t`, orderId, location: LOC, window: WIN });
   expect(composed['ok'], JSON.stringify(composed)).toBe(true);
   // Register only when this rider is new to the roster (the seam test
   // re-confies a course to a rider it removed and re-registers).
@@ -335,6 +346,60 @@ describe('COURSE-LIVRÉE — the seam, end to end, and the rider walks free', ()
     // Malformed stays a 400 — a producer bug is a repeating refusal, honestly.
     expect((await livreeDoor(logistics, LIVREE_KEY, { orderId: 'ord-x' })).status).toBe(400);
   }, 60_000);
+});
+
+describe('REFUS-NOMMÉ — the compose door re-asked for a DELIVERED course (contract certification for the Boutik+ console)', () => {
+  /**
+   * FOUNDER BUG (2026-08-13): « Créer la course » on a re-relayed sandbox
+   * order answered the console's GENERIC banner. This pin establishes what the
+   * REAL door actually says to the console's exact deterministic command shape
+   * (`cmd-boutik-tache-${orderId}`, boutik sera-service.ts) once the course is
+   * DELIVERED — because COURSE-LIVRÉE deliberately leaves the delivered queue
+   * row `assigned`, and only `/ops/order/retirer` clears it. NO service code
+   * changes here: Séra's refusal is correct by design; the console must NAME
+   * it instead of saying « Réessayez ».
+   */
+  it('same command_id replays {ok:true,duplicate:true,taskId}; a DIFFERENT command_id gets the 409 order_already_has_task with taskId + status', async () => {
+    const hold: Hold = {};
+    spawnLogistics(hold);
+    spawnCustody(hold, mkdtempSync(join(tmpdir(), 'course-livree-custody-refus-')));
+    const logistics = hold.logistics!;
+    const custody = hold.custody!;
+
+    const O = 'ord-refus-nomme-1';
+    // THE APP'S EXACT SHAPE — deterministic per order, so a console re-relay
+    // of a course the SAME console composed arrives as the SAME command_id.
+    const APP_CMD = `cmd-boutik-tache-${O}`;
+    const { code, taskId } = await courseConfiee(logistics, O, 'rider-refus-1', 'rn1', APP_CMD);
+    await routeJusquAuDrop(custody, logistics, O, code, 'rn1', 'DROP-REFUS-0001');
+
+    // The course is DELIVERED on logistics' own ledger before any re-compose.
+    let assignment: unknown = 'unread';
+    for (let i = 0; i < 80; i += 1) {
+      assignment = await moiAssignment(logistics, code);
+      if (assignment === null) break;
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    expect(assignment, 'the delivered course must have ended on logistics').toBeNull();
+
+    // ═══ FACT 1 — the SAME command (a console re-composing the course IT
+    // composed): the door answers the compose's own replay — 200, duplicate,
+    // the OLD taskId. NOT a refusal; the console's port maps this to ok. ═══
+    const replay = await opsRaw(logistics, '/ops/task', { command_id: APP_CMD, orderId: O, location: LOC, window: WIN });
+    expect(replay.status).toBe(200);
+    expect(replay.json).toEqual({ ok: true, admitted: true, duplicate: true, taskId });
+
+    // ═══ FACT 2 — ANY OTHER command for the same order: the named, permanent
+    // 409. These are the CERTIFIED BYTES the Boutik+ walk's double answers —
+    // the only door answer that produces the founder's refusal banner. ═══
+    const refused = await opsRaw(logistics, '/ops/task', { command_id: 'cmd-autre-provenance-1', orderId: O, location: LOC, window: WIN });
+    expect(refused.status).toBe(409);
+    expect(refused.json).toEqual({ ok: false, reason: 'order_already_has_task', taskId, status: 'assigned' });
+
+    // Neither probe moved anything: the course stays ended, the row stays his
+    // to retire — `/ops/order/retirer` remains the one cleanup door.
+    expect(await moiAssignment(logistics, code)).toBeNull();
+  }, 120_000);
 });
 
 describe('the door — custody\'s key and nothing else opens it', () => {
