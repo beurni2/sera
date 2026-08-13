@@ -9,7 +9,9 @@ Format per entry:
 
 ---
 
-## 2026-08-13 · PORTE-DISPATCH — the E1 prepaid-only bound retires; a pay-at-door order dispatches · IN-REVIEW (branch, awaiting founder)
+## 2026-08-13 · PORTE-DISPATCH — the E1 prepaid-only bound retires; a pay-at-door order dispatches · DONE
+
+**MERGED AND DEPLOYED (founder's word, 2026-08-13):** main fast-forwarded to `7c828e1`; `logistics-deploy` run 31743288620 **green** on `7c828e1` (custody untouched by this slice, not redeployed). The full pay-at-door loop is now live end to end: create course → assign → deliver → door payment → rider back to waiting.
 **Founder:** « the creer course is not working if the buyer chooses the pay at the door. »
 
 **THE SPEC ALREADY MANDATED THE FIX** — SE-I02 (Spec:34): « Only funded (**per payment mode: full for FULL_PREPAY, delivery fee for Option B**), supplier-ready, non-cancelled tasks may enter the dispatch queue » and §5.5 (Spec:63): « paymentMode ∈ {FULL_PREPAY, DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR}. Dispatch gate (SE-I02): funded per mode. » The admission gate's FULL_PREPAY-only line was E1 scaffolding violating its own spec once Shop+ opened the door mode to every buyer. **BUILT:** `ADMITTED_PAYMENT_MODES` (both wire strings verbatim — the door string byte-identical to shop-plus's DOOR_MODE constant) admits at the compose gate AND `/ops/a-preparer`; any unknown mode keeps the named `payment_mode_not_available_e1` refusal, fail-closed. The per-mode funding truth stays the PRODUCER's (Shop+ posts 'funded' only when its own per-mode confirm law held — SE-I09 intact: the gate asks « funded per mode? », never « how much? »). Custody downstream untouched: its Option-B door-payment law (SE-I11, `door_payment_not_confirmed`) is pinned in door-flow.test.ts:109, re-run green.
