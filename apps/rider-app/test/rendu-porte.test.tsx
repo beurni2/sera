@@ -186,11 +186,11 @@ describe('⚠ PORTE-CUSTODY — the door course walks: accord → wait for the p
 
     // The door stage is ON screen, its primary act pressable — and the
     // buyer's code is NOT reachable around it.
-    expect(s.shows('Le client regarde le colis.'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
-    expect(s.canPress("Le client est d'accord"), 'the accept must be present AND pressable').toBe(true);
+    expect(s.shows('La cliente regarde le colis.'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    expect(s.canPress("La cliente est d'accord"), 'the accept must be present AND pressable').toBe(true);
     expect(s.shows('Le code de la cliente'), 'the code entry must wait for the accord').toBe(false);
 
-    await s.press("Le client est d'accord");
+    await s.press("La cliente est d'accord");
 
     // The port was CALLED (the question source scans cannot answer), with
     // the FIXED contract byte for byte — conservative category (founder
@@ -217,7 +217,7 @@ describe('⚠ PORTE-CUSTODY — the door course walks: accord → wait for the p
     const state = courseInMode('DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR');
     const world = freshWorld();
     const { s, w } = await toTheDoor([logistics(state), custody(state, world)]);
-    await s.press("Le client est d'accord");
+    await s.press("La cliente est d'accord");
 
     // The buyer has not paid yet — the code refuses BY NAME, in the money
     // register's calm: who pays, where, and that the code will then work.
@@ -252,8 +252,8 @@ describe('⚠ PORTE-CUSTODY — the door course walks: accord → wait for the p
 
     // Straight to the buyer's code: no accord screen, no accord act, ever.
     expect(s.shows('Le code de la cliente'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
-    expect(s.shows('Le client regarde le colis.'), 'the inspection screen must not exist off the door mode').toBe(false);
-    expect(s.shows("Le client est d'accord")).toBe(false);
+    expect(s.shows('La cliente regarde le colis.'), 'the inspection screen must not exist off the door mode').toBe(false);
+    expect(s.shows("La cliente est d'accord")).toBe(false);
     expect(w.calls.some((c) => c.path === '/rider/door/inspection'), 'no inspection act may fire off the door mode').toBe(false);
 
     // And the course still finishes exactly as before this slice.

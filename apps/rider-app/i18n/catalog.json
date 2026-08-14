@@ -331,13 +331,13 @@
   },
   {
     "key": "inspect.title",
-    "fr": "Le client regarde le colis.",
+    "fr": "La cliente regarde le colis.",
     "register": "neutral",
     "screenClass": "status"
   },
   {
     "key": "inspect.accept_action",
-    "fr": "Le client est d'accord",
+    "fr": "La cliente est d'accord",
     "register": "neutral",
     "screenClass": "general"
   },
@@ -739,7 +739,7 @@
   },
   {
     "key": "inspect.body",
-    "fr": "Le client regarde le colis. C'est son droit, prenez le temps qu'il faut.",
+    "fr": "La cliente regarde le colis. C'est son droit, prenez le temps qu'il faut.",
     "register": "neutral",
     "screenClass": "instruction"
   },
@@ -757,7 +757,7 @@
   },
   {
     "key": "inspect.cantpay",
-    "fr": "Le client ne peut pas payer",
+    "fr": "La cliente ne peut pas payer",
     "register": "money",
     "screenClass": "label"
   },

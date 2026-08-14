@@ -502,6 +502,36 @@ describe('PORTE-DISPATCH — a pay-at-door order becomes dispatchable (founder b
     expect(drop.status, JSON.stringify(drop.json)).toBe(409);
     expect(drop.json).toMatchObject({ ok: false, reason: 'inspection_not_accepted' });
 
+    // ═══ THE RACE (verifier BLOCKER, closed 2026-08-14): she pays on her
+    // page BEFORE the rider records her accord. The signal arrives NOT
+    // awaited — refused by name, and COMMITTED: this exact outer id will
+    // answer this exact 409 forever. Shop+'s wire therefore mints a fresh
+    // outer id per attempt; the spine's own idempotency keys on the EVENT's
+    // envelope id, which is what keeps the alert single and the
+    // consumption absorbed across re-judgments. ═══
+    const doorEvent = {
+      name: 'payment.door_leg_confirmed.v1',
+      envelope: {
+        command_id: 'door-webhook-pd2-1', correlation_id: `corr-${O}`, aggregateVersion: 1,
+        actor: 'payment-provider:sandbox', serverTime: T, version: '1',
+      },
+      payload: {
+        provider: 'sandbox-provider', payment_attempt_id: 'payatt-pd2', collectRef: `collect-${O}`,
+        amount: 11_500, fee: 0, status: 'captured', order_id: O, redelivery: 0,
+      },
+    };
+    const posteSignal = async (outerId: string): Promise<{ status: number; json: Json }> => {
+      const res = await custody.dispatchFetch('http://custody/produce-shop/door-signal', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${SHOP_ARM_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: O, command_id: outerId, event: doorEvent }),
+      });
+      return { status: res.status, json: (await res.json()) as Json };
+    };
+    const tot = await posteSignal('door-signal-door-webhook-pd2-1-a0');
+    expect(tot.status).toBe(409);
+    expect(tot.json).toMatchObject({ ok: false, reason: 'door_signal_not_awaited' });
+
     // The rider records the OBSERVABLE session — buyer accepts, seal intact,
     // nothing opened — under the founder's conservative fallback category.
     const inspection = await riderCustody(custody, '/rider/door/inspection', code, {
@@ -523,31 +553,17 @@ describe('PORTE-DISPATCH — a pay-at-door order becomes dispatchable (founder b
     expect(dropAvantPaiement.status).toBe(409);
     expect(dropAvantPaiement.json).toMatchObject({ ok: false, reason: 'door_payment_not_confirmed' });
 
-    // Shop+ forwards the provider truth on ITS producer door — the event
-    // VERBATIM, so the actor here is the byte the LIVE wire carries: the
-    // certified sandbox provider's own `payment-provider:sandbox` (the
-    // commerce-core MockPaymentProvider mints it — never re-actored by
-    // Shop+). A kinder actor here once hid a dead wire (§9.8).
-    const signal = await custody.dispatchFetch('http://custody/produce-shop/door-signal', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${SHOP_ARM_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        orderId: O, command_id: 'pd2-signal',
-        event: {
-          name: 'payment.door_leg_confirmed.v1',
-          envelope: {
-            command_id: 'door-webhook-pd2-1', correlation_id: `corr-${O}`, aggregateVersion: 1,
-            actor: 'payment-provider:sandbox', serverTime: T, version: '1',
-          },
-          payload: {
-            provider: 'sandbox-provider', payment_attempt_id: 'payatt-pd2', collectRef: `collect-${O}`,
-            amount: 11_500, fee: 0, status: 'captured', order_id: O, redelivery: 0,
-          },
-        },
-      }),
-    });
-    expect(signal.status).toBe(200);
-    expect(((await signal.json()) as Json)['ok']).toBe(true);
+    // The frozen early id replays its recorded refusal VERBATIM — the exact
+    // stranding a reused outer id would have shipped. The FRESH attempt id
+    // (Shop+'s `-a1`, same event bytes, actor `payment-provider:sandbox` —
+    // the byte the LIVE wire carries; a kinder actor here once hid a dead
+    // wire, §9.8) is what re-judges and lands.
+    const rejoue = await posteSignal('door-signal-door-webhook-pd2-1-a0');
+    expect(rejoue.status).toBe(409);
+    expect(rejoue.json).toMatchObject({ ok: false, reason: 'door_signal_not_awaited', duplicate: true });
+    const signal = await posteSignal('door-signal-door-webhook-pd2-1-a1');
+    expect(signal.status, JSON.stringify(signal.json)).toBe(200);
+    expect(signal.json['ok']).toBe(true);
 
     // The SAME code now delivers — a fresh command_id, never the refused one.
     const dropFinal = await riderCustody(custody, '/rider/delivery/drop', code, {
