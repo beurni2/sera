@@ -524,7 +524,10 @@ describe('PORTE-DISPATCH — a pay-at-door order becomes dispatchable (founder b
     expect(dropAvantPaiement.json).toMatchObject({ ok: false, reason: 'door_payment_not_confirmed' });
 
     // Shop+ forwards the provider truth on ITS producer door — the event
-    // verbatim, actor `shop:commerce-core` (the payment_provider class).
+    // VERBATIM, so the actor here is the byte the LIVE wire carries: the
+    // certified sandbox provider's own `payment-provider:sandbox` (the
+    // commerce-core MockPaymentProvider mints it — never re-actored by
+    // Shop+). A kinder actor here once hid a dead wire (§9.8).
     const signal = await custody.dispatchFetch('http://custody/produce-shop/door-signal', {
       method: 'POST',
       headers: { Authorization: `Bearer ${SHOP_ARM_KEY}`, 'Content-Type': 'application/json' },
@@ -534,7 +537,7 @@ describe('PORTE-DISPATCH — a pay-at-door order becomes dispatchable (founder b
           name: 'payment.door_leg_confirmed.v1',
           envelope: {
             command_id: 'door-webhook-pd2-1', correlation_id: `corr-${O}`, aggregateVersion: 1,
-            actor: 'shop:commerce-core', serverTime: T, version: '1',
+            actor: 'payment-provider:sandbox', serverTime: T, version: '1',
           },
           payload: {
             provider: 'sandbox-provider', payment_attempt_id: 'payatt-pd2', collectRef: `collect-${O}`,

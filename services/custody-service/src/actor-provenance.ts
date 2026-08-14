@@ -36,6 +36,15 @@ export const ACTOR_PROVENANCE_V1 = {
    * Mock entries are the §3 stand-ins until assembly. */
   actorPrefixClasses: [
     { prefix: 'shop:commerce-core', producerClass: 'payment_provider' },
+    /** PORTE-CUSTODY assembly (2026-08-14): the byte the LIVE wire actually
+     * carries. Shop+ forwards `payment.door_leg_confirmed.v1` VERBATIM, and
+     * the certified §3 sandbox provider (commerce-core MockPaymentProvider)
+     * mints its events with exactly this actor — unregistered, every live
+     * forward answered 409 `producer_actor_mismatch` and the wire was dead.
+     * EXACT match, closed. Retires with the real aggregator at the
+     * Real-Money Gate (⏳), where E3 adds transport-level webhook
+     * authenticity on top. */
+    { prefix: 'payment-provider:sandbox', producerClass: 'payment_provider' },
     { prefix: 'mock:shop-door-payment-emitter', producerClass: 'payment_provider' },
     { prefix: 'custody-service:', producerClass: 'custody' },
     { prefix: 'mock:commerce-eligibility-consumer', producerClass: 'commerce_settlement' },
