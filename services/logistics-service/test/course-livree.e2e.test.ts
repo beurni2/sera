@@ -437,9 +437,12 @@ describe('PORTE-DISPATCH — a pay-at-door order becomes dispatchable (founder b
    * same rider acts the FULL_PREPAY seam proves above — and pins where the
    * door mode stops TODAY: the drop refuses `inspection_not_accepted`,
    * because the spine's §6.3 door stage (inspection accepted → provider
-   * door-paid signal) has NO wire — custody-do exposes no door route to any
-   * key, Shop+ never signals `payment.door_leg_confirmed.v1`, and the rider's
-   * wired road never records the inspection. The spine is right to refuse
+   * door-paid signal) has NO wire INTO CUSTODY — custody-do exposes no door
+   * route to any key, and the rider's wired road never records the
+   * inspection. (Shop+ already HOLDS the provider truth: its order-do door
+   * webhook receives and validates `payment.door_leg_confirmed.v1` — the
+   * missing leg is forwarding it here, never re-minting it.) The spine is
+   * right to refuse
    * (SE-I11 fail-closed); what is missing is the wire, which is its own
    * slice. When that wire lands, THIS pin flips to the full delivered road.
    */

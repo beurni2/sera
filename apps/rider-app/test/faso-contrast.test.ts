@@ -29,9 +29,12 @@ const PAIRINGS: ReadonlyArray<readonly [string, string, string]> = [
   [seraColour.deep, sharedColour.card, 'gold text on a white card'],
   [sharedColour.ink, sharedColour.paperSera, 'body ink on the Séra paper'],
   // GARDE-LISIBLE (founder, 2026-08-14): the proof line « Colis sous votre
-  // garde. » shipped as onInk-on-card — 1.05:1, invisible on his iPhone. The
-  // pairing App.tsx's proofText NOW composes is pinned here; the source law
-  // (no onInk in App.tsx at all) lives in faso-token-fidelity.
+  // garde. » shipped as onInk-on-card — 1.05:1, invisible on his iPhone. This
+  // row documents the INTENDED pairing (ink on the card); note App.tsx's
+  // proofText resolves the LEGACY ink (#1B140D), a hair off this root token —
+  // both clear AA by a mile. This row alone cannot go red on a revert (it is
+  // token-vs-token); the revert-sensitive recurrence pin is the source law in
+  // faso-token-fidelity (App.tsx composes no onInk).
   [sharedColour.ink, sharedColour.card, 'proof line text on the white proof card (App.tsx proofText)'],
   [sharedColour.okFg, sharedColour.okBg, 'ok chip'],
   [sharedColour.warnFg, sharedColour.warnBg, 'warn chip'],
