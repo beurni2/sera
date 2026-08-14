@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { dureeVoix, mediaUrl, repereAudioOver, type RepereAudioEtat } from '../src/net/repere-audio';
 
 /**
@@ -12,15 +12,21 @@ import { dureeVoix, mediaUrl, repereAudioOver, type RepereAudioEtat } from '../s
  *
  * ⚠ THE FAKE IS CONTRACT-CERTIFIED TO `expo-audio`. `createAudioPlayer` returns
  * an `AudioPlayer`, whose `addListener('playbackStatusUpdate', …)` receives an
- * `AudioStatus` — and the three fields this port reads (`currentTime`,
- * `playing`, `didJustFinish`) are read off THAT type (Audio.types.d.ts l.137+),
- * not invented here. `emit` below is the real module's event, replayed.
+ * `AudioStatus` — and the five fields this port reads (`currentTime`,
+ * `playing`, `didJustFinish`, `playbackState`, `isLoaded`) are read off THAT
+ * type (Audio.types.d.ts l.137+), not invented here. `emit` below is the real
+ * module's event, replayed. ⚠ AND THE VALUES ARE BOUNDED TOO: `playbackState`
+ * may only carry what `AudioPlayer.kt` l.242-248 can mint — 'ready' |
+ * 'buffering' | 'idle' | 'ended' | 'unknown'. The 'failed' emissions further
+ * down this file are hand-injected values NO REAL BUILD CAN EMIT, kept only to
+ * pin a harmless legacy branch; the shapes a device actually produces are
+ * driven in VOIX-MUETTE-2 at the bottom.
  */
 
-/** The three fields of `expo-audio`'s `AudioStatus` the port reads — the fake
+/** The five fields of `expo-audio`'s `AudioStatus` the port reads — the fake
  *  is typed to THEM, so a handler signature looser than the real contract is a
  *  compile error here rather than a surprise on a phone. */
-type FakeStatus = { currentTime?: number; playing?: boolean; didJustFinish?: boolean };
+type FakeStatus = { currentTime?: number; playing?: boolean; didJustFinish?: boolean; playbackState?: string; isLoaded?: boolean };
 
 interface FakePlayerRec {
   url: string;
@@ -527,6 +533,8 @@ describe('VOIX-MUETTE — the silent switch and the named failure', () => {
     );
     expect(types).toContain('playsInSilentMode');
     expect(types).toContain('playbackState');
+    // VOIX-MUETTE-2 — the load-confirmation fact both detectors stand down on.
+    expect(types).toContain('isLoaded');
   });
 
   it('the session is set to play in silent mode ONCE, BEFORE the first playback — and a second play never re-asks', async () => {
@@ -646,5 +654,121 @@ describe('VOIX-MUETTE — the silent switch and the named failure', () => {
       readFileSync(join(import.meta.dirname, '..', 'i18n', 'catalog.json'), 'utf8'),
     ) as { key: string }[];
     expect(catalog.some((e) => e.key === 'repere.voix_echec')).toBe(true);
+  });
+});
+
+/**
+ * ═══ VOIX-MUETTE-2 — THE FAILURES expo-audio 1.1.1 CAN ACTUALLY EMIT ═══
+ *
+ * FOUNDER, on his iPhone (2026-08-14): the note would not play and the row
+ * said « Écouter » forever, with no message. The 'failed' statuses above
+ * exercise a branch NO REAL BUILD CAN REACH: Android's `playbackState` only
+ * ever reads 'ready'|'buffering'|'idle'|'ended'|'unknown' (`AudioPlayer.kt`
+ * l.242-248, zero `onPlayerError` hits in the android source), and iOS emits
+ * `playbackStatusUpdate` ONLY on `.readyToPlay`. A failed load is therefore
+ * ETERNAL SILENCE (iOS — what the founder hit) or a drop to the 'idle'
+ * terminal (Android). These drive the port with exactly those two shapes,
+ * against the detectors ported from the Shop+ reseller app's voice-capture.
+ */
+describe('VOIX-MUETTE-2 — the load that fails without ever saying so', () => {
+  const NOTE = 'https://media.example/media/11111111-2222-4333-8444-555555555555';
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+  const watch = (port: { subscribe(f: (e: RepereAudioEtat) => void): () => void }): RepereAudioEtat[] => {
+    const seen: RepereAudioEtat[] = [];
+    port.subscribe((e) => seen.push(e));
+    return seen;
+  };
+
+  it('⚠ a load that never says ANYTHING → échec at 10 s exactly, torn down — the iPhone shape', async () => {
+    const mod = fakeModule();
+    const port = repereAudioOver(mod);
+    const vus = watch(port);
+    await port.play(NOTE);
+    // 9.999 s of silence is a slow 2G load, not a failure.
+    vi.advanceTimersByTime(9_999);
+    expect(vus.some((e) => e.echec), 'a slow load must not be called a failure').toBe(false);
+    vi.advanceTimersByTime(1);
+    expect(vus.at(-1), 'the watchdog must declare the failure the library never names').toEqual({
+      playing: false, seconds: 0, echec: true,
+    });
+    // …and the attempt is TORN DOWN, not left a zombie that could start
+    // sound two minutes later over a row that already said échec.
+    expect(mod.made[0]?.calls).toEqual(['play', 'pause', 'remove', 'release']);
+    expect(mod.made[0]?.removed, 'the dead attempt must not keep a live listener').toBe(true);
+  });
+
+  it('⚠ the failure is RECOVERABLE — a new tap rebuilds from scratch and plays', async () => {
+    const mod = fakeModule();
+    const port = repereAudioOver(mod);
+    const vus = watch(port);
+    await port.play(NOTE);
+    vi.advanceTimersByTime(10_000);
+    expect(vus.at(-1)?.echec).toBe(true);
+    // The retry the echec line asks for: « réessayez » must be a true sentence.
+    await port.play(NOTE);
+    expect(mod.made, 'the retry must build a FRESH player').toHaveLength(2);
+    mod.made[1]?.emit({ isLoaded: true, playbackState: 'ready', playing: true, currentTime: 1 });
+    expect(vus.at(-1)).toEqual({ playing: true, seconds: 1, echec: false });
+    // The belt plays ONCE — `isLoaded` arriving must not stack a second play.
+    expect(mod.made[1]?.calls).toEqual(['play']);
+    // …and the confirmed load stood the retry's own watchdog down.
+    vi.advanceTimersByTime(60_000);
+    expect(vus.at(-1)?.echec, 'a loaded note must never be failed by a stale clock').toBe(false);
+  });
+
+  it('a load the player CONFIRMS is never failed — ten seconds of playback is not ten of silence', async () => {
+    const mod = fakeModule();
+    const port = repereAudioOver(mod);
+    const vus = watch(port);
+    await port.play(NOTE);
+    mod.made[0]?.emit({ isLoaded: true, playbackState: 'ready', playing: true, currentTime: 0.5 });
+    vi.advanceTimersByTime(60_000);
+    expect(vus.some((e) => e.echec)).toBe(false);
+    expect(mod.made[0]?.calls, 'play() exactly once — the immediate call won the race').toEqual(['play']);
+  });
+
+  it('⚠ buffering→idle is ExoPlayer’s error terminal — échec NOW, and only once', async () => {
+    const mod = fakeModule();
+    const port = repereAudioOver(mod);
+    const vus = watch(port);
+    await port.play(NOTE);
+    mod.made[0]?.emit({ playbackState: 'buffering', isLoaded: false, playing: false, currentTime: 0 });
+    expect(vus.at(-1)?.echec, 'buffering is a healthy road, not a failure').toBe(false);
+    mod.made[0]?.emit({ playbackState: 'idle', isLoaded: false, playing: false, currentTime: 0 });
+    expect(vus.at(-1)).toEqual({ playing: false, seconds: 0, echec: true });
+    // ONE failure, never two: declaring it killed the watchdog, so the same
+    // dead load cannot report again at the 10 s mark.
+    vi.advanceTimersByTime(60_000);
+    expect(vus.filter((e) => e.echec)).toHaveLength(1);
+  });
+
+  it('an idle ECHO before anything non-idle does not false-fire — the detector arms on non-idle only', async () => {
+    const mod = fakeModule();
+    const port = repereAudioOver(mod);
+    const vus = watch(port);
+    await port.play(NOTE);
+    // A pre-buffering idle echo, before the pipeline has said anything real.
+    mod.made[0]?.emit({ playbackState: 'idle', isLoaded: false, playing: false, currentTime: 0 });
+    expect(vus.some((e) => e.echec), 'a pre-buffering idle is not the error terminal').toBe(false);
+    mod.made[0]?.emit({ isLoaded: true, playbackState: 'ready', playing: true, currentTime: 1 });
+    vi.advanceTimersByTime(60_000);
+    expect(vus.some((e) => e.echec), 'the note loaded — no failure may ever fire').toBe(false);
+  });
+
+  it('stop() during a hung load kills the watchdog — leaving is never followed by a failure line', async () => {
+    const mod = fakeModule();
+    const port = repereAudioOver(mod);
+    const vus = watch(port);
+    await port.play(NOTE);
+    // The rider accepts the course; the row disappears; stop() runs in the effect.
+    port.stop();
+    vi.advanceTimersByTime(60_000);
+    expect(vus.some((e) => e.echec), 'a failure line after the screen left is noise about nothing').toBe(false);
+    expect(vus.at(-1)).toEqual({ playing: false, seconds: 0, echec: false });
   });
 });

@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mountRider, wire, wiredEnv, type Route } from './rendu';
 import { __resetFiles } from './doubles/expo-file-system';
+// The SAME instance the app's `require('expo-audio')` shim holds (setup.ts
+// captures it before any `vi.resetModules()`), so the mode set here is the
+// mode the mounted screen's own player actually meets — the `__resetFiles`
+// precedent, on the audio boundary.
+import { __modeChargement } from './doubles/expo-audio';
 
 /**
  * ═══ RENDU-RÉEL — the rider's course, DRIVEN, not read ═══
@@ -111,6 +116,8 @@ beforeEach(() => {
   vi.resetModules();
   vi.useFakeTimers();
   __resetFiles();
+  // A failing-load mode left armed by one test must never decide another.
+  __modeChargement(null);
   wiredEnv();
 });
 afterEach(() => {
@@ -381,5 +388,50 @@ describe('⚠ PORTE-SANS-PHOTO — arrival goes straight to the buyer’s code',
 
     expect(w.calls.filter((c) => c.path === '/rider/delivery/evidence')).toHaveLength(2);
     expect(s.shows('Le code de la cliente'), 'the retry must open the code screen').toBe(true);
+  });
+});
+
+/**
+ * ═══ ⚠ VOIX-MUETTE-2 — the repère that cannot load, DRIVEN (founder's iPhone, 2026-08-14) ═══
+ *
+ * expo-audio 1.1.1 says NOTHING about a failed load on iOS — no status, no
+ * error, ever — so the row sat on « Écouter » forever with no message. The
+ * port now carries a 10 s load watchdog (ported from the Shop+ reseller
+ * app's voice-capture). This walk answers the four questions over the REAL
+ * screen and the REAL port, with only the native module doubled in its
+ * failing mode: did the tree survive an act that fired by itself · is the
+ * primary action still pressable · is there a way out of the failure · can
+ * the rider reach the next step (the note actually playing) after it.
+ */
+describe('⚠ VOIX-MUETTE-2 — a repère that cannot load is not an eternal « Écouter »', () => {
+  it('the hung load names its failure, the row stays tappable, and the retry plays', async () => {
+    // The founder's iPhone shape: a failed item emits NOTHING, ever.
+    __modeChargement('silence');
+    const state = freshCourse();
+    const { s } = await signedIn([logistics(state), custody()]);
+
+    await s.press('Écouter le repère');
+    // Nothing has arrived and nothing ever will — but ten seconds have not
+    // passed, so the row must not cry failure over a load that may be 2G-slow.
+    expect(s.shows('La note ne se lit pas'), 'no failure line before the watchdog’s bound').toBe(false);
+
+    // The 20 s poll advance crosses the 10 s watchdog: the failure fires BY
+    // ITSELF, off a timer — exactly the class of automatic act that shipped
+    // dead ends twice on 2026-08-10.
+    await s.poll();
+
+    // 1. The tree survived an act that fired outside any tap.
+    expect(s.texts().length, 'the tree must survive the watchdog firing').toBeGreaterThan(0);
+    // 3. The automatic act left a way out: the failure has a sentence…
+    expect(s.shows('La note ne se lit pas. Vérifiez le réseau et réessayez.'),
+      `the failure line must be on screen — on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    // 2. …and the primary action is present AND pressable, not a dead face.
+    expect(s.canPress('Écouter le repère'), 'the row must offer the retry it asks for').toBe(true);
+
+    // 4. The next step is REACHABLE: the network comes back, the retry plays.
+    __modeChargement(null);
+    await s.press('Écouter le repère');
+    expect(s.shows('Pause'), 'the retry must actually play — « réessayez » must be a true sentence').toBe(true);
+    expect(s.shows('La note ne se lit pas'), 'a playing note carries no failure line').toBe(false);
   });
 });

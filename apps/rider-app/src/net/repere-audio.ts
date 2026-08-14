@@ -38,9 +38,11 @@ export interface RepereAudioEtat {
   readonly seconds: number;
   /**
    * VOIX-MUETTE (founder, 2026-08-09: « When I tap the audio on sera to
-   * listen I am not hearing anything ») — the player REPORTED a failure
-   * (`playbackState` names it). Forwarded, never inferred: a slow 2G load is
-   * not a failure and must not be called one. A fresh play() clears it.
+   * listen I am not hearing anything ») — the load FAILED. Named by the
+   * player when it ever names one, and otherwise DETECTED within the bounds
+   * of VOIX-MUETTE-2 below: ten full seconds of silence, or the idle error
+   * terminal. A slow 2G load is not a failure — a short note loads in well
+   * under the watchdog's ten seconds. A fresh play() clears it.
    */
   readonly echec: boolean;
 }
@@ -57,16 +59,49 @@ export interface RepereAudioPort {
 }
 
 /** Exactly the fields of `expo-audio`'s `AudioStatus` this port reads. */
-type StatusLike = { currentTime?: number; playing?: boolean; didJustFinish?: boolean; playbackState?: string };
+type StatusLike = { currentTime?: number; playing?: boolean; didJustFinish?: boolean; playbackState?: string; isLoaded?: boolean };
 type SubscriptionLike = { remove?: () => void };
 type PlayerLike = {
   play: () => void;
   pause: () => void;
   seekTo: (seconds: number) => Promise<void> | void;
+  /** The player's own word that the source loaded (`AudioModule.types` l.44) —
+   *  a property read, never a native call. */
+  isLoaded?: boolean;
   addListener?: (event: 'playbackStatusUpdate', fn: (status: StatusLike) => void) => SubscriptionLike | undefined;
   release?: () => void;
   remove?: () => void;
 };
+
+/**
+ * ═══ VOIX-MUETTE-2 — THE FAILURE THE LIBRARY NEVER NAMES (founder's iPhone, 2026-08-14) ═══
+ *
+ * The listener branch that reads `/fail|error/i` off `playbackState` is
+ * UNREACHABLE in expo-audio 1.1.1. Android's `playbackState` only ever reads
+ * 'ready' | 'buffering' | 'idle' | 'ended' | 'unknown' (`AudioPlayer.kt`
+ * l.242-248), and the library registers NO error listener — zero
+ * `onPlayerError` hits in its android source. iOS emits
+ * `playbackStatusUpdate` ONLY on `.readyToPlay` — a failed item is eternal
+ * silence. So a dead network or a bad ref left the row saying « Écouter »
+ * forever, with no message and nothing to tap differently. The founder hit
+ * exactly that.
+ *
+ * The ecosystem's PROVEN answer is the Shop+ reseller app's voice-capture
+ * (2026-08-13), ported here whole:
+ *   · the LOAD WATCHDOG — a load that has said nothing for ten seconds takes
+ *     the failure road; a short note over 3G loads in well under this;
+ *   · the IDLE-AFTER-NON-IDLE detector — a healthy load moves straight to
+ *     buffering, so a LATER 'idle' is ExoPlayer's error terminal; arming
+ *     only after a non-idle status keeps a pre-buffering idle echo from
+ *     false-firing;
+ *   · the PLAY-ONCE belt — play() is issued by whichever road answers first
+ *     (the immediate call, or the player's own `isLoaded`), exactly once.
+ * Both detectors stand down ONLY on the player's own word that the source
+ * loaded (`isLoaded`) — a play() call queued on playWhenReady proves nothing
+ * about the load it is waiting on. A declared failure TEARS THE PLAYER DOWN,
+ * so the retry the echec line asks for rebuilds from scratch.
+ */
+const GARDE_CHARGEMENT_MS = 10_000;
 type AudioModule = {
   createAudioPlayer: (source: string) => PlayerLike;
   /** The real `expo-audio` export (build/ExpoAudio.js); absent on the web stub. */
@@ -89,8 +124,22 @@ export function repereAudioOver(mod: AudioModule): RepereAudioPort {
   let finished = false;
   /** The position the last status reported — what `pause()` keeps on screen. */
   let lastSeconds = 0;
-  /** The player named a failure; cleared only by a fresh play(). */
+  /** The load failed (named, silent, or idle-terminal); cleared only by a fresh play(). */
   let echec = false;
+  /** VOIX-MUETTE-2 — the load watchdog. Armed at play, dead on the player's
+   *  own `isLoaded`, on didJustFinish, on failure, and whenever the screen
+   *  leaves. One at a time, like the player it watches. */
+  let garde: ReturnType<typeof setTimeout> | null = null;
+  /** The player's OWN word that the source loaded — stands down both detectors. */
+  let charge = false;
+  /** A non-idle status was seen — arms the idle-after-non-idle detector. */
+  let vuActif = false;
+  const annulerGarde = (): void => {
+    if (garde !== null) {
+      clearTimeout(garde);
+      garde = null;
+    }
+  };
   /**
    * VOIX-MUETTE — the iPhone's silent switch. `expo-audio`'s default iOS
    * session respects the hardware mute, so a rider (or the founder) with the
@@ -153,6 +202,11 @@ export function repereAudioOver(mod: AudioModule): RepereAudioPort {
    * screen is never allowed to take the app down with it.
    */
   const detach = (): void => {
+    // The watchdog dies with the player it watches (the reference's
+    // stopPlayback does the same): a failure line landing after the screen
+    // already left — or after a fresh attempt began — would be noise about
+    // nothing, or worse, a lie about the wrong note.
+    annulerGarde();
     try {
       sub?.remove?.();
     } catch {
@@ -179,6 +233,30 @@ export function repereAudioOver(mod: AudioModule): RepereAudioPort {
       // Documented as safe on an already-detached object; guarded anyway,
       // because this runs in a React effect and nothing here may ever throw.
     }
+  };
+  /**
+   * VOIX-MUETTE-2 — the failure fires ONCE per attempt (the reference's
+   * once-flag idiom), and firing it TEARS DOWN: the dead player is released
+   * so the retry the echec line asks for rebuilds from scratch, and no
+   * zombie load can start sound after the row already said échec. `detach`
+   * also kills the watchdog, so idle-then-timeout cannot report twice.
+   */
+  const signalerEchec = (): void => {
+    if (echec) return;
+    echec = true;
+    detach();
+    emit({ playing: false, seconds: lastSeconds, echec: true });
+  };
+  const chargeConfirmee = (): void => {
+    charge = true;
+    annulerGarde();
+  };
+  const armerGarde = (): void => {
+    if (garde !== null) return;
+    garde = setTimeout(() => {
+      garde = null;
+      signalerEchec();
+    }, GARDE_CHARGEMENT_MS);
   };
   return {
     async play(url: string): Promise<void> {
@@ -216,26 +294,70 @@ export function repereAudioOver(mod: AudioModule): RepereAudioPort {
           // is up to 500 ms away (expo-audio's default updateInterval), and a row
           // showing « Écouter » over live sound is the defect, briefly.
           emit({ playing: true, seconds: lastSeconds, echec: false });
+          // A tap during a load that is still SILENT keeps the clock honest:
+          // the original watchdog keeps running (ten seconds from the FIRST
+          // ask), and if a pause killed it, it is re-armed — a hung load must
+          // never outlive its clock.
+          if (!charge) armerGarde();
           return;
         }
         // A different note replaces the old one — and the old one is RELEASED,
         // because a rider's phone is a 1 GB Android and a leaked player is a
         // crash three courses later.
         detach();
-        player = mod.createAudioPlayer(url);
+        const cree = mod.createAudioPlayer(url);
+        player = cree;
         current = url;
         finished = false;
-        sub = player.addListener?.('playbackStatusUpdate', (status: StatusLike) => {
-          // The player NAMING a failure is the one fact the row could never
-          // show — a bad ref or a dead network read as an eternal « Écouter ».
+        charge = false;
+        vuActif = false;
+        /**
+         * VOIX-MUETTE-2 — the play-once belt (the reference's `lancer`).
+         * Play is asked for by whichever road answers first — the immediate
+         * call below, or the player's own `isLoaded` in the listener — and
+         * the once-flag keeps the two roads from doubling up. The immediate
+         * call must NOT stand the detectors down: a play queued on
+         * playWhenReady proves nothing about the load it is waiting on.
+         */
+        let lance = false;
+        const lancer = (): void => {
+          if (lance) return;
+          lance = true;
+          cree.play();
+        };
+        sub = cree.addListener?.('playbackStatusUpdate', (status: StatusLike) => {
+          // The player's OWN word that the source loaded — the one fact that
+          // stands down the watchdog and the idle detector.
+          if (status.isLoaded === true) {
+            chargeConfirmee();
+            lancer();
+          }
+          // The player NAMING a failure — kept for form's sake, but no status
+          // of expo-audio 1.1.1 can carry such a value (VOIX-MUETTE-2 above);
+          // the idle detector and the watchdog are what actually catch one.
           if (typeof status.playbackState === 'string' && /fail|error/i.test(status.playbackState)) {
-            echec = true;
-            emit({ playing: false, seconds: lastSeconds, echec: true });
+            signalerEchec();
             return;
+          }
+          // IDLE AFTER NON-IDLE (the reference's detector, same bounds): a
+          // healthy load moves straight to buffering, so a LATER 'idle' is
+          // ExoPlayer's error terminal. `vuActif` keeps a pre-buffering idle
+          // echo from false-firing; `charge` keeps a loaded note's own
+          // teardown from ever reading as a failure.
+          if (status.playbackState === 'idle') {
+            if (vuActif && !charge) {
+              signalerEchec();
+              return;
+            }
+          } else if (typeof status.playbackState === 'string') {
+            vuActif = true;
           }
           // The note ENDING is the state the screen could never see before, and
           // it is the one that left « Pause » sitting over silence.
           if (status.didJustFinish === true) {
+            // A note that ENDED proves its load — the watchdog has nothing
+            // left to watch (the reference clears it on didJustFinish too).
+            annulerGarde();
             finished = true;
             lastSeconds = 0;
             emit({ playing: false, seconds: 0, echec: false });
@@ -249,7 +371,18 @@ export function repereAudioOver(mod: AudioModule): RepereAudioPort {
           lastSeconds = Math.max(0, Math.floor(status.currentTime ?? 0));
           emit({ playing: status.playing === true, seconds: lastSeconds, echec: false });
         });
-        player.play();
+        lancer();
+        // Already loaded — a cached source can confirm before any status
+        // arrives: take the player's word right here (the reference's
+        // `p.isLoaded` belt). Skipped after a failure: a synchronous idle
+        // terminal has already torn this attempt down, and a released
+        // player's getters are not to be touched.
+        if (!echec && cree.isLoaded === true) chargeConfirmee();
+        // VOIX-MUETTE-2 — the watchdog. iOS says NOTHING about a failed
+        // item, ever; without this bound the row reads « Écouter » forever
+        // and the failure has no sentence. Ten seconds of silence → the
+        // failure road, torn down, retryable.
+        if (!echec && !charge) armerGarde();
       } catch {
         // ⚠ A play that THROWS is the same fact as a status naming a failure
         // (verifier, 2026-08-09): before this, the rejection fell to the
@@ -263,6 +396,10 @@ export function repereAudioOver(mod: AudioModule): RepereAudioPort {
       }
     },
     pause(): void {
+      // The rider's way out of a HUNG load too (the reference's stopPlayback
+      // clears its watchdog for the same reason): the wait dies with the tap,
+      // and the next play() re-arms it.
+      annulerGarde();
       // Guarded for the same reason `detach` is: this runs straight off a
       // rider's tap, and a native call that throws out of an event handler
       // takes the tree down exactly like the one in an effect did. A player the
