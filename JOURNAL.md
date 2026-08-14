@@ -9,7 +9,9 @@ Format per entry:
 
 ---
 
-## 2026-08-14 · GARDE-LISIBLE + VOIX-MUETTE-2 + the door road's named terminal · IN-REVIEW (branch, awaiting founder)
+## 2026-08-14 · GARDE-LISIBLE + VOIX-MUETTE-2 + the door road's named terminal · DONE (door wire: its own slice, in build)
+
+**MERGED AND DEPLOYED (founder's word, 2026-08-14):** main fast-forwarded to `2ff8f56`; `expo-preview` run 31772271531 **green** on `2ff8f56`. The rider app carries both fixes after two Expo Go restarts. The founder also ruled the door question: **option (b), conservative fallback inspection row** — the PORTE-CUSTODY wire is its own slice, in build.
 **Founder (iPhone, wired rider build):** « On sera when I put the buyer's code in, it says sera a refusé, and the repère audio on sera when I tap to listen nothing comes out. And also the 'colis sous votre garde' is not readable and can't see it »
 
 **THREE ROOT CAUSES, three different layers:**
