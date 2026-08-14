@@ -429,24 +429,26 @@ describe('PORTE-DISPATCH — a pay-at-door order becomes dispatchable (founder b
   }, 120_000);
 
   /**
-   * ═══ THE FOUNDER'S DROP (2026-08-14) — the door road's TRUE terminal today,
-   * pinned so the gap has a name instead of a « Séra a refusé » ═══
+   * ═══ THE FOUNDER'S DROP (2026-08-14) — from his refused code to the FULL
+   * §6.3 road, on the real Workers ═══
    *
    * He drove a pay-at-door course to the door and typed the buyer's code:
-   * refused. This walk reproduces his exact road on the REAL Workers — the
-   * same rider acts the FULL_PREPAY seam proves above — and pins where the
-   * door mode stops TODAY: the drop refuses `inspection_not_accepted`,
-   * because the spine's §6.3 door stage (inspection accepted → provider
-   * door-paid signal) has NO wire INTO CUSTODY — custody-do exposes no door
-   * route to any key, and the rider's wired road never records the
-   * inspection. (Shop+ already HOLDS the provider truth: its order-do door
-   * webhook receives and validates `payment.door_leg_confirmed.v1` — the
-   * missing leg is forwarding it here, never re-minting it.) The spine is
-   * right to refuse
-   * (SE-I11 fail-closed); what is missing is the wire, which is its own
-   * slice. When that wire lands, THIS pin flips to the full delivered road.
+   * « Séra a refusé ». The reproduction pinned the true terminal — 409
+   * `inspection_not_accepted`, the unwired door stage — and PORTE-CUSTODY
+   * built the wire the same day (founder ruling (b): category-less products
+   * inspect under `uncategorised_conservative`, outer packaging only). This
+   * walk now crosses the WHOLE §6.3 sequence between the two REAL Workers,
+   * refusal by named refusal: the drop refuses until the inspection is
+   * recorded (his exact moment, kept as the mid-road pin) · refuses again
+   * until the provider-actored `payment.door_leg_confirmed.v1` arrives on
+   * Shop+'s producer door (SE-I11 — the rider asserts nothing) · then the
+   * same code delivers, custody→customer, and the course-livrée wire walks
+   * the rider free. Each drop attempt carries a FRESH command_id — a drop
+   * refusal is a committed outcome and replays byte-for-byte, so a retry
+   * under the same id would replay the 409 forever; the state-duplicate
+   * branch is what makes fresh ids retry-safe after a lost 200.
    */
-  it("the door road TODAY: the rider's whole road runs, and the drop refuses `inspection_not_accepted` — the unwired §6.3 stage, by name", async () => {
+  it('the founder\'s door road, whole: refused by name at each unearned step, delivered once inspection + provider signal land, rider walks free', async () => {
     const hold: Hold = {};
     spawnLogistics(hold);
     spawnCustody(hold, mkdtempSync(join(tmpdir(), 'course-livree-custody-porte-drop-')));
@@ -495,10 +497,71 @@ describe('PORTE-DISPATCH — a pay-at-door order becomes dispatchable (founder b
     // The founder's exact moment: the RIGHT code, and the ledger refuses —
     // by name here, where his screen said only « Séra a refusé ».
     const drop = await riderCustody(custody, '/rider/delivery/drop', code, {
-      orderId: O, command_id: 'pd2-d', dropCode: 'DROP-PORTE-0001',
+      orderId: O, command_id: 'pd2-d1', dropCode: 'DROP-PORTE-0001',
     });
     expect(drop.status, JSON.stringify(drop.json)).toBe(409);
     expect(drop.json).toMatchObject({ ok: false, reason: 'inspection_not_accepted' });
+
+    // The rider records the OBSERVABLE session — buyer accepts, seal intact,
+    // nothing opened — under the founder's conservative fallback category.
+    const inspection = await riderCustody(custody, '/rider/door/inspection', code, {
+      orderId: O, command_id: 'pd2-insp',
+      inspectionCategory: 'uncategorised_conservative',
+      packageOpened: false, manufacturerSealOpened: false, custodySealIntact: true,
+      buyerAccepts: true,
+      startedAt: '2026-08-14T10:01:00.000Z', completedAt: '2026-08-14T10:03:00.000Z',
+      evidenceBundleId: 'ev-pd2',
+    });
+    expect(inspection.status, JSON.stringify(inspection.json)).toBe(200);
+    expect(inspection.json).toMatchObject({ ok: true, kind: 'accepted' });
+
+    // Inspection alone opens nothing: SE-I11 holds the door until the
+    // PROVIDER's word — and says so by name.
+    const dropAvantPaiement = await riderCustody(custody, '/rider/delivery/drop', code, {
+      orderId: O, command_id: 'pd2-d2', dropCode: 'DROP-PORTE-0001',
+    });
+    expect(dropAvantPaiement.status).toBe(409);
+    expect(dropAvantPaiement.json).toMatchObject({ ok: false, reason: 'door_payment_not_confirmed' });
+
+    // Shop+ forwards the provider truth on ITS producer door — the event
+    // verbatim, actor `shop:commerce-core` (the payment_provider class).
+    const signal = await custody.dispatchFetch('http://custody/produce-shop/door-signal', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${SHOP_ARM_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        orderId: O, command_id: 'pd2-signal',
+        event: {
+          name: 'payment.door_leg_confirmed.v1',
+          envelope: {
+            command_id: 'door-webhook-pd2-1', correlation_id: `corr-${O}`, aggregateVersion: 1,
+            actor: 'shop:commerce-core', serverTime: T, version: '1',
+          },
+          payload: {
+            provider: 'sandbox-provider', payment_attempt_id: 'payatt-pd2', collectRef: `collect-${O}`,
+            amount: 11_500, fee: 0, status: 'captured', order_id: O, redelivery: 0,
+          },
+        },
+      }),
+    });
+    expect(signal.status).toBe(200);
+    expect(((await signal.json()) as Json)['ok']).toBe(true);
+
+    // The SAME code now delivers — a fresh command_id, never the refused one.
+    const dropFinal = await riderCustody(custody, '/rider/delivery/drop', code, {
+      orderId: O, command_id: 'pd2-d3', dropCode: 'DROP-PORTE-0001',
+    });
+    expect(dropFinal.status, JSON.stringify(dropFinal.json)).toBe(200);
+    expect(dropFinal.json).toMatchObject({ ok: true, status: 'custody_with_customer' });
+
+    // ═══ And the course-livrée wire ends the course: the LOGISTICS ledger —
+    // never the response — walks the rider back to waiting. ═══
+    let apres: unknown = 'unread';
+    for (let i = 0; i < 80; i += 1) {
+      apres = await moiAssignment(logistics, code);
+      if (apres === null) break;
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    expect(apres, 'after the door delivery the rider must return to waiting').toBeNull();
   }, 120_000);
 });
 

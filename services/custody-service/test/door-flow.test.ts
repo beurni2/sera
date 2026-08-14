@@ -61,9 +61,26 @@ function optionBSpine(): CustodySpine {
 }
 
 describe('WO-2.4 item 1 — inspection at the door (policy data, derived fault mapping)', () => {
-  it('policies are canonical InspectionPolicy records for the §6.2 categories', () => {
-    expect(INSPECTION_POLICIES_V1.map((p) => p.inspectionCategory)).toEqual(['fashion_bags_fabrics', 'shoes', 'sealed_beauty']);
+  it('policies are canonical InspectionPolicy records for the §6.2 categories + the conservative fallback', () => {
+    // PORTE-CUSTODY — founder ruling 2026-08-14 (decision b): the fourth row
+    // is the conservative fallback for CATEGORY-LESS products — outer
+    // packaging only, nothing category-specific claimed.
+    expect(INSPECTION_POLICIES_V1.map((p) => p.inspectionCategory))
+      .toEqual(['fashion_bags_fabrics', 'shoes', 'sealed_beauty', 'uncategorised_conservative']);
     expect(new Set(INSPECTION_POLICIES_V1.map((p) => p.version))).toEqual(new Set(['inspection-policy.v1']));
+  });
+
+  it('the conservative fallback (founder 2026-08-14, decision b) is OUTER-ONLY: no opening action, no category-specific claim', () => {
+    const fallback = INSPECTION_POLICIES_V1.find((p) => p.inspectionCategory === 'uncategorised_conservative');
+    expect(fallback).toBeDefined();
+    expect(fallback?.sealRule).toBe('outer_only_conservative_no_opening');
+    expect(fallback?.allowedActions).toEqual(['outer_only', 'visual_item', 'quantity', 'damage']);
+    // Nothing that opens a box, tries anything on, or judges an inner seal.
+    for (const opening of ['box_open', 'mfr_seal_intact', 'size_label', 'pair', 'condition']) {
+      expect(fallback?.allowedActions).not.toContain(opening);
+    }
+    // …and it inspects: an accepted session parses canonically through it.
+    expect(runDoorInspection(inspectionInput({ inspectionCategory: 'uncategorised_conservative' })).kind).toBe('accepted');
   });
 
   it('acceptance yields a canonical InspectionSession; unknown category and missing refusal column refuse closed', () => {

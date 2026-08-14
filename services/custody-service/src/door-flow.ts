@@ -37,6 +37,24 @@ export const INSPECTION_POLICIES_V1: readonly InspectionPolicy[] = [
     sealRule: 'inner_seal_must_stay_closed',
     dwellTargetSec: 240,
   }),
+  /**
+   * PORTE-CUSTODY — FOUNDER RULING (2026-08-14, decision (b)): the
+   * CONSERVATIVE FALLBACK for category-less products. A product that rides
+   * the wire with no inspection category inspects OUTER PACKAGING ONLY —
+   * this row claims nothing category-specific (no box-open, no try-on, no
+   * inner-seal judgement), mirroring the buyer PWA's own conservative
+   * inspection row. Real categories take over per-product whenever they
+   * ride the wire; this row exists so a category-less order refuses
+   * nothing it should not and permits nothing the §6.2 matrix has not
+   * granted.
+   */
+  InspectionPolicySchema.parse({
+    version: 'inspection-policy.v1',
+    inspectionCategory: 'uncategorised_conservative',
+    allowedActions: ['outer_only', 'visual_item', 'quantity', 'damage'],
+    sealRule: 'outer_only_conservative_no_opening',
+    dwellTargetSec: 240,
+  }),
 ];
 
 /** The derived fault mapping (see the derivation note — quotes 1–5). */

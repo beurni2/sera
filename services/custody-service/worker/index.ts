@@ -141,6 +141,16 @@ const BEARER_PREFIX = 'Bearer ';
  * SPINE corroborates it (custody-with-courier; departed). Everything else on
  * the object stays exactly as closed as before.
  */
+/**
+ * PORTE-CUSTODY part A (founder-approved, 2026-08-14) — ONE more rider act,
+ * with its clause: `POST /door/inspection` is the §6.3 doorstep inspection —
+ * the rider records the OBSERVABLE session (what the buyer opened, judged
+ * and chose) on his own authenticated hand. SE-I11 bans only PAYMENT
+ * assertion, and this route asserts none: the door-payment truth arrives
+ * provider-actored on `/produce-shop/door-signal`, and the SPINE refuses any
+ * signal whose actor is not the payment-provider class. `/delivery/decide`
+ * stays closed to riders, as ever.
+ */
 const RIDER_ROUTES: ReadonlySet<string> = new Set([
   'POST /verification',
   'POST /custody/begin',
@@ -148,6 +158,7 @@ const RIDER_ROUTES: ReadonlySet<string> = new Set([
   'POST /transit/arrive',
   'POST /delivery/evidence',
   'POST /delivery/drop',
+  'POST /door/inspection',
 ]);
 
 /**
@@ -164,9 +175,15 @@ const RIDER_ROUTES: ReadonlySet<string> = new Set([
  *     `pickup_verification_code` it mints at assign. It can NEVER arm the
  *     buyer's drop code: logistics is the carrier's book, and the carrier
  *     must never hold the buyer's secret.
- *   · `/produce-shop/*` — SHOP+'S key (`SHOP_ARM_SECRET`). Arms the
- *     `buyer_drop_code` minted at payment confirmation — and NOTHING else:
- *     not the pickup code (Shop+ is not the carrier), not `/order/open`
+ *   · `/produce-shop/*` — SHOP+'S key (`SHOP_ARM_SECRET`). TWO acts, and
+ *     honestly named: it arms the `buyer_drop_code` minted at payment
+ *     confirmation, and — PORTE-CUSTODY part A (2026-08-14) — it forwards
+ *     the provider-actored `payment.door_leg_confirmed.v1` to
+ *     `/door-signal`, the Option-B door-payment truth. The key is
+ *     TRANSPORT on that second act: the SPINE checks the event's actor
+ *     class itself, refuse-closed, so Shop+'s key cannot manufacture a
+ *     door payment — only carry the provider's word. NOTHING else: not
+ *     the pickup code (Shop+ is not the carrier), not `/order/open`
  *     (Shop+ does not know the dispatch chain).
  *
  * Neither door can arm `custody_seal` — the seal is register-at-begin now
@@ -175,7 +192,7 @@ const RIDER_ROUTES: ReadonlySet<string> = new Set([
  * below is the enforcement, not the comment.
  */
 const PRODUCE_ROUTES: ReadonlySet<string> = new Set(['POST /order/open', 'POST /secrets/arm']);
-const PRODUCE_SHOP_ROUTES: ReadonlySet<string> = new Set(['POST /secrets/arm']);
+const PRODUCE_SHOP_ROUTES: ReadonlySet<string> = new Set(['POST /secrets/arm', 'POST /door-signal']);
 
 async function timingSafeEqual(a: string, b: string): Promise<boolean> {
   const enc = new TextEncoder();

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { CustodySpine, type ChainIds } from '../src/custody-spine.js';
 import { ACTIVE_PICKUP_VERIFICATION_POLICY, type VerificationInput } from '../src/pickup-verification-policy.js';
+import type { DoorInspectionInput } from '../src/door-flow.js';
 
 /**
  * ═══ CustodyDO — ONE OBJECT PER ORDER, and the ledger is its memory ═══
@@ -343,6 +344,37 @@ export type CustodyCommand =
       /** HASHED AT THE DOOR — the buyer's code plaintext dies with the request. */
       dropCodeDigest: string;
       attribution: 'founder_attested' | 'rider_authenticated';
+      at: string;
+    }
+  | {
+      /**
+       * PORTE-CUSTODY part A — the §6.3 door inspection, the OBSERVABLE
+       * session the rider records at the buyer's door (SE-I11 bans only
+       * PAYMENT assertion — an inspection is not a payment claim). The
+       * full DoorInspectionInput rides the command, its `orderId` stamped
+       * from this object's own chain at the route — never a caller's
+       * value — exactly as `verify_pickup` carries its input. NO SECRET
+       * anywhere in it, so nothing to digest.
+       */
+      kind: 'door_inspection';
+      command_id: string;
+      input: DoorInspectionInput;
+      attribution: 'founder_attested' | 'rider_authenticated';
+      at: string;
+    }
+  | {
+      /**
+       * PORTE-CUSTODY part A — the provider-actored
+       * `payment.door_leg_confirmed.v1`, forwarded by Shop+ through its own
+       * producer door. Stored VERBATIM: the SPINE parses it against
+       * PlatformEventSchema and judges the actor class itself
+       * (refuse-closed), live and on replay alike — this object bounds only
+       * the envelope of the request (command_id, size) and never
+       * interprets the event.
+       */
+      kind: 'door_signal';
+      command_id: string;
+      event: unknown;
       at: string;
     };
 
@@ -761,6 +793,16 @@ export class CustodyDO {
         return spine.decideValidation(cmd.at);
       case 'confirm_drop':
         return spine.confirmDropAndEmitEligibility(cmd.dropCodeDigest, cmd.at);
+      // ── PORTE-CUSTODY part A — the §6.3 door stage. Both arms are PURE
+      // spine calls on values stored ON the command (input/event + at), so a
+      // replay re-applies byte-identically: every rule — one inspection per
+      // attempt, order binding, actor provenance, inspect-before-pay,
+      // pay-before-custody — lives in the spine, and these arms hand it the
+      // command and nothing else.
+      case 'door_inspection':
+        return spine.recordDoorInspection(cmd.input, cmd.at);
+      case 'door_signal':
+        return spine.consumeDoorPaidSignal(cmd.event, cmd.at);
     }
   }
 
@@ -2063,6 +2105,141 @@ export class CustodyDO {
         await this.state.storage.put(armed);
         await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
       }
+      return Response.json(recorded.body, { status: recorded.httpStatus });
+    }
+
+    /**
+     * ═══ PORTE-CUSTODY part A — THE §6.3 DOOR STAGE GETS ITS WIRE ═══
+     *
+     * The spine has implemented the door laws since WO-2.4 —
+     * `recordDoorInspection` and `consumeDoorPaidSignal`, with every guard
+     * (one inspection per attempt, order binding, actor provenance,
+     * inspect-before-pay, pay-before-custody) already held by ~250 tests —
+     * and NO route reached them, so a pay-at-door order's drop refused
+     * `inspection_not_accepted` forever. These two routes are the wire and
+     * nothing else: same priorFor/conflict/tooLargeToCommit/commit
+     * discipline as every command above.
+     *
+     * `/door/inspection` is a RIDER act (via RIDER_ROUTES): the rider
+     * records the OBSERVABLE session — what the buyer opened, judged and
+     * chose. SE-I11 bans only PAYMENT assertion, and this asserts none: the
+     * payment truth arrives separately, provider-actored, on `/door-signal`.
+     */
+    if (request.method === 'POST' && pathname === '/door/inspection') {
+      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      const refusalColumn = body?.['refusalColumn'];
+      if (
+        body === null ||
+        !isBoundedStr(body['command_id'], MAX_ID) ||
+        !isBoundedStr(body['inspectionCategory'], MAX_ID) ||
+        typeof body['packageOpened'] !== 'boolean' ||
+        typeof body['manufacturerSealOpened'] !== 'boolean' ||
+        typeof body['custodySealIntact'] !== 'boolean' ||
+        typeof body['buyerAccepts'] !== 'boolean' ||
+        (refusalColumn !== undefined && refusalColumn !== 'valid' && refusalColumn !== 'buyer_risk') ||
+        !isIso(body['startedAt']) ||
+        !isIso(body['completedAt']) ||
+        !isBoundedStr(body['evidenceBundleId'], MAX_ID) ||
+        (body['at'] !== undefined && !isIso(body['at']))
+      ) {
+        return malformed();
+      }
+      const doorRider = request.headers.get('X-Rider-Authenticated');
+      const cmd: CustodyCommand = {
+        kind: 'door_inspection',
+        command_id: (body['command_id'] as string).trim(),
+        input: {
+          // The object's OWN chain names the order — never the caller's
+          // body (the spine re-checks by equality; `verify_pickup`'s law).
+          orderId: this.chain.order_id,
+          inspectionCategory: (body['inspectionCategory'] as string).trim(),
+          packageOpened: body['packageOpened'] as boolean,
+          manufacturerSealOpened: body['manufacturerSealOpened'] as boolean,
+          custodySealIntact: body['custodySealIntact'] as boolean,
+          buyerAccepts: body['buyerAccepts'] as boolean,
+          ...(refusalColumn !== undefined ? { refusalColumn: refusalColumn as 'valid' | 'buyer_risk' } : {}),
+          startedAt: body['startedAt'] as string,
+          completedAt: body['completedAt'] as string,
+          evidenceBundleId: (body['evidenceBundleId'] as string).trim(),
+        },
+        attribution: doorRider !== null && doorRider !== '' ? 'rider_authenticated' : 'founder_attested',
+        at: (body['at'] as string | undefined) ?? new Date().toISOString(),
+      };
+      const prior = this.priorFor(cmd);
+      if (prior.kind === 'duplicate') return this.replayOutcome(prior.outcome, cmd);
+      if (prior.kind === 'conflict') {
+        return Response.json({ ok: false, reason: 'command_id_reused_with_other_content' }, { status: 409 });
+      }
+      if (this.tooLargeToCommit(cmd)) {
+        return Response.json({ ok: false, reason: 'command_too_large' }, { status: 413 });
+      }
+      const applied = this.apply(this.spine, cmd) as
+        | { ok: true; kind: 'accepted' }
+        | { ok: true; kind: 'invalid_rejection'; ladder: unknown }
+        | { ok: true; kind: 'valid_rejection'; faultClass: string }
+        | { ok: false; reason?: string };
+      // The spine's own answer shape is carried through — kind for every
+      // accepted arm, the ladder step (a canon DeliveryOutcome, no event
+      // internals) for an invalid rejection, the derived faultClass for a
+      // valid one. Refusals answer ok:false+reason like every sibling.
+      const recorded: RecordedOutcome = !applied.ok
+        ? { httpStatus: 409, body: { ok: false, reason: applied.reason ?? 'refused' } }
+        : applied.kind === 'accepted'
+          ? { httpStatus: 200, body: { ok: true, kind: 'accepted' } }
+          : applied.kind === 'valid_rejection'
+            ? { httpStatus: 200, body: { ok: true, kind: 'valid_rejection', faultClass: applied.faultClass } }
+            : { httpStatus: 200, body: { ok: true, kind: 'invalid_rejection', ladder: applied.ladder } };
+      await this.commit(cmd, recorded);
+      return Response.json(recorded.body, { status: recorded.httpStatus });
+    }
+
+    /**
+     * The door-payment signal — Shop+ forwards the provider-actored
+     * `payment.door_leg_confirmed.v1` through its own producer door
+     * (PRODUCE_SHOP_ROUTES / SHOP_ARM_SECRET). The SPINE judges the event:
+     * canonical parse, actor class (refuse-closed — no rider assertion
+     * exists anywhere), awaited-state, duplicate absorption. This route
+     * bounds the request envelope and carries the answer.
+     *
+     * ⚠ A refusal may carry an `alert` — a reconciliation.alert.v1 the
+     * spine has ALREADY emitted and this log has already recorded (the
+     * command commits whatever it answered). The alert is NOT put in the
+     * HTTP answer: refusals here answer ok:false+reason like every other
+     * route, and the event is readable at `/events` where every emission
+     * lives.
+     */
+    if (request.method === 'POST' && pathname === '/door-signal') {
+      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      const event = body?.['event'];
+      if (
+        body === null ||
+        !isBoundedStr(body['command_id'], MAX_ID) ||
+        event === null || typeof event !== 'object' || Array.isArray(event) ||
+        (body['at'] !== undefined && !isIso(body['at']))
+      ) {
+        return malformed();
+      }
+      const cmd: CustodyCommand = {
+        kind: 'door_signal',
+        command_id: (body['command_id'] as string).trim(),
+        event,
+        at: (body['at'] as string | undefined) ?? new Date().toISOString(),
+      };
+      const prior = this.priorFor(cmd);
+      if (prior.kind === 'duplicate') return this.replayOutcome(prior.outcome, cmd);
+      if (prior.kind === 'conflict') {
+        return Response.json({ ok: false, reason: 'command_id_reused_with_other_content' }, { status: 409 });
+      }
+      if (this.tooLargeToCommit(cmd)) {
+        return Response.json({ ok: false, reason: 'command_too_large' }, { status: 413 });
+      }
+      const applied = this.apply(this.spine, cmd) as
+        | { ok: true; duplicate: boolean }
+        | { ok: false; reason?: string };
+      const recorded: RecordedOutcome = applied.ok
+        ? { httpStatus: 200, body: { ok: true, duplicate: applied.duplicate } }
+        : { httpStatus: 409, body: { ok: false, reason: applied.reason ?? 'refused' } };
+      await this.commit(cmd, recorded);
       return Response.json(recorded.body, { status: recorded.httpStatus });
     }
 
