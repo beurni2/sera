@@ -70,6 +70,17 @@ const SANS_PHOTO = 'sans-photo';
  *  only keys the attempt so a code arriving later is a NEW attempt. */
 const SANS_CODE = 'sans-code';
 
+/** PORTE-CUSTODY part C — the conservative category the door inspection
+ *  sends while no category rides the task (founder ruling 2026-08-14,
+ *  decision (b): category-less products inspect under the conservative
+ *  category). A constant, so the attempt's content can never drift. */
+const CATEGORIE_CONSERVATRICE = 'uncategorised_conservative';
+
+/** PORTE-CUSTODY part C — the §6.3 pay-at-door mode, the ONE mode that
+ *  inserts the door-inspection stage before the buyer's code. Canon §5.5
+ *  vocabulary, bounded at the session parser — never compared loosely. */
+const MODE_PORTE = 'DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR';
+
 const MOI_POLL_MS = 20_000;
 import { resolveCustodyActs } from './src/net/resolveCustodyActs';
 import { httpSosSender } from './src/net/sos-wire';
@@ -110,6 +121,8 @@ import {
   evidenceIsHeld,
   evidenceOutcome,
   holdsPackage,
+  inspectionIsHeld,
+  inspectionOutcome,
   maySeal,
   packageIsHeld,
   roadArrived,
@@ -423,6 +436,11 @@ export default function App() {
   const [sealSaisi, setSealSaisi] = useState<string | null>(null);
   const [livraisonIds, setLivraisonIds] = useState<{ taskId: string; packageId: string } | null>(null);
   const [evidencePhase, setEvidencePhase] = useState<ActPhase>(ACT_IDLE);
+  /** PORTE-CUSTODY part C — the §6.3 door inspection's phase, same shape as
+   *  every act. Not remembered across a kill on purpose: a relaunch re-runs
+   *  the accept and custody replays its recorded answer
+   *  (`inspection_already_recorded` reads as the same held truth). */
+  const [inspectionPhase, setInspectionPhase] = useState<ActPhase>(ACT_IDLE);
   const [dropPhase, setDropPhase] = useState<ActPhase>(ACT_IDLE);
   /** `capturedAt` is part of the bundle custody FINGERPRINTS, so it is minted
    *  once per attempt and reused on retry — a moving clock would turn every
@@ -1052,12 +1070,84 @@ export default function App() {
     sendDeliveryEvidence();
   }, [WIRED, preuveAuto, sendDeliveryEvidence]);
 
+  /**
+   * ═══ PORTE-CUSTODY part C (founder-approved 2026-08-14) — THE §6.3 DOOR
+   * STAGE, WIRED ═══
+   *
+   * On a pay-at-door course the buyer inspects at the door and the rider
+   * records the OBSERVABLE session — the ACCEPT road only: nothing opened
+   * beyond the buyer's own act, the custody seal intact, the buyer accepts.
+   * SE-I11 stands untouched: this asserts NOTHING about payment (the
+   * provider's signal reaches custody on its own wire), and the code entry
+   * that follows still ends on the LEDGER's word alone.
+   *
+   * Same laws as every act around it: one command_id per session
+   * (`attemptFor`), never queued offline (the port refuses honestly), and
+   * the screen advances on custody's answer — `inspection_already_recorded`
+   * reads as the same held truth, so a relaunch that re-records is told it
+   * is held, never that something failed.
+   */
+  const sendDoorInspection = useCallback(() => {
+    if (riderCode === null || liveAssignment === null) return;
+    const attempt = attemptFor(`door-inspection|${liveAssignment.orderId}`);
+    // The instant is FROZEN with the attempt — custody fingerprints the
+    // content, so a moving clock would turn every retry into
+    // `409 command_id_reused_with_other_content` (the capturedAt law).
+    const held = capturedAtFor.current.get(attempt.id) ?? new Date().toISOString();
+    capturedAtFor.current.set(attempt.id, held);
+    runAct(setInspectionPhase, () =>
+      custodyActs.recordDoorInspection(
+        {
+          commandId: attempt.id,
+          orderId: liveAssignment.orderId,
+          // Decision (b), founder ruling 2026-08-14: no category rides the
+          // task yet — the CONSERVATIVE category, never a guess at a kinder one.
+          inspectionCategory: CATEGORIE_CONSERVATRICE,
+          packageOpened: false,
+          manufacturerSealOpened: false,
+          custodySealIntact: true,
+          buyerAccepts: true,
+          startedAt: held,
+          completedAt: held,
+          // No camera at the door (PORTE-SANS-PHOTO) — the value SAYS SO
+          // (the `sans-photo` convention, A7's lesson) and is a pure
+          // function of the order, so the attempt's content cannot drift.
+          evidenceBundleId: `${SANS_PHOTO}-porte-${liveAssignment.orderId}`,
+        },
+        riderCode,
+      ),
+    );
+  }, [custodyActs, riderCode, liveAssignment, runAct, attemptFor]);
+
   const sendDrop = useCallback(
     (dropCode: string) => {
       if (riderCode === null || liveAssignment === null) return;
       // The buyer's code is a custody secret: same no-offline-queue law as
       // the pickup code — the port refuses offline, nothing rests here.
-      const attempt = attemptFor(`drop|${liveAssignment.orderId}|${dropCode}`);
+      /**
+       * ⚠ A RETRY AFTER A *WAITING* REFUSAL IS A NEW COMMAND. Custody commits
+       * refusals into its dedupe log and REPLAYS them for the same command_id
+       * (custody-do `priorFor`/`commit`) — so re-presenting the code under
+       * the held id after `door_payment_not_confirmed` / `not_validated`
+       * would answer the OLD 409 for ever, and « réessayez — le code
+       * marchera » would be a lie against the shipped Worker. The held id is
+       * released exactly when the sentence on screen promises a retry WILL
+       * work once the fact lands (the waiting tones), so the next tap is a
+       * fresh act custody judges against the world as it now stands. It
+       * stays held everywhere else: offline/unreachable never reached the
+       * log (the true lost-response retries, replay-safe by design), and a
+       * NAMED final refusal (`drop_code_refused` on the same re-typed code)
+       * honestly replays the same true answer.
+       */
+      const key = `drop|${liveAssignment.orderId}|${dropCode}`;
+      if (
+        dropPhase.kind === 'answered' &&
+        dropPhase.answer.kind === 'refused' &&
+        dropOutcome(dropPhase.answer).tone === 'waiting'
+      ) {
+        attempts.current.delete(key);
+      }
+      const attempt = attemptFor(key);
       runAct(setDropPhase, () =>
         custodyActs.confirmDrop(
           { commandId: attempt.id, orderId: liveAssignment.orderId, dropCode },
@@ -1065,7 +1155,7 @@ export default function App() {
         ),
       );
     },
-    [custodyActs, riderCode, liveAssignment, runAct, attemptFor],
+    [custodyActs, riderCode, liveAssignment, dropPhase, runAct, attemptFor],
   );
 
   const signIn = useCallback(
@@ -2025,6 +2115,49 @@ export default function App() {
                             ) : (
                               <FasoPendingNotice title={t('delivery.preuve_titre')} lines={[t('delivery.preuve_note')]} />
                             )}
+                          </>
+                        ) : liveAssignment.paymentMode === MODE_PORTE && !inspectionIsHeld(inspectionPhase) ? (
+                          /**
+                           * ═══ PORTE-CUSTODY part C — THE DOOR INSPECTION,
+                           * BEFORE THE CODE (§6.3, pay-at-door ONLY) ═══
+                           *
+                           * The buyer opens and judges at the door; the rider
+                           * records that she ACCEPTS — one primary action, on
+                           * the ledger's answer, exactly like the road rungs
+                           * before it. Only the held truth opens the code
+                           * entry; a FULL_PREPAY course never renders this arm
+                           * and walks byte-identically to before. The demo
+                           * shell's door screen (`inspect.*`) already carries
+                           * these words — same catalog keys, the WIRED road.
+                           *
+                           * There is NO payment screen after it on purpose:
+                           * the code card's `door_payment_not_confirmed`
+                           * waiting sentence IS the wait — custody stays the
+                           * authority and the rider retries after the buyer
+                           * pays (SE-I11: the rider can never assert payment).
+                           */
+                          <>
+                            <FasoPosterTitle>{t('inspect.title')}</FasoPosterTitle>
+                            <FasoBody>{t('inspect.body')}</FasoBody>
+                            <FasoPrimaryButton
+                              label={t(inspectionPhase.kind === 'working' ? 'acts.sending' : 'inspect.accept_action')}
+                              disabled={inspectionPhase.kind === 'working'}
+                              onPress={sendDoorInspection}
+                            />
+                            {inspectionPhase.kind === 'answered' ? (
+                              (() => {
+                                const o = inspectionOutcome(inspectionPhase.answer);
+                                return (
+                                  <>
+                                    <FasoStatusChip
+                                      tone={o.tone === 'ok' ? 'ok' : o.tone === 'waiting' ? 'info' : 'bad'}
+                                      label={t(o.title)}
+                                    />
+                                    {o.hint === undefined ? null : <FasoBody>{t(o.hint)}</FasoBody>}
+                                  </>
+                                );
+                              })()
+                            ) : null}
                           </>
                         ) : (
                           <>

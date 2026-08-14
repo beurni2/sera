@@ -318,3 +318,36 @@ describe('ROUTE-DIRECTE — the machine-carried seal is bounded by its OWN shape
     expect(withScelle(undefined)?.assignment?.codeScelle).toBeNull();
   });
 });
+
+describe('PORTE-CUSTODY part C — paymentMode is bounded to the canon §5.5 set', () => {
+  const withMode = (v: unknown) =>
+    riderSessionFromBody({
+      ok: true,
+      rider: {
+        riderId: 'r-1', displayName: 'Boss', certified: true, privacyAckOk: true,
+        assignment: {
+          assignmentId: 'a-1', taskId: 't-1', orderId: 'o-1', status: 'acknowledged',
+          paymentMode: v,
+        },
+      },
+    });
+
+  it('accepts exactly the two canon modes — the road turns on this value', () => {
+    expect(withMode('FULL_PREPAY')?.assignment?.paymentMode).toBe('FULL_PREPAY');
+    expect(withMode('DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR')?.assignment?.paymentMode).toBe(
+      'DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR',
+    );
+  });
+
+  it('⚠ anything else is NULL, never a guess — an unknown mode must walk the plain road', () => {
+    for (const bad of ['NONE', 'full_prepay', 'AT_DOOR', 'DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR ', '', 42, true, {}, ['FULL_PREPAY'], null]) {
+      expect(withMode(bad)?.assignment?.paymentMode, JSON.stringify(bad)).toBeNull();
+    }
+  });
+
+  it('an old Worker sending no mode still yields a whole session, mode null', () => {
+    const a = withMode(undefined)?.assignment;
+    expect(a?.orderId).toBe('o-1');
+    expect(a?.paymentMode).toBeNull();
+  });
+});

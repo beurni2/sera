@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { deliveryChainOf, evidenceHeld, type CustodyAnswer } from '../src/net/custody-acts';
-import { dropDone, dropOutcome, evidenceIsHeld, evidenceOutcome } from '../src/net/act-model';
+import { dropDone, dropOutcome, evidenceIsHeld, evidenceOutcome, inspectionIsHeld, inspectionOutcome } from '../src/net/act-model';
 import { subtleSha256Hex } from '../src/net/evidence-capture';
 
 /**
@@ -73,6 +73,47 @@ describe('dropOutcome — the buyer’s code, every answer a true sentence', () 
     expect(dropOutcome(ref('return_in_flight')).tone).toBe('refused');
     expect(dropOutcome({ kind: 'offline' }).title).toBe('acts.offline');
     expect(dropOutcome({ kind: 'unauthorized' }).title).toBe('signin.bad_code');
+  });
+  /**
+   * PORTE-CUSTODY part C — the §6.3 door stage's two ordered facts, NAMED.
+   * Both are WAITING truths (retrying WILL work once the fact lands): the
+   * buyer's accord must be recorded first, and the door leg must be
+   * provider-confirmed — the rider can never assert the payment (SE-I11).
+   */
+  it('⚠ the missing accord waits by name — never a generic « Séra a refusé »', () => {
+    expect(dropOutcome(ref('inspection_not_accepted'))).toEqual({
+      title: 'delivery.inspection_not_accepted', hint: 'delivery.inspection_not_accepted_hint', tone: 'waiting',
+    });
+  });
+  it('⚠ the unconfirmed door payment waits by name — the buyer pays, the code then works', () => {
+    expect(dropOutcome(ref('door_payment_not_confirmed'))).toEqual({
+      title: 'delivery.door_payment_not_confirmed', hint: 'delivery.door_payment_not_confirmed_hint', tone: 'waiting',
+    });
+  });
+});
+
+describe('PORTE-CUSTODY — inspectionOutcome / inspectionIsHeld, every answer a true sentence', () => {
+  it('the ledger’s accepted (and its already-recorded twin) is held — the code entry opens', () => {
+    expect(inspectionOutcome(rec({ ok: true, kind: 'accepted' }))).toEqual({
+      title: 'delivery.inspection_notee', tone: 'ok',
+    });
+    expect(inspectionOutcome(ref('inspection_already_recorded'))).toEqual({
+      title: 'delivery.inspection_notee', tone: 'ok',
+    });
+    expect(inspectionIsHeld({ kind: 'answered', answer: rec({ ok: true, kind: 'accepted' }) })).toBe(true);
+    expect(inspectionIsHeld({ kind: 'answered', answer: ref('inspection_already_recorded') })).toBe(true);
+  });
+  it('a named custody refusal shows as a refusal; transport answers keep their standing sentences', () => {
+    expect(inspectionOutcome(ref('inspection_not_awaited')).tone).toBe('refused');
+    expect(inspectionOutcome(rec({ ok: true, kind: 'valid_rejection' })).tone).toBe('refused');
+    expect(inspectionOutcome({ kind: 'offline' })).toEqual({
+      title: 'acts.offline', hint: 'acts.offline_hint', tone: 'waiting',
+    });
+    expect(inspectionOutcome({ kind: 'unreachable' })).toEqual({
+      title: 'acts.unreachable', hint: 'acts.unreachable_hint', tone: 'waiting',
+    });
+    expect(inspectionIsHeld({ kind: 'working' })).toBe(false);
+    expect(inspectionIsHeld({ kind: 'answered', answer: rec({ ok: true, kind: 'valid_rejection' }) })).toBe(false);
   });
 });
 

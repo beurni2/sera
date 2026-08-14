@@ -159,6 +159,37 @@ export interface DeliveryEvidenceAct {
 }
 
 /**
+ * PORTE-CUSTODY part C (founder-approved 2026-08-14) — the §6.3 doorstep
+ * inspection, ACCEPT road only: the rider records the OBSERVABLE session
+ * (the buyer opened, judged, and accepts). SE-I11 bans only PAYMENT
+ * assertion, and this asserts none — the door-payment truth arrives
+ * provider-actored on custody's own wire. `refusalColumn` is deliberately
+ * NOT here: the accept road omits it (the fixed contract), and the refusal
+ * road stays with the refusal ladder. Same laws as every sibling act: never
+ * queued offline (a live custody statement — offline is an honest refusal),
+ * minted command_id reused on retry, `at` never sent.
+ */
+export interface DoorInspectionAct {
+  readonly commandId: CommandId;
+  readonly orderId: string;
+  /** The conservative category while no category rides the task (founder
+   *  ruling 2026-08-14, decision (b)): `uncategorised_conservative`. */
+  readonly inspectionCategory: string;
+  readonly packageOpened: boolean;
+  readonly manufacturerSealOpened: boolean;
+  readonly custodySealIntact: boolean;
+  readonly buyerAccepts: boolean;
+  /** Frozen with the attempt (custody fingerprints the content — a moving
+   *  clock would turn every retry into `command_id_reused_with_other_content`). */
+  readonly startedAt: string;
+  readonly completedAt: string;
+  /** No camera at the door (PORTE-SANS-PHOTO) — the value SAYS SO, derived
+   *  deterministically for the order (the `sans-photo` convention), never
+   *  shaped like a bundle that was never filled (A7's lesson). */
+  readonly evidenceBundleId: string;
+}
+
+/**
  * SE-LIVE-5c — the buyer's code, entered LAST, on this device (§63). A
  * custody secret: same no-offline-queue law as the pickup code and the seal
  * — offline, the act refuses and NOTHING rests on the phone.
@@ -186,6 +217,9 @@ export interface CustodyActsPort {
   depart(code: string, orderId: string, commandId: CommandId): Promise<CustodyAnswer>;
   arrive(code: string, orderId: string, commandId: CommandId): Promise<CustodyAnswer>;
   submitDeliveryEvidence(act: DeliveryEvidenceAct, code: string): Promise<CustodyAnswer>;
+  /** PORTE-CUSTODY part C — the §6.3 door inspection, accept road, on the
+   *  rider door (`POST /rider/door/inspection`). Same auth, same discipline. */
+  recordDoorInspection(act: DoorInspectionAct, code: string): Promise<CustodyAnswer>;
   confirmDrop(act: ConfirmDropAct, code: string): Promise<CustodyAnswer>;
 }
 
@@ -295,6 +329,23 @@ export function httpCustodyActs(
         },
       });
     },
+    async recordDoorInspection(act, code) {
+      return post('/rider/door/inspection', code, {
+        orderId: act.orderId,
+        command_id: act.commandId,
+        inspectionCategory: act.inspectionCategory,
+        packageOpened: act.packageOpened,
+        manufacturerSealOpened: act.manufacturerSealOpened,
+        custodySealIntact: act.custodySealIntact,
+        buyerAccepts: act.buyerAccepts,
+        // `refusalColumn` DELIBERATELY absent — the accept road omits it
+        // (the fixed contract); the refusal road is the ladder's, not this
+        // button's. And no `at`: custody stamps its own clock, as always.
+        startedAt: act.startedAt,
+        completedAt: act.completedAt,
+        evidenceBundleId: act.evidenceBundleId,
+      });
+    },
     async confirmDrop(act, code) {
       return post('/rider/delivery/drop', code, {
         orderId: act.orderId,
@@ -380,6 +431,20 @@ export function deliveryChainOf(answer: CustodyAnswer): { taskId: string; packag
 export function evidenceHeld(answer: CustodyAnswer): boolean {
   if (answer.kind === 'recorded' && answer.body['status'] === 'evidence_recorded') return true;
   return answer.kind === 'refused' && answer.reason === 'evidence_already_submitted';
+}
+
+/**
+ * PORTE-CUSTODY part C — is the buyer's accord ON the ledger? The Worker's
+ * own word (`200 {ok:true, kind:'accepted'}` — its replay carries the same
+ * body with `duplicate: true` and reads identically), and
+ * `inspection_already_recorded` is the SAME held truth (the
+ * `evidence_already_submitted` design, kept exactly): one inspection per
+ * attempt, held once — a rider who re-records after an app kill is told it
+ * is held, never that something failed.
+ */
+export function inspectionHeld(answer: CustodyAnswer): boolean {
+  if (answer.kind === 'recorded' && answer.body['kind'] === 'accepted') return true;
+  return answer.kind === 'refused' && answer.reason === 'inspection_already_recorded';
 }
 
 /**

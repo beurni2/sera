@@ -6,6 +6,7 @@ import { createManualConnectivity } from '../src/offline/connectivity';
 import {
   custodyBegan,
   httpCustodyActs,
+  inspectionHeld,
   mintActId,
   transitArrived,
   transitDeparted,
@@ -467,5 +468,98 @@ describe('⚠ base64 → bytes, because the bucket sniffs MAGIC BYTES (A1)', () 
   it('tolerates the line breaks some encoders insert', () => {
     const bytes = [1, 2, 3, 4, 5, 6];
     expect([...(bytesFromBase64(b64(bytes).replace(/(.{4})/g, '$1\n')) ?? [])]).toEqual(bytes);
+  });
+});
+
+/**
+ * ═══ PORTE-CUSTODY part C — the §6.3 door inspection, accept road ═══
+ *
+ * The FIXED contract (founder-approved 2026-08-14): `POST
+ * /rider/door/inspection`, rider's own code as Bearer, the accept road's
+ * facts verbatim, `refusalColumn` OMITTED. Same laws as every sibling:
+ * offline is an honest refusal (no queue), no `riderId`, no `at`.
+ */
+describe('PORTE-CUSTODY — the door inspection says exactly what the contract fixed', () => {
+  const DOOR = {
+    commandId: mintActId(),
+    orderId: 'ord-porte-1',
+    inspectionCategory: 'uncategorised_conservative',
+    packageOpened: false,
+    manufacturerSealOpened: false,
+    custodySealIntact: true,
+    buyerAccepts: true,
+    startedAt: '2026-08-14T10:00:00.000Z',
+    completedAt: '2026-08-14T10:00:00.000Z',
+    evidenceBundleId: 'sans-photo-porte-ord-porte-1',
+  };
+
+  async function capture() {
+    const seen: { url?: string; auth?: string | null; body?: Record<string, unknown> } = {};
+    const port = httpCustodyActs('https://custody.dev', online(), async (url, init) => {
+      seen.url = url;
+      seen.auth = new Headers(init?.headers).get('Authorization');
+      seen.body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return json({ ok: true, kind: 'accepted' });
+    });
+    await port.recordDoorInspection(DOOR, 'SR-ABCD-EFGH-JKMN');
+    return seen;
+  }
+
+  it('posts to the rider door with the rider code as Bearer, body per the fixed contract', async () => {
+    const seen = await capture();
+    expect(seen.url).toBe('https://custody.dev/rider/door/inspection');
+    expect(seen.auth).toBe('Bearer SR-ABCD-EFGH-JKMN');
+    expect(seen.body).toEqual({
+      orderId: 'ord-porte-1',
+      command_id: DOOR.commandId,
+      inspectionCategory: 'uncategorised_conservative',
+      packageOpened: false,
+      manufacturerSealOpened: false,
+      custodySealIntact: true,
+      buyerAccepts: true,
+      startedAt: '2026-08-14T10:00:00.000Z',
+      completedAt: '2026-08-14T10:00:00.000Z',
+      evidenceBundleId: 'sans-photo-porte-ord-porte-1',
+    });
+  });
+
+  it('⚠ refusalColumn, riderId and `at` are ABSENT on the accept road — byte-exact, not by luck', async () => {
+    const seen = await capture();
+    for (const banned of ['refusalColumn', 'riderId', 'at']) {
+      expect(Object.keys(seen.body ?? {}), banned).not.toContain(banned);
+    }
+  });
+
+  it('offline: the act refuses honestly and NOTHING is sent — the drop’s own law, kept', async () => {
+    let called = 0;
+    const port = httpCustodyActs('https://custody.dev', offline(), async () => {
+      called += 1;
+      return json({ ok: true, kind: 'accepted' });
+    });
+    expect(await port.recordDoorInspection(DOOR, 'CODE')).toEqual({ kind: 'offline' });
+    expect(called).toBe(0);
+  });
+
+  it('inspectionHeld: the ledger’s accepted, its replay, and already-recorded are the SAME held truth', () => {
+    const rec = (body: Record<string, unknown>, duplicate = false): CustodyAnswer =>
+      ({ kind: 'recorded', duplicate, body });
+    expect(inspectionHeld(rec({ ok: true, kind: 'accepted' }))).toBe(true);
+    expect(inspectionHeld(rec({ ok: true, kind: 'accepted', duplicate: true }, true))).toBe(true);
+    expect(inspectionHeld({ kind: 'refused', reason: 'inspection_already_recorded' })).toBe(true);
+  });
+
+  it('⚠ NOTHING else is held — not a rejection arm, not a refusal, not a dead wire', () => {
+    const answers: CustodyAnswer[] = [
+      { kind: 'recorded', duplicate: false, body: { ok: true, kind: 'valid_rejection', faultClass: 'seller' } },
+      { kind: 'recorded', duplicate: false, body: { ok: true, kind: 'invalid_rejection' } },
+      { kind: 'recorded', duplicate: false, body: { ok: true } },
+      { kind: 'refused', reason: 'inspection_not_awaited' },
+      { kind: 'offline' },
+      { kind: 'unauthorized' },
+      { kind: 'unreachable' },
+    ];
+    for (const a of answers) {
+      expect(inspectionHeld(a), `${a.kind}/${'reason' in a ? a.reason : JSON.stringify('body' in a ? a.body : '')}`).toBe(false);
+    }
   });
 });

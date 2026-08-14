@@ -1446,6 +1446,36 @@
     "screenClass": "instruction"
   },
   {
+    "key": "delivery.inspection_notee",
+    "fr": "L'accord de la cliente est noté.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "delivery.inspection_not_accepted",
+    "fr": "L'accord de la cliente d'abord",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "delivery.inspection_not_accepted_hint",
+    "fr": "Enregistrez d'abord que la cliente accepte le colis — c'est l'écran juste avant le code. Une fois l'accord noté, réessayez : le code marchera.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "delivery.door_payment_not_confirmed",
+    "fr": "Le paiement n'est pas encore confirmé",
+    "register": "money",
+    "screenClass": "status"
+  },
+  {
+    "key": "delivery.door_payment_not_confirmed_hint",
+    "fr": "La cliente paie sur sa page de commande. Dès que c'est confirmé, réessayez — le code marchera.",
+    "register": "money",
+    "screenClass": "instruction"
+  },
+  {
     "key": "privacy.title",
     "fr": "Avant de prendre la route",
     "register": "neutral",

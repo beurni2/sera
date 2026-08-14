@@ -1722,6 +1722,19 @@ export class LogisticsDO {
               ramassageConfirmeAt: this.ramassage[assignment.assignmentId]?.confirmeAt ?? null,
               codeVerification: this.codesVerification[assignment.assignmentId]?.code ?? null,
               /**
+               * PORTE-CUSTODY part C (founder-approved 2026-08-14) — the
+               * course's payment mode, as the FUNDING FACT said it (SE-I02:
+               * the per-mode funding truth is the producer's; this only
+               * carries it). The rider's road turns on it: a pay-at-door
+               * course inserts the §6.3 door-inspection stage before the
+               * buyer's code. `null` when the fact is gone (a course purged
+               * or composed before facts) — honest, never a guessed mode:
+               * the app then walks the plain road and custody, the
+               * authority, refuses the drop by name if the door stage was
+               * really due.
+               */
+              paymentMode: this.fundingFacts[assignment.orderId]?.paymentMode ?? null,
+              /**
                * ROUTE-DIRECTE — the machine-carried seal id. The app registers
                * custody with it the moment the verification is accepted, with
                * no screen and no photo (founder ruling 2026-08-10), and

@@ -34,6 +34,9 @@ export function unwiredCustodyActs(): CustodyActsPort {
     depart: refuse,
     arrive: refuse,
     submitDeliveryEvidence: refuse,
+    // The door inspection refuses too: an unwired build never records a
+    // buyer's accord no ledger anywhere holds.
+    recordDoorInspection: refuse,
     confirmDrop: refuse,
   };
 }

@@ -2,6 +2,7 @@ import {
   custodyBegan,
   custodyWithCustomer,
   evidenceHeld,
+  inspectionHeld,
   transitArrived,
   transitDeparted,
   verificationAccepted,
@@ -118,6 +119,22 @@ export function evidenceOutcome(answer: CustodyAnswer): ActOutcomeKeys {
   return sharedOutcome(answer);
 }
 
+/**
+ * PORTE-CUSTODY part C — what to show after the door-inspection accept was
+ * tapped. Held (the ledger's `accepted`, its replay, or the
+ * `inspection_already_recorded` twin) advances the screen to the buyer's
+ * code, so the ok sentence is the half-second confirmation; a refusal
+ * custody named is shown plainly (retrying replays the same answer); the
+ * three transport answers keep their standing sentences.
+ */
+export function inspectionOutcome(answer: CustodyAnswer): ActOutcomeKeys {
+  if (inspectionHeld(answer)) return { title: 'delivery.inspection_notee', tone: 'ok' };
+  if (answer.kind === 'recorded' || answer.kind === 'refused') {
+    return { title: 'acts.refused', tone: 'refused' };
+  }
+  return sharedOutcome(answer);
+}
+
 /** RIDER-DELIVERY-SCREEN — what to show after the buyer's code was presented. */
 export function dropOutcome(answer: CustodyAnswer): ActOutcomeKeys {
   if (custodyWithCustomer(answer)) return { title: 'delivery.done', tone: 'ok' };
@@ -130,6 +147,17 @@ export function dropOutcome(answer: CustodyAnswer): ActOutcomeKeys {
     }
     if (answer.reason === 'not_validated' || answer.reason === 'validation_before_evidence') {
       return { title: 'delivery.not_validated', hint: 'delivery.not_validated_hint', tone: 'waiting' };
+    }
+    // PORTE-CUSTODY part C — the §6.3 door stage's two ordered facts, each a
+    // WAITING truth (retrying WILL work once the fact lands): the buyer's
+    // accord must be recorded first, and the door leg must be
+    // provider-confirmed. The rider can never assert the payment (SE-I11) —
+    // the sentence says who does, and that the code will then work.
+    if (answer.reason === 'inspection_not_accepted') {
+      return { title: 'delivery.inspection_not_accepted', hint: 'delivery.inspection_not_accepted_hint', tone: 'waiting' };
+    }
+    if (answer.reason === 'door_payment_not_confirmed') {
+      return { title: 'delivery.door_payment_not_confirmed', hint: 'delivery.door_payment_not_confirmed_hint', tone: 'waiting' };
     }
     return { title: 'acts.refused', tone: 'refused' };
   }
@@ -146,6 +174,13 @@ export function dropDone(phase: ActPhase): boolean {
  *  gates the seal: on the LEDGER's word, never on « the request worked ». */
 export function evidenceIsHeld(phase: ActPhase): boolean {
   return phase.kind === 'answered' && evidenceHeld(phase.answer);
+}
+
+/** PORTE-CUSTODY part C — the buyer's accord held, from the phase. Gates the
+ *  code entry on a pay-at-door course exactly as `evidenceIsHeld` gates it:
+ *  on the LEDGER's word, never on the tap. */
+export function inspectionIsHeld(phase: ActPhase): boolean {
+  return phase.kind === 'answered' && inspectionHeld(phase.answer);
 }
 
 /** The three non-ledger answers read the same for both acts. */

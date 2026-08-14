@@ -83,6 +83,24 @@ export interface RiderAssignment {
    * other on the one read that carries both.
    */
   readonly codeScelle: string | null;
+  /**
+   * PORTE-CUSTODY part C (founder-approved 2026-08-14) — the course's payment
+   * mode, as logistics carries the FUNDING FACT's word (SE-I02: the producer
+   * owns the per-mode funding truth). The road turns on it: a pay-at-door
+   * course inserts the §6.3 door-inspection stage before the buyer's code.
+   * Bounded to the two canon modes (§5.5) and NOTHING else — `null` when
+   * absent or unrecognised, never a guess: an unknown mode walks the plain
+   * road and custody, the authority, refuses the drop by name if the door
+   * stage was really due.
+   */
+  readonly paymentMode: PaymentMode | null;
+}
+
+/** The two canon payment modes (§5.5) — the closed set this parser admits. */
+const PAYMENT_MODES = ['FULL_PREPAY', 'DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR'] as const;
+export type PaymentMode = (typeof PAYMENT_MODES)[number];
+function paymentModeOrNull(v: unknown): PaymentMode | null {
+  return typeof v === 'string' && (PAYMENT_MODES as readonly string[]).includes(v) ? (v as PaymentMode) : null;
 }
 
 /** A media pointer and nothing else — mirrors the Worker's own bound, because
@@ -192,6 +210,9 @@ export function riderSessionFromBody(body: unknown): RiderSession | null {
         // sealed with. « The four secrets are never substituted » is enforced
         // here by shape, not by trust in the sender.
         codeScelle: codeScelleOrNull(a['codeScelle']),
+        // The closed §5.5 set or null — a mode this app does not know walks
+        // the plain road rather than inventing a door stage.
+        paymentMode: paymentModeOrNull(a['paymentMode']),
       };
     }
   }
