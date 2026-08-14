@@ -9,7 +9,9 @@ Format per entry:
 
 ---
 
-## 2026-08-14 · PORTE-CUSTODY — the §6.3 door stage gets its wire, whole · IN-REVIEW (branch, awaiting founder)
+## 2026-08-14 · PORTE-CUSTODY — the §6.3 door stage gets its wire, whole · DONE
+
+**MERGED AND DEPLOYED (founder's word, 2026-08-14):** main fast-forwarded to `ab80c22`; `custody-deploy` run 31778257204, `logistics-deploy` run 31778258668, `expo-preview` run 31778259989 — all **green** on `ab80c22` (shop-plus's half deployed the same hour, its journal). The pay-at-door handoff is live end to end: accord → provider-confirmed payment → code → delivered → rider back to waiting.
 **Founder's word:** « proceed with (b) » — the conservative fallback inspection row for category-less products.
 
 **BUILT, across both repos (shop-plus's half in its own journal):** custody's two door commands on the same replay log — `door_inspection` (`/rider/door/inspection`: the rider records the OBSERVABLE session; SE-I11 bans only payment assertion) and `door_signal` (`/produce-shop/door-signal`: Shop+ forwards the provider-actored `payment.door_leg_confirmed.v1` VERBATIM; the spine judges the actor class itself, refuse-closed) · the `uncategorised_conservative` policy row (outer packaging only, claiming nothing category-specific; real categories take over when they ride the wire) · logistics riderView carries `paymentMode` (null-honest) · the rider's wired road walks §6.3 for door courses: arrival → evidence → the accord screen (« La cliente est d'accord ») → the code, with both door refusals NAMED in waiting tones instead of « Séra a refusé » · the actor-provenance registry learned the byte the live wire actually carries (`payment-provider:sandbox` — the certified sandbox provider's own actor; unregistered, every live forward was a dead 409 caught before shipping).
