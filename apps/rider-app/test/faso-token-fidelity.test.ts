@@ -47,6 +47,36 @@ describe('WO-FP-SERA — token fidelity: zero hand-copied hex on the Faso compon
 });
 
 
+describe('GARDE-LISIBLE — the proof line never draws dark-band text on a light card (founder, 2026-08-14)', () => {
+  /**
+   * His iPhone showed « Colis sous votre garde. » as a white card with a green
+   * check beside INVISIBLE text: `proofText` coloured `C.onInk` — the token for
+   * text ON the dark ink band (#FFF8F1) — over `sharedColour.card` (#FFFFFF).
+   * Contrast 1.05:1. A valid token on the wrong ground, so token-fidelity's
+   * hex scan could not see it and the contrast gate's hand-curated pairings
+   * did not carry it. The pin is a source law: App.tsx composes NO style with
+   * `onInk` — the dark band lives in the kit components, which own that
+   * pairing; the app's own stylesheet has no dark ground to put it on. (If a
+   * future App.tsx dark band legitimately needs it, this pin is updated
+   * DELIBERATELY, with the ground named beside it.)
+   *
+   * This pin lives HERE and not in a walk on purpose: the standing order bans
+   * walks from claiming anything about appearance, and a colour is appearance.
+   */
+  const appSrc = () => stripComments(readFileSync(join(appDir, 'App.tsx'), 'utf8'));
+
+  it('App.tsx references no onInk — dark-band text belongs to the kit, never the app stylesheet', () => {
+    const hits = appSrc().match(/\bonInk\b/g) ?? [];
+    expect(hits, `App.tsx composes onInk ${hits.length}× — cream text with no dark band under it`).toEqual([]);
+  });
+
+  it('proofText reads in card ink, and the pairing clears AA in the contrast gate beside this one', () => {
+    const style = /proofText:\s*\{([^}]*)\}/.exec(appSrc())?.[1] ?? 'STYLE NOT FOUND';
+    expect(style).not.toBe('STYLE NOT FOUND');
+    expect(style.includes('C.ink'), 'proofText must read in C.ink — the card body ink').toBe(true);
+  });
+});
+
 describe('FIN-DE-COURSE — the delivered supporting line owns NO type of its own', () => {
   /**
    * The verifier caught `deliveredRetour` shipping with colour and spacing

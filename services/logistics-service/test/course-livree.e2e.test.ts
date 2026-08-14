@@ -427,6 +427,76 @@ describe('PORTE-DISPATCH — a pay-at-door order becomes dispatchable (founder b
     expect(denied.status).toBe(409);
     expect(denied.json).toMatchObject({ ok: false, reason: 'chain_already_open_with_other_ids' });
   }, 120_000);
+
+  /**
+   * ═══ THE FOUNDER'S DROP (2026-08-14) — the door road's TRUE terminal today,
+   * pinned so the gap has a name instead of a « Séra a refusé » ═══
+   *
+   * He drove a pay-at-door course to the door and typed the buyer's code:
+   * refused. This walk reproduces his exact road on the REAL Workers — the
+   * same rider acts the FULL_PREPAY seam proves above — and pins where the
+   * door mode stops TODAY: the drop refuses `inspection_not_accepted`,
+   * because the spine's §6.3 door stage (inspection accepted → provider
+   * door-paid signal) has NO wire — custody-do exposes no door route to any
+   * key, Shop+ never signals `payment.door_leg_confirmed.v1`, and the rider's
+   * wired road never records the inspection. The spine is right to refuse
+   * (SE-I11 fail-closed); what is missing is the wire, which is its own
+   * slice. When that wire lands, THIS pin flips to the full delivered road.
+   */
+  it("the door road TODAY: the rider's whole road runs, and the drop refuses `inspection_not_accepted` — the unwired §6.3 stage, by name", async () => {
+    const hold: Hold = {};
+    spawnLogistics(hold);
+    spawnCustody(hold, mkdtempSync(join(tmpdir(), 'course-livree-custody-porte-drop-')));
+    const logistics = hold.logistics!;
+    const custody = hold.custody!;
+
+    const O = 'ord-porte-drop-1';
+    await intake(logistics, '/intake/funding', { orderId: O, status: 'funded', paymentMode: DOOR, asOf: T });
+    await intake(logistics, '/intake/readiness', { orderId: O, ready: true, asOf: T, supplierRef: 'supplier-livree-1' });
+    const { code } = await courseConfiee(logistics, O, 'rider-porte-2', 'pd2', undefined, DOOR);
+    await attendreChaine(custody, O);
+
+    const { session } = appPorts(logistics);
+    const moi = await session.signIn(code);
+    if (!moi.ok) throw new Error('sign-in refused');
+    const assignment = moi.session.assignment as unknown as Json;
+    const pv = assignment['codeVerification'] as string;
+    const sc = assignment['codeScelle'] as string;
+
+    const verified = await riderCustody(custody, '/rider/verification', code, {
+      orderId: O, command_id: 'pd2-v', presentedPickupCode: pv,
+      checkResults: ALL_PASS, dwellSec: 150, evidenceBundleId: 'ev-pd2',
+    });
+    expect(verified.status, JSON.stringify(verified.json)).toBe(200);
+    const began = await riderCustody(custody, '/rider/custody/begin', code, {
+      orderId: O, command_id: 'pd2-b', custodySealId: sc, sealPhotoRefs: [],
+    });
+    expect(began.status, JSON.stringify(began.json)).toBe(200);
+    const chain = began.json['chain'] as Json;
+    const armed = await custody.dispatchFetch('http://custody/produce-shop/secrets/arm', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${SHOP_ARM_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderId: O, command_id: 'pd2-arm-drop', kind: 'buyer_drop_code', secret: 'DROP-PORTE-0001' }),
+    });
+    expect(armed.status).toBe(200);
+    await armed.text();
+    const evidence = await riderCustody(custody, '/rider/delivery/evidence', code, {
+      orderId: O, command_id: 'pd2-e',
+      bundle: {
+        taskId: chain['task_id'], packageId: chain['package_id'], custodySealId: sc,
+        artifacts: [], capturedAt: '2026-08-14T10:00:00.000Z',
+      },
+    });
+    expect(evidence.status, JSON.stringify(evidence.json)).toBe(200);
+
+    // The founder's exact moment: the RIGHT code, and the ledger refuses —
+    // by name here, where his screen said only « Séra a refusé ».
+    const drop = await riderCustody(custody, '/rider/delivery/drop', code, {
+      orderId: O, command_id: 'pd2-d', dropCode: 'DROP-PORTE-0001',
+    });
+    expect(drop.status, JSON.stringify(drop.json)).toBe(409);
+    expect(drop.json).toMatchObject({ ok: false, reason: 'inspection_not_accepted' });
+  }, 120_000);
 });
 
 describe('REFUS-NOMMÉ — the compose door re-asked for a DELIVERED course (contract certification for the Boutik+ console)', () => {

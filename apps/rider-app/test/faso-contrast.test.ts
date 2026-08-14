@@ -28,6 +28,11 @@ const PAIRINGS: ReadonlyArray<readonly [string, string, string]> = [
   [seraColour.deepAlt, seraColour.soft, 'info + warn chip text on the soft gold ground'],
   [seraColour.deep, sharedColour.card, 'gold text on a white card'],
   [sharedColour.ink, sharedColour.paperSera, 'body ink on the Séra paper'],
+  // GARDE-LISIBLE (founder, 2026-08-14): the proof line « Colis sous votre
+  // garde. » shipped as onInk-on-card — 1.05:1, invisible on his iPhone. The
+  // pairing App.tsx's proofText NOW composes is pinned here; the source law
+  // (no onInk in App.tsx at all) lives in faso-token-fidelity.
+  [sharedColour.ink, sharedColour.card, 'proof line text on the white proof card (App.tsx proofText)'],
   [sharedColour.okFg, sharedColour.okBg, 'ok chip'],
   [sharedColour.warnFg, sharedColour.warnBg, 'warn chip'],
   [sharedColour.dangerFg, sharedColour.dangerBg, 'danger chip'],

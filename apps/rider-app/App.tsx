@@ -3005,7 +3005,9 @@ const styles = StyleSheet.create({
   verifyHeadName: { flex: 1, fontWeight: '700' },
   proofList: { gap: spacing.sm },
   proofRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  proofText: { color: C.onInk, fontSize: T.body.size, lineHeight: T.body.size * T.body.lh, flex: 1 },
+  // GARDE-LISIBLE (founder, 2026-08-14): `C.onInk` here was cream-on-white —
+  // the dark-band text token with no dark band under it, 1.05:1. Card ink.
+  proofText: { color: C.ink, fontSize: T.body.size, lineHeight: T.body.size * T.body.lh, flex: 1 },
   footer: {
     flexDirection: 'row',
     alignItems: 'center',
