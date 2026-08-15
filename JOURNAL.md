@@ -2199,4 +2199,4 @@ The ONE fresh-context verifier pass returned **1 blocker · 4 major · 5 minor**
 
 **A copy consequence worth naming:** on a binary without the expo-audio native module, the honest « Une note vocale existe, mais cette version de l'application ne peut pas la lire. Suivez le repère écrit. » now renders under the landmark on every rung of the course rather than only on the proposal.
 
-**Status: pushed to `claude/buyer-pwa-standing-laws-nerljz-ue7lpy`, waiting on the founder's word to merge and deploy** (2026-08-10 order).
+**MERGED AND DEPLOYED (founder: « Go », 2026-08-15).** `main` fast-forwarded `ab80c22..eec40c8` — carrying this fix plus the two commits that had stayed on the branch (the PORTE-CUSTODY journal entry and the 2026-08-14 working law in CLAUDE.md/AGENTS.md). **`ci` run 175 → success · `expo-preview` run 120 → success**, both on eec40c8. The service deploys did not fire and were not meant to: this change touches no Worker. *(Not claimed: I have not seen the fix on a phone. The preview channel published; whether the keyboard now clears the code field is the founder's own check.)*
