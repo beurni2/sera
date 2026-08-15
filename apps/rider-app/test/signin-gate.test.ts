@@ -32,7 +32,10 @@ describe('the sign-in gate', () => {
   it('⚠ lives INSIDE the one shell — one safe area, one scroll surface', () => {
     // My first cut early-returned a second shell and two invariants caught it.
     expect(app.match(/<SafeAreaView\b/g)).toHaveLength(1);
-    expect(app.match(/<ScrollView\b/g)).toHaveLength(1);
+    // `\s`, not `\b` — `<ScrollView` also matches the `useRef<ScrollView>`
+    // type argument, which is no second surface (same note in `faso-scroll`,
+    // where the reason a closing-tag count is weaker is written out).
+    expect(app.match(/<ScrollView\s/g)).toHaveLength(1);
   });
 
   it('⚠ does not take the SOS away from a rider who has not signed in', () => {

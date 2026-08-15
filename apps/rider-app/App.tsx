@@ -1,6 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { Image, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  Image,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { seraTheme, spacing, radius, touch, type as typo, interaction, money } from '@platform/ui-tokens/legacy';
 import {
   FAILURE_REASON_IDS,
@@ -625,7 +636,28 @@ export default function App() {
    * « Accepter », and the buyer's voice kept playing with no control left on
    * screen to stop it.
    */
-  const repereVisible = liveAssignment !== null && liveAssignment.status !== 'acknowledged';
+  /**
+   * ⚠ « THE CARD THAT OFFERED IT » IS NOW THE WHOLE COURSE (founder,
+   * 2026-08-15). This read `status !== 'acknowledged'`, which stopped the note
+   * on ACCEPT — correct while the row lived only on the proposal, and wrong the
+   * moment the row followed the rider onto the road: it would have cut the
+   * buyer's directions mid-sentence.
+   *
+   * ⚠ AND IT IS NOT SIMPLY « there is a course ». The three rungs of the SE1
+   * ladder above the assignment arms — not certified, privacy not acknowledged,
+   * off shift — render NO voice row while `liveAssignment` stays non-null, so a
+   * rider who tapped « Écouter » and then went off shift would hear the buyer's
+   * voice with nothing on screen to stop it: the exact failure the stop effect
+   * was written for. The predicate mirrors that ladder, so the rule it encodes
+   * is unchanged — the note stops when the control that governs it leaves the
+   * screen.
+   */
+  const repereVisible =
+    liveAssignment !== null &&
+    liveSession !== null &&
+    liveSession.certified &&
+    liveSession.privacyAckOk &&
+    onShiftFromSession(liveSession.shift) !== false;
   useEffect(() => {
     // `stop()` reports its own rest state through the subscription, so the row
     // goes back to « Écouter » without this screen having to assert it.
@@ -1622,13 +1654,56 @@ export default function App() {
   // system face carries it, so no tofu.
   const SEAL_ID = `SC-77${money.groupSeparator}412`;
 
+  /**
+   * The scroll surface, so the code field can bring itself into view when the
+   * keyboard rises (see the `KeyboardAvoidingView` below). In a wired build the
+   * code card is the LAST content in the scroll, so its end is where the field
+   * is — no measuring, and nothing to drift when a screen above it changes.
+   */
+  const scrollRef = useRef<ScrollView>(null);
+  /**
+   * ⚠ THE SCROLL HAPPENS WHEN THE KEYBOARD IS UP, NOT WHEN THE FIELD IS TAPPED.
+   * `onFocus` fires before the `KeyboardAvoidingView` has taken the keyboard's
+   * height off the bottom, so a focus-time scroll aims at the OLD viewport and
+   * leaves the last ~250 px — the send button — under the keyboard anyway. This
+   * fires after the rise, on the shrunken surface. The field's own `onFocus`
+   * stays as well: on a build where the window really does resize itself, the
+   * focus-time scroll is the one that is already correct.
+   *
+   * Gated on a live session because that is the only tree with a field in it:
+   * the sign-in door replaces the whole content area, and its own field is the
+   * top of a short screen that must not be scrolled away from.
+   */
+  useEffect(() => {
+    if (signInState.kind !== 'signed_in') return undefined;
+    const sub = Keyboard.addListener('keyboardDidShow', () => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    });
+    return () => sub.remove();
+  }, [signInState.kind]);
+
   return (
     <SafeAreaView style={styles.screen}>
       <StatusBar style="dark" backgroundColor={C.paper} />
+      {/**
+        * ⚠ THE KEYBOARD COVERED THE ONLY FIELD IN THE APP (founder, 2026-08-15:
+        * « while typing the buyer's code the keyboard on my phone is hiding
+        * that section »). Expo SDK 54 draws Android edge-to-edge, and an
+        * edge-to-edge window does NOT resize for the IME — so the scroll
+        * surface kept its full height and the keyboard simply sat on top of the
+        * code card and its « Confirmer la remise ». This view gives the
+        * keyboard its own space back; the focus handler below scrolls the field
+        * into what is left.
+        */}
+      <KeyboardAvoidingView
+        style={styles.screen}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
       {/* Full-bleed scroll: the SCREEN is the scroll surface. The chrome (header +
           banners) scrolls WITH the content — NO nested scroll containers, no fixed-
           region-under-fixed-chrome. The tab dock + the SOS disc stay fixed below. */}
       <ScrollView
+        ref={scrollRef}
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -1867,6 +1942,14 @@ export default function App() {
                       <ProofLine label={t('assignment.no_landmark')} />
                     </FasoCard>
                   )}
+                  {/* ⚠ THE VOICE BELONGS TO THE WHOLE COURSE, NOT ONLY TO THE
+                      PROPOSAL (founder, 2026-08-15: « the audio repère is
+                      absent »). It was written in the acceptance arm alone, so
+                      the buyer's own directions vanished at the exact moment
+                      the rider set off to find her door. Here it sits under the
+                      written repère for every rung — pickup, road, arrival,
+                      door. */}
+                  {RepereVoix()}
                   <FasoStatusChip tone="info" label={t(assignmentStateKey(liveAssignment.status))} />
 
                   {/* RAMASSAGE (founder order 2026-08-09) — the handover code
@@ -1992,21 +2075,14 @@ export default function App() {
                         ) : !roadArrived(arrivePhase, remembered) ? (
                           <>
                             <FasoPosterTitle>{t('route.arrivee_titre')}</FasoPosterTitle>
-                            {/* The destination leads — the same landmark-first
-                                card as everywhere (SE0.3: repère, indications,
-                                zone; the GPS pin never leads). */}
-                            {assignmentLines !== null ? (
-                              <FasoLandmarkCard
-                                zone={assignmentLines[2]}
-                                lines={assignmentLines}
-                                repereLabel={t('assignment.landmark_label')}
-                                indicationsLabel={t('repere.indications')}
-                              />
-                            ) : (
-                              <FasoCard>
-                                <ProofLine label={t('assignment.no_landmark')} />
-                              </FasoCard>
-                            )}
+                            {/* ⚠ NO SECOND LANDMARK CARD HERE (founder,
+                                2026-08-15: « the written repère is showing
+                                twice »). The destination still leads — the
+                                course-wide card at the top of this branch is
+                                the SAME `assignmentLines`, on screen above
+                                this title for every rung of the road, so
+                                repeating it told the rider the same place
+                                twice and pushed the one action further down. */}
                             <FasoBody>{t('route.arrivee_body')}</FasoBody>
                             <FasoPrimaryButton
                               label={t(arrivePhase.kind === 'working' ? 'acts.sending' : 'route.arrive_action')}
@@ -2180,6 +2256,11 @@ export default function App() {
                                   : undefined
                               }
                               onSubmit={sendDrop}
+                              // The keyboard rises the moment this is tapped;
+                              // the card is the end of the scroll, so this puts
+                              // the field and « Confirmer la remise » back in
+                              // the space the keyboard left.
+                              onFocus={() => scrollRef.current?.scrollToEnd({ animated: true })}
                             />
                           </>
                         )}
@@ -2948,6 +3029,7 @@ export default function App() {
           </Pressable>
         </View>}
       </ScrollView>
+      </KeyboardAvoidingView>
 
       {!WIRED && HUBS.includes(screen) && (
         <FasoTabBar

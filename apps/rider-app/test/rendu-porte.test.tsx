@@ -56,7 +56,10 @@ function logistics(state: CourseState): Route {
               assignmentId: 'as-porte-1', taskId: 'task-porte-1', orderId: ORDER, status: state.status,
               ackDeadline: null,
               location: { landmark: 'La pharmacie du marché', directions: 'Après le carrefour', zone: 'Gounghin, Ouagadougou' },
-              preuvePhotoRefs: [], repereAudioRef: null,
+              // A §6.3 course carries the buyer's repère note like any other —
+              // it was `null` here only because no walk had asked for it, and
+              // « the voice reaches her door » cannot be proven over an absence.
+              preuvePhotoRefs: [], repereAudioRef: 'media/11111111-2222-4333-8444-555555555555',
               codeRamassage: 'ABC-DEF',
               ramassageConfirmeAt: state.ramassageConfirmeAt,
               codeVerification: state.codeVerification,
@@ -189,6 +192,17 @@ describe('⚠ PORTE-CUSTODY — the door course walks: accord → wait for the p
     expect(s.shows('La cliente regarde le colis.'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
     expect(s.canPress("La cliente est d'accord"), 'the accept must be present AND pressable').toBe(true);
     expect(s.shows('Le code de la cliente'), 'the code entry must wait for the accord').toBe(false);
+
+    /**
+     * ⚠ AND THE PAY-AT-DOOR ARM CARRIES THE REPÈRE EXACTLY ONCE, WITH ITS VOICE
+     * (founder, 2026-08-15). The FULL_PREPAY road proved both in
+     * `rendu-course`; this arm is only reachable on a §6.3 course and had no
+     * walk of its own, so a second card or a lost voice could have come back
+     * here alone.
+     */
+    const { LandmarkCard } = await import('../src/ui/faso-kit');
+    expect(s.tree.root.findAllByType(LandmarkCard), 'the written repère, once').toHaveLength(1);
+    expect(s.canPress('Écouter le repère'), 'the buyer’s voice, at her own door').toBe(true);
 
     await s.press("La cliente est d'accord");
 

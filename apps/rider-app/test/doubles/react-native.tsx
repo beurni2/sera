@@ -57,6 +57,53 @@ export const Image = host('Image');
 export const SafeAreaView = host('SafeAreaView');
 export const ScrollView = host('ScrollView');
 export const TextInput = host('TextInput');
+/**
+ * ⚠ IDENTITY ONLY, AND THAT IS THE WHOLE POINT. The real one listens for the
+ * keyboard and gives it room; there is no keyboard here and no layout to give,
+ * so this renders as a plain container. A walk may therefore ask only the TREE
+ * question — is the field INSIDE it — and may never claim that anything is
+ * visible above a keyboard. That is the founder's phone's answer, not ours.
+ */
+export const KeyboardAvoidingView = host('KeyboardAvoidingView');
+
+/**
+ * The keyboard EVENT boundary, and nothing more. `keyboardDidShow` is a real
+ * native event a screen can subscribe to, and an effect that throws on it
+ * blanks the tree exactly like any other — so a walk must be able to fire one.
+ * What this double does NOT have is a keyboard: no height, no layout, no
+ * occlusion. A test may ask « did the tree survive the keyboard rising » and
+ * may never ask « is the field above it ».
+ */
+type KeyboardEventName = string;
+const keyboardListeners = new Map<KeyboardEventName, Set<() => void>>();
+export const Keyboard = {
+  addListener: (event: KeyboardEventName, cb: () => void): { remove: () => void } => {
+    const set = keyboardListeners.get(event) ?? new Set<() => void>();
+    set.add(cb);
+    keyboardListeners.set(event, set);
+    return {
+      remove: () => {
+        set.delete(cb);
+      },
+    };
+  },
+};
+/**
+ * TEST HOOK — fire a keyboard event at whatever is currently subscribed, and
+ * RETURN HOW MANY LISTENERS IT REACHED.
+ *
+ * ⚠ THE COUNT IS NOT A CONVENIENCE. `vi.resetModules()` runs before every
+ * mount, so a test holding a STATIC import of this file keeps the pre-reset
+ * instance while the mounted app gets a fresh one — the emit would then reach
+ * an empty set, nothing could throw, and « the tree survived the keyboard »
+ * would be green over a keyboard that was never raised (§9.7 exactly). Import
+ * this module dynamically AFTER the mount, and assert the count.
+ */
+export const __emitKeyboard = (event: KeyboardEventName): number => {
+  const subscribed = [...(keyboardListeners.get(event) ?? [])];
+  for (const cb of subscribed) cb();
+  return subscribed.length;
+};
 
 /**
  * Pressable renders a function-child in the real library (`({pressed}) => …`).

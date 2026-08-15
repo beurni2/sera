@@ -36,6 +36,7 @@ import { Body, Card, PrimaryButton, ScreenTitle } from './faso-kit';
 export function FasoActCode({
   strings,
   onSubmit,
+  onFocus,
   working,
   outcome,
   canSend,
@@ -49,6 +50,12 @@ export function FasoActCode({
     readonly working: string;
   };
   readonly onSubmit: (value: string) => void;
+  /**
+   * The field was tapped, so the keyboard is on its way up. The caller owns the
+   * scroll surface and is the only thing that can move this card out from under
+   * it (founder, 2026-08-15: the keyboard hid the code section).
+   */
+  readonly onFocus?: (() => void) | undefined;
   readonly working: boolean;
   /** The server's answer, already resolved from the catalog by the caller.
    *  `tone` decides only whether it reads as a settled fact or a refusal —
@@ -146,6 +153,7 @@ export function FasoActCode({
           spellCheck={false}
           autoComplete="off"
           editable={!working}
+          onFocus={onFocus}
           accessibilityLabel={strings.title}
           returnKeyType="go"
           onSubmitEditing={() => ready && onSubmit(typed.trim())}

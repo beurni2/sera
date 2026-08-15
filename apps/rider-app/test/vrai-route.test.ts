@@ -92,13 +92,32 @@ describe('VRAI-ROUTE — the held-package arm runs seal -> En route -> arrivé -
     expect(held, 'and a named way out where it cannot').toContain("t('delivery.preuve_bloquee')");
   });
 
-  it('the arrival screen shows the destination — the same landmark-first lines', () => {
+  /**
+   * ⚠ INVERTED 2026-08-15, ON THE FOUNDER'S OWN SCREEN: « the written repère is
+   * showing twice ». This used to require the arrival arm to render its OWN
+   * landmark card, which was right when it was written and became a duplicate
+   * the day the course-wide card above it started rendering for every rung of
+   * the road. The destination still leads — from one card, not two — so the
+   * pin now protects the property the founder actually asked for.
+   *
+   * The count itself is walked, not scanned: `rendu-course` mounts the arrival
+   * screen and asserts exactly one `LandmarkCard` in the tree.
+   */
+  it('the arrival screen does NOT repeat the landmark — the course-wide card carries it', () => {
     const arrivalScreen = held.slice(
       held.indexOf('!roadArrived(arrivePhase, remembered) ? ('),
       held.indexOf('!evidenceIsHeld(evidencePhase) ? ('),
     );
-    expect(arrivalScreen).toContain('lines={assignmentLines}');
-    expect(arrivalScreen).toContain("t('assignment.no_landmark')");
+    expect(arrivalScreen, 'a second card for the same place').not.toContain('lines={assignmentLines}');
+    // …and the one that does carry it stands above the whole road, outside
+    // every rung (so no rung can be reached without the destination on
+    // screen) — which is why it is sliced from `app`, before `held` begins.
+    const courseWide = app.slice(
+      app.indexOf('liveAssignment !== null ? ('),
+      app.indexOf('packageIsHeld(sealPhase, remembered) ?'),
+    );
+    expect(courseWide).toContain('lines={assignmentLines}');
+    expect(courseWide).toContain("t('assignment.no_landmark')");
   });
 
   it('both buttons are wired to their senders, and the senders call the port', () => {

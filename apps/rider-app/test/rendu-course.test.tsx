@@ -1,3 +1,4 @@
+import { act } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mountRider, wire, wiredEnv, type Route } from './rendu';
 import { __resetFiles } from './doubles/expo-file-system';
@@ -30,6 +31,8 @@ interface CourseState {
   ramassageConfirmeAt: string | null;
   codeVerification: string | null;
   codeScelle: string | null;
+  /** The SE1 ladder's last rung. A rider can drop off it mid-course. */
+  shift: 'on_shift' | 'off_shift';
 }
 
 /** The logistics side: `/rider/moi` + the ack door, answering from live state
@@ -43,7 +46,7 @@ function logistics(state: CourseState): Route {
           ok: true,
           rider: {
             riderId: 'rider-rendu', displayName: 'Boss', certified: true, privacyAckOk: true,
-            shift: { status: 'on_shift' },
+            shift: { status: state.shift },
             assignment: {
               assignmentId: 'as-1', taskId: 'task-1', orderId: ORDER, status: state.status,
               ackDeadline: null,
@@ -110,6 +113,7 @@ const freshCourse = (): CourseState => ({
   ramassageConfirmeAt: null,
   codeVerification: null,
   codeScelle: null,
+  shift: 'on_shift',
 });
 
 beforeEach(() => {
@@ -143,6 +147,13 @@ describe('⚠ ÉCRAN BLANC — the accept tap, driven', () => {
      * listened to the buyer's repère before accepting. No player, no crash —
      * which is why relaunching the app appeared to « fix » it, and why the
      * bug looked intermittent.
+     *
+     * ⚠ AND SINCE 2026-08-15 THE ACCEPT NO LONGER FIRES THE STOP EFFECT — the
+     * row follows the rider onto the road, so `repereVisible` stays true across
+     * this tap. This walk therefore still proves what its title says (the tap
+     * does not blank the tree) but no longer exercises the passive effect that
+     * caused it. « The voice stops when the row leaves the screen », below,
+     * is the walk that drives that effect now.
      */
     await s.press('Écouter le repère');
 
@@ -388,6 +399,195 @@ describe('⚠ PORTE-SANS-PHOTO — arrival goes straight to the buyer’s code',
 
     expect(w.calls.filter((c) => c.path === '/rider/delivery/evidence')).toHaveLength(2);
     expect(s.shows('Le code de la cliente'), 'the retry must open the code screen').toBe(true);
+  });
+});
+
+/**
+ * ═══ ⚠ REPÈRE-ROUTE — one written repère, and the voice for the WHOLE road ═══
+ *
+ * FOUNDER, 2026-08-15, on the « En route vers la cliente » screen: « the
+ * written repère is showing twice and the audio repère is absent ».
+ *
+ * Both were invisible to every source scan, and for the same reason: each is a
+ * question about what is on screen AT ONCE in one arm of the tree, not about
+ * what exists in the file. The landmark card is written twice in `App.tsx` —
+ * once for the whole accepted course, once again inside the arrival arm — and
+ * both are correct in isolation. The voice row was written once, in the
+ * PROPOSAL arm only, so it vanished the moment the rider accepted; the file
+ * has always contained it.
+ *
+ * These walks are written RED first, against the shipped tree.
+ */
+describe('⚠ REPÈRE-ROUTE — the repère is written once and can be heard all the way', () => {
+  /** Signed in, course accepted, package verified and sealed: the road is open. */
+  async function surLaRoute(state: CourseState) {
+    state.ramassageConfirmeAt = '2026-08-10T10:00:00.000Z';
+    state.codeVerification = PICKUP;
+    state.codeScelle = SEAL;
+    const { s } = await signedIn([logistics(state), custody()]);
+    await s.press('Accepter la course');
+    await s.press('Oui', 2);
+    await s.press('Oui', 1);
+    await s.press('Oui', 0);
+    await s.press('Envoyer la vérification');
+    return s;
+  }
+
+  it('the road to the door carries ONE landmark card — never two of the same place', async () => {
+    /**
+     * A TREE question, not an appearance one: how many landmark cards did this
+     * arm render? The walk may never claim where they sit or how they look —
+     * only that the rider is being told the same place twice.
+     */
+    const { LandmarkCard } = await import('../src/ui/faso-kit');
+    const state = freshCourse();
+    const s = await surLaRoute(state);
+
+    expect(s.tree.root.findAllByType(LandmarkCard), 'the departure screen').toHaveLength(1);
+
+    await s.press('En route');
+    expect(s.shows('En route vers la cliente'), 'this is the founder’s screen').toBe(true);
+    expect(
+      s.tree.root.findAllByType(LandmarkCard),
+      'the founder’s screen renders the written repère twice',
+    ).toHaveLength(1);
+    s.unmount();
+  });
+
+  /**
+   * ⚠ THE OTHER HALF OF THE SAME CHANGE, and the half that can hurt someone.
+   * The voice row is governed by `repereVisible`, whose only job is to stop the
+   * note when the row leaves the screen. Widening it to « there is a course »
+   * would have left three arms — not certified, privacy not acknowledged, OFF
+   * SHIFT — that render no row while a course exists: the buyer's voice would
+   * keep playing out of the phone with nothing on screen to stop it, which is
+   * verbatim the failure the effect was written for. This drives the rung a
+   * rider can actually cross mid-course.
+   */
+  it('the voice STOPS when the row leaves the screen — going off shift mid-course', async () => {
+    const state = freshCourse();
+    state.status = 'acknowledged';
+    const { s } = await signedIn([logistics(state), custody()]);
+
+    await s.press('Écouter le repère');
+    expect(s.shows('Pause'), 'the note is playing').toBe(true);
+
+    // He ends his shift at the console; the 20 s poll brings it to the phone.
+    state.shift = 'off_shift';
+    await s.poll();
+
+    expect(s.texts().length, 'the tree must survive the row leaving').toBeGreaterThan(0);
+    expect(s.shows('Hors ligne.'), 'he is on the off-shift screen').toBe(true);
+    expect(s.shows('Pause'), 'no control to stop it, and it is still playing').toBe(false);
+
+    /**
+     * ⚠ AND IT IS THE PLAYER THAT STOPPED, not merely the row that vanished.
+     * The row's face comes from the player's own subscription, so a note still
+     * running would come back reading « Pause ». It reads « Écouter ».
+     */
+    state.shift = 'on_shift';
+    await s.poll();
+    expect(s.canPress('Écouter le repère'), 'the row is back').toBe(true);
+    expect(s.shows('Pause'), 'the note was left running under the off-shift screen').toBe(false);
+    s.unmount();
+  });
+
+  it('the buyer’s voice stays reachable after accepting — road, arrival, door', async () => {
+    const state = freshCourse();
+    const s = await surLaRoute(state);
+
+    expect(s.canPress('Écouter le repère'), 'once the package is sealed').toBe(true);
+    await s.press('En route');
+    expect(s.canPress('Écouter le repère'), 'on the road — the founder’s screen').toBe(true);
+    await s.press('Je suis arrivé');
+    expect(s.shows('Le code de la cliente'), 'the door was reached').toBe(true);
+    expect(s.canPress('Écouter le repère'), 'at the door, where the address matters most').toBe(true);
+
+    // …and it is not a dead row: it actually plays there.
+    await s.press('Écouter le repère');
+    expect(s.shows('Pause'), 'the row must play, not merely render').toBe(true);
+    s.unmount();
+  });
+});
+
+/**
+ * ═══ ⚠ CLAVIER-CODE — the keyboard hid the field it was opened for ═══
+ *
+ * FOUNDER, 2026-08-15: « while typing the buyer's code in the sera app the
+ * keyboard on my phone is hiding that section. »
+ *
+ * ⚠ WHAT THIS WALK MAY AND MAY NOT SAY. Occlusion is layout, and the bound
+ * stated in `test/doubles/react-native.tsx` is absolute: there is no layout
+ * here, so no test in this file can assert that the field is visible above a
+ * keyboard. What it CAN ask is the tree question underneath it — is the field
+ * INSIDE the container that yields to the keyboard, or beside it? That is the
+ * same shape as the celebration's way-out check above, and it is the part that
+ * a source scan gets wrong: `KeyboardAvoidingView` in the file proves nothing
+ * about which subtree it wraps. The occlusion itself is confirmed on his phone.
+ */
+describe('⚠ CLAVIER-CODE — the buyer’s code field is inside the keyboard-aware container', () => {
+  it('the field has a KeyboardAvoidingView ancestor, and a focus that moves the screen', async () => {
+    const state = freshCourse();
+    state.ramassageConfirmeAt = '2026-08-10T10:00:00.000Z';
+    state.codeVerification = PICKUP;
+    state.codeScelle = SEAL;
+    const { s } = await signedIn([logistics(state), custody()]);
+    await s.press('Accepter la course');
+    await s.press('Oui', 2);
+    await s.press('Oui', 1);
+    await s.press('Oui', 0);
+    await s.press('Envoyer la vérification');
+    await s.press('En route');
+    await s.press('Je suis arrivé');
+    expect(s.shows('Le code de la cliente')).toBe(true);
+
+    const fields = s.tree.root
+      .findAllByType('TextInput' as never)
+      .filter((i) => String(i.props['placeholder'] ?? '').includes('Le code reçu par la cliente'));
+    expect(fields, 'exactly one code field').toHaveLength(1);
+    const field = fields[0]!;
+
+    let node = field.parent;
+    let sheltered = false;
+    while (node !== null && node !== undefined) {
+      // `String` because a host node's type IS the tag name, while a component
+      // node's is a function — comparing the two directly is a type error.
+      if (String(node.type) === 'KeyboardAvoidingView') {
+        sheltered = true;
+        break;
+      }
+      node = node.parent;
+    }
+    expect(sheltered, 'the code field renders OUTSIDE any keyboard-aware container').toBe(true);
+
+    /**
+     * ⚠ WHAT THE NEXT TWO ASSERTIONS DO AND DO NOT PROVE. There is no
+     * `createNodeMock` here, so a host ref is always null and the screen's
+     * `scrollRef.current?.scrollToEnd(...)` short-circuits every time. So this
+     * proves the field is WIRED to the screen and that neither path THROWS on a
+     * null ref — it proves nothing about scrolling, which is layout, which is
+     * his phone's answer.
+     */
+    expect(typeof field.props['onFocus'], 'the field must tell the screen it was focused').toBe('function');
+    (field.props['onFocus'] as () => void)();
+
+    // The keyboard rises while she reads her code out to him: an effect that
+    // threw here would blank the tree the same way the accept tap once did,
+    // and the rider would lose the course at the door.
+    await s.type(DROP, 'Le code reçu par la cliente');
+    // ⚠ Imported HERE, not at the top: `vi.resetModules()` runs before the
+    // mount, so a static import would hold a different instance of the double
+    // than the mounted app and this emit would reach nobody. The count is
+    // asserted for the same reason — see the hook's own note.
+    const { __emitKeyboard } = await import('./doubles/react-native');
+    let reached = 0;
+    await act(async () => {
+      reached = __emitKeyboard('keyboardDidShow');
+    });
+    expect(reached, 'the screen is not listening for the keyboard at all').toBeGreaterThan(0);
+    expect(s.texts().length, 'the tree must survive the keyboard rising').toBeGreaterThan(0);
+    expect(s.canPress('Confirmer la remise'), 'and the send stays reachable').toBe(true);
+    s.unmount();
   });
 });
 

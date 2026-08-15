@@ -177,10 +177,17 @@ describe('COURSE-BRIEF — the buyer’s repère plays on the rider’s screen',
  * FOUNDER REPORT (2026-08-10): « On sera app when I tap accept button to accept
  * the order the screen goes all white and blank ».
  *
- * The tap changes the assignment to `acknowledged`, which flips `repereVisible`
- * false, which fires `if (!repereVisible) repereAudio?.stop()` — a PASSIVE
- * REACT EFFECT. A throw there has no boundary above it: React unmounts the
- * whole tree and the rider is left with a blank screen and no course.
+ * The tap flipped `repereVisible` false, which fires
+ * `if (!repereVisible) repereAudio?.stop()` — a PASSIVE REACT EFFECT. A throw
+ * there has no boundary above it: React unmounts the whole tree and the rider
+ * is left with a blank screen and no course.
+ *
+ * ⚠ THE TRIGGER MOVED, THE HAZARD DID NOT (2026-08-15). Accepting no longer
+ * flips that predicate — the voice row now follows the rider onto the road, so
+ * `repereVisible` falls only when the row itself leaves the screen: the course
+ * ending, or the rider dropping off the SE1 ladder (off shift). Those are the
+ * taps that reach this effect today, and `rendu-course`'s « the voice stops
+ * when the row leaves » walk drives one of them on the real screen.
  *
  * So these tests do not ask « did it release ». They ask the only question the
  * screen cares about: CAN LEAVING EVER THROW? The answer must be no, on a live

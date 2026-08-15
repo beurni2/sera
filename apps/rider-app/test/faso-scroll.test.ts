@@ -25,9 +25,14 @@ describe('WO-FP-SERA — the screen is a full-bleed scroll surface (R5 can compl
   const app = read('App.tsx');
 
   it('the app content lives in a single ScrollView — no nested scroll container', () => {
-    expect(app).toMatch(/<ScrollView\b/);
-    // exactly one scroll surface; no nested FlatList (the R2 list is a map)
-    expect(app.match(/<ScrollView\b/g)).toHaveLength(1);
+    expect(app).toMatch(/<ScrollView\s/);
+    // Exactly one scroll SURFACE; no nested FlatList (the R2 list is a map).
+    // ⚠ `\s`, not `\b`: `<ScrollView` also matches the TYPE argument in
+    // `useRef<ScrollView>` — whose next character is `>` — and reading a type
+    // as a scroll container is the kind of false red that gets a true pin
+    // deleted. Counting the CLOSING tag instead would have been weaker still:
+    // a self-closing `<ScrollView horizontal />` would sail through it.
+    expect(app.match(/<ScrollView\s/g)).toHaveLength(1);
     expect(app).not.toMatch(/<FlatList/);
     // the scroll content clears the fixed dock/SOS with a bottom pad
     expect(app).toMatch(/scrollContent: \{[^}]*paddingBottom/);
