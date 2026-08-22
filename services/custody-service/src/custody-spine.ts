@@ -58,6 +58,7 @@ export type SpineRefusal =
   | 'door_payment_not_confirmed'
   | 'inspection_not_accepted'
   | 'door_signal_not_awaited'
+  | 'door_signal_course_settled'
   | 'door_signal_invalid'
   | 'no_valid_rejection'
   | 'inspection_already_recorded'
@@ -102,6 +103,10 @@ export class CustodySpine {
   private doorPaymentConfirmed = false;
   private readonly doorSignalCommandIds = new Set<string>();
   private readonly alertedSignalCommandIds = new Set<string>();
+  /** E2 gap: settled-course answers get their OWN once-per-signal alert —
+   * a signal that first raced (mismatch alerted) and then met the settled
+   * course reports a DIFFERENT fact the second time, once. */
+  private readonly settledAlertedSignalCommandIds = new Set<string>();
   private validRejection: { faultClass: string } | null = null;
 
   constructor(
@@ -640,7 +645,10 @@ export class CustodySpine {
    * assertion exists anywhere. Duplicates absorb on command_id (no
    * double-advance). A signal for a task NOT awaiting door payment →
    * reconciliation.alert.v1 (provider truth vs local state) and a closed
-   * refusal. Séra stores NO amount from the payload (SE-I09).
+   * refusal — `door_signal_course_settled` when the course was refused
+   * home (terminal: the sender may stop), `door_signal_not_awaited` for
+   * the transient race (retryable: the sender must carry on). Séra stores
+   * NO amount from the payload (SE-I09).
    */
   consumeDoorPaidSignal(raw: unknown, at: string):
     | { ok: true; duplicate: boolean }
@@ -683,6 +691,32 @@ export class CustodySpine {
       !this.doorPaymentConfirmed &&
       !this.eligibilityEmittedForOrder.has(this.chain.order_id);
     if (!awaiting) {
+      // E2 gap (COURSE-LIVRÉE precedent): a course REFUSED HOME — valid
+      // rejection, or a return flow opened by either §6.4 arm — will never
+      // await this signal again, yet `door_signal_not_awaited` told the
+      // at-least-once sender to carry forever. A settled course answers BY
+      // NAME so the sender can stop, and raises the E3 refund feedstock
+      // once per signal: provider says the door leg was paid, custody says
+      // the course was refused — the refund routing is E3's, never Séra's.
+      // The transient race (paid before the accord is noted) keeps the
+      // retryable answer below, as it must.
+      const settled =
+        this.paymentMode === 'DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR' &&
+        payloadOrder === this.chain.order_id &&
+        (this.validRejection !== null || this.returnFlow !== null);
+      if (settled) {
+        if (this.settledAlertedSignalCommandIds.has(event.envelope.command_id)) {
+          return { ok: false, reason: 'door_signal_course_settled' };
+        }
+        this.settledAlertedSignalCommandIds.add(event.envelope.command_id);
+        const alert = this.emit('reconciliation.alert.v1', `door-settled-${event.envelope.command_id}`, {
+          scenario: 'door_paid_but_course_refused',
+          order_id: this.chain.order_id,
+          fault_class: this.validRejection?.faultClass ?? this.ladderOutcome?.faultClass ?? 'unknown',
+          fee_retained: this.feeRetainedForOrder.has(this.chain.order_id),
+        }, at);
+        return { ok: false, reason: 'door_signal_course_settled', alert };
+      }
       // Verifier NB④: the alert path is idempotent per signal — a replayed
       // not-awaited signal does not mint a second identical alert.
       if (this.alertedSignalCommandIds.has(event.envelope.command_id)) {

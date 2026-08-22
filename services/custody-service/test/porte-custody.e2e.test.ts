@@ -300,6 +300,40 @@ describe('PORTE-CUSTODY — the refusal roads, each by its own name', () => {
     await mf.dispose();
   }, 60_000);
 
+  it('a VALIDLY REFUSED course answers the signal door_signal_course_settled — TERMINAL, so the at-least-once sender can stop; ONE refund-feedstock alert on /events', async () => {
+    const mf = boot(freshDir('settled'));
+    const O = 'ord-porte-settled';
+    await doorModeArmed(mf, O, 'PICKUP-SET-1', 'DROP-SET-1');
+    await atTheDoor(mf, O, 'PICKUP-SET-1', 'SEAL-SET-1');
+    const rejected = await call(mf, 'POST', '/rider/door/inspection', RIDER_CODE,
+      inspection(O, 'insp-vr', { buyerAccepts: false, refusalColumn: 'valid', custodySealIntact: true }));
+    expect(rejected.status).toBe(200);
+    expect(rejected.json).toMatchObject({ ok: true, kind: 'valid_rejection', faultClass: 'seller' });
+
+    // The provider truth arrives for the refused course — paid, but the
+    // course went home. The answer is the TERMINAL name, not the carry-on.
+    const settled = await call(mf, 'POST', '/produce-shop/door-signal', SHOP_ARM_KEY, {
+      orderId: O, command_id: 'sig-settled-a1', event: doorSignalEvent(O, 'evt-settled'),
+    });
+    expect(settled.status).toBe(409);
+    expect(settled.json).toEqual({ ok: false, reason: 'door_signal_course_settled' });
+
+    // The wire's NEXT attempt (fresh outer id, same event) re-hears the
+    // terminal; the spine minted ONE feedstock alert, keyed on the event's
+    // own envelope id — E3's refund routing reads it, Séra computes nothing.
+    const again = await call(mf, 'POST', '/produce-shop/door-signal', SHOP_ARM_KEY, {
+      orderId: O, command_id: 'sig-settled-a2', event: doorSignalEvent(O, 'evt-settled'),
+    });
+    expect(again.status).toBe(409);
+    expect(again.json).toEqual({ ok: false, reason: 'door_signal_course_settled' });
+    const events = (await call(mf, 'GET', `/ops/events?orderId=${O}`, OPS)).json['events'] as { name: string; payload: Json }[];
+    const feedstock = events.filter((e) => e.name === 'reconciliation.alert.v1' &&
+      e.payload['scenario'] === 'door_paid_but_course_refused');
+    expect(feedstock).toHaveLength(1);
+    expect(feedstock[0]?.payload).toMatchObject({ order_id: O, fault_class: 'seller', fee_retained: false });
+    await mf.dispose();
+  }, 60_000);
+
   it('the rider door opens /door/inspection and the shop door opens /door-signal — never each other, never for FULL_PREPAY-breaking acts', async () => {
     const mf = boot(freshDir('doors'));
     const O = 'ord-porte-doors';

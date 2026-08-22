@@ -234,7 +234,9 @@ describe("WO-2.4 verifier findings — the exact attacks, replayed as regression
     spine.recordDoorInspection(inspectionInput({ buyerAccepts: false, refusalColumn: 'valid', custodySealIntact: true }), T);
     expect(spine.openValidRejectionReturn({ returnSealId: 'rs-b5', at: T })).toMatchObject({ ok: true });
     expect(spine.recordDoorInspection(inspectionInput(), T)).toEqual({ ok: false, reason: 'inspection_already_recorded' });
-    expect(spine.consumeDoorPaidSignal(doorSignal('cmd-b5'), T)).toMatchObject({ ok: false, reason: 'door_signal_not_awaited' });
+    // E2 gap closed: the refusal is still closed, but a SETTLED course now
+    // answers by name so the at-least-once sender can stop carrying.
+    expect(spine.consumeDoorPaidSignal(doorSignal('cmd-b5'), T)).toMatchObject({ ok: false, reason: 'door_signal_course_settled' });
     expect(spine.confirmDropAndEmitEligibility('drop-1', T)).toEqual({ ok: false, reason: 'return_in_progress' });
     expect(spine.ledger.currentCustodian(CHAIN.package_id)).toBe('courier:r-1');
     expect(spine.allEvents().filter((e) => e.name === 'delivery.validated.v1')).toHaveLength(0);
@@ -265,5 +267,75 @@ describe("WO-2.4 verifier findings — the exact attacks, replayed as regression
     const after1 = alerts();
     expect(spine.consumeDoorPaidSignal(doorSignal('cmd-b7'), T)).toMatchObject({ ok: false, reason: 'door_signal_not_awaited' });
     expect(alerts()).toBe(after1);
+  });
+});
+
+describe('E2 gap — a SETTLED course answers the door signal BY NAME, so the at-least-once sender can stop', () => {
+  const settledAlerts = (spine: CustodySpine) =>
+    spine.allEvents().filter((e) =>
+      e.name === 'reconciliation.alert.v1' &&
+      (e.payload as Record<string, unknown>)['scenario'] === 'door_paid_but_course_refused');
+
+  it('VALID REJECTION recorded, then the provider truth arrives: door_signal_course_settled + the E3 refund-feedstock alert (fault named, fee NOT retained)', () => {
+    const spine = optionBSpine();
+    spine.recordDoorInspection(inspectionInput({ buyerAccepts: false, refusalColumn: 'valid', custodySealIntact: true }), T);
+    const settled = spine.consumeDoorPaidSignal(doorSignal('cmd-settle-1'), T);
+    expect(settled).toMatchObject({ ok: false, reason: 'door_signal_course_settled' });
+    if (settled.ok) return;
+    expect(settled.alert?.name).toBe('reconciliation.alert.v1');
+    expect(settled.alert?.payload).toMatchObject({
+      scenario: 'door_paid_but_course_refused',
+      order_id: CHAIN.order_id,
+      fault_class: 'seller',
+      fee_retained: false,
+    });
+    expect(spine.isDoorPaymentConfirmed()).toBe(false); // nothing advanced
+  });
+
+  it('the settled answer is ALERT-IDEMPOTENT per signal — a retried signal re-hears the name, never a second alert', () => {
+    const spine = optionBSpine();
+    spine.recordDoorInspection(inspectionInput({ buyerAccepts: false, refusalColumn: 'valid', custodySealIntact: false }), T);
+    expect(spine.consumeDoorPaidSignal(doorSignal('cmd-settle-2'), T)).toMatchObject({ ok: false, reason: 'door_signal_course_settled' });
+    expect(settledAlerts(spine)).toHaveLength(1);
+    expect(spine.consumeDoorPaidSignal(doorSignal('cmd-settle-2'), T)).toMatchObject({ ok: false, reason: 'door_signal_course_settled' });
+    expect(settledAlerts(spine)).toHaveLength(1);
+  });
+
+  it('THE RACE, END TO END: paid before the accord was noted (not_awaited, carry on) → valid rejection recorded → the SAME signal now hears the terminal, one mismatch alert + one settled alert', () => {
+    const spine = optionBSpine();
+    const early = spine.consumeDoorPaidSignal(doorSignal('cmd-race-1'), T);
+    expect(early).toMatchObject({ ok: false, reason: 'door_signal_not_awaited' });
+    spine.recordDoorInspection(inspectionInput({ buyerAccepts: false, refusalColumn: 'valid', custodySealIntact: true }), T);
+    const retry = spine.consumeDoorPaidSignal(doorSignal('cmd-race-1'), T2);
+    expect(retry).toMatchObject({ ok: false, reason: 'door_signal_course_settled' });
+    const alerts = spine.allEvents().filter((e) => e.name === 'reconciliation.alert.v1');
+    expect(alerts.map((e) => (e.payload as Record<string, unknown>)['scenario']))
+      .toEqual(['door_signal_mismatch', 'door_paid_but_course_refused']);
+  });
+
+  it('BUYER-FAULT RETURN (ladder expired, refusal applied) is settled too — fee_retained true rides the alert', () => {
+    const spine = optionBSpine();
+    spine.recordDoorInspection(inspectionInput(), T);
+    spine.recordDoorRefusal('insufficient_balance', T);
+    spine.escalateExpiredWindow(T2);
+    expect(spine.applyBuyerFaultRefusal({ returnSealId: 'rs-settle-1', at: T2 })).toMatchObject({ ok: true });
+    const settled = spine.consumeDoorPaidSignal(doorSignal('cmd-settle-3'), T2);
+    expect(settled).toMatchObject({ ok: false, reason: 'door_signal_course_settled' });
+    if (settled.ok) return;
+    expect(settled.alert?.payload).toMatchObject({
+      scenario: 'door_paid_but_course_refused',
+      fault_class: 'buyer',
+      fee_retained: true,
+    });
+  });
+
+  it('the terminal never leaks where the course is NOT settled: a FOREIGN order and a FULL_PREPAY spine stay door_signal_not_awaited even with a rejection recorded', () => {
+    const spine = optionBSpine();
+    spine.recordDoorInspection(inspectionInput({ buyerAccepts: false, refusalColumn: 'valid', custodySealIntact: true }), T);
+    const foreign = spine.consumeDoorPaidSignal(doorSignal('cmd-nf-1', 'order-OTHER'), T);
+    expect(foreign).toMatchObject({ ok: false, reason: 'door_signal_not_awaited' });
+    const prepay = new CustodySpine({ ...CHAIN, order_id: 'order-pp-2' }, 'sup-1'); // FULL_PREPAY — no door leg exists
+    const onPrepay = prepay.consumeDoorPaidSignal(doorSignal('cmd-nf-2', 'order-pp-2'), T);
+    expect(onPrepay).toMatchObject({ ok: false, reason: 'door_signal_not_awaited' });
   });
 });
