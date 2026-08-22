@@ -9,7 +9,9 @@ Format per entry:
 
 ---
 
-## 2026-08-22 · PORTE-REFUSÉE (E2) — a settled course answers the door signal by name · in-review — on the branch, awaiting the founder's merge word
+## 2026-08-22 · PORTE-REFUSÉE (E2) — a settled course answers the door signal by name · DONE
+
+**MERGED AND DEPLOYED (founder's word, 2026-08-22):** main fast-forwarded to `4230890`; all three workflows green on it, attempt 1 — ci run 178, custody-deploy run 16 (32579247037), expo-preview run 123. Shop+'s half of the slice deployed the same hour (storefront-deploy run 61, its journal). The M2 deploy note below is now in effect on live custody files.
 
 **Closes the journalled M1 finding (PORTE-CUSTODY, 2026-08-14):** « a buyer who pays then VALIDLY refuses at the door leaves the signal permanently un-awaited: the wire retries on the 1h-cap backoff with no recorded terminal — the refusal roads are E2 work and the terminal belongs there. » The founder's 2026-08-21 order opened the E2 gaps; this is that terminal.
 
