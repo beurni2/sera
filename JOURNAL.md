@@ -9,6 +9,12 @@ Format per entry:
 
 ---
 
+## 2026-08-21 · BOOKS-CORRECTION — seven stale entry headers flipped to what main already holds · DONE
+
+**Founder, 2026-08-21: « Fix the headers » (cross-repo sweep).** The five 2026-08-10 entries and the two 2026-08-06 (branch)-qualified entries still read as awaiting merge, but `origin/claude/buyer-pwa-standing-laws-nerljz` AND `-ue7lpy` are both full ancestors of `origin/main` (`git merge-base --is-ancestor` true), and commit-message hits for the 08-10 slices appear on main (10 across PORTE-SANS-PHOTO / ROUTE-DIRECTE / ECRAN-BLANC / RETOUR-CONSOLES / RENDU-RÉEL). Headers only — no entry body rewritten.
+
+---
+
 ## 2026-08-14 · PORTE-CUSTODY — the §6.3 door stage gets its wire, whole · DONE
 
 **MERGED AND DEPLOYED (founder's word, 2026-08-14):** main fast-forwarded to `ab80c22`; `custody-deploy` run 31778257204, `logistics-deploy` run 31778258668, `expo-preview` run 31778259989 — all **green** on `ab80c22` (shop-plus's half deployed the same hour, its journal). The pay-at-door handoff is live end to end: accord → provider-confirmed payment → code → delivered → rider back to waiting.
@@ -71,7 +77,7 @@ Format per entry:
 
 ---
 
-## 2026-08-10 · RETOUR-CONSOLES — a finished delivery never left the outbox · IN-REVIEW (branch, awaiting founder)
+## 2026-08-10 · RETOUR-CONSOLES — a finished delivery never left the outbox · DONE (merged)
 **Founder report:** « once I tap in the buyer's code in rider's sera app nothing happens ».
 
 **THE RIDER'S SCREEN WAS NOT THE BUG.** The RENDU-RÉEL walk drives exactly that path — type the buyer's code, press « Confirmer la remise », see « Livré. Merci. » — and it passes; custody records `custody_with_customer`. What does not happen is everything AFTER: the supplier's console never moves the order to « Livré et terminé », and neither does his.
@@ -99,7 +105,7 @@ Written into `§6bis` of `CLAUDE.md` and `AGENTS.md` in **all four repos**, byte
 
 ---
 
-## 2026-08-10 · RENDU-RÉEL — the rider's screens can be DRIVEN now, not just read · IN-REVIEW (branch, awaiting founder)
+## 2026-08-10 · RENDU-RÉEL — the rider's screens can be DRIVEN now, not just read · DONE (merged; the harness is the reference implementation the standing order names)
 **Founder (2026-08-10):** « Yes go ahead and do it » — the gap I had named three times in one day.
 
 **THE GAP, STATED PLAINLY.** `apps/rider-app` had no vitest config and no renderer. Every one of its 398 tests was a source scan or a pure-model unit, so **no test in this repo had ever mounted a screen.** Three bugs shipped through that hole today, all the same shape — a screen that renders and cannot be used:
@@ -140,7 +146,7 @@ Each was caught by a person or a verifier. None by the suite. « Is the string i
 
 **Pending:** the ONE verifier pass, then merge + deploy approval. **No deploy is needed for this slice** — it is tests and test infrastructure only; no product code changed.
 
-## 2026-08-10 · PORTE-SANS-PHOTO — the door loses its camera; the buyer's code is what releases · IN-REVIEW (branch, awaiting founder)
+## 2026-08-10 · PORTE-SANS-PHOTO — the door loses its camera; the buyer's code is what releases · DONE (merged)
 **Founder (2026-08-10):** « merge and deploy and for the door photo I want it gone, and yes for the preview trap make it fail ». The merge + all three deploys are done (see the ROUTE-DIRECTE entry below); this is the door photo and the preview gate.
 
 **THE SPEC QUESTION I EXPECTED TO ASK HIM — AND DID NOT HAVE TO.** I thought this needed a canon ruling, because Spec l.179 lists « GPS never sole proof » among the build-failing gates. Reading the governing text instead of my memory of it settled it: **SE-I07 (l.39) says « Location is supporting evidence, not proof. No verdict rests solely on GPS. »** It forbids a verdict resting SOLELY ON GPS; it nowhere requires an artifact. The retired line `const gpsOnly = bundle.artifacts.length === 0` **equated « no photo » with « GPS only » — that equation was the code's interpretation, not the spec's text.** With the photo gone the verdict rests on the `buyerDropCode` consumed at the door: a secret only the buyer holds, that a carrier can never present for them (the rider door has no `/delivery/decide`, and the code is single-use at the registry). That is a non-GPS leg, and a stronger one than a photograph — which proves only that a camera was pointed at something. **So SE-I07 is intact, no canon document is edited, and the four byte-identical copies of `Sera-Build-Spec.md` do not move.** Journalled as the founder's ruling on the PRODUCT, implemented without a canon amendment.
@@ -178,7 +184,7 @@ Each was caught by a person or a verifier. None by the suite. « Is the string i
 
 **Pending:** merge + deploy approval. This needs a **custody deploy** (the spine changed) and a **sera preview publish** (the app changed); logistics is untouched by this slice.
 
-## 2026-08-10 · ROUTE-DIRECTE — the seal stops being a screen and a photo; the road starts at the supplier's confirmation · IN-REVIEW (branch, awaiting founder)
+## 2026-08-10 · ROUTE-DIRECTE — the seal stops being a screen and a photo; the road starts at the supplier's confirmation · DONE (merged)
 **Founder, twice (2026-08-10):** « I told you terminate that sealing code and the sealing photo proof requirement. I told you after the code is confirmed from supplier the next screen is prendre la route then the je suis arrivé screen then the asking code from buyer screen. I thought you built that already » — and, restating: « photo capture is optional and only required when one the 3 answers is non ».
 
 **MY ERROR, NAMED.** His VRAI-ROUTE order of 2026-08-10 02:59 lists three screens after the supplier confirms — « en route », « je suis arrivé », the buyer's code — and no seal among them. I built the road gated behind `packageIsHeld`, i.e. behind the seal, which inserted a screen he never asked for and which demanded a number he had no way to produce and a photo that was 401-ing. He did not use the words « terminate the sealing code » before today; **he did specify a flow with no seal in it, and I built one in anyway.** That is mine.
@@ -216,7 +222,7 @@ Each was caught by a person or a verifier. None by the suite. « Is the string i
 
 **Pending:** his answer on the door photo · the canon-text question on §6.2 step 6 · merge + deploy approval, and this one needs **three** deploys (custody, logistics, sera preview) because the change crosses all three.
 
-## 2026-08-10 · ECRAN-BLANC — the accept tap crashed the rider app; the seal photo told the rider to retry a refusal · IN-REVIEW (branch, awaiting founder)
+## 2026-08-10 · ECRAN-BLANC — the accept tap crashed the rider app; the seal photo told the rider to retry a refusal · DONE (merged)
 **Founder report (2026-08-10):** « On sera app when I tap accept button to accept the order the screen goes all white and blank, and after I gave the code to the supplier and he confirmed the sera screen got stuck at votre course asking me to take a picture and for another code » (+ two screenshots).
 
 **① THE WHITE SCREEN — FOUND, FIXED, MUTATION-PROVEN.** `src/net/repere-audio.ts` `detach()` called three native functions in a row on one `AudioPlayer`: `pause()` → `release()` → `remove()`. `release()` is `SharedObject.release()`, and expo-modules-core documents it exactly: « Any subsequent calls to native functions of the object will throw an error as it is no longer associated with its native counterpart. » `remove()` **is** a native binding (`expo-audio/build/AudioModule.types.d.ts` l.176, over `requireNativeModule('ExpoAudio')`). So every detach with a live player threw.
@@ -249,7 +255,7 @@ What blocks him is `App.tsx` `sendSeal`: « ⚠ NO PHOTO, NO SEAL (A7) — `if (
 
 **Pending:** founder check of the three media-key values (`MEDIA_WRITE_SECRET` on the Worker == sera `MEDIA_WRITE_KEY` == boutik-plus `EXPO_PUBLIC_MEDIA_WRITE_KEY`) · merge + deploy approval (standing order 2026-08-10). No spec question outstanding.
 
-## 2026-08-06 · AUDIT-B+1 F12 — the copy-lint learns administrative register, and the pin is GATED · DONE (branch)
+## 2026-08-06 · AUDIT-B+1 F12 — the copy-lint learns administrative register, and the pin is GATED · DONE (merged)
 - **What changed here:** `@platform/i18n` re-pinned to `199bc2ab` (canon), plus a new negative fixture `catalog.administrative-register.json` wired into the gate board.
 - **Why the pin alone was not enough (verifier round 2 blocker).** Canon carried the new word list while every app still resolved the OLD package, so the lint was unchanged for users and the journal said DONE. The pin lives in **two places per repo** — the root `package.json` AND each workspace package's own; moving only the root reports success and changes nothing.
 - **Why the fixture (verifier round 3 blocker).** The existing negative fixture violates « Veuillez » and « séquestre », which are in BOTH the old and new lists — so it discriminates nothing, and a pin regression left the board GREEN while the bureaucratic escape passed again. **Proven by execution.** The new fixture violates ONLY a token F12 added, so reverting the pin makes it stop failing and turns the board RED. §4: enforced by construction, not by discipline.
@@ -257,7 +263,7 @@ What blocks him is `App.tsx` `sendSeal`: « ⚠ NO PHOTO, NO SEAL (A7) — `if (
 - **Evidence:** every catalog in this repo lints clean through the newly installed package; gate board green with the new negative fixture failing for the right reason (« cours d'instruction »).
 - **⚠ MERGE ORDER:** the pin references a `platform-contracts` commit that is on the branch only. **platform-contracts merges to main BEFORE this repo does**, or the pin dangles.
 
-## 2026-08-06 · LAW-2-STRUCTURAL REVERTED in this repo too · DONE (branch)
+## 2026-08-06 · LAW-2-STRUCTURAL REVERTED in this repo too · DONE (merged)
 - **Commit:** sera `aa9324e` (boutik-plus `c016734` · shop-plus `4878773` — same revert, same day). Gate board green after the revert (`ALL GATES GREEN`, exit 0, including the 22 Playwright gallery specs). Pushed to `claude/buyer-pwa-standing-laws-nerljz`; CI dispatched.
 - **Removed:** `scripts/gates/persisted-state-declared.mjs` (273 lines) + `gates/persisted-state.json` (12 lines — Séra has one declared key) + four board entries in `run-gates.sh` + the probe-fixture `.gitignore` line. Diffstat −315 / +15. **No product code touched** — `git show --stat aa9324e` lists only `.gitignore`, `gates/`, `scripts/`.
 - **Verifier:** fresh-context verifier run at the end of the slice per the founder's standing order — `VERDICT: PASS`, blockers none. It ran this repo's board itself (exit 0), confirmed the single durable write here (`assignment-lease-do` STATE_KEY) holds no per-actor amount, and replanted a French `cautionFcfa`/`arrhes`/`acompte` module — `no-seller-deposit` exit 1, 4 hits (and `no-wallet-no-funds` exit 1). Probe removed, tree clean.
