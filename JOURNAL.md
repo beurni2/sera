@@ -2224,7 +2224,9 @@ The ONE fresh-context verifier pass returned **1 blocker · 4 major · 5 minor**
 **A copy consequence worth naming:** on a binary without the expo-audio native module, the honest « Une note vocale existe, mais cette version de l'application ne peut pas la lire. Suivez le repère écrit. » now renders under the landmark on every rung of the course rather than only on the proposal.
 
 **MERGED AND DEPLOYED (founder: « Go », 2026-08-15).** `main` fast-forwarded `ab80c22..eec40c8` — carrying this fix plus the two commits that had stayed on the branch (the PORTE-CUSTODY journal entry and the 2026-08-14 working law in CLAUDE.md/AGENTS.md). **`ci` run 175 → success · `expo-preview` run 120 → success**, both on eec40c8. The service deploys did not fire and were not meant to: this change touches no Worker. *(Not claimed: I have not seen the fix on a phone. The preview channel published; whether the keyboard now clears the code field is the founder's own check.)*
-## 2026-08-23 · STOCK-VENDU-1b — the refusal reaches Shop+: the return-open wire + the refus outbox · IN REVIEW (awaiting merge word, ships WITH the boutik/shop halves)
+## 2026-08-23 · STOCK-VENDU-1b — the refusal reaches Shop+: the return-open wire + the refus outbox · DONE
+
+**MERGED AND DEPLOYED (founder: « merge and deploy », 2026-08-23).** `main` fast-forwarded `8b0a88f..a7ba074` (`c0b097b` the build + `a7ba074` verifier notes). **ci 180 · expo-preview 125 green on push, attempt 1; `custody-deploy` run 17 → success** — the custody worker now carries `/return/open` and the refus outbox. Zero new secrets: the wire rides `SHOP_PROGRESS_SECRET`, armed since RETOUR-CONSOLES.
 
 **Founder, 2026-08-23: « fix the all 3 as well »** — this repo carries the SOURCE of open item 1: the refusal fact leaves custody. Sera half `c0b097b`; boutik `c328c6a` (the restock policy) and shop `0945484` (the relay) complete the road.
 
