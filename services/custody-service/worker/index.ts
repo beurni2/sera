@@ -159,6 +159,10 @@ const RIDER_ROUTES: ReadonlySet<string> = new Set([
   'POST /delivery/evidence',
   'POST /delivery/drop',
   'POST /door/inspection',
+  // STOCK-VENDU-1b — the §6.5 valid-rejection return-open: the rider
+  // re-seals the refused package at the door (the seal hashes at the DO's
+  // door like every other secret). No payment assertion anywhere in it.
+  'POST /return/open',
 ]);
 
 /**

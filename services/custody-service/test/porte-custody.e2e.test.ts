@@ -352,3 +352,90 @@ describe('PORTE-CUSTODY — the refusal roads, each by its own name', () => {
     await mf.dispose();
   }, 60_000);
 });
+
+/**
+ * ═══ STOCK-VENDU-1b — THE REFUSED-COURSE WIRE, DRIVEN (founder order
+ * 2026-08-23: « fix all 3 ») ═══
+ *
+ * The spine has emitted `delivery.refused.v1` since WO-2.4 and the event went
+ * NOWHERE. It now rides the eligibility wire's own road — SHOP_PROGRESS +
+ * the progress secret — so Shop+ can relay it to Boutik+ and the sealed unit
+ * goes home to the supplier's stock. This walk is the wire's first witness:
+ * a valid door rejection, then the RETURN-OPEN (the rider re-seals the
+ * refused package — the act that actually emits `delivery.refused.v1`; the
+ * inspection alone only records the rejection), then the inbox is asked for
+ * the VERBATIM canon event (fault_class and all — Boutik+'s restock policy
+ * reads exactly that field).
+ */
+describe('STOCK-VENDU-1b — the refusal reaches Shop+, verbatim, at-least-once', () => {
+  const SHOP_WIRE_KEY = 'test-shop-progress-secret-porte';
+  function bootAvecShop(dir: string, inbox: Json[]): Miniflare {
+    const shopStub = async (request: Request): Promise<Response> => {
+      const auth = request.headers.get('Authorization');
+      if (auth !== `Bearer ${SHOP_WIRE_KEY}`) return Response.json({ error: 'unauthorized' }, { status: 401 });
+      if (new URL(request.url).pathname !== '/fulfillment/progress') {
+        return Response.json({ ok: false, reason: 'not_found' }, { status: 404 });
+      }
+      const body = (await request.json().catch(() => ({}))) as Json;
+      inbox.push(body);
+      return Response.json({ ok: true, status: 'recorded' });
+    };
+    return new Miniflare({
+      modules: true,
+      scriptPath: SCRIPT,
+      compatibilityDate: '2025-07-05',
+      compatibilityFlags: ['nodejs_compat'],
+      durableObjects: { CUSTODY: 'CustodyDO', PACKAGE_CLAIM: 'PackageClaimDO' },
+      durableObjectsPersist: dir,
+      serviceBindings: { LOGISTICS: logisticsStub(), SHOP_PROGRESS: shopStub },
+      bindings: {
+        SERA_CUSTODY_OPS_SECRET: OPS,
+        SERA_RIDER_VERIFY_SECRET: VERIFY_KEY,
+        SERA_PRODUCE_SECRET: PRODUCE_KEY,
+        SHOP_ARM_SECRET: SHOP_ARM_KEY,
+        SHOP_PROGRESS_SECRET: SHOP_WIRE_KEY,
+      },
+    });
+  }
+
+  it('a VALID door rejection puts delivery.refused.v1 on the wire — order id and fault_class intact', async () => {
+    const inbox: Json[] = [];
+    const mf = bootAvecShop(freshDir('refus-wire'), inbox);
+    const O = 'ord-porte-refus-wire';
+    await doorModeArmed(mf, O, 'PICKUP-RW-1', 'DROP-RW-1');
+    await atTheDoor(mf, O, 'PICKUP-RW-1', 'SEAL-RW-1');
+
+    // Before any rejection is recorded, the return cannot open — refuse-closed.
+    const early = await call(mf, 'POST', '/rider/return/open', RIDER_CODE, {
+      orderId: O, command_id: 'ret-rw-early', returnSealId: 'RETSEAL-RW-1',
+    });
+    expect(early.status).toBe(409);
+    expect(early.json).toMatchObject({ ok: false, reason: 'no_valid_rejection' });
+
+    const rejected = await call(mf, 'POST', '/rider/door/inspection', RIDER_CODE,
+      inspection(O, 'insp-rw', { buyerAccepts: false, refusalColumn: 'valid', custodySealIntact: true }));
+    expect(rejected.status).toBe(200);
+    expect(rejected.json).toMatchObject({ ok: true, kind: 'valid_rejection' });
+
+    // The RETURN-OPEN is the emitting act: the rider re-seals the refused
+    // package and the spine fires delivery.refused.v1 + the return logistics.
+    const opened = await call(mf, 'POST', '/rider/return/open', RIDER_CODE, {
+      orderId: O, command_id: 'ret-rw-1', returnSealId: 'RETSEAL-RW-1',
+    });
+    expect(opened.status).toBe(200);
+    expect(opened.json).toMatchObject({ ok: true, kind: 'return_opened' });
+
+    // The alarm flushes at-least-once; poll the stub's inbox, never sleep blind.
+    for (let i = 0; i < 80 && inbox.length < 1; i += 1) {
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    const refus = inbox.find((b) => b['name'] === 'delivery.refused.v1');
+    expect(refus, `the refusal never reached the wire — inbox: ${JSON.stringify(inbox)}`).toBeDefined();
+    const payload = (refus as Json)['payload'] as Json;
+    expect(payload['order_id']).toBe(O);
+    expect(payload['rejection']).toBe('valid_rejection');
+    // The field Boutik+'s restock policy reads — travelling VERBATIM.
+    expect(typeof payload['fault_class']).toBe('string');
+    await mf.dispose();
+  }, 60_000);
+});

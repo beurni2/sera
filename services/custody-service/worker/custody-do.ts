@@ -166,6 +166,26 @@ interface EligibilityOutbox {
 const ELIGIBILITY_OUTBOX_KEY = 'custody:eligibility-outbox:v1';
 
 /**
+ * STOCK-VENDU-1b (founder order 2026-08-23) — the REFUSED-course wire, the
+ * eligibility wire's sibling: the spine already emits the canon
+ * `delivery.refused.v1` at its three refusal sites (evidence rejected · valid
+ * door rejection · the §6.4 ladder terminal) and until now the event went
+ * nowhere. It now rides to Shop+'s same progress door, VERBATIM, so Shop+ can
+ * relay it to Boutik+ and the sealed unit goes home to the supplier's stock
+ * counter (Boutik+ decides restock by the event's own `fault_class`). Armed
+ * in `commit()` — the ONE site every command shares, so all three emit sites
+ * are covered by construction — and revived from `unsendable_no_config` by
+ * any later command on the same file (the return-flow acts that follow a
+ * refusal make that revival the ordinary case, not a hope).
+ */
+interface RefusOutbox {
+  status: 'pending' | 'delivered' | 'unsendable_no_config';
+  attempts: number;
+  event: unknown;
+}
+const REFUS_OUTBOX_KEY = 'custody:refus-outbox:v1';
+
+/**
  * VRAI-ROUTE (founder, 2026-08-10) — the rider's two journey facts, so the
  * buyer's tracking stops being a simulation. « Departed » and « arrived » are
  * NOT custody transitions (one custodian, unchanged — the courier holds the
@@ -375,6 +395,23 @@ export type CustodyCommand =
       kind: 'door_signal';
       command_id: string;
       event: unknown;
+      at: string;
+    }
+  | {
+      /**
+       * STOCK-VENDU-1b — the §6.5 valid-rejection RETURN OPEN, the half of
+       * the door road PORTE-CUSTODY left spine-complete and wire-dead: the
+       * inspection could record a valid rejection, and no route could send
+       * the package home. A RIDER act: he re-seals the refused package at
+       * the buyer's door with the return seal — HASHED AT THE DOOR like
+       * every other seal, the plaintext dies with the request. Every rule
+       * (valid-rejection-recorded, custody-with-courier, seal-registry
+       * refusal) lives in the spine.
+       */
+      kind: 'open_return';
+      command_id: string;
+      returnSealDigest: string;
+      attribution: 'founder_attested' | 'rider_authenticated';
       at: string;
     };
 
@@ -803,6 +840,10 @@ export class CustodyDO {
         return spine.recordDoorInspection(cmd.input, cmd.at);
       case 'door_signal':
         return spine.consumeDoorPaidSignal(cmd.event, cmd.at);
+      // STOCK-VENDU-1b — pure spine call on values stored ON the command,
+      // like both door arms above: replay re-applies byte-identically.
+      case 'open_return':
+        return spine.openValidRejectionReturn({ returnSealId: cmd.returnSealDigest, at: cmd.at });
     }
   }
 
@@ -837,7 +878,9 @@ export class CustodyDO {
     const eligibilityPending = await this.flushEligibility();
     const transitPending = await this.flushTransit();
     const livreePending = await this.flushCourseLivree();
-    const attempts = Math.max(eligibilityPending, transitPending, livreePending);
+    // STOCK-VENDU-1b — the FOURTH wire, same terms: own state, shared alarm.
+    const refusPending = await this.flushRefus();
+    const attempts = Math.max(eligibilityPending, transitPending, livreePending, refusPending);
     if (attempts > 0) {
       const backoffMs = Math.min(30_000 * 2 ** Math.min(attempts, 7), 3_600_000);
       await this.state.storage.setAlarm(Date.now() + backoffMs).catch(() => undefined);
@@ -886,6 +929,48 @@ export class CustodyDO {
       ...outbox,
       attempts,
     } satisfies EligibilityOutbox);
+    return attempts;
+  }
+
+  /** STOCK-VENDU-1b — the refused-course wire, byte-for-byte the eligibility
+   *  wire's discipline: same door, same secret, same honest resting state
+   *  when unconfigured (revived by `commit()`, see the row's docblock). */
+  private async flushRefus(): Promise<number> {
+    const outbox = await this.state.storage.get<RefusOutbox>(REFUS_OUTBOX_KEY);
+    if (outbox === undefined || outbox.status !== 'pending') return 0;
+    const shop = this.env.SHOP_PROGRESS;
+    const secret = this.env.SHOP_PROGRESS_SECRET ?? '';
+    if (shop === undefined || secret === '') {
+      await this.state.storage.put(REFUS_OUTBOX_KEY, {
+        ...outbox,
+        status: 'unsendable_no_config',
+      } satisfies RefusOutbox);
+      return 0;
+    }
+    let delivered = false;
+    try {
+      const res = await shop.fetch(new Request('https://shop/fulfillment/progress', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${secret}` },
+        body: JSON.stringify(outbox.event),
+      }));
+      delivered = res.ok;
+    } catch {
+      delivered = false;
+    }
+    const attempts = outbox.attempts + 1;
+    if (delivered) {
+      await this.state.storage.put(REFUS_OUTBOX_KEY, {
+        ...outbox,
+        status: 'delivered',
+        attempts,
+      } satisfies RefusOutbox);
+      return 0;
+    }
+    await this.state.storage.put(REFUS_OUTBOX_KEY, {
+      ...outbox,
+      attempts,
+    } satisfies RefusOutbox);
     return attempts;
   }
 
@@ -1087,8 +1172,28 @@ export class CustodyDO {
      * including to settle the dispute it exists for. A single `put` of both
      * keys commits together or not at all, so that window does not exist.
      */
-    await this.state.storage.put({ [logKey(this.log.length)]: row, [HEAD_KEY]: head });
+    const puts: Record<string, unknown> = { [logKey(this.log.length)]: row, [HEAD_KEY]: head };
+    /**
+     * STOCK-VENDU-1b — the refusal wire arms IN THE SAME PUT as the commit
+     * that produced (or follows) the refusing command: « ONE WRITE, NOT
+     * TWO », this function's own law. First refused event only — the ids are
+     * deterministic per order and one order frees one unit.
+     */
+    let armRefus = false;
+    const refusedEvent = this.spine?.allEvents().find((e) => e.name === 'delivery.refused.v1');
+    if (refusedEvent !== undefined) {
+      const refusRow = await this.state.storage.get<RefusOutbox>(REFUS_OUTBOX_KEY);
+      if (refusRow === undefined) {
+        puts[REFUS_OUTBOX_KEY] = { status: 'pending', attempts: 0, event: refusedEvent } satisfies RefusOutbox;
+        armRefus = true;
+      } else if (refusRow.status === 'unsendable_no_config') {
+        puts[REFUS_OUTBOX_KEY] = { ...refusRow, status: 'pending' } satisfies RefusOutbox;
+        armRefus = true;
+      }
+    }
+    await this.state.storage.put(puts);
     this.log = next;
+    if (armRefus) await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
   }
 
   /** The head implied by a given log, with the CURRENT rebuilt ledger. */
@@ -2238,6 +2343,59 @@ export class CustodyDO {
         | { ok: false; reason?: string };
       const recorded: RecordedOutcome = applied.ok
         ? { httpStatus: 200, body: { ok: true, duplicate: applied.duplicate } }
+        : { httpStatus: 409, body: { ok: false, reason: applied.reason ?? 'refused' } };
+      await this.commit(cmd, recorded);
+      return Response.json(recorded.body, { status: recorded.httpStatus });
+    }
+
+    /**
+     * ═══ STOCK-VENDU-1b — THE §6.5 RETURN-OPEN GETS ITS WIRE ═══
+     *
+     * The spine has held the valid-rejection return law since the door
+     * stage shipped — `openValidRejectionReturn`, guarding
+     * valid-rejection-recorded, custody-with-courier and the return-seal
+     * registry — and NO route reached it, so a validly refused package
+     * could never be sent home and `delivery.refused.v1` could never fire
+     * from a live object. This route is the wire and nothing else: same
+     * priorFor/conflict/tooLargeToCommit/commit discipline as every
+     * command above. A RIDER act (via RIDER_ROUTES): the rider re-seals
+     * the refused package at the buyer's door. The seal is HASHED AT THE
+     * DOOR; the refused event arms the refus outbox inside `commit()`,
+     * so this route carries nothing to Shop+ itself. The emitted events
+     * stay readable at `/events` — the answer carries no event internals,
+     * like every sibling.
+     */
+    if (request.method === 'POST' && pathname === '/return/open') {
+      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      if (
+        body === null ||
+        !isBoundedStr(body['command_id'], MAX_ID) ||
+        !isBoundedStr(body['returnSealId'], MAX_ID) ||
+        (body['at'] !== undefined && !isIso(body['at']))
+      ) {
+        return malformed();
+      }
+      const returnRider = request.headers.get('X-Rider-Authenticated');
+      const cmd: CustodyCommand = {
+        kind: 'open_return',
+        command_id: (body['command_id'] as string).trim(),
+        returnSealDigest: digestSecret(body['returnSealId'] as string),
+        attribution: returnRider !== null && returnRider !== '' ? 'rider_authenticated' : 'founder_attested',
+        at: (body['at'] as string | undefined) ?? new Date().toISOString(),
+      };
+      const prior = this.priorFor(cmd);
+      if (prior.kind === 'duplicate') return this.replayOutcome(prior.outcome, cmd);
+      if (prior.kind === 'conflict') {
+        return Response.json({ ok: false, reason: 'command_id_reused_with_other_content' }, { status: 409 });
+      }
+      if (this.tooLargeToCommit(cmd)) {
+        return Response.json({ ok: false, reason: 'command_too_large' }, { status: 413 });
+      }
+      const applied = this.apply(this.spine, cmd) as
+        | { ok: true; events: readonly unknown[] }
+        | { ok: false; reason?: string };
+      const recorded: RecordedOutcome = applied.ok
+        ? { httpStatus: 200, body: { ok: true, kind: 'return_opened' } }
         : { httpStatus: 409, body: { ok: false, reason: applied.reason ?? 'refused' } };
       await this.commit(cmd, recorded);
       return Response.json(recorded.body, { status: recorded.httpStatus });
