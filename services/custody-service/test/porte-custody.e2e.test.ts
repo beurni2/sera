@@ -434,8 +434,11 @@ describe('STOCK-VENDU-1b — the refusal reaches Shop+, verbatim, at-least-once'
     const payload = (refus as Json)['payload'] as Json;
     expect(payload['order_id']).toBe(O);
     expect(payload['rejection']).toBe('valid_rejection');
-    // The field Boutik+'s restock policy reads — travelling VERBATIM.
-    expect(typeof payload['fault_class']).toBe('string');
+    // The field Boutik+'s restock policy reads — travelling VERBATIM. This
+    // fixture (custodySealIntact: true) deterministically derives 'seller',
+    // pinned by value here per the verifier's note (a typeof would pass any
+    // wrong class).
+    expect(payload['fault_class']).toBe('seller');
     await mf.dispose();
   }, 60_000);
 });
