@@ -9,7 +9,9 @@ Format per entry:
 
 ---
 
-## 2026-08-25 · FRAIS-ZERO-1 — canon v3.13.0 consumed; both platform fee rates are 0 · IN REVIEW
+## 2026-08-25 · FRAIS-ZERO-1 — canon v3.13.0 consumed; both platform fee rates are 0 · DONE
+
+**MERGED AND DEPLOYED (founder: « Merge and deploy », 2026-08-26).** `main` fast-forwarded to `147a604` (build `e116c94` + verifier fix `1f57007` + the canon repin to `35a21ea`). **ci 183 · expo-preview 128 green on 147a604 → custody-deploy 18 · logistics-deploy 28 SUCCESS** — both live workers rebuilt on canon 3.13.0.
 
 **Founder, 2026-08-25: « For now remove all charging fees system everywhere, I haven't found the proper fees charge design yet. »** His chosen shape: zero the rates (canon v3.13.0, sha `0846780`); **delivery stays** — D is the rider's service price, not a platform charge, and nothing on any Séra surface moves. Build `e116c94`.
 
