@@ -17,6 +17,8 @@ Format per entry:
 
 **Boards:** turbo test+typecheck **23/23 --force** · gates **ALL GREEN** (drift-check passing against 3.13.0). dist-worker bundles rebuilt locally so seam runs use the new canon (gitignored — CI rebuilds at deploy with release stamps).
 
+**The ONE fresh-context verifier (order + chosen shape, the four diffs, the DoD): SHIP — one LOW here, fixed once (`1f57007`):** the two kernel-types package.json pins lagged the override — now at 0846780 with contracts. A scope note accepted: the /docs Shop-Plus-Build-Spec catch-up is mirror sync the 3.13.0 drift-check requires, not fee content. It confirmed: D untouched on every Séra surface, pins literal, fixtures reconciling, SE-I09 held (no fee math or display existed here to remove).
+
 ---
 
 ## 2026-08-22 · PORTE-REFUSÉE (E2) — a settled course answers the door signal by name · DONE
