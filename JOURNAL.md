@@ -9,6 +9,16 @@ Format per entry:
 
 ---
 
+## 2026-08-25 · FRAIS-ZERO-1 — canon v3.13.0 consumed; both platform fee rates are 0 · IN REVIEW
+
+**Founder, 2026-08-25: « For now remove all charging fees system everywhere, I haven't found the proper fees charge design yet. »** His chosen shape: zero the rates (canon v3.13.0, sha `0846780`); **delivery stays** — D is the rider's service price, not a platform charge, and nothing on any Séra surface moves. Build `e116c94`.
+
+**Séra has no fee math and no fee display of its own (SE-I09)** — this repo's whole slice is the pin and the figures that flow from it: pnpm-workspace.yaml overrides + package.json pins → 0846780 · run-gates.sh `--pinned-version` 3.11.0 → 3.13.0 (both arms) · /docs mirror re-synced (Shop-Plus-Build-Spec.md had drifted from the 3.13.0 manifest) · money-gate pins 9 000/2 500/0 and 9 668/1 111/0 · quote.baseline + baseline-check regenerated. The settlement figures a rider's delivery triggers now carry the whole nets; every reconciliation identity holds to the franc.
+
+**Boards:** turbo test+typecheck **23/23 --force** · gates **ALL GREEN** (drift-check passing against 3.13.0). dist-worker bundles rebuilt locally so seam runs use the new canon (gitignored — CI rebuilds at deploy with release stamps).
+
+---
+
 ## 2026-08-22 · PORTE-REFUSÉE (E2) — a settled course answers the door signal by name · DONE
 
 **MERGED AND DEPLOYED (founder's word, 2026-08-22):** main fast-forwarded to `4230890`; all three workflows green on it, attempt 1 — ci run 178, custody-deploy run 16 (32579247037), expo-preview run 123. Shop+'s half of the slice deployed the same hour (storefront-deploy run 61, its journal). The M2 deploy note below is now in effect on live custody files.
