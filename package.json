@@ -17,7 +17,7 @@
     "baseline-check": "node scripts/baseline-check.mjs"
   },
   "dependencies": {
-    "@platform/contracts": "git+https://github.com/beurni2/platform-contracts.git#eee9d198d89d2a219c73ec72f682e6c8c8a9b7bf&path:packages/contracts",
+    "@platform/contracts": "git+https://github.com/beurni2/platform-contracts.git#084678005579c530f44eff05385852c5181b60aa&path:packages/contracts",
     "@platform/kernel-types": "git+https://github.com/beurni2/platform-contracts.git#eee9d198d89d2a219c73ec72f682e6c8c8a9b7bf&path:packages/kernel-types",
     "@platform/i18n": "git+https://github.com/beurni2/platform-contracts.git#199bc2ab172dbbf93b446af35445e17f5a0f3f35&path:packages/i18n",
     "@platform/ui-tokens": "git+https://github.com/beurni2/platform-contracts.git#a832df0a8ed9e9fc83083826bc11c2a2e57e615a&path:packages/ui-tokens"
@@ -27,6 +27,6 @@
     "turbo": "^2.5.4",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4",
-    "@platform/certification": "git+https://github.com/beurni2/platform-contracts.git#eee9d198d89d2a219c73ec72f682e6c8c8a9b7bf&path:packages/certification"
+    "@platform/certification": "git+https://github.com/beurni2/platform-contracts.git#084678005579c530f44eff05385852c5181b60aa&path:packages/certification"
   }
 }

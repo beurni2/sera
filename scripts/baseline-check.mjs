@@ -21,9 +21,10 @@ console.log(`platformProductFeeRevenue ${r.platformProductFeeRevenue}`);
 const expected = {
   productSubtotal: 11_500,
   buyerTotal: 12_500,
-  sellerNet: 8_500,
-  resellerNet: 2_000,
-  platformProductFeeRevenue: 1_000,
+  // FRAIS-ZERO (founder order 2026-08-25): both rates 0 — fees 0, nets whole.
+  sellerNet: 9_000,
+  resellerNet: 2_500,
+  platformProductFeeRevenue: 0,
 };
 for (const [k, v] of Object.entries(expected)) {
   if (r[k] !== v) {

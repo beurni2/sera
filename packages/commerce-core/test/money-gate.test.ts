@@ -18,9 +18,10 @@ describe('money-reconciliation gate — §5.4 worked baseline', () => {
     const q = buildFixtureQuoteMoney(WORKED_BASELINE_INPUT);
     expect(q.productSubtotal).toBe(11_500);
     expect(q.buyerTotal).toBe(12_500);
-    expect(q.sellerNet).toBe(8_500);
-    expect(q.resellerNet).toBe(2_000);
-    expect(q.platformProductFeeRevenue).toBe(1_000);
+    // FRAIS-ZERO (founder 2026-08-25): both rates 0 — nets keep the whole amount.
+    expect(q.sellerNet).toBe(9_000);
+    expect(q.resellerNet).toBe(2_500);
+    expect(q.platformProductFeeRevenue).toBe(0);
     // reconciliation identity, asserted literally, not just via no-throw:
     expect(q.sellerNet + q.resellerNet + q.platformProductFeeRevenue).toBe(q.productSubtotal);
     expect(q.productSubtotal + q.deliveryFee).toBe(q.buyerTotal);
@@ -28,11 +29,13 @@ describe('money-reconciliation gate — §5.4 worked baseline', () => {
 
   it('reproduces the founder non-divisible regression exactly (RoundingLaw v1)', () => {
     const q = buildFixtureQuoteMoney(NON_DIVISIBLE_REGRESSION_INPUT);
-    expect(q.sellerPlatformFee).toBe(500);
-    expect(q.resellerPlatformFee).toBe(222);
-    expect(q.sellerNet).toBe(9_168);
-    expect(q.resellerNet).toBe(889);
-    expect(q.platformProductFeeRevenue).toBe(722);
+    // FRAIS-ZERO: at rate 0 the non-divisible case rounds NOTHING — fees are
+    // exactly 0 and the nets are the plain subtractions.
+    expect(q.sellerPlatformFee).toBe(0);
+    expect(q.resellerPlatformFee).toBe(0);
+    expect(q.sellerNet).toBe(9_668);
+    expect(q.resellerNet).toBe(1_111);
+    expect(q.platformProductFeeRevenue).toBe(0);
     expect(q.productSubtotal).toBe(10_779);
     expect(q.buyerTotal).toBe(11_379);
   });
