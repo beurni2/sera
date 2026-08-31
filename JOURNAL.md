@@ -9,7 +9,9 @@ Format per entry:
 
 ---
 
-## 2026-08-31 · GEO-SERA-1 (sera half) — « Itinéraire » on the landmark card: her point, the phone's GPS, the words still the guide · IN REVIEW
+## 2026-08-31 · GEO-SERA-1 (sera half) — « Itinéraire » on the landmark card: her point, the phone's GPS, the words still the guide · DONE
+
+**MERGED AND DEPLOYED (founder: « Go », 2026-08-31).** `main` fast-forwarded `a2ea6c1..e6658b8` (build `aab2c3e` + the board's two catches `53da2cc` + the bounds unit `35a29f1` + journal). **Both push workflows green on e6658b8 — ci run 185 · expo-preview 130** (the rider app's deploy surface — the registered preview root rebuilds on main; that IS the rider deploy). **No worker dispatch, deliberately: the logistics service is unchanged in this slice** (the verifier confirmed it on the real Worker). No migration.
 
 **Founder, 2026-08-31: « now go with GEO-SERA-1 and make sure the direction is well display and well explain for the rider. i want it to be and look very professional and very well simply structured. »** Build `aab2c3e` + the board's two catches `53da2cc` + the bounds unit `35a29f1`, pushed to the branch. **No main merge, no deploy — waiting on his word.** **The logistics service is UNCHANGED** — it already admits the optional bounded `location.pin {lat,lng}` on `/ops/task` (canon v3.11.0), stores it, and serves the stored location whole on `/rider/moi`; the e2e below proves that live. So the eventual deploy is push workflows only — no worker dispatch, no migration. The boutik+ relay half (her pin riding the brief) lives in boutik-plus's journal.
 
