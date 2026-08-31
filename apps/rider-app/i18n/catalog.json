@@ -60,6 +60,18 @@
     "screenClass": "label"
   },
   {
+    "key": "assignment.itineraire",
+    "fr": "Itinéraire — ouvrir le GPS",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "assignment.itineraire_aide",
+    "fr": "Le GPS mène au point exact de la cliente. Le repère reste votre guide.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
     "key": "assignment.ack_action",
     "fr": "Je prends la course",
     "register": "neutral",

@@ -194,6 +194,23 @@ export const Easing = {
   out: (): ((t: number) => number) => easingFn,
 };
 
+/** GEO-SERA-1 — the real one hands a URL to the OS. Here it only RECORDS,
+ *  so a walk can ask exactly what was dialled — a double that swallowed the
+ *  url would let a broken maps link pass. It may NEVER claim the OS opened
+ *  anything: whether a maps app exists is not this harness's claim to make. */
+// ⚠ ONE ledger across `vi.resetModules()`: the app's aliased import and the
+// walk's direct import must see the SAME array, and resetModules re-runs
+// this factory (the expo-audio capture lesson, solved smaller here).
+const lienOuverts: string[] = ((globalThis as unknown as { __lienOuverts?: string[] }).__lienOuverts ??= []);
+export const Linking = {
+  opened: lienOuverts,
+  openURL: async (url: string): Promise<void> => {
+    lienOuverts.push(url);
+  },
+  canOpenURL: async (): Promise<boolean> => true,
+  addEventListener: (): { remove: () => void } => ({ remove: () => {} }),
+};
+
 /** The real one asks the OS. Here it answers « motion is fine » and never
  *  changes — the reduced-motion BRANCHES are covered by their own unit tests. */
 export const AccessibilityInfo = {

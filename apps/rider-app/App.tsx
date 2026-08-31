@@ -4,6 +4,7 @@ import {
   Image,
   Keyboard,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   SafeAreaView,
@@ -65,7 +66,7 @@ import { SosButton, SosSheet, type SosState } from './src/ui/faso-sos';
 import { FasoSignIn } from './src/ui/faso-signin';
 import { IDLE, refusalKeys, submit as submitSignIn, type SignInState } from './src/net/signin-model';
 import { isWired, resolveRiderSession } from './src/net/resolveRiderSession';
-import { assignmentStateKey, landmarkLines, onShiftFromSession } from './src/net/rider-session';
+import { assignmentStateKey, landmarkLines, onShiftFromSession, pinItineraire } from './src/net/rider-session';
 import { refusServiceKey, resolveShiftActs } from './src/net/shift-acts';
 
 /** How often a signed-in wired build re-asks `/rider/moi`. The ack window is
@@ -590,6 +591,30 @@ export default function App() {
   const liveSession = signInState.kind === 'signed_in' ? signInState.session : null;
   const liveAssignment = signInState.kind === 'signed_in' ? signInState.session.assignment : null;
   const assignmentLines = liveAssignment === null ? null : landmarkLines(liveAssignment.location);
+  /**
+   * GEO-SERA-1 (founder, 2026-08-31) — the buyer's confirmed point becomes
+   * the ONE « Itinéraire » act on the landmark card: it opens the phone's
+   * GPS in directions mode on her exact coordinates. A universal maps URL,
+   * deterministic (Law 5 — Séra computes no route; the phone's own GPS
+   * does), and the words stay the guide (SE0.3: the pin never leads). No
+   * pin, no row — absence is lawful and silent.
+   */
+  const pinCourse = liveAssignment === null ? null : pinItineraire(liveAssignment.location);
+  const itineraireCourse = useMemo(
+    () =>
+      pinCourse === null
+        ? undefined
+        : {
+            label: t('assignment.itineraire'),
+            aide: t('assignment.itineraire_aide'),
+            onPress: () => {
+              void Linking.openURL(
+                `https://www.google.com/maps/dir/?api=1&destination=${pinCourse.lat},${pinCourse.lng}`,
+              );
+            },
+          },
+    [pinCourse === null ? null : `${pinCourse.lat},${pinCourse.lng}`],
+  );
 
   /**
    * ═══ COURSE-BRIEF — what the rider SEES and HEARS about this course ═══
@@ -1892,6 +1917,7 @@ export default function App() {
                       lines={assignmentLines}
                       repereLabel={t('assignment.landmark_label')}
                       indicationsLabel={t('repere.indications')}
+                      itineraire={itineraireCourse}
                     />
                   ) : (
                     <FasoCard>
@@ -1934,6 +1960,7 @@ export default function App() {
                       lines={assignmentLines}
                       repereLabel={t('assignment.landmark_label')}
                       indicationsLabel={t('repere.indications')}
+                      itineraire={itineraireCourse}
                     />
                   ) : (
                     /* Honest: the server has sent no usable landmark yet.

@@ -2,7 +2,7 @@ import { Pressable, StyleSheet, Text, View, type StyleProp, type TextStyle, type
 import { alpha, C, DARK, GEO, rad, ty } from './faso';
 import { displayFace, textFace } from './faso-fonts';
 import { WovenBand, FpBar, FpPop } from './signature';
-import { IconRepere, IconEcouter, IconPause, IconScelle, IconCoche, type IconProps } from './icons';
+import { IconRepere, IconEcouter, IconPause, IconScelle, IconCoche, IconMoto, IconChevron, type IconProps } from './icons';
 
 /**
  * WO-FP-SERA · the Faso Premium chrome + list components (README § shared system;
@@ -124,11 +124,16 @@ export function VoicePlayRow({ label, time, playing, onPress }: { label: string;
  * « LE REPÈRE » + the repère · « LES INDICATIONS » + the indications · the voice row.
  * No street address, ever — the repère IS the navigation (planche footer). */
 export function LandmarkCard({
-  zone, lines, repereLabel, indicationsLabel, illustrated, voice,
+  zone, lines, repereLabel, indicationsLabel, illustrated, voice, itineraire,
 }: {
   zone: string; lines: readonly [string, string, string];
   repereLabel: string; indicationsLabel: string; illustrated?: boolean | undefined;
   voice?: { label: string; time: string; playing: boolean; onPress: () => void } | undefined;
+  /** GEO-SERA-1 — the buyer's confirmed GPS point as ONE act: open the
+   *  phone's GPS on it. LAST in the card, on SE0.3's own line: the words
+   *  lead, the pin supports. The aide under the row says plainly what the
+   *  tap does and what stays the guide. Absent pin, absent row. */
+  itineraire?: { label: string; aide: string; onPress: () => void } | undefined;
 }) {
   return (
     <View style={styles.landmark}>
@@ -149,6 +154,22 @@ export function LandmarkCard({
           </>
         )}
         {voice !== undefined && <VoicePlayRow label={voice.label} time={voice.time} playing={voice.playing} onPress={voice.onPress} />}
+        {itineraire !== undefined && (
+          <>
+            <Pressable
+              style={({ pressed }) => [styles.voiceRow, pressed && styles.pressed]}
+              onPress={itineraire.onPress}
+              accessibilityRole="button"
+            >
+              <View style={styles.voiceGlyph}>
+                <IconMoto size={ty('row').fontSize} color={C.onAccent} />
+              </View>
+              <Text style={styles.voiceLabel} numberOfLines={1}>{itineraire.label}</Text>
+              <IconChevron size={ty('row').fontSize} color={C.ink} />
+            </Pressable>
+            <Text style={styles.itineraireAide}>{itineraire.aide}</Text>
+          </>
+        )}
       </View>
     </View>
   );
@@ -579,6 +600,7 @@ const styles = StyleSheet.create({
   voiceGlyph: { width: 38, height: 38, borderRadius: 11, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center' },
   voiceLabel: { fontFamily: textFace(700), fontSize: 10.5, fontWeight: '700', letterSpacing: 10.5 * 0.1, textTransform: 'uppercase', color: C.ink, flex: 1 },
   voiceTime: { fontFamily: textFace(700), fontSize: 12, fontWeight: '700', color: C.ink, fontVariant: ['tabular-nums'] },
+  itineraireAide: { ...ty('body', 'max'), color: C.sub, fontSize: 12.5, marginTop: 6 },
 
   // ── R5 check row · R7 seal card ──
   checkRow: { flexDirection: 'row', alignItems: 'center', gap: 9, minHeight: 44, paddingVertical: 9 },

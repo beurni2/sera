@@ -617,6 +617,26 @@ describe('SE-LIVE-2c — the founder composes the task, and the gate still gover
     expect(forOrder).toHaveLength(1);
   });
 
+  it('GEO-SERA-1 · THE SEAM: the composed pin reaches the RIDER’S OWN READ byte-exact — /rider/moi serves the stored {lat, lng}', async () => {
+    // The rider app's « Itinéraire » dials exactly what this read serves;
+    // a pin that mutates between the founder's hand and the rider's phone
+    // would send someone to the wrong door with full confidence.
+    const board = await call(mf, 'GET', '/ops/board', opsAuth);
+    const queued = ((board.json['board'] as Json)['queued'] as Json[]).find((q) => q['orderId'] === ORDER);
+    expect(queued).toBeDefined();
+    await prepRider(mf, 'r-itineraire');
+    const granted = await call(mf, 'POST', '/ops/assign', opsAuth, {
+      command_id: 'cmd-itineraire-assign', taskId: queued!['taskId'], riderId: 'r-itineraire',
+    });
+    expect(granted.status).toBe(200);
+    const mint = await call(mf, 'POST', '/ops/rider-code/mint', opsAuth, { riderId: 'r-itineraire' });
+    const moi = await call(mf, 'GET', '/rider/moi', codeAuth(mint.json['code'] as string));
+    const assignment = (moi.json['rider'] as Json)['assignment'] as Json;
+    expect(assignment).not.toBeNull();
+    const location = assignment['location'] as Json;
+    expect(location['pin']).toEqual({ lat: 12.3714, lng: -1.5197 });
+  });
+
   it('A HALF-GIVEN ADDRESS IS REFUSED 400 — canon’s required pair (zone, landmark) is not optional, and a PRESENT pin must be real', async () => {
     const cases: Json[] = [
       // Canon v3.11.0: an ABSENT pin is lawful (see the allégé positive

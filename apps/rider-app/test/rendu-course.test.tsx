@@ -7,6 +7,7 @@ import { __resetFiles } from './doubles/expo-file-system';
 // mode the mounted screen's own player actually meets — the `__resetFiles`
 // precedent, on the audio boundary.
 import { __modeChargement } from './doubles/expo-audio';
+import { Linking } from './doubles/react-native';
 
 /**
  * ═══ RENDU-RÉEL — the rider's course, DRIVEN, not read ═══
@@ -633,5 +634,73 @@ describe('⚠ VOIX-MUETTE-2 — a repère that cannot load is not an eternal « 
     await s.press('Écouter le repère');
     expect(s.shows('Pause'), 'the retry must actually play — « réessayez » must be a true sentence').toBe(true);
     expect(s.shows('La note ne se lit pas'), 'a playing note carries no failure line').toBe(false);
+  });
+});
+
+/* ═══ GEO-SERA-1 — « ITINÉRAIRE », DRIVEN (founder, 2026-08-31: « make sure
+ * the direction is well display and well explain for the rider ») ═══
+ * The buyer's confirmed pin arrives on the task's location; the landmark
+ * card gains ONE act — open the phone's GPS on her exact point — with its
+ * aide said in plain words. SE0.3 holds: the words lead, the pin supports.
+ * The Linking double records what was dialled and claims nothing about the
+ * OS; a no-pin course shows NO row (absence is lawful and silent). */
+
+describe('GEO-SERA-1 — the Itinéraire act on the landmark card', () => {
+  /** The standing fixture plus the pin — the exact bytes the boutik+ relay
+   *  now sends (contract: logistics stores {lat, lng} and serves the stored
+   *  location whole on /rider/moi). */
+  function logisticsAvecPin(state: CourseState): Route {
+    const base = logistics(state);
+    return (path, body, headers) => {
+      const answer = base(path, body, headers);
+      if (path === '/rider/moi' && answer !== null) {
+        const rider = (answer.json as Record<string, unknown>)['rider'] as Record<string, unknown>;
+        const assignment = rider['assignment'] as Record<string, unknown>;
+        assignment['location'] = {
+          ...(assignment['location'] as Record<string, unknown>),
+          pin: { lat: 12.371532, lng: -1.519931 },
+        };
+      }
+      return answer;
+    };
+  }
+
+  it('a pinned course: the row is present, explained, pressable — and dials EXACTLY her point in directions mode', async () => {
+    const state = freshCourse();
+    const avant = Linking.opened.length;
+    const { s } = await signedIn([logisticsAvecPin(state), custody()]);
+    expect(s.shows('Une course pour vous'), JSON.stringify(s.texts())).toBe(true);
+
+    // Well displayed: the act and its plain-words aide, together.
+    expect(s.shows('Itinéraire — ouvrir le GPS'), 'the act must be on the card').toBe(true);
+    expect(s.shows('Le repère reste votre guide'), 'the aide must explain in plain words').toBe(true);
+
+    await s.press('Itinéraire — ouvrir le GPS');
+    expect(Linking.opened.slice(avant)).toEqual([
+      'https://www.google.com/maps/dir/?api=1&destination=12.371532,-1.519931',
+    ]);
+    s.unmount();
+  });
+
+  it('the row FOLLOWS the course onto the road — still there, still dialling, after Accepter', async () => {
+    const state = freshCourse();
+    const avant = Linking.opened.length;
+    const { s } = await signedIn([logisticsAvecPin(state), custody()]);
+    await s.press('Accepter la course');
+    expect(s.shows('Itinéraire — ouvrir le GPS'), JSON.stringify(s.texts())).toBe(true);
+    await s.press('Itinéraire — ouvrir le GPS');
+    expect(Linking.opened.slice(avant)).toEqual([
+      'https://www.google.com/maps/dir/?api=1&destination=12.371532,-1.519931',
+    ]);
+    s.unmount();
+  });
+
+  it('no pin on the course: NO row and NO aide — never a dead button, never an invented destination', async () => {
+    const state = freshCourse();
+    const { s } = await signedIn([logistics(state), custody()]);
+    expect(s.shows('Une course pour vous')).toBe(true);
+    expect(s.shows('Itinéraire — ouvrir le GPS')).toBe(false);
+    expect(s.shows('Le repère reste votre guide')).toBe(false);
+    s.unmount();
   });
 });

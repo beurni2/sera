@@ -263,6 +263,26 @@ export function landmarkLines(location: unknown): readonly [string, string, stri
   return [landmark, text(l['directions']), text(l['zone'])];
 }
 
+/**
+ * GEO-SERA-1 (founder, 2026-08-31) — the buyer's confirmed GPS point, as the
+ * task's location carries it. It powers ONE act: « Itinéraire », opening the
+ * phone's GPS on her exact point. SE0.3 stands untouched: the pin never
+ * leads — the landmark and the words stay the navigation; this is the turn-
+ * by-turn support under them. Bounded like the service's own admission
+ * (finite, on the globe) — a byte outside that is null, never a destination
+ * handed to a phone. Null is a lawful absence: no pin, no row.
+ */
+export function pinItineraire(location: unknown): { lat: number; lng: number } | null {
+  if (location === null || typeof location !== 'object') return null;
+  const p = (location as Record<string, unknown>)['pin'];
+  if (p === null || p === undefined || typeof p !== 'object') return null;
+  const lat = (p as Record<string, unknown>)['lat'];
+  const lng = (p as Record<string, unknown>)['lng'];
+  if (typeof lat !== 'number' || !Number.isFinite(lat) || lat < -90 || lat > 90) return null;
+  if (typeof lng !== 'number' || !Number.isFinite(lng) || lng < -180 || lng > 180) return null;
+  return { lat, lng };
+}
+
 /** The catalog key for an assignment status — the rider reads words, and the
  *  enum never reaches a screen. Anything the server adds later degrades to the
  *  neutral « pending » rather than surfacing a raw token. */
