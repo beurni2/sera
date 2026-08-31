@@ -651,8 +651,8 @@ describe('GEO-SERA-1 — the Itinéraire act on the landmark card', () => {
    *  location whole on /rider/moi). */
   function logisticsAvecPin(state: CourseState): Route {
     const base = logistics(state);
-    return (path, body, headers) => {
-      const answer = base(path, body, headers);
+    return (path, body) => {
+      const answer = base(path, body);
       if (path === '/rider/moi' && answer !== null) {
         const rider = (answer.json as Record<string, unknown>)['rider'] as Record<string, unknown>;
         const assignment = rider['assignment'] as Record<string, unknown>;

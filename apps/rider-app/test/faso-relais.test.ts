@@ -10,7 +10,9 @@ import { describe, expect, it } from 'vitest';
  * THE LAW THIS FIXTURE PROTECTS — the « masqué » promise, and mock-honesty
  * (failure mode #8: no mock may look healthier than it is). At the walking-
  * skeleton stage there is NO telephony backend, so the affordance is a LOCAL
- * toggle: no number is ever dialed or exposed (no Linking, no `tel:`), which is
+ * toggle: no number is ever dialed or exposed (no `tel:`, no phone literal;
+ * Linking exists for exactly ONE non-telephony act — GEO-SERA-1's maps
+ * itinerary — and this file counts its call sites), which is
  * exactly how « les deux numéros restent privés » is kept by construction — there
  * is no number to leak. The relais rides the three repère screens: affectation
  * (R4) · en_route (R8) · door (R9).
@@ -40,11 +42,17 @@ describe('R4/R8 relais — the affordance rides all three repère screens', () =
 });
 
 describe('R4/R8 relais — masked by construction: a local toggle, NO telephony', () => {
-  it('no number is ever dialed or exposed — the app wires no Linking and no tel: URL', () => {
-    expect(app).not.toMatch(/\bLinking\b/);
+  it('no number is ever dialed or exposed — no tel: URL, no phone literal, and Linking has EXACTLY ONE act: the maps itinerary', () => {
     expect(app).not.toMatch(/tel:/);
     // no bare phone-number literal anywhere in the app surface
     expect(app).not.toMatch(/\+?\d[\d ]{7,}\d/);
+    // GEO-SERA-1 (founder, 2026-08-31) opened ONE Linking road: the phone's
+    // GPS on the buyer's confirmed point. « Les deux numéros restent privés »
+    // stays kept by construction — this pin now COUNTS the call sites
+    // instead of banning the module, so a second use (a dial, a share)
+    // goes red here before it ships.
+    expect(app.match(/Linking\.openURL\(/g) ?? []).toHaveLength(1);
+    expect(app).toContain('`https://www.google.com/maps/dir/?api=1&destination=${pinCourse.lat},${pinCourse.lng}`');
   });
 
   it('the calling state is a local toggle, reset when a course opens or the demo resets', () => {
