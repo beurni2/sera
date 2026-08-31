@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { t } from '../src/i18n';
 import { ACT_IDLE, holdsPackage, maySeal, packageIsHeld, sealScreenIsDue, sealOutcome, verifyOutcome } from '../src/net/act-model';
-import { assignmentStateKey, landmarkLines } from '../src/net/rider-session';
+import { assignmentStateKey, landmarkLines, pinItineraire } from '../src/net/rider-session';
 import type { CustodyAnswer } from '../src/net/custody-acts';
 
 /**
@@ -163,6 +163,21 @@ describe('⚠ the assignment projection (A10)', () => {
 
   it('tolerates a partial location — the landmark alone still leads', () => {
     expect(landmarkLines({ landmark: 'Chez Salif' })).toEqual(['Chez Salif', '', '']);
+  });
+
+  it('GEO-SERA-1 — pinItineraire admits only a real on-the-globe pair; anything else is null, never a destination', () => {
+    expect(pinItineraire({ landmark: 'x', pin: { lat: 12.371532, lng: -1.519931 } })).toEqual({ lat: 12.371532, lng: -1.519931 });
+    // Malformed never becomes a place a phone is sent to.
+    for (const bad of [
+      null, undefined, 'x', {}, { pin: null }, { pin: 'ici' },
+      { pin: { lat: '12.3', lng: -1.5 } },
+      { pin: { lat: 91, lng: 0 } },
+      { pin: { lat: 0, lng: 181 } },
+      { pin: { lat: Number.NaN, lng: -1.5 } },
+      { pin: { lng: -1.5 } },
+    ]) {
+      expect(pinItineraire(bad), JSON.stringify(bad)).toBeNull();
+    }
   });
 
   it('turns every status into a word, and never leaks an unknown enum', () => {
