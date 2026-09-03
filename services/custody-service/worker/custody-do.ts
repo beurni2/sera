@@ -137,7 +137,12 @@ export interface CustodyObjectEnv {
    * for twice. TRANSPORT ONLY: the door still gates on the secret below.
    */
   readonly SHOP_PROGRESS?: { fetch(request: Request): Promise<Response> };
-  /** = Shop+'s PROGRESS_WRITE_SECRET; `wrangler secret put`, the founder's alone. */
+  /**
+   * = Shop+'s `SERA_PROGRESS_SECRET` since SECTEURS-PROGRES-1 (the shared
+   * `PROGRESS_WRITE_SECRET` before the split, which Shop+ still honours on
+   * every progress door until the founder mints the Séra value on both
+   * sides). `wrangler secret put`, the founder's alone.
+   */
   readonly SHOP_PROGRESS_SECRET?: string;
   /**
    * COURSE-LIVRÉE — the logistics Worker over the SAME service binding the

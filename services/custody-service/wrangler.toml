@@ -26,8 +26,10 @@ compatibility_flags = ["nodejs_compat"]
 # for a full day; cross-repo bindings are the proven road — shop's OFFER
 # binding to boutik's offer-service). Converted BEFORE the wire ever fired
 # live. TRANSPORT ONLY: Shop+'s /fulfillment/progress door still gates on
-# SHOP_PROGRESS_SECRET (= Shop+'s PROGRESS_WRITE_SECRET), set via
-# `wrangler secret put`, piped, the founder's alone — never here.
+# SHOP_PROGRESS_SECRET (= Shop+'s SERA_PROGRESS_SECRET since
+# SECTEURS-PROGRES-1; = the shared PROGRESS_WRITE_SECRET before the split,
+# which Shop+ honours until the founder mints the Séra value on both sides),
+# set via `wrangler secret put`, piped, the founder's alone — never here.
 [[services]]
 binding = "SHOP_PROGRESS"
 service = "storefront-service"
