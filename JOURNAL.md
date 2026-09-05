@@ -9,7 +9,9 @@ Format per entry:
 
 ---
 
-## 2026-09-05 · EXPO-57-3 — rider-app re-targeted SDK 54 → 57: the founder's updated Expo Go opens Séra again · BUILT, on the branch, awaiting his Go
+## 2026-09-05 · EXPO-57-3 — rider-app re-targeted SDK 54 → 57: the founder's updated Expo Go opens Séra again · DONE
+
+**MERGED AND PUBLISHED (founder: « go for sera », 2026-09-05).** `main` fast-forwarded `98e0cff..fe88a9f`. **Both push workflows green on fe88a9f — ci 188 · expo-preview 133.** expo-preview 133 IS the deliverable: the first `exposdk:57.0.0` update of the rider app is on the preview channel, and his Expo Go 57 opens it. No worker dispatch — neither the logistics nor the custody service changed. Boutik+'s twin (EXPO-57-2) stays on its branch at his word: Boutik+ development is the web console, which Expo Go never touched.
 
 **Founder, 2026-09-05: « go sdk »** (after his screenshots: Expo Go took a store update and every published update of this app — back to the August ones — reads « Not compatible with this version of Expo Go »). **Diagnosis, verified in the shop-plus journal (EXPO-57-1):** all three phone apps sat on Expo SDK 54 by the July WO-4.0d re-target (57 → 54, `SDK-REPORT-v3-CANDIDATES.md`, kept as dated history); Expo Go runs exactly one SDK; the registry's newest stable is `expo@57.0.20`, so the updated Expo Go is 57 and refuses 54. Nothing shipped here caused it. **His note « i use iphone ios » closes the July D17 question — no Android reference device is in his hands, so the target is his iPhone's Expo Go: SDK 57.** Shop-plus went first (merged, expo-preview 442 published `exposdk:57.0.0`); Boutik+ and this app follow by the same recipe. Commit `6c78a11`, pushed to the branch; NOT merged.
 
