@@ -128,7 +128,7 @@ export const StyleSheet = {
     Array.isArray(style)
       ? Object.assign({}, ...style.filter((s) => s !== null && s !== undefined && s !== false))
       : ((style ?? {}) as Record<string, unknown>),
-  absoluteFillObject: {},
+  absoluteFill: {},
   hairlineWidth: 1,
 };
 

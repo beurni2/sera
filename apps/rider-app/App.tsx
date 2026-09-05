@@ -1709,7 +1709,11 @@ export default function App() {
 
   return (
     <SafeAreaView style={styles.screen}>
-      <StatusBar style="dark" backgroundColor={C.paper} />
+      {/* EXPO-57-3: `backgroundColor` left expo-status-bar at SDK 56 — Android is
+          edge-to-edge, so the bar's ground is this SafeAreaView's own fill
+          (`styles.screen`, the paper token). The SDK-54 restore (WO-4.0d-prep
+          ruling ③) is retired with the re-target. */}
+      <StatusBar style="dark" />
       {/**
         * ⚠ THE KEYBOARD COVERED THE ONLY FIELD IN THE APP (founder, 2026-08-15:
         * « while typing the buyer's code the keyboard on my phone is hiding

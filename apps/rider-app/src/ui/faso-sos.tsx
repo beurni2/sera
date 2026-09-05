@@ -153,8 +153,8 @@ const styles = StyleSheet.create({
   buttonText: { ...ty('pill'), color: C.card, fontFamily: displayFace(800), fontSize: 13, fontWeight: '800' },
   pressed: { opacity: 0.9, transform: [{ scale: 0.97 }] },
 
-  scrimWrap: { ...StyleSheet.absoluteFillObject, justifyContent: 'flex-end' },
-  scrim: { ...StyleSheet.absoluteFillObject, backgroundColor: alpha(C.ink, 0.45) },
+  scrimWrap: { ...StyleSheet.absoluteFill, justifyContent: 'flex-end' },
+  scrim: { ...StyleSheet.absoluteFill, backgroundColor: alpha(C.ink, 0.45) },
   sheet: { backgroundColor: DARK.sosSheet, borderTopWidth: 3, borderTopColor: DARK.sosBorder, borderTopLeftRadius: rad('sheet'), borderTopRightRadius: rad('sheet'), padding: GEO.paddingPx, gap: 8 },
   title: { ...ty('view'), color: DARK.bandText },
   titleAmber: { ...ty('view'), color: C.accent },

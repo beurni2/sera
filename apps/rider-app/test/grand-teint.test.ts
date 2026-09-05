@@ -114,25 +114,30 @@ describe('the typeface substrate (Bricolage + Instrument) — data only, loads n
 });
 
 describe('the approved dependencies — nothing else', () => {
-  it('react-native-svg + expo-haptics (WO-6.1 rulings) + expo-font (WO-6.2 fix), at SDK-54 versions', () => {
+  // EXPO-57-3 (founder 2026-09-05: « go sdk ») — every version below is what
+  // `expo@57.0.20/bundledNativeModules.json` pins for SDK 57, read from the
+  // packed tarball, never guessed. The founder's Expo Go moved off SDK 54 with
+  // its store update, so the WO-4.0d re-target (57 → 54) is reversed; the
+  // rulings that admitted each dependency stand unchanged.
+  it('react-native-svg + expo-haptics (WO-6.1 rulings) + expo-font (WO-6.2 fix), at SDK-57 versions', () => {
     const pkg = JSON.parse(read('package.json')) as { dependencies: Record<string, string> };
-    expect(pkg.dependencies['react-native-svg']).toBe('15.12.1');
-    expect(pkg.dependencies['expo-haptics']).toBe('~15.0.8');
+    expect(pkg.dependencies['react-native-svg']).toBe('15.15.4');
+    expect(pkg.dependencies['expo-haptics']).toBe('~57.0.2');
     // WO-6.2: expo-font is a DIRECT dep so the config plugin (RULING ②, native
     // embedding) resolves when eas spawns expo raw. Not a new capability — the
     // package that backs the app.json plugin WO-6.1 already declared.
-    expect(pkg.dependencies['expo-font']).toBe('~14.0.12');
+    expect(pkg.dependencies['expo-font']).toBe('~57.0.3');
     // SERA-S1 re-pin (canon v0.9.8): the persistent-outbox primitive's two
     // authorized substrates — expo-crypto (the founder's command_id ruling:
     // UUIDv4 · OS CSPRNG · Math.random forbidden — mandated for RN by the v0.9.5
     // mint rule) and expo-file-system (the durable document-dir store, boutik's
-    // expoDocumentStore precedent — survives kill+reboot). SDK-54 bundled versions.
-    expect(pkg.dependencies['expo-crypto']).toBe('~15.0.9');
-    expect(pkg.dependencies['expo-file-system']).toBe('~19.0.23');
+    // expoDocumentStore precedent — survives kill+reboot). SDK-57 bundled versions.
+    expect(pkg.dependencies['expo-crypto']).toBe('~57.0.2');
+    expect(pkg.dependencies['expo-file-system']).toBe('~57.0.6');
     // SERA-S4 (closes the durability arc): expo-network — REAL connectivity behind
     // a port (the CTO-authorized substrate), retiring the compile-time CONNECTIVITY
-    // constant. SDK-54 bundled version.
-    expect(pkg.dependencies['expo-network']).toBe('~8.0.8');
+    // constant. SDK-57 bundled version.
+    expect(pkg.dependencies['expo-network']).toBe('~57.0.1');
     /**
      * ⚠ SE-LIVE-4c-vii · expo-image-picker — the PROOF PHOTO, on the founder's
      * ruling « build the photo capture » (2026-08-07). This allowlist is why a
@@ -140,10 +145,10 @@ describe('the approved dependencies — nothing else', () => {
      * deliberately rather than let through: `launchCameraAsync` is one system
      * sheet (no preview surface of ours to hold at 60 fps on a 1 GB phone),
      * and without it there are no bytes, no ref, and the seal cannot go — which
-     * is exactly the dead-button state verifier blocker A1 found. SDK-54
+     * is exactly the dead-button state verifier blocker A1 found. SDK-57
      * bundled version, like every other pin here.
      */
-    expect(pkg.dependencies['expo-image-picker']).toBe('~17.0.11');
+    expect(pkg.dependencies['expo-image-picker']).toBe('~57.0.16');
     /**
      * ⚠ AND expo-image-manipulator, WITHOUT WHICH THE PICKER IS USELESS HERE
      * (verifier blocker A1, round three). `quality` is JPEG compression, not a
@@ -154,7 +159,7 @@ describe('the approved dependencies — nothing else', () => {
      * so every proof photo was rejected and the seal could never be sent.
      * Boutik+ has always honoured this — `studio/normalization.ts`. Same pin.
      */
-    expect(pkg.dependencies['expo-image-manipulator']).toBe('~14.0.8');
+    expect(pkg.dependencies['expo-image-manipulator']).toBe('~57.0.16');
     // the only deps beyond the pre-WO set are exactly these six. @platform/*
     // are baseline canon infra (not third-party capabilities): SERA-S1 adds
     // @platform/contracts as the home of the canon `mintCommandId` helper, consumed
@@ -165,10 +170,10 @@ describe('the approved dependencies — nothing else', () => {
     const added = Object.keys(pkg.dependencies).filter((d) => !before.has(d));
     // COURSE-BRIEF (founder order 2026-08-09): `expo-audio` is the ONE new
     // native capability — playing the buyer's recorded repère on the rider's
-    // screen. Version is the SDK-54 bundled pin read from expo's own
+    // screen. Version is the SDK-57 bundled pin read from expo's own
     // bundledNativeModules.json, never a guess. ⚠ Native module = the rider
     // installs a NEW BUILD; an OTA update alone cannot carry it.
-    expect(pkg.dependencies['expo-audio']).toBe('~1.1.1');
+    expect(pkg.dependencies['expo-audio']).toBe('~57.0.4');
     expect(added.sort()).toEqual(['expo-audio', 'expo-crypto', 'expo-file-system', 'expo-font', 'expo-haptics', 'expo-image-manipulator', 'expo-image-picker', 'expo-network', 'react-native-svg']);
   });
 });

@@ -258,7 +258,7 @@ export function Celebration({
       {/**
         * ═══ THE WAY OUT LIVES ON THE SCRIM, NEVER BESIDE IT ═══
         *
-        * `celScrim` is `absoluteFillObject` over an opaque ground, so ANY sibling
+        * `celScrim` is `absoluteFill` over an opaque ground, so ANY sibling
         * placed next to a `<Celebration/>` is COVERED — present in the tree,
         * pressable in a test that has no layout, and invisible under a real
         * thumb. That is exactly how the rider's named way out first shipped —
@@ -629,7 +629,7 @@ const styles = StyleSheet.create({
   relaisHangUp: { backgroundColor: C.card, borderRadius: rad('pill'), paddingVertical: 8, paddingHorizontal: 14 },
   relaisHangUpText: { ...ty('pill'), color: C.ink, textTransform: 'uppercase' },
   proofSeal: { width: 78, height: 78, borderRadius: rad('pill'), backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center', shadowColor: C.accent, shadowOpacity: 0.5, shadowRadius: 20, shadowOffset: { width: 0, height: 14 }, elevation: 6 },
-  celScrim: { ...StyleSheet.absoluteFillObject, backgroundColor: DARK.celebrationScrim, alignItems: 'center', justifyContent: 'center', gap: 20, paddingHorizontal: 32 },
+  celScrim: { ...StyleSheet.absoluteFill, backgroundColor: DARK.celebrationScrim, alignItems: 'center', justifyContent: 'center', gap: 20, paddingHorizontal: 32 },
   celRule: { width: 132, height: 0, borderTopWidth: 3, borderStyle: 'dashed', borderColor: C.accent },
   // The named ending, ON the scrim. Stretched so the CTA keeps its full width
   // and its ≥44 px target inside the scrim's own horizontal padding.

@@ -344,7 +344,7 @@ describe('⚠ PORTE-SANS-PHOTO — arrival goes straight to the buyer’s code',
      * ═══ AND IT IS NOT COVERED. STRUCTURE, NOT APPEARANCE ═══
      *
      * The three assertions above were ALL GREEN while the button was invisible.
-     * `Celebration`'s scrim is `absoluteFillObject` over an opaque ground, so the
+     * `Celebration`'s scrim is `absoluteFill` over an opaque ground, so the
      * named action — first shipped as a SIBLING of `<FasoCelebration/>` inside the
      * same card — rendered underneath it: present in the tree, pressable to a
      * renderer that has no layout, and unfindable under a real thumb. « Tap
