@@ -140,13 +140,17 @@ import {
   maySeal,
   packageIsHeld,
   refusalOutcome,
+  refusedFinalDue,
+  rescheduleDue,
   returnDone,
   returnIsOpen,
   returnOpenOutcome,
+  returnRoadOpen,
   roadArrived,
   roadDeparted,
   sealScreenIsDue,
   sealOutcome,
+  validRejectionDue,
   validRejectionHeld,
   verifyOutcome,
   windowExpiredTo,
@@ -887,15 +891,26 @@ export default function App() {
     // VRAI-ROUTE: the road rungs sit ABOVE the seal on the ladder, so the
     // highest ledger-confirmed rung wins — an app killed between « En route »
     // and the door restores the arrival screen, not a spent checklist.
-    const stage: ActStage | null = arriveDone(arrivePhase)
-      ? 'arrived'
-      : departDone(departPhase)
-        ? 'departed'
-        : holdsPackage(sealPhase)
-          ? 'custody_taken'
-          : maySeal(verifyPhase)
-            ? 'verification_accepted'
-            : null;
+    // RETOUR-VIVANT-1 (verifier BLOCKER, closed): the return road's rungs
+    // sit above the door, so a phone killed mid-return relaunches onto the
+    // return — each written from the LEDGER's answer, never from a tap.
+    const stage: ActStage | null = returnIsOpen(returnOpenPhase)
+      ? 'return_open'
+      : windowExpiredTo(expirePhase) === 'return'
+        ? 'refused_final'
+        : windowExpiredTo(expirePhase) === 'reschedule'
+          ? 'reschedule'
+          : validRejectionHeld(inspectionPhase)
+            ? 'valid_rejection'
+            : arriveDone(arrivePhase)
+              ? 'arrived'
+              : departDone(departPhase)
+                ? 'departed'
+                : holdsPackage(sealPhase)
+                  ? 'custody_taken'
+                  : maySeal(verifyPhase)
+                    ? 'verification_accepted'
+                    : null;
     if (stage === null) return;
     setRemembered(stage);
     void rememberAct(actMemoryStore, {
@@ -904,7 +919,7 @@ export default function App() {
       orderId: dwellOrderId,
       stage,
     }).catch(() => setPersistFailed(true));
-  }, [dwellOrderId, verifyPhase, sealPhase, departPhase, arrivePhase, actMemoryStore]);
+  }, [dwellOrderId, verifyPhase, sealPhase, departPhase, arrivePhase, inspectionPhase, expirePhase, returnOpenPhase, actMemoryStore]);
 
   const runAct = useCallback(
     (set: (p: ActPhase) => void, act: () => Promise<CustodyAnswer>) => {
@@ -2378,6 +2393,218 @@ export default function App() {
                               })()
                             ) : null}
                           </>
+                        ) : returnDone(handoverPhase) ? (
+                          /**
+                           * ═══ RETOUR-VIVANT-1 — THE ROAD HOME ENDS HERE ═══
+                           *
+                           * The ledger said `returned_to_supplier`: custody
+                           * left this rider for the seller. Sober, not a
+                           * celebration — a return is nobody's win — and never
+                           * a dead end (the delivered screen's own lesson): one
+                           * named button closes it, clears the phase and
+                           * re-asks the session, which logistics has by then
+                           * answered with no course.
+                           */
+                          <>
+                            <FasoPosterTitle>{t('retour.done')}</FasoPosterTitle>
+                            <FasoBody>{t('retour.done_next')}</FasoBody>
+                            {/* Re-ask the session ONLY (verifier MINOR, closed):
+                                clearing the phase re-armed « Échanger les deux
+                                codes » over a handover the ledger already held
+                                until the sixth wire landed. The phases reset
+                                by themselves when the course leaves the session. */}
+                            <FasoPrimaryButton label={t('delivered.fermer')} onPress={refreshSession} />
+                          </>
+                        ) : returnRoadOpen(returnOpenPhase, liveAssignment.codeRetour, remembered) ? (
+                          /**
+                           * ═══ RETOUR-VIVANT-1 — R13 « le retour à deux clés »,
+                           * on the LIVE road ═══
+                           *
+                           * The demo shell's two taps are gone from this arm:
+                           * both keys are MACHINE-CARRIED by the session. The
+                           * rider's own (`codeRetour`) is shown and said to the
+                           * supplier; the supplier's (`codeRetourFournisseur`)
+                           * arrives on the poll only once he typed the rider's
+                           * on his console. Until then the button does not
+                           * exist — a wait is a designed state, never a lever
+                           * that cannot work. The one primary act presents both
+                           * keys; custody consumes both or neither.
+                           */
+                          <>
+                            <FasoPosterTitle>{t('retour.title')}</FasoPosterTitle>
+                            <FasoQuoteRule accent>{t('retour.custodian')}</FasoQuoteRule>
+                            {liveAssignment.codeRetour === null ? (
+                              <FasoPendingNotice title={t('retour.code_attente')} lines={[t('retour.two_keys')]} />
+                            ) : (
+                              <>
+                                <FasoSealMark code={liveAssignment.codeRetour} label={t('retour.code_titre')} />
+                                <FasoBody>{t('retour.dire')}</FasoBody>
+                                {liveAssignment.codeRetourFournisseur === null ? (
+                                  <FasoCard>
+                                    <FasoStatusChip tone="info" label={t('retour.attente_vendeur')} />
+                                    <FasoBody>{t('retour.next')}</FasoBody>
+                                  </FasoCard>
+                                ) : (
+                                  <>
+                                    <FasoStatusChip tone="ok" label={t('retour.vendeur_ok')} />
+                                    <FasoPrimaryButton
+                                      label={t(handoverPhase.kind === 'working' ? 'acts.sending' : 'retour.action')}
+                                      disabled={handoverPhase.kind === 'working'}
+                                      onPress={sendHandover}
+                                    />
+                                    {handoverPhase.kind === 'answered' ? (
+                                      (() => {
+                                        const o = handoverOutcome(handoverPhase.answer);
+                                        return (
+                                          <>
+                                            <FasoStatusChip
+                                              tone={o.tone === 'ok' ? 'ok' : o.tone === 'waiting' ? 'info' : 'bad'}
+                                              label={t(o.title)}
+                                            />
+                                            {o.hint === undefined ? null : <FasoBody>{t(o.hint)}</FasoBody>}
+                                          </>
+                                        );
+                                      })()
+                                    ) : null}
+                                  </>
+                                )}
+                              </>
+                            )}
+                          </>
+                        ) : refusedFinalDue(expirePhase, remembered) || validRejectionDue(inspectionPhase, remembered) ? (
+                          /**
+                           * ═══ RETOUR-VIVANT-1 — R12's refused_final arm and
+                           * the buyer's VALID refusal, both ending in « Préparer
+                           * le retour » ═══
+                           *
+                           * Buyer fault (the window expired on an escalating
+                           * reason): the money register's calm — the fee stays,
+                           * the package goes home, no shame. Valid refusal: her
+                           * right, the fault named for Séra or the seller by
+                           * the SERVICE, no fee. The one primary act opens the
+                           * return on the ledger with the seal the session
+                           * carries; a missing seal is said, never invented.
+                           */
+                          <>
+                            {validRejectionDue(inspectionPhase, remembered) ? (
+                              <>
+                                <FasoPosterTitle>{t('reject.title')}</FasoPosterTitle>
+                                {/* The fault is the SERVICE's word from this session's
+                                    answer; a relaunch remembers the refusal, not the
+                                    fault, and says nothing it does not know. */}
+                                {(() => {
+                                  const fault = inspectionPhase.kind === 'answered' ? validRejectionFault(inspectionPhase.answer) : null;
+                                  return fault === null ? null : <FasoBody>{t(fault === 'sera' ? 'reject.fault_sera' : 'reject.fault_seller')}</FasoBody>;
+                                })()}
+                                <FasoBody>{t('reject.no_fee')}</FasoBody>
+                              </>
+                            ) : (
+                              <>
+                                <FasoPosterTitle>{t('refused_final.status')}</FasoPosterTitle>
+                                <FasoBody>{t('refused_final.fee')}</FasoBody>
+                              </>
+                            )}
+                            <FasoBody>{t('refused_final.next')}</FasoBody>
+                            {scelleRetour === null ? (
+                              /* No return seal was minted for this course (composed
+                                 before RETOUR-VIVANT-1). Never invent one — say it. */
+                              <FasoCard>
+                                <FasoBody>{t('retour.scelle_absent')}</FasoBody>
+                              </FasoCard>
+                            ) : (
+                              <>
+                                {/* The NEW seal the rider writes on the return bag
+                                    (§6.4) — the same value the act presents. */}
+                                <FasoSealMark code={scelleRetour} label={t('retour.scelle_titre')} />
+                                <FasoBody>{t('retour.scelle_aide')}</FasoBody>
+                                <FasoPrimaryButton
+                                  label={t(returnOpenPhase.kind === 'working' ? 'acts.sending' : 'refused_final.retour_action')}
+                                  disabled={returnOpenPhase.kind === 'working'}
+                                  onPress={sendOpenReturn}
+                                />
+                              </>
+                            )}
+                            {returnOpenPhase.kind === 'answered' ? (
+                              (() => {
+                                const o = returnOpenOutcome(returnOpenPhase.answer);
+                                return (
+                                  <>
+                                    <FasoStatusChip
+                                      tone={o.tone === 'ok' ? 'ok' : o.tone === 'waiting' ? 'info' : 'bad'}
+                                      label={t(o.title)}
+                                    />
+                                    {o.hint === undefined ? null : <FasoBody>{t(o.hint)}</FasoBody>}
+                                  </>
+                                );
+                              })()
+                            ) : null}
+                          </>
+                        ) : rescheduleDue(expirePhase, remembered) ? (
+                          /**
+                           * The non-escalating arm (honest absence, unusable
+                           * place, a provider failure): nothing is lost, the
+                           * order stays whole, the rider keeps the package.
+                           * HONEST ABOUT WHAT IS NOT WIRED YET: the second
+                           * passage is composed by Séra's dispatcher, not by
+                           * this screen — so the sentence says to keep the
+                           * package and wait for the call, and claims no
+                           * lineage this build cannot show (SE6.1's remaining
+                           * piece, journalled).
+                           */
+                          <>
+                            <FasoPosterTitle>{t('reschedule.status')}</FasoPosterTitle>
+                            <FasoBody>{t('reschedule.next')}</FasoBody>
+                            <FasoCard>
+                              <FasoBody>{t('reschedule.live_note')}</FasoBody>
+                            </FasoCard>
+                          </>
+                        ) : windowIsOpen(refusalPhase) && !reessaiEnCours ? (
+                          /**
+                           * R12's retry arm, LIVE: the ONE window custody
+                           * opened, its hour from the LEDGER's answer (never
+                           * this phone's clock). « Réessayer » returns the
+                           * rider to the door — the same code card, inside the
+                           * window; « Le temps est passé » asks custody, whose
+                           * clock alone can say so.
+                           */
+                          <>
+                            <FasoPosterTitle>{t('retry.status')}</FasoPosterTitle>
+                            <FasoStatusChip tone="warn" label={fenetreJusqua === null ? t('retry.status') : `${t('retry.until')} ${fenetreJusqua}`} />
+                            <FasoBody>{t('retry.window_note')}</FasoBody>
+                            <FasoPrimaryButton label={t('retry.retry_action')} onPress={() => setReessaiEnCours(true)} />
+                            <FasoGhostButton
+                              label={t(expirePhase.kind === 'working' ? 'acts.sending' : 'retry.expired_action')}
+                              disabled={expirePhase.kind === 'working'}
+                              onPress={sendExpire}
+                            />
+                            {expirePhase.kind === 'answered' ? (
+                              (() => {
+                                const o = expireOutcome(expirePhase.answer);
+                                return (
+                                  <>
+                                    <FasoStatusChip
+                                      tone={o.tone === 'ok' ? 'ok' : o.tone === 'waiting' ? 'info' : 'bad'}
+                                      label={t(o.title)}
+                                    />
+                                    {o.hint === undefined ? null : <FasoBody>{t(o.hint)}</FasoBody>}
+                                  </>
+                                );
+                              })()
+                            ) : null}
+                          </>
+                        ) : raisonOuverte ? (
+                          /**
+                           * R12 « L'échelle des échecs », LIVE: the canon
+                           * reasons, one tap each, straight to custody. No
+                           * generic « échec » exists; the ledger names the arm.
+                           */
+                          <>
+                            <FasoPosterTitle>{t('reason.title')}</FasoPosterTitle>
+                            {FAILURE_REASON_IDS.map((id) => (
+                              <FasoGhostButton key={id} label={t(`reason.${id}`)} onPress={() => sendRefusal(id)} />
+                            ))}
+                            <FasoSecondaryButton label={t('nav.retour')} onPress={() => setRaisonOuverte(false)} />
+                          </>
                         ) : !evidenceIsHeld(evidencePhase) ? (
                           /**
                            * ═══ PORTE-SANS-PHOTO — THERE IS NO PHOTO SCREEN AT
@@ -2465,219 +2692,6 @@ export default function App() {
                             ) : (
                               <FasoPendingNotice title={t('delivery.preuve_titre')} lines={[t('delivery.preuve_note')]} />
                             )}
-                          </>
-                        ) : returnDone(handoverPhase) ? (
-                          /**
-                           * ═══ RETOUR-VIVANT-1 — THE ROAD HOME ENDS HERE ═══
-                           *
-                           * The ledger said `returned_to_supplier`: custody
-                           * left this rider for the seller. Sober, not a
-                           * celebration — a return is nobody's win — and never
-                           * a dead end (the delivered screen's own lesson): one
-                           * named button closes it, clears the phase and
-                           * re-asks the session, which logistics has by then
-                           * answered with no course.
-                           */
-                          <>
-                            <FasoPosterTitle>{t('retour.done')}</FasoPosterTitle>
-                            <FasoBody>{t('retour.done_next')}</FasoBody>
-                            <FasoPrimaryButton
-                              label={t('delivered.fermer')}
-                              onPress={() => {
-                                setHandoverPhase(ACT_IDLE);
-                                refreshSession();
-                              }}
-                            />
-                          </>
-                        ) : returnIsOpen(returnOpenPhase) ? (
-                          /**
-                           * ═══ RETOUR-VIVANT-1 — R13 « le retour à deux clés »,
-                           * on the LIVE road ═══
-                           *
-                           * The demo shell's two taps are gone from this arm:
-                           * both keys are MACHINE-CARRIED by the session. The
-                           * rider's own (`codeRetour`) is shown and said to the
-                           * supplier; the supplier's (`codeRetourFournisseur`)
-                           * arrives on the poll only once he typed the rider's
-                           * on his console. Until then the button does not
-                           * exist — a wait is a designed state, never a lever
-                           * that cannot work. The one primary act presents both
-                           * keys; custody consumes both or neither.
-                           */
-                          <>
-                            <FasoPosterTitle>{t('retour.title')}</FasoPosterTitle>
-                            <FasoQuoteRule accent>{t('retour.custodian')}</FasoQuoteRule>
-                            {liveAssignment.codeRetour === null ? (
-                              <FasoPendingNotice title={t('retour.code_attente')} lines={[t('retour.two_keys')]} />
-                            ) : (
-                              <>
-                                <FasoSealMark code={liveAssignment.codeRetour} label={t('retour.code_titre')} />
-                                <FasoBody>{t('retour.dire')}</FasoBody>
-                                {liveAssignment.codeRetourFournisseur === null ? (
-                                  <FasoCard>
-                                    <FasoStatusChip tone="info" label={t('retour.attente_vendeur')} />
-                                    <FasoBody>{t('retour.next')}</FasoBody>
-                                  </FasoCard>
-                                ) : (
-                                  <>
-                                    <FasoStatusChip tone="ok" label={t('retour.vendeur_ok')} />
-                                    <FasoPrimaryButton
-                                      label={t(handoverPhase.kind === 'working' ? 'acts.sending' : 'retour.action')}
-                                      disabled={handoverPhase.kind === 'working'}
-                                      onPress={sendHandover}
-                                    />
-                                    {handoverPhase.kind === 'answered' ? (
-                                      (() => {
-                                        const o = handoverOutcome(handoverPhase.answer);
-                                        return (
-                                          <>
-                                            <FasoStatusChip
-                                              tone={o.tone === 'ok' ? 'ok' : o.tone === 'waiting' ? 'info' : 'bad'}
-                                              label={t(o.title)}
-                                            />
-                                            {o.hint === undefined ? null : <FasoBody>{t(o.hint)}</FasoBody>}
-                                          </>
-                                        );
-                                      })()
-                                    ) : null}
-                                  </>
-                                )}
-                              </>
-                            )}
-                          </>
-                        ) : windowExpiredTo(expirePhase) === 'return' || validRejectionHeld(inspectionPhase) ? (
-                          /**
-                           * ═══ RETOUR-VIVANT-1 — R12's refused_final arm and
-                           * the buyer's VALID refusal, both ending in « Préparer
-                           * le retour » ═══
-                           *
-                           * Buyer fault (the window expired on an escalating
-                           * reason): the money register's calm — the fee stays,
-                           * the package goes home, no shame. Valid refusal: her
-                           * right, the fault named for Séra or the seller by
-                           * the SERVICE, no fee. The one primary act opens the
-                           * return on the ledger with the seal the session
-                           * carries; a missing seal is said, never invented.
-                           */
-                          <>
-                            {validRejectionHeld(inspectionPhase) ? (
-                              <>
-                                <FasoPosterTitle>{t('reject.title')}</FasoPosterTitle>
-                                <FasoBody>
-                                  {t(
-                                    inspectionPhase.kind === 'answered' && validRejectionFault(inspectionPhase.answer) === 'sera'
-                                      ? 'reject.fault_sera'
-                                      : 'reject.fault_seller',
-                                  )}
-                                </FasoBody>
-                                <FasoBody>{t('reject.no_fee')}</FasoBody>
-                              </>
-                            ) : (
-                              <>
-                                <FasoPosterTitle>{t('refused_final.status')}</FasoPosterTitle>
-                                <FasoBody>{t('refused_final.fee')}</FasoBody>
-                              </>
-                            )}
-                            <FasoBody>{t('refused_final.next')}</FasoBody>
-                            {scelleRetour === null ? (
-                              /* No return seal was minted for this course (composed
-                                 before RETOUR-VIVANT-1). Never invent one — say it. */
-                              <FasoCard>
-                                <FasoBody>{t('retour.scelle_absent')}</FasoBody>
-                              </FasoCard>
-                            ) : (
-                              <>
-                                {/* The NEW seal the rider writes on the return bag
-                                    (§6.4) — the same value the act presents. */}
-                                <FasoSealMark code={scelleRetour} label={t('retour.scelle_titre')} />
-                                <FasoBody>{t('retour.scelle_aide')}</FasoBody>
-                                <FasoPrimaryButton
-                                  label={t(returnOpenPhase.kind === 'working' ? 'acts.sending' : 'refused_final.retour_action')}
-                                  disabled={returnOpenPhase.kind === 'working'}
-                                  onPress={sendOpenReturn}
-                                />
-                              </>
-                            )}
-                            {returnOpenPhase.kind === 'answered' ? (
-                              (() => {
-                                const o = returnOpenOutcome(returnOpenPhase.answer);
-                                return (
-                                  <>
-                                    <FasoStatusChip
-                                      tone={o.tone === 'ok' ? 'ok' : o.tone === 'waiting' ? 'info' : 'bad'}
-                                      label={t(o.title)}
-                                    />
-                                    {o.hint === undefined ? null : <FasoBody>{t(o.hint)}</FasoBody>}
-                                  </>
-                                );
-                              })()
-                            ) : null}
-                          </>
-                        ) : windowExpiredTo(expirePhase) === 'reschedule' ? (
-                          /**
-                           * The non-escalating arm (honest absence, unusable
-                           * place, a provider failure): nothing is lost, the
-                           * order stays whole, the rider keeps the package.
-                           * HONEST ABOUT WHAT IS NOT WIRED YET: the second
-                           * passage is composed by Séra's dispatcher, not by
-                           * this screen — so the sentence says to keep the
-                           * package and wait for the call, and claims no
-                           * lineage this build cannot show (SE6.1's remaining
-                           * piece, journalled).
-                           */
-                          <>
-                            <FasoPosterTitle>{t('reschedule.status')}</FasoPosterTitle>
-                            <FasoBody>{t('reschedule.next')}</FasoBody>
-                            <FasoCard>
-                              <FasoBody>{t('reschedule.live_note')}</FasoBody>
-                            </FasoCard>
-                          </>
-                        ) : windowIsOpen(refusalPhase) && !reessaiEnCours ? (
-                          /**
-                           * R12's retry arm, LIVE: the ONE window custody
-                           * opened, its hour from the LEDGER's answer (never
-                           * this phone's clock). « Réessayer » returns the
-                           * rider to the door — the same code card, inside the
-                           * window; « Le temps est passé » asks custody, whose
-                           * clock alone can say so.
-                           */
-                          <>
-                            <FasoPosterTitle>{t('retry.status')}</FasoPosterTitle>
-                            <FasoStatusChip tone="warn" label={fenetreJusqua === null ? t('retry.status') : `${t('retry.until')} ${fenetreJusqua}`} />
-                            <FasoBody>{t('retry.window_note')}</FasoBody>
-                            <FasoPrimaryButton label={t('retry.retry_action')} onPress={() => setReessaiEnCours(true)} />
-                            <FasoGhostButton
-                              label={t(expirePhase.kind === 'working' ? 'acts.sending' : 'retry.expired_action')}
-                              disabled={expirePhase.kind === 'working'}
-                              onPress={sendExpire}
-                            />
-                            {expirePhase.kind === 'answered' ? (
-                              (() => {
-                                const o = expireOutcome(expirePhase.answer);
-                                return (
-                                  <>
-                                    <FasoStatusChip
-                                      tone={o.tone === 'ok' ? 'ok' : o.tone === 'waiting' ? 'info' : 'bad'}
-                                      label={t(o.title)}
-                                    />
-                                    {o.hint === undefined ? null : <FasoBody>{t(o.hint)}</FasoBody>}
-                                  </>
-                                );
-                              })()
-                            ) : null}
-                          </>
-                        ) : raisonOuverte ? (
-                          /**
-                           * R12 « L'échelle des échecs », LIVE: the canon
-                           * reasons, one tap each, straight to custody. No
-                           * generic « échec » exists; the ledger names the arm.
-                           */
-                          <>
-                            <FasoPosterTitle>{t('reason.title')}</FasoPosterTitle>
-                            {FAILURE_REASON_IDS.map((id) => (
-                              <FasoGhostButton key={id} label={t(`reason.${id}`)} onPress={() => sendRefusal(id)} />
-                            ))}
-                            <FasoSecondaryButton label={t('nav.retour')} onPress={() => setRaisonOuverte(false)} />
                           </>
                         ) : liveAssignment.paymentMode === MODE_PORTE && !inspectionIsHeld(inspectionPhase) ? (
                           /**

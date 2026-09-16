@@ -356,7 +356,43 @@ const STAGE_RUNG: Record<ActStage, number> = {
   custody_taken: 2,
   departed: 3,
   arrived: 4,
+  // RETOUR-VIVANT-1 — the return road sits ABOVE the door: each of these
+  // implies « arrived », so the road's own gates still hold underneath.
+  valid_rejection: 5,
+  refused_final: 5,
+  reschedule: 5,
+  return_open: 6,
 };
+
+/**
+ * ═══ RETOUR-VIVANT-1 (verifier BLOCKER, closed) — THE RETURN ROAD SURVIVES
+ * A KILL ═══
+ *
+ * The return screens were gated on this session's phases ONLY, so an OS kill
+ * anywhere between the ladder's end and the handover relaunched the rider onto
+ * the buyer's code card: his return key shown nowhere, the supplier unable to
+ * confirm it, the package his for ever. Each gate below reads the LEDGER's
+ * word carried three ways — this session's answer, the SESSION (logistics
+ * mints the rider's key only on custody's own retour-ouvert wire), or the
+ * remembered rung — and memory never outranks a live answer.
+ */
+export function returnRoadOpen(returnOpenPhase: ActPhase, codeRetour: string | null, remembered: ActStage): boolean {
+  if (returnIsOpen(returnOpenPhase)) return true;
+  if (codeRetour !== null) return true;
+  return remembered === 'return_open';
+}
+
+export function refusedFinalDue(expirePhase: ActPhase, remembered: ActStage): boolean {
+  return windowExpiredTo(expirePhase) === 'return' || remembered === 'refused_final';
+}
+
+export function validRejectionDue(inspectionPhase: ActPhase, remembered: ActStage): boolean {
+  return validRejectionHeld(inspectionPhase) || remembered === 'valid_rejection';
+}
+
+export function rescheduleDue(expirePhase: ActPhase, remembered: ActStage): boolean {
+  return windowExpiredTo(expirePhase) === 'reschedule' || remembered === 'reschedule';
+}
 
 const rememberedAtLeast = (remembered: ActStage, rung: ActStage): boolean =>
   STAGE_RUNG[remembered] >= STAGE_RUNG[rung];

@@ -283,10 +283,17 @@ describe('RETOUR-VIVANT-1 — the road home crosses BOTH real Workers', () => {
 
     // ═══ THE LADDER, on the real custody Worker: one window, expired unresolved
     // on an escalating reason → the return arm, buyer fault. ═══
-    const refused = await riderCustody(custody, '/rider/door/refusal', code, { orderId: O, command_id: 'rv1-ref', reasonCode: 'insufficient_balance', at: T });
+    const refused = await riderCustody(custody, '/rider/door/refusal', code, { orderId: O, command_id: 'rv1-ref', reasonCode: 'insufficient_balance' });
     expect(refused.status, JSON.stringify(refused.json)).toBe(200);
     expect(refused.json).toMatchObject({ ok: true, kind: 'window_opened' });
-    const expired = await riderCustody(custody, '/rider/door/expire', code, { orderId: O, command_id: 'rv1-exp', at: T_PLUS_16 });
+    // The window runs on CUSTODY's clock (the rider door ignores `at`); the
+    // founder's door attests the expiry at now + 16 min — the one lever.
+    const expiredRes = await custody.dispatchFetch('http://custody/ops/door/expire', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${CUSTODY_OPS}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderId: O, command_id: 'rv1-exp', at: new Date(Date.now() + 16 * 60_000).toISOString() }),
+    });
+    const expired = { status: expiredRes.status, json: (await expiredRes.json()) as Json };
     expect(expired.status, JSON.stringify(expired.json)).toBe(200);
     expect(expired.json['outcome']).toMatchObject({ family: 'return', faultClass: 'buyer' });
     // The NEW return seal (§6.4) rides the session from the first poll,

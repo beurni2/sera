@@ -485,7 +485,13 @@ export class LogisticsDO {
       };
       const rider = await arm('rider_return_confirmation', row.codeRetour, 'rider');
       const seller = rider && (await arm('seller_return_acceptance', row.codeFournisseur, 'seller'));
-      const next: RetourRow = { ...row, armRest: 'none', armAttempts: row.armAttempts + 1, armPhase: seller ? 'done' : 'pending' };
+      // ⚠ MERGE ONTO THE CURRENT ROW, NOT THE ONE CAPTURED BEFORE THE AWAITS.
+      // The supplier's `/intake/retour/verify` can land while this flush is
+      // waiting on custody (outbound fetches do not hold the input gate), and
+      // writing `...row` back would silently ERASE his `confirmeAt` — seen once
+      // as a null confirmation in the cross-Worker seam under parallel load.
+      const current = this.retours[assignmentId] ?? row;
+      const next: RetourRow = { ...current, armRest: 'none', armAttempts: current.armAttempts + 1, armPhase: seller ? 'done' : 'pending' };
       this.retours[assignmentId] = next;
       changed = true;
       if (next.armPhase !== 'done') worst = Math.max(worst, next.armAttempts);

@@ -1137,8 +1137,12 @@ export class CustodyDO {
    * RETOUR-VIVANT-1 — one flush for both return wires, on `flushCourseLivree`'s
    * exact terms: the SAME logistics binding and key (the `/produce/` door is
    * one door), `res.ok` alone decides (logistics answers every settled
-   * condition 200), missing config is the honest `unsendable_no_config` rest,
-   * re-checked every flush and revived by a replayed return act.
+   * condition 200), missing config is the honest `unsendable_no_config` rest.
+   * A RESTED ROW IS NOT RE-CHECKED BY THE ALARM (`status !== 'pending'`
+   * returns 0 — `flushCourseLivree`'s exact shape): it revives only when a
+   * return-open or a handover is REPLAYED under its own command_id
+   * (`reviveRetourRows`), which is the rider re-typing after the founder
+   * armed the secret — the course-livrée wire's standing recovery hook.
    */
   private async flushLogisticsWire(key: string, path: string): Promise<number> {
     const outbox = await this.state.storage.get<RetourOutbox>(key);
@@ -2549,7 +2553,8 @@ export class CustodyDO {
         command_id: (body['command_id'] as string).trim(),
         returnSealDigest: digestSecret(body['returnSealId'] as string),
         attribution: returnRider !== null && returnRider !== '' ? 'rider_authenticated' : 'founder_attested',
-        at: (body['at'] as string | undefined) ?? new Date().toISOString(),
+        // Rider-attributed: THIS Worker's clock (the ladder's law, `/door/refusal`).
+        at: returnRider !== null && returnRider !== '' ? new Date().toISOString() : ((body['at'] as string | undefined) ?? new Date().toISOString()),
       };
       const prior = this.priorFor(cmd);
       if (prior.kind === 'duplicate') {
@@ -2607,7 +2612,14 @@ export class CustodyDO {
         command_id: (body['command_id'] as string).trim(),
         reasonCode: (body['reasonCode'] as string).trim(),
         attribution: refusalRider !== null && refusalRider !== '' ? 'rider_authenticated' : 'founder_attested',
-        at: (body['at'] as string | undefined) ?? new Date().toISOString(),
+        // RETOUR-VIVANT-1 (verifier MAJOR, closed): on the RIDER door the
+        // instant is THIS Worker's clock and the body's `at` is IGNORED —
+        // the ONE window is computed from it and judged against it, so a
+        // phone that could date its own refusal could shorten the window
+        // the buyer was promised. The founder's ops door keeps the attested
+        // instant. Replay stays byte-identical: the fingerprint excludes
+        // `at`, and the stamped command is what the log holds.
+        at: refusalRider !== null && refusalRider !== '' ? new Date().toISOString() : ((body['at'] as string | undefined) ?? new Date().toISOString()),
       };
       const prior = this.priorFor(cmd);
       if (prior.kind === 'duplicate') return this.replayOutcome(prior.outcome, cmd);
@@ -2647,7 +2659,9 @@ export class CustodyDO {
         kind: 'door_expire',
         command_id: (body['command_id'] as string).trim(),
         attribution: expireRider !== null && expireRider !== '' ? 'rider_authenticated' : 'founder_attested',
-        at: (body['at'] as string | undefined) ?? new Date().toISOString(),
+        // The rider's tap is judged against CUSTODY's clock, never a body
+        // `at` (see `/door/refusal`): the window cannot be shortened by hand.
+        at: expireRider !== null && expireRider !== '' ? new Date().toISOString() : ((body['at'] as string | undefined) ?? new Date().toISOString()),
       };
       const prior = this.priorFor(cmd);
       if (prior.kind === 'duplicate') return this.replayOutcome(prior.outcome, cmd);
@@ -2693,7 +2707,8 @@ export class CustodyDO {
         sellerKeyDigest: digestSecret(body['sellerKey'] as string),
         riderKeyDigest: digestSecret(body['riderKey'] as string),
         attribution: handoverRider !== null && handoverRider !== '' ? 'rider_authenticated' : 'founder_attested',
-        at: (body['at'] as string | undefined) ?? new Date().toISOString(),
+        // Rider-attributed: THIS Worker's clock (the ladder's law, `/door/refusal`).
+        at: handoverRider !== null && handoverRider !== '' ? new Date().toISOString() : ((body['at'] as string | undefined) ?? new Date().toISOString()),
       };
       const prior = this.priorFor(cmd);
       if (prior.kind === 'duplicate') {

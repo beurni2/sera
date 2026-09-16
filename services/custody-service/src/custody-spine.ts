@@ -764,6 +764,10 @@ export class CustodySpine {
       return { ok: false, reason: 'order_already_delivered' };
     }
     if (!this.custodyWithCourier) return { ok: false, reason: 'refusal_before_custody' };
+    // RETOUR-VIVANT-1 (verifier MINOR, closed): a package already going home
+    // — a valid rejection recorded, or a return flow open — cannot open a
+    // retry window; refused by the same name the drop and the inspection use.
+    if (this.validRejection !== null || this.returnFlow !== null) return { ok: false, reason: 'return_in_progress' };
     // ONE retry window, ever (Sera §6.4; verifier NB①/②): re-recording a
     // refusal — to mint a fresh window, slide expiry, or swap the reason
     // before fault applies — refuses closed.

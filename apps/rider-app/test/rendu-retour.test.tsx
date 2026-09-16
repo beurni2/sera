@@ -364,6 +364,107 @@ describe('⚠ RETOUR-VIVANT — the buyer-fault ladder, whole, then the road hom
   });
 });
 
+/**
+ * ═══ THE OS KILLS THE APP MID-RETURN (verifier BLOCKER, 2026-09-16) ═══
+ *
+ * Routine on a 1 GB Android: the rider rides twenty minutes back to the
+ * supplier with the app backgrounded, and Android kills it. On relaunch the
+ * act memory on disk (the file-system double, which survives the remount
+ * exactly as the file survives a kill) and the session re-read from logistics
+ * are all the phone has. Before the fix every one of these relaunched onto
+ * the BUYER'S CODE CARD: the return key shown nowhere, the supplier unable to
+ * confirm it, the package the rider's for ever.
+ */
+async function relaunch(s: Awaited<ReturnType<typeof mountRider>>, routes: readonly Route[]) {
+  s.unmount();
+  const w = wire(routes);
+  const s2 = await mountRider();
+  await s2.type(CODE);
+  await s2.press('Entrer');
+  return { s: s2, w };
+}
+
+describe('⚠ RETOUR-VIVANT — the road home survives a kill (verifier BLOCKER, closed)', () => {
+  it('killed AFTER the return opened: relaunch lands on the return screen with the rider’s key — never the code card — and the handover still finishes', async () => {
+    const state = courseInMode('FULL_PREPAY');
+    const world = freshWorld();
+    const first = await toTheDoor([logistics(state), custody(world)]);
+    await first.s.press('Un souci ?');
+    await first.s.press('Argent pas prêt');
+    world.expired = true;
+    await first.s.press('Le temps est passé');
+    await first.s.press('Préparer le retour');
+    expect(first.s.shows('Rendre le colis au vendeur')).toBe(true);
+    // The fifth wire landed while the phone was in his pocket.
+    state.codeRetour = CLE_COURSIER;
+
+    const { s, w } = await relaunch(first.s, [logistics(state), custody(world)]);
+    expect(s.shows('Rendre le colis au vendeur'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    expect(s.shows(CLE_COURSIER), 'his return key must be back on screen').toBe(true);
+    expect(s.shows('Le code de la cliente'), 'the buyer’s code card must NOT come back over an open return').toBe(false);
+    expect(s.shows('Un souci ?')).toBe(false);
+    // Nothing was re-opened: the return is already the ledger's.
+    expect(w.calls.some((c) => c.path === '/rider/return/open')).toBe(false);
+
+    state.retourConfirmeAt = '2026-09-17T09:30:00.000Z';
+    state.codeRetourFournisseur = CLE_VENDEUR;
+    world.armed = { seller: CLE_VENDEUR, rider: CLE_COURSIER };
+    await s.poll();
+    await s.press('Échanger les deux codes');
+    expect(s.shows('Colis rendu au vendeur.'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+  });
+
+  it('killed BETWEEN the expiry and « Préparer le retour »: relaunch lands on « La livraison s’arrête ici » and the return can still be opened', async () => {
+    const state = courseInMode('FULL_PREPAY');
+    const world = freshWorld();
+    const first = await toTheDoor([logistics(state), custody(world)]);
+    await first.s.press('Un souci ?');
+    await first.s.press('Le client ne veut plus');
+    world.expired = true;
+    await first.s.press('Le temps est passé');
+    expect(first.s.shows("La livraison s'arrête ici.")).toBe(true);
+
+    const { s, w } = await relaunch(first.s, [logistics(state), custody(world)]);
+    expect(s.shows("La livraison s'arrête ici."), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    expect(s.canPress('Préparer le retour'), 'the way home must survive the kill').toBe(true);
+    expect(s.shows('Le code de la cliente')).toBe(false);
+    await s.press('Préparer le retour');
+    expect(w.calls.find((c) => c.path === '/rider/return/open')?.body).toMatchObject({ orderId: ORDER, returnSealId: RETSEAL });
+    expect(s.shows('Rendre le colis au vendeur')).toBe(true);
+  });
+
+  it('killed after a VALID refusal at the door: relaunch lands on her refusal, not on « La cliente est d’accord »', async () => {
+    const state = courseInMode('DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR');
+    const world = freshWorld();
+    const first = await toTheDoor([logistics(state), custody(world)]);
+    await first.s.press('La cliente refuse le colis');
+    await first.s.press('Non, abîmé');
+    expect(first.s.shows("La cliente refuse le colis. C'est son droit.")).toBe(true);
+
+    const { s, w } = await relaunch(first.s, [logistics(state), custody(world)]);
+    expect(s.shows("La cliente refuse le colis. C'est son droit."), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    expect(s.shows('Aucun frais pour la cliente.')).toBe(true);
+    expect(s.shows("La cliente est d'accord"), 'the accept must not be re-offered over a recorded refusal').toBe(false);
+    expect(s.shows('Le code de la cliente')).toBe(false);
+    expect(s.canPress('Préparer le retour')).toBe(true);
+    await s.press('Préparer le retour');
+    expect(w.calls.some((c) => c.path === '/rider/return/open')).toBe(true);
+  });
+
+  it('killed after the window expired into RESCHEDULE: relaunch says « On repasse un autre jour », not the code card', async () => {
+    const state = courseInMode('FULL_PREPAY');
+    const world = freshWorld();
+    const first = await toTheDoor([logistics(state), custody(world)]);
+    await first.s.press('Un souci ?');
+    await first.s.press('Client absent');
+    world.expired = true;
+    await first.s.press('Le temps est passé');
+    const { s } = await relaunch(first.s, [logistics(state), custody(world)]);
+    expect(s.shows('On repasse un autre jour.'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    expect(s.shows('Le code de la cliente')).toBe(false);
+  });
+});
+
 describe('⚠ RETOUR-VIVANT — the non-escalating arm: honest absence reschedules, nothing is lost, no return opens', () => {
   it('« Client absent » → the window expires into « On repasse un autre jour » — the rider keeps the package, and no return act exists', async () => {
     const state = courseInMode('FULL_PREPAY');

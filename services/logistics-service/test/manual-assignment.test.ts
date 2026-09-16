@@ -340,7 +340,8 @@ describe('RETOUR-VIVANT-1 — the returned terminal at the store (deliver’s tw
     const outcome = book.returnToSupplier(ORDER, HOME_AT);
     expect(outcome).toMatchObject({ ok: true, duplicate: false });
     if (!outcome.ok) throw new Error('setup');
-    expect(outcome.assignment).toMatchObject({ assignmentId: 'as-1', status: 'returned', deliveredAt: HOME_AT });
+    expect(outcome.assignment).toMatchObject({ assignmentId: 'as-1', status: 'returned', returnedAt: HOME_AT });
+    expect(outcome.assignment.deliveredAt, 'a returned course was never delivered').toBeUndefined();
     expect(book.get('as-1')!.status).toBe('returned');
     expect(book.findOneActiveViolations()).toEqual([]);
   });
@@ -353,7 +354,7 @@ describe('RETOUR-VIVANT-1 — the returned terminal at the store (deliver’s tw
     const again = book.returnToSupplier(ORDER, '2026-07-09T16:00:00.000Z');
     expect(again).toMatchObject({ ok: true, duplicate: true });
     if (!again.ok) throw new Error('setup');
-    expect(again.assignment.deliveredAt).toBe(HOME_AT);
+    expect(again.assignment.returnedAt).toBe(HOME_AT);
   });
 
   it('no active course — never assigned, declined, or already DELIVERED — answers the settled no_active_course; a delivered course never becomes returned', () => {

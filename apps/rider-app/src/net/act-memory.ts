@@ -46,7 +46,25 @@
  *  screen instead of re-offering « En route » for a departure the ledger
  *  already holds. Same law as the first three: only ever what the LEDGER
  *  answered, and never a secret. */
-export type ActStage = 'none' | 'verification_accepted' | 'custody_taken' | 'departed' | 'arrived';
+export type ActStage =
+  | 'none'
+  | 'verification_accepted'
+  | 'custody_taken'
+  | 'departed'
+  | 'arrived'
+  /**
+   * RETOUR-VIVANT-1 (verifier BLOCKER, closed) — the return road's rungs.
+   * A phone killed between the ladder's end and the handover restored onto
+   * the BUYER'S CODE CARD: the return screens were gated on in-memory phases
+   * only, so the rider's return key was shown nowhere, the supplier could
+   * never confirm it, and the package stayed the rider's for ever. Same law
+   * as the five above — only what the LEDGER answered, never a secret (the
+   * return keys ride the session, not this file).
+   */
+  | 'valid_rejection'
+  | 'refused_final'
+  | 'reschedule'
+  | 'return_open';
 
 export interface ActMemory {
   readonly orderId: string;
@@ -96,7 +114,11 @@ export async function loadActMemory(store: ActMemoryStore, orderId: string): Pro
       stage === 'verification_accepted' ||
       stage === 'custody_taken' ||
       stage === 'departed' ||
-      stage === 'arrived'
+      stage === 'arrived' ||
+      stage === 'valid_rejection' ||
+      stage === 'refused_final' ||
+      stage === 'reschedule' ||
+      stage === 'return_open'
         ? stage
         : 'none',
   };

@@ -44,8 +44,13 @@ const RIDER_KEY = 'RTR-RIDER-KEY-0001';
 
 const ALL_PASS = { produit_conforme: true, quantite_complete: true, emballage_intact: true };
 const T = '2026-09-17T09:00:00.000Z';
-const T_EXPIRY = '2026-09-17T09:15:00.000Z';
 const T_PLUS_16 = '2026-09-17T09:16:00.000Z';
+/** The founder's attested instant, sixteen minutes past the Worker's NOW —
+ *  the one lever a test has on a window the rider's own clock cannot move. */
+const plus16 = (): string => new Date(Date.now() + 16 * 60_000).toISOString();
+/** Custody's window, ±5 s around now + 15 min (the policy's default). */
+const aboutFifteenMinutesFromNow = (iso: unknown): boolean =>
+  typeof iso === 'string' && Math.abs(Date.parse(iso) - (Date.now() + 15 * 60_000)) < 5_000;
 
 const dirs: string[] = [];
 function freshDir(tag: string): string {
@@ -193,12 +198,16 @@ describe('RETOUR-VIVANT-1 — the §6.4 ladder over the WORKER, the buyer-fault 
     expect(tooEarly.json).toMatchObject({ ok: false, reason: 'no_valid_rejection' });
 
     // The first refusal, by its canonical reason: the ONE retry window.
+    // ⚠ THE RIDER'S `at` IS IGNORED (verifier MAJOR, closed): a body dated
+    // T — hours in the past — still opens a window fifteen minutes from
+    // CUSTODY's now, never from the phone's claim.
     const refused = await call(mf, 'POST', '/rider/door/refusal', RIDER_CODE, { orderId: O, command_id: 'ref-1', reasonCode: 'insufficient_balance', at: T });
     expect(refused.status, JSON.stringify(refused.json)).toBe(200);
     expect(refused.json).toMatchObject({ ok: true, kind: 'window_opened' });
     const outcome = refused.json['outcome'] as Json;
     expect(outcome).toMatchObject({ family: 'retry', reasonCode: 'insufficient_balance', faultClass: 'buyer' });
-    expect((outcome['attempt'] as Json)['windowExpiresAt']).toBe(T_EXPIRY);
+    const windowExpiresAt = (outcome['attempt'] as Json)['windowExpiresAt'];
+    expect(aboutFifteenMinutesFromNow(windowExpiresAt), `windowExpiresAt=${String(windowExpiresAt)} must be custody’s now + 15 min, not T + 15`).toBe(true);
     // No franc anywhere in the answer (SE-I09).
     expect(JSON.stringify(refused.json)).not.toMatch(/amount|fcfa/i);
 
@@ -207,13 +216,15 @@ describe('RETOUR-VIVANT-1 — the §6.4 ladder over the WORKER, the buyer-fault 
     expect(again.status).toBe(409);
     expect(again.json).toMatchObject({ ok: false, reason: 'ladder_already_open' });
 
-    // The rider's tap cannot shorten the window the buyer was promised.
-    const early = await call(mf, 'POST', '/rider/door/expire', RIDER_CODE, { orderId: O, command_id: 'exp-early', at: T });
+    // The rider's tap cannot shorten the window the buyer was promised — not
+    // even a tap that CLAIMS the year 2030: custody's clock says not yet.
+    const early = await call(mf, 'POST', '/rider/door/expire', RIDER_CODE, { orderId: O, command_id: 'exp-early', at: '2030-01-01T00:00:00.000Z' });
     expect(early.status).toBe(409);
     expect(early.json).toMatchObject({ ok: false, reason: 'window_not_expired' });
 
-    // Expired unresolved: the escalating reason proceeds to the RETURN arm.
-    const expired = await call(mf, 'POST', '/rider/door/expire', RIDER_CODE, { orderId: O, command_id: 'exp-1', at: T_PLUS_16 });
+    // Expired unresolved — attested by the FOUNDER's door at now + 16 min, the
+    // one instant a test can move: the escalating reason proceeds to RETURN.
+    const expired = await call(mf, 'POST', '/ops/door/expire', OPS, { orderId: O, command_id: 'exp-1', at: plus16() });
     expect(expired.status, JSON.stringify(expired.json)).toBe(200);
     expect(expired.json).toMatchObject({ ok: true, kind: 'window_expired' });
     expect(expired.json['outcome']).toMatchObject({ family: 'return', faultClass: 'buyer', attempt: { number: 2 } });
@@ -278,9 +289,9 @@ describe('RETOUR-VIVANT-1 — the §6.4 ladder over the WORKER, the buyer-fault 
     const O = 'ord-retour-resched';
     await doorModeArmed(mf, O, 'PICKUP-R1', 'DROP-R1');
     await atTheDoor(mf, O, 'PICKUP-R1', 'SEAL-R1');
-    const refused = await call(mf, 'POST', '/rider/door/refusal', RIDER_CODE, { orderId: O, command_id: 'ref-r', reasonCode: 'honest_absence', at: T });
+    const refused = await call(mf, 'POST', '/rider/door/refusal', RIDER_CODE, { orderId: O, command_id: 'ref-r', reasonCode: 'honest_absence' });
     expect(refused.status).toBe(200);
-    const expired = await call(mf, 'POST', '/rider/door/expire', RIDER_CODE, { orderId: O, command_id: 'exp-r', at: T_PLUS_16 });
+    const expired = await call(mf, 'POST', '/ops/door/expire', OPS, { orderId: O, command_id: 'exp-r', at: plus16() });
     expect(expired.status).toBe(200);
     expect(expired.json['outcome']).toMatchObject({ family: 'reschedule', reasonCode: 'honest_absence' });
     const opened = await call(mf, 'POST', '/rider/return/open', RIDER_CODE, { orderId: O, command_id: 'ret-r', returnSealId: 'RETSEAL-R1' });
@@ -316,6 +327,11 @@ describe('RETOUR-VIVANT-1 — the §6.4 ladder over the WORKER, the buyer-fault 
       inspection(O, 'insp-v', { buyerAccepts: false, refusalColumn: 'valid', custodySealIntact: false }));
     expect(rejected.status).toBe(200);
     expect(rejected.json).toMatchObject({ ok: true, kind: 'valid_rejection', faultClass: 'sera' });
+    // A package already going home cannot open a retry window (verifier
+    // MINOR, closed): refused by the name the drop and the inspection use.
+    const ladderOnReturn = await call(mf, 'POST', '/rider/door/refusal', RIDER_CODE, { orderId: O, command_id: 'ref-on-return', reasonCode: 'change_of_mind' });
+    expect(ladderOnReturn.status).toBe(409);
+    expect(ladderOnReturn.json).toMatchObject({ ok: false, reason: 'return_in_progress' });
     const opened = await call(mf, 'POST', '/rider/return/open', RIDER_CODE, { orderId: O, command_id: 'ret-v', returnSealId: 'RETSEAL-V1' });
     expect(opened.status).toBe(200);
     // The valid arm retains NO fee.

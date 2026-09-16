@@ -87,6 +87,9 @@ export interface AssignmentRecord {
    * `takenBackAt`: the custody domain owns the canon event; this record is
    * the dispatch book's own account. Absent unless status is 'delivered'. */
   deliveredAt?: string;
+  /** RETOUR-VIVANT-1 — the return's own instant, custody's word as the
+   *  course-retournée wire carried it. Absent unless status is 'returned'. */
+  returnedAt?: string;
 }
 
 export type AssignOutcome =
@@ -404,7 +407,9 @@ export class AssignmentBook {
       (a) => a.orderId === orderId && ACTIVE_STATUSES.includes(a.status),
     );
     if (active === undefined) return { ok: false, reason: 'no_active_course' };
-    const returned: AssignmentRecord = { ...active, status: 'returned', deliveredAt: at };
+    // Its OWN instant (verifier MINOR, closed): `deliveredAt` on a returned
+    // course was a field name lying to the next reader.
+    const returned: AssignmentRecord = { ...active, status: 'returned', returnedAt: at };
     this.assignments.set(active.assignmentId, returned);
     this.aggregateVersion += 1;
     return { ok: true, duplicate: false, assignment: returned };
