@@ -514,11 +514,19 @@ export function PrimaryButton({ label, onPress, disabled }: { label: string; onP
     </Pressable>
   );
 }
-/** Ghost — the quiet secondary/refusal-entry arm; a hairline whisper. */
-export function GhostButton({ label, onPress }: { label: string; onPress: () => void }) {
+/** Ghost — the quiet secondary/refusal-entry arm; a hairline whisper.
+ *  `disabled` (RETOUR-VIVANT-1) locks it while its act is in flight, the
+ *  primary's own convention: the same disabled text token, nothing else. */
+export function GhostButton({ label, onPress, disabled }: { label: string; onPress: () => void; disabled?: boolean | undefined }) {
   return (
-    <Pressable style={({ pressed }) => [styles.ghost, pressed && styles.pressed]} onPress={onPress} accessibilityRole="button">
-      <Text style={styles.ghostText}>{label}</Text>
+    <Pressable
+      style={({ pressed }) => [styles.ghost, pressed && disabled !== true && styles.pressed]}
+      onPress={onPress}
+      disabled={disabled === true}
+      accessibilityRole="button"
+      accessibilityState={{ disabled: disabled === true }}
+    >
+      <Text style={[styles.ghostText, disabled === true && { color: C.disabledCtaFg }]}>{label}</Text>
     </Pressable>
   );
 }

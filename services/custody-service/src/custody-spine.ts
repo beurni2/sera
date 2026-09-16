@@ -849,6 +849,32 @@ export class CustodySpine {
     return { ok: true, outcome, events: [refused, returnRequested] };
   }
 
+  /**
+   * RETOUR-VIVANT-1 (SE6.1/SE6.2 live) — the ONE return-open act on the rider
+   * road, dispatched by the spine's OWN state, never by a caller's claim: a
+   * recorded VALID rejection sends the package home on the seller's or
+   * Séra's fault (no fee); an escalated §6.4 buyer-fault outcome sends it
+   * home with the fee retained. Neither ⇒ refuse-closed under the name the
+   * road has carried since STOCK-VENDU-1b. A valid rejection and a ladder
+   * outcome cannot coexist (`recordDoorInspection` refuses once either is
+   * recorded), so the order of the two tests is documentary, not load-bearing.
+   */
+  openReturn(args: { returnSealId: string; at: string }):
+    | { ok: true; events: readonly PlatformEvent[]; outcome?: DeliveryOutcome }
+    | { ok: false; reason: SpineRefusal } {
+    if (this.validRejection !== null) return this.openValidRejectionReturn(args);
+    if (this.ladderOutcome?.family === 'return' && this.ladderOutcome.faultClass === 'buyer') {
+      return this.applyBuyerFaultRefusal(args);
+    }
+    return { ok: false, reason: 'no_valid_rejection' };
+  }
+
+  /** The ladder's current rung — read by the door routes' answers, never a
+   *  second source of truth (the outcome is the canon record itself). */
+  currentLadderOutcome(): DeliveryOutcome | null {
+    return this.ladderOutcome;
+  }
+
   isFeeRetainedRecorded(orderId: string): boolean {
     return this.feeRetainedForOrder.has(orderId);
   }

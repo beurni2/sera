@@ -84,6 +84,16 @@ export interface RiderAssignment {
    */
   readonly codeScelle: string | null;
   /**
+   * RETOUR-VIVANT-1 (Séra §6.4: « re-sealed in a return bag with a new
+   * return-seal ») — the RETURN seal, minted by logistics beside the outbound
+   * one and machine-carried the same way: the return-open act presents it,
+   * custody registers it. Its OWN `RS-XXXX-XXXX` shape — deliberately not
+   * the outbound seal's `SC-` nor the pickup code's `XXX-XXX`, so no seal can
+   * stand in for another on the one read that carries all three. Never shown
+   * prominently, never typed; `null` on a course composed before it existed.
+   */
+  readonly codeScelleRetour: string | null;
+  /**
    * PORTE-CUSTODY part C (founder-approved 2026-08-14) — the course's payment
    * mode, as logistics carries the FUNDING FACT's word (SE-I02: the producer
    * owns the per-mode funding truth). The road turns on it: a pay-at-door
@@ -94,6 +104,25 @@ export interface RiderAssignment {
    * stage was really due.
    */
   readonly paymentMode: PaymentMode | null;
+  /**
+   * RETOUR-VIVANT-1 (SE6.2 live) — the return handshake, the ramassage's
+   * mirror. `codeRetour` is THIS rider's return key, minted by logistics the
+   * moment custody said the return opened: shown to him, SAID to the supplier
+   * at the counter, and presented by the handover act itself. `null` while no
+   * return is open — an honest absence, never a key nobody minted. Same
+   * minted `XXX-XXX` bound as the ramassage code.
+   */
+  readonly codeRetour: string | null;
+  /** When the supplier typed the rider's return code on his own console —
+   *  his acceptance of the package. ISO-or-null, bounded like every date. */
+  readonly retourConfirmeAt: string | null;
+  /**
+   * The SUPPLIER's acceptance key, machine-carried onto this read ONLY once he
+   * confirmed (logistics releases it then and not before): the handover act
+   * presents it beside the rider's own, and custody consumes both or neither.
+   * Never typed, never shown prominently; `null` until the supplier's word.
+   */
+  readonly codeRetourFournisseur: string | null;
 }
 
 /** The two canon payment modes (§5.5) — the closed set this parser admits. */
@@ -124,6 +153,14 @@ function codeRamassageOrNull(v: unknown): string | null {
 const CODE_SCELLE = /^SC-[ABCDEFGHJKMNPQRSTVWXYZ2-9]{4}-[ABCDEFGHJKMNPQRSTVWXYZ2-9]{4}$/;
 function codeScelleOrNull(v: unknown): string | null {
   return typeof v === 'string' && CODE_SCELLE.test(v) ? v : null;
+}
+
+/** RETOUR-VIVANT-1 — the RETURN seal's own shape (`RS-XXXX-XXXX`), refused
+ *  against both siblings: an outbound seal or a pickup code in this slot is
+ *  dropped, never presented as the return seal. */
+const CODE_SCELLE_RETOUR = /^RS-[ABCDEFGHJKMNPQRSTVWXYZ2-9]{4}-[ABCDEFGHJKMNPQRSTVWXYZ2-9]{4}$/;
+function codeScelleRetourOrNull(v: unknown): string | null {
+  return typeof v === 'string' && CODE_SCELLE_RETOUR.test(v) ? v : null;
 }
 
 /** An ISO timestamp or nothing — a byte that is not a date is dropped, the
@@ -210,9 +247,18 @@ export function riderSessionFromBody(body: unknown): RiderSession | null {
         // sealed with. « The four secrets are never substituted » is enforced
         // here by shape, not by trust in the sender.
         codeScelle: codeScelleOrNull(a['codeScelle']),
+        // RETOUR-VIVANT-1 — the return seal, on its OWN bound (see above).
+        codeScelleRetour: codeScelleRetourOrNull(a['codeScelleRetour']),
         // The closed §5.5 set or null — a mode this app does not know walks
         // the plain road rather than inventing a door stage.
         paymentMode: paymentModeOrNull(a['paymentMode']),
+        // RETOUR-VIVANT-1 — the two return keys ride the SAME minted bound as
+        // the ramassage code; a stray byte in either slot is dropped, never
+        // presented to custody. The seller's key is null until logistics
+        // released it, and this parser does not fill that silence.
+        codeRetour: codeRamassageOrNull(a['codeRetour']),
+        retourConfirmeAt: isoOrNull(a['retourConfirmeAt']),
+        codeRetourFournisseur: codeRamassageOrNull(a['codeRetourFournisseur']),
       };
     }
   }

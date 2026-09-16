@@ -8,9 +8,16 @@ import {
   httpCustodyActs,
   inspectionHeld,
   mintActId,
+  returnOpened,
+  returnedToSupplier,
   transitArrived,
   transitDeparted,
+  validRejectionFault,
+  validRejectionRecorded,
   verificationAccepted,
+  windowExpiredInto,
+  windowExpiresAtOf,
+  windowOpened,
   type CustodyAnswer,
 } from '../src/net/custody-acts';
 
@@ -296,6 +303,102 @@ describe('a refusal, a dead server and a dead code are three different answers',
     const answer = await answerFor({ ok: false, reason: 'no_evidence_refs' }, 200);
     expect(answer).toEqual({ kind: 'refused', reason: 'no_evidence_refs' });
     expect(custodyBegan(answer)).toBe(false);
+  });
+});
+
+describe('RETOUR-VIVANT-1 — the ladder and the road home, on the same door with the same discipline', () => {
+  async function capture(run: (p: ReturnType<typeof httpCustodyActs>) => Promise<CustodyAnswer>, answer: unknown = { ok: true }) {
+    const seen: { url?: string | undefined; auth?: string | undefined; body?: Record<string, unknown> | undefined; answer?: CustodyAnswer } = {};
+    const port = httpCustodyActs('https://custody.dev/', online(), async (url, init) => {
+      seen.url = url;
+      seen.auth = new Headers(init?.headers).get('Authorization') ?? undefined;
+      seen.body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return json(answer);
+    });
+    seen.answer = await run(port);
+    return seen;
+  }
+
+  it('the refusal posts to /rider/door/refusal — Bearer, and EXACTLY orderId + command_id + reasonCode (no clock, no identity)', async () => {
+    const seen = await capture((p) => p.refuseAtDoor({ commandId: 'cmd-r1' as never, orderId: 'ord-9', reasonCode: 'insufficient_balance' }, 'SR-ABCD-EFGH-JKMN'));
+    expect(seen.url).toBe('https://custody.dev/rider/door/refusal');
+    expect(seen.auth).toBe('Bearer SR-ABCD-EFGH-JKMN');
+    expect(seen.body).toEqual({ orderId: 'ord-9', command_id: 'cmd-r1', reasonCode: 'insufficient_balance' });
+  });
+
+  it('the expiry posts to /rider/door/expire with orderId + command_id and NOTHING else — custody’s clock decides', async () => {
+    const seen = await capture((p) => p.expireWindow('SR-ABCD-EFGH-JKMN', 'ord-9', 'cmd-x1' as never));
+    expect(seen.url).toBe('https://custody.dev/rider/door/expire');
+    expect(seen.body).toEqual({ orderId: 'ord-9', command_id: 'cmd-x1' });
+  });
+
+  it('the return-open posts the seal in the BODY to /rider/return/open', async () => {
+    const seen = await capture((p) => p.openReturn({ commandId: 'cmd-o1' as never, orderId: 'ord-9', returnSealId: 'SC-4K7M-9PQR' }, 'C'));
+    expect(seen.url).toBe('https://custody.dev/rider/return/open');
+    expect(seen.body).toEqual({ orderId: 'ord-9', command_id: 'cmd-o1', returnSealId: 'SC-4K7M-9PQR' });
+  });
+
+  it('the handover posts BOTH keys in one act to /rider/return/handover', async () => {
+    const seen = await capture((p) => p.completeReturn({ commandId: 'cmd-h1' as never, orderId: 'ord-9', sellerKey: 'F2N-8QW', riderKey: 'RTR-K7M' }, 'C'));
+    expect(seen.url).toBe('https://custody.dev/rider/return/handover');
+    expect(seen.body).toEqual({ orderId: 'ord-9', command_id: 'cmd-h1', sellerKey: 'F2N-8QW', riderKey: 'RTR-K7M' });
+  });
+
+  it('the valid refusal carries `refusalColumn: valid` on the inspection act — and the accept road still omits it', async () => {
+    const base = {
+      commandId: 'cmd-i1' as never, orderId: 'ord-9', inspectionCategory: 'uncategorised_conservative',
+      packageOpened: false, manufacturerSealOpened: false, custodySealIntact: false,
+      startedAt: '2026-09-17T09:00:00.000Z', completedAt: '2026-09-17T09:00:00.000Z', evidenceBundleId: 'sans-photo-porte-ord-9',
+    };
+    const refusal = await capture((p) => p.recordDoorInspection({ ...base, buyerAccepts: false, refusalColumn: 'valid' }, 'C'));
+    expect(refusal.body).toMatchObject({ buyerAccepts: false, refusalColumn: 'valid', custodySealIntact: false });
+    const accord = await capture((p) => p.recordDoorInspection({ ...base, custodySealIntact: true, buyerAccepts: true }, 'C'));
+    expect(Object.keys(accord.body ?? {})).not.toContain('refusalColumn');
+  });
+
+  it('NEVER queued offline: all four acts refuse honestly and nothing is sent', async () => {
+    let called = 0;
+    const port = httpCustodyActs('https://custody.dev', offline(), async () => {
+      called += 1;
+      return json({ ok: true });
+    });
+    expect(await port.refuseAtDoor({ commandId: 'c1' as never, orderId: 'o', reasonCode: 'fraud' }, 'C')).toEqual({ kind: 'offline' });
+    expect(await port.expireWindow('C', 'o', 'c2' as never)).toEqual({ kind: 'offline' });
+    expect(await port.openReturn({ commandId: 'c3' as never, orderId: 'o', returnSealId: 's' }, 'C')).toEqual({ kind: 'offline' });
+    expect(await port.completeReturn({ commandId: 'c4' as never, orderId: 'o', sellerKey: 'a', riderKey: 'b' }, 'C')).toEqual({ kind: 'offline' });
+    expect(called).toBe(0);
+  });
+
+  it('the ledger’s words are read by NAME — and a refused pair, a closed window, an unopened return never read as done', async () => {
+    const answerFor = async (body: unknown, status: number): Promise<CustodyAnswer> => {
+      const port = httpCustodyActs('https://c.dev', online(), async () => json(body, status));
+      return port.completeReturn({ commandId: 'c' as never, orderId: 'o', sellerKey: 'a', riderKey: 'b' }, 'C');
+    };
+    const opened = await answerFor({ ok: true, kind: 'window_opened', outcome: { family: 'retry', attempt: { number: 1, windowExpiresAt: '2026-09-17T09:15:00.000Z' } } }, 200);
+    expect(windowOpened(opened)).toBe(true);
+    expect(windowExpiresAtOf(opened)).toBe('2026-09-17T09:15:00.000Z');
+    expect(windowExpiredInto(opened)).toBeNull();
+    const expired = await answerFor({ ok: true, kind: 'window_expired', outcome: { family: 'return', attempt: { number: 2 } } }, 200);
+    expect(windowExpiredInto(expired)).toBe('return');
+    expect(windowExpiresAtOf(expired)).toBeNull();
+    expect(windowExpiredInto(await answerFor({ ok: true, kind: 'window_expired', outcome: { family: 'reschedule' } }, 200))).toBe('reschedule');
+    // A family this app does not know is NOT an arm — null, never a guess.
+    expect(windowExpiredInto(await answerFor({ ok: true, kind: 'window_expired', outcome: { family: 'elsewhere' } }, 200))).toBeNull();
+    expect(returnOpened(await answerFor({ ok: true, kind: 'return_opened' }, 200))).toBe(true);
+    const home = await answerFor({ ok: true, kind: 'returned_to_supplier' }, 200);
+    expect(returnedToSupplier(home)).toBe(true);
+    const valid = await answerFor({ ok: true, kind: 'valid_rejection', faultClass: 'sera' }, 200);
+    expect(validRejectionRecorded(valid)).toBe(true);
+    expect(validRejectionFault(valid)).toBe('sera');
+    expect(validRejectionFault(await answerFor({ ok: true, kind: 'accepted' }, 200))).toBeNull();
+    // Refusals by name, and none of them is a terminal.
+    for (const reason of ['return_two_key_refused', 'window_not_expired', 'return_not_open', 'no_valid_rejection', 'ladder_already_open']) {
+      const refused = await answerFor({ ok: false, reason }, 409);
+      expect(refused).toEqual({ kind: 'refused', reason });
+      expect(returnedToSupplier(refused)).toBe(false);
+      expect(windowOpened(refused)).toBe(false);
+      expect(returnOpened(refused)).toBe(false);
+    }
   });
 });
 

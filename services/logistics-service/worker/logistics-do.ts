@@ -132,6 +132,18 @@ const SNAP_CODE_VERIFICATION = 'snap:code-verification:v1';
  * row commits atomically with the assignment that armed it.
  */
 const SNAP_CUSTODY_OUTBOX = 'snap:custody-outbox:v1';
+/**
+ * RETOUR-VIVANT-1 (SE6.2 live) — the return handshake's own snapshot, the
+ * ramassage's mirror image: when custody says a return OPENED, this object
+ * mints the two handover keys — `codeRetour`, the RIDER's, shown on his
+ * session at once and SAID to the supplier at the counter; `codeFournisseur`,
+ * the SELLER's acceptance, released onto the rider's session ONLY once the
+ * supplier typed the rider's code on his own console (`/intake/retour/verify`)
+ * — and arms both on custody through the produce door, at-least-once, so the
+ * spine consumes them together or not at all. Plaintext lives here, behind
+ * this object's own storage, exactly as the pickup code's does.
+ */
+const SNAP_RETOURS = 'snap:retours:v1';
 const CODEHASH_PREFIX = 'codehash:';
 const RIDERCODE_PREFIX = 'ridercode:';
 
@@ -172,6 +184,19 @@ interface CustodyProduceRow {
    *  never stores it; this row lives behind this object's own storage. */
   code: string;
   supplierRef?: string;
+}
+
+interface RetourRow {
+  orderId: string;
+  codeRetour: string;
+  codeFournisseur: string;
+  ouvertAt: string;
+  /** When the supplier confirmed the rider's code on his console. First-wins. */
+  confirmeAt?: string;
+  /** The two arms on custody: 'pending' until both answered ok. */
+  armPhase: 'pending' | 'done';
+  armAttempts: number;
+  armRest: 'none' | 'no_config';
 }
 
 interface ProjectionsSnapshot {
@@ -258,6 +283,21 @@ function mintCodeScelle(): string {
   return `SC-${raw.slice(0, 4)}-${raw.slice(4, 8)}`;
 }
 
+/**
+ * RETOUR-VIVANT-1 — the RETURN seal (Séra §6.4: a refused item is « re-sealed
+ * in a return bag with a new return-seal »). Minted beside the outbound seal,
+ * carried on the same read from the first poll, presented by the rider's
+ * return-open act and registered by custody as `return_seal`. Its OWN shape
+ * (`RS-XXXX-XXXX`), so neither the outbound seal nor a pickup code can ever
+ * stand in for it — the parser refuses each against its own bound.
+ */
+function mintCodeScelleRetour(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(8));
+  let raw = '';
+  for (let i = 0; i < bytes.length; i += 1) raw += CODE_ALPHABET[(bytes[i] as number) % CODE_ALPHABET.length];
+  return `RS-${raw.slice(0, 4)}-${raw.slice(4, 8)}`;
+}
+
 /** The one 401 — IDENTICAL to the router's, for every rider-door rejection. */
 function unauthorized(): Response {
   return Response.json({ error: 'unauthorized' }, { status: 401 });
@@ -317,9 +357,11 @@ export class LogisticsDO {
    *  OPTIONAL on the type so a snapshot written before this field restores
    *  without inventing one — a course composed then answers `null` and says so
    *  rather than sealing with a value nobody minted. */
-  private codesVerification: Record<string, { code: string; scelle?: string }> = {};
+  private codesVerification: Record<string, { code: string; scelle?: string; scelleRetour?: string }> = {};
   /** VRAI-ROUTE — orderId → its producer row on the road into custody. */
   private custodyOutbox: Record<string, CustodyProduceRow> = {};
+  /** RETOUR-VIVANT-1 — keyed by assignmentId, like the ramassage handshake. */
+  private retours: Record<string, RetourRow> = {};
   private queue!: ReadyQueue;
   private registry!: RiderRegistry;
   private witness!: GrantedLeaseWitness;
@@ -357,7 +399,7 @@ export class LogisticsDO {
 
   private async ensureLoaded(): Promise<void> {
     if (this.loaded) return;
-    const keys = [SNAP_QUEUE, SNAP_REGISTRY, SNAP_BOOK, SNAP_LEASE, SNAP_WITNESS, SNAP_PROJECTIONS, SNAP_BRIEFS, SNAP_RAMASSAGE, SNAP_CODE_VERIFICATION, SNAP_CUSTODY_OUTBOX];
+    const keys = [SNAP_QUEUE, SNAP_REGISTRY, SNAP_BOOK, SNAP_LEASE, SNAP_WITNESS, SNAP_PROJECTIONS, SNAP_BRIEFS, SNAP_RAMASSAGE, SNAP_CODE_VERIFICATION, SNAP_CUSTODY_OUTBOX, SNAP_RETOURS];
     const stored = await this.state.storage.get<unknown>(keys);
     const lease = stored.get(SNAP_LEASE) as LeaseAuthorityState | undefined;
     this.leaseState = lease ?? emptyLeaseState();
@@ -366,8 +408,9 @@ export class LogisticsDO {
     this.readinessFacts = projections?.readiness ?? {};
     this.briefs = (stored.get(SNAP_BRIEFS) as Record<string, CourseBrief> | undefined) ?? {};
     this.ramassage = (stored.get(SNAP_RAMASSAGE) as Record<string, { code: string; confirmeAt?: string }> | undefined) ?? {};
-    this.codesVerification = (stored.get(SNAP_CODE_VERIFICATION) as Record<string, { code: string; scelle?: string }> | undefined) ?? {};
+    this.codesVerification = (stored.get(SNAP_CODE_VERIFICATION) as Record<string, { code: string; scelle?: string; scelleRetour?: string }> | undefined) ?? {};
     this.custodyOutbox = (stored.get(SNAP_CUSTODY_OUTBOX) as Record<string, CustodyProduceRow> | undefined) ?? {};
+    this.retours = (stored.get(SNAP_RETOURS) as Record<string, RetourRow> | undefined) ?? {};
     this.queue = new ReadyQueue(this.projections());
     const queueSnap = stored.get(SNAP_QUEUE) as ReadyQueueSnapshot | undefined;
     if (queueSnap !== undefined) this.queue.restore(queueSnap);
@@ -403,7 +446,52 @@ export class LogisticsDO {
       [SNAP_RAMASSAGE]: this.ramassage,
       [SNAP_CODE_VERIFICATION]: this.codesVerification,
       [SNAP_CUSTODY_OUTBOX]: this.custodyOutbox,
+      [SNAP_RETOURS]: this.retours,
     });
+  }
+
+  /**
+   * RETOUR-VIVANT-1 — arm the two handover keys on custody, at-least-once,
+   * on `flushCustodyProduce`'s exact terms (same binding, same key, `res.ok`
+   * alone decides — custody's arm replays its recorded answer on a
+   * redelivery, so a retry can never double anything; missing config is the
+   * honest `no_config` rest, re-checked every flush).
+   */
+  private async flushRetourArm(): Promise<number> {
+    const custody = this.env.CUSTODY;
+    const key = this.env.SERA_PRODUCE_SECRET ?? '';
+    let worst = 0;
+    let changed = false;
+    for (const [assignmentId, row] of Object.entries(this.retours)) {
+      if (row.armPhase === 'done') continue;
+      if (custody === undefined || key === '') {
+        if (row.armRest !== 'no_config') {
+          this.retours[assignmentId] = { ...row, armRest: 'no_config' };
+          changed = true;
+        }
+        continue;
+      }
+      const arm = async (kind: string, secret: string, suffix: string): Promise<boolean> => {
+        try {
+          const res = await custody.fetch(new Request('https://custody/produce/secrets/arm', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+            body: JSON.stringify({ orderId: row.orderId, command_id: `arm-retour-${suffix}-${assignmentId}`, kind, secret }),
+          }));
+          return res.ok;
+        } catch {
+          return false;
+        }
+      };
+      const rider = await arm('rider_return_confirmation', row.codeRetour, 'rider');
+      const seller = rider && (await arm('seller_return_acceptance', row.codeFournisseur, 'seller'));
+      const next: RetourRow = { ...row, armRest: 'none', armAttempts: row.armAttempts + 1, armPhase: seller ? 'done' : 'pending' };
+      this.retours[assignmentId] = next;
+      changed = true;
+      if (next.armPhase !== 'done') worst = Math.max(worst, next.armAttempts);
+    }
+    if (changed) await this.state.storage.put(SNAP_RETOURS, this.retours);
+    return worst;
   }
 
   /**
@@ -494,7 +582,10 @@ export class LogisticsDO {
 
   async alarm(): Promise<void> {
     await this.ensureLoaded();
-    const pending = await this.flushCustodyProduce();
+    const producePending = await this.flushCustodyProduce();
+    // RETOUR-VIVANT-1 — the return keys' arm, same alarm, own state.
+    const retourPending = await this.flushRetourArm();
+    const pending = Math.max(producePending, retourPending);
     if (pending > 0) {
       const backoffMs = Math.min(30_000 * 2 ** Math.min(pending, 7), 3_600_000);
       await this.state.storage.setAlarm(Date.now() + backoffMs).catch(() => undefined);
@@ -918,6 +1009,9 @@ export class LogisticsDO {
           this.codesVerification[outcome.assignment.assignmentId] = {
             code: mintCodeVerification(),
             scelle: mintCodeScelle(),
+            // RETOUR-VIVANT-1 — the NEW return seal (§6.4), minted with the
+            // outbound one so it exists before any return can open.
+            scelleRetour: mintCodeScelleRetour(),
           };
         }
         this.custodyOutbox[outcome.assignment.orderId] = {
@@ -1375,6 +1469,37 @@ export class LogisticsDO {
       return Response.json({ ok: true, verdict });
     }
 
+    /**
+     * RETOUR-VIVANT-1 — the supplier, package in hand, types the RIDER's
+     * return code on his Boutik+ console (the ramassage handshake's mirror,
+     * the same intake door). A confirmed code is his acceptance of the
+     * package: it releases HIS key onto the rider's session so the rider's
+     * handover act can present both keys to custody. First-wins, like the
+     * ramassage: retyping re-hears « confirmé », the instant never moves.
+     */
+    if (request.method === 'POST' && pathname === '/intake/retour/verify') {
+      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      if (body === null || !isStr(body['command_id']) || !isStr(body['orderId']) || !isStr(body['code'])) {
+        return malformed();
+      }
+      const orderId = (body['orderId'] as string).trim();
+      const active = this.book
+        .snapshot()
+        .assignments.map(([, r]) => r)
+        .find((r) => r.orderId === orderId && ACTIVE_ASSIGNMENT_STATUSES.includes(r.status));
+      const retour = active === undefined ? undefined : this.retours[active.assignmentId];
+      const donne = normaliseCodeRamassage(body['code'] as string);
+      const verdict =
+        retour !== undefined && donne !== '' && donne === normaliseCodeRamassage(retour.codeRetour)
+          ? 'confirme'
+          : 'non_confirme';
+      if (verdict === 'confirme' && active !== undefined && retour !== undefined && retour.confirmeAt === undefined) {
+        this.retours[active.assignmentId] = { ...retour, confirmeAt: now };
+        await this.state.storage.put(SNAP_RETOURS, this.retours);
+      }
+      return Response.json({ ok: true, verdict });
+    }
+
     if (request.method === 'GET' && pathname === '/ops/a-preparer') {
       const withTask = new Set(
         this.queue
@@ -1501,6 +1626,70 @@ export class LogisticsDO {
           riderId: outcome.assignment.riderId,
           status: outcome.assignment.status,
           deliveredAt: outcome.assignment.deliveredAt ?? null,
+        },
+      });
+    }
+
+    /**
+     * RETOUR-VIVANT-1 — custody says the return OPENED (its own ledger's
+     * word, over the same produce wire as course-livrée): mint the two
+     * handover keys ONCE for the active course, show the rider's on his
+     * session, and arm both on custody from the alarm. Every settled
+     * condition answers 200 by name so the at-least-once sender can stop.
+     */
+    if (request.method === 'POST' && pathname === '/produce/retour-ouvert') {
+      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      if (body === null || !isStr(body['command_id']) || !isStr(body['orderId']) || !isIso(body['at'])) {
+        return malformed();
+      }
+      const orderId = (body['orderId'] as string).trim();
+      const active = this.book
+        .snapshot()
+        .assignments.map(([, r]) => r)
+        .find((r) => r.orderId === orderId && ACTIVE_ASSIGNMENT_STATUSES.includes(r.status));
+      if (active === undefined) return Response.json({ ok: true, status: 'aucune_course' });
+      if (this.retours[active.assignmentId] !== undefined) return Response.json({ ok: true, status: 'deja_ouvert' });
+      this.retours[active.assignmentId] = {
+        orderId,
+        codeRetour: mintCodeRamassage(),
+        codeFournisseur: mintCodeRamassage(),
+        ouvertAt: body['at'] as string,
+        armPhase: 'pending',
+        armAttempts: 0,
+        armRest: 'none',
+      };
+      await this.state.storage.put(SNAP_RETOURS, this.retours);
+      if ((await this.state.storage.getAlarm()) === null) {
+        await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
+      }
+      return Response.json({ ok: true, status: 'retour_ouvert' });
+    }
+
+    /**
+     * RETOUR-VIVANT-1 — custody says the two keys were CONSUMED and the
+     * package is with its supplier: the course closes `returned`, the lease
+     * releases, the rider walks free. `deliver`'s twin, same settled answers.
+     */
+    if (request.method === 'POST' && pathname === '/produce/course-retournee') {
+      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      if (body === null || !isStr(body['command_id']) || !isStr(body['orderId']) || !isIso(body['at'])) {
+        return malformed();
+      }
+      const outcome = await this.dispatch.returnToSupplier((body['orderId'] as string).trim(), body['at'] as string);
+      if (!outcome.ok) {
+        return Response.json({ ok: true, status: 'aucune_course' });
+      }
+      await this.persist();
+      return Response.json({
+        ok: true,
+        status: outcome.duplicate ? 'deja_retournee' : 'retournee',
+        leaseReleased: outcome.leaseReleased,
+        assignment: {
+          assignmentId: outcome.assignment.assignmentId,
+          taskId: outcome.assignment.taskId,
+          orderId: outcome.assignment.orderId,
+          riderId: outcome.assignment.riderId,
+          status: outcome.assignment.status,
         },
       });
     }
@@ -1743,6 +1932,31 @@ export class LogisticsDO {
                * never a seal nobody minted.
                */
               codeScelle: this.codesVerification[assignment.assignmentId]?.scelle ?? null,
+              /**
+               * RETOUR-VIVANT-1 — the NEW return seal (§6.4), machine-carried
+               * like the outbound one: the app presents it when the refused
+               * package is re-sealed for home, custody registers it. `null`
+               * on a course composed before it was minted — honest, never a
+               * seal nobody minted.
+               */
+              codeScelleRetour: this.codesVerification[assignment.assignmentId]?.scelleRetour ?? null,
+              /**
+               * RETOUR-VIVANT-1 — the return handshake, the ramassage's mirror:
+               * `codeRetour` is the RIDER's key, shown to him and SAID to the
+               * supplier at the counter; `retourConfirmeAt` is when the
+               * supplier typed it on his console; `codeRetourFournisseur` is
+               * the SELLER's acceptance key, machine-carried onto this read
+               * ONLY once he confirmed — the app presents both keys inside one
+               * handover act and custody consumes them together or not at
+               * all. `null` while no return is open, or before the
+               * confirmation: honest, never a key nobody released.
+               */
+              codeRetour: this.retours[assignment.assignmentId]?.codeRetour ?? null,
+              retourConfirmeAt: this.retours[assignment.assignmentId]?.confirmeAt ?? null,
+              codeRetourFournisseur:
+                this.retours[assignment.assignmentId]?.confirmeAt !== undefined
+                  ? (this.retours[assignment.assignmentId]?.codeFournisseur ?? null)
+                  : null,
             },
     };
   }

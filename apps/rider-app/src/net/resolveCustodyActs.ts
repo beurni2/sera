@@ -38,6 +38,13 @@ export function unwiredCustodyActs(): CustodyActsPort {
     // buyer's accord no ledger anywhere holds.
     recordDoorInspection: refuse,
     confirmDrop: refuse,
+    // RETOUR-VIVANT-1 — the ladder and the road home refuse the same way: an
+    // unwired build never opens a window, a return, or a handover no ledger
+    // anywhere recorded.
+    refuseAtDoor: refuse,
+    expireWindow: refuse,
+    openReturn: refuse,
+    completeReturn: refuse,
   };
 }
 

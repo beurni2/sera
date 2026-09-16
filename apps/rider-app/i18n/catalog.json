@@ -1684,5 +1684,179 @@
     "fr": "Vous revenez en service, prêt pour une autre course.",
     "register": "neutral",
     "screenClass": "status"
+  },
+  {
+    "key": "retry.window_note",
+    "fr": "Avant cette heure, la cliente peut encore prendre son colis.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "retry.expired_note",
+    "fr": "Le délai est passé.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "retry.not_expired",
+    "fr": "Le délai court encore.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "retry.not_expired_hint",
+    "fr": "Attendez l'heure indiquée, puis réessayez ici même.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "reschedule.live_note",
+    "fr": "Gardez le colis avec vous. Séra vous appelle pour le prochain passage.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "reject.action",
+    "fr": "La cliente refuse le colis",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "reject.seal_question",
+    "fr": "Le scellé Séra est-il intact ?",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "reject.seal_intact",
+    "fr": "Oui, intact",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "reject.seal_broken",
+    "fr": "Non, abîmé",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "reject.title",
+    "fr": "La cliente refuse le colis. C'est son droit.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "reject.fault_sera",
+    "fr": "Le scellé était abîmé. La faute est notée pour Séra, pas pour la cliente.",
+    "register": "money",
+    "screenClass": "status"
+  },
+  {
+    "key": "reject.fault_seller",
+    "fr": "Le colis ne correspond pas. La faute est notée pour le vendeur, pas pour la cliente.",
+    "register": "money",
+    "screenClass": "status"
+  },
+  {
+    "key": "reject.no_fee",
+    "fr": "Aucun frais pour la cliente.",
+    "register": "money",
+    "screenClass": "status"
+  },
+  {
+    "key": "retour.ouvert",
+    "fr": "Retour ouvert. Le colis rentre chez le vendeur.",
+    "register": "money",
+    "screenClass": "status"
+  },
+  {
+    "key": "retour.pas_de_refus",
+    "fr": "Pas de refus noté pour ce colis.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "retour.pas_de_refus_hint",
+    "fr": "Le retour s'ouvre après un refus à la porte.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "retour.code_attente",
+    "fr": "Séra prépare votre code de retour…",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "retour.code_titre",
+    "fr": "Votre code de retour",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "retour.dire",
+    "fr": "Dites ce code au vendeur. Il le tape sur son écran.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "retour.attente_vendeur",
+    "fr": "On attend que le vendeur confirme votre code.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "retour.vendeur_ok",
+    "fr": "Le vendeur a confirmé. Les deux codes sont prêts.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "retour.refuse_deux_cles",
+    "fr": "Les deux codes n'ont pas ouvert.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "retour.refuse_deux_cles_hint",
+    "fr": "Réessayez dans un moment. Le colis reste avec vous.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "retour.not_open",
+    "fr": "Le retour n'est pas encore ouvert.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "retour.done",
+    "fr": "Colis rendu au vendeur.",
+    "register": "money",
+    "screenClass": "status"
+  },
+  {
+    "key": "retour.done_next",
+    "fr": "Le retour est noté. Vous revenez en service.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "retour.scelle_titre",
+    "fr": "Scellé de retour",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "retour.scelle_aide",
+    "fr": "Mettez le colis dans un sac de retour et écrivez ce code dessus. Le scellé Séra reste tel quel.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "retour.scelle_absent",
+    "fr": "Pas de scellé de retour pour cette course. Appelez Séra avant de repartir.",
+    "register": "neutral",
+    "screenClass": "status"
   }
 ]

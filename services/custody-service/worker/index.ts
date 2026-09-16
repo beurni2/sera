@@ -163,6 +163,13 @@ const RIDER_ROUTES: ReadonlySet<string> = new Set([
   // re-seals the refused package at the door (the seal hashes at the DO's
   // door like every other secret). No payment assertion anywhere in it.
   'POST /return/open',
+  // RETOUR-VIVANT-1 — the §6.4 ladder's two rungs (no secret in either) and
+  // the §6.5 two-key handover at the supplier (both keys hash at the DO's
+  // door). `/return/claim` is deliberately NOT here: the dispatcher's claim
+  // is the founder's door alone.
+  'POST /door/refusal',
+  'POST /door/expire',
+  'POST /return/handover',
 ]);
 
 /**
@@ -391,8 +398,14 @@ export default {
         parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
           ? (parsed as Record<string, unknown>)['kind']
           : undefined;
-      const armable = produceShopPath ? 'buyer_drop_code' : 'pickup_verification_code';
-      if (kind !== armable) {
+      // RETOUR-VIVANT-1 — LOGISTICS' door also arms the two return-handover
+      // keys it mints when a return opens (SE6.2); Shop+'s door still arms
+      // the buyer's code and nothing else. The seal stays un-armable at
+      // either door.
+      const armable: readonly unknown[] = produceShopPath
+        ? ['buyer_drop_code']
+        : ['pickup_verification_code', 'seller_return_acceptance', 'rider_return_confirmation'];
+      if (!armable.includes(kind)) {
         return Response.json({ ok: false, reason: 'kind_not_armable_at_this_door' }, { status: 403 });
       }
     }

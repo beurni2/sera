@@ -319,6 +319,57 @@ describe('ROUTE-DIRECTE — the machine-carried seal is bounded by its OWN shape
   });
 });
 
+describe('RETOUR-VIVANT-1 — the RETURN seal is bounded by its OWN shape, apart from both siblings', () => {
+  const withRetour = (v: unknown) =>
+    riderSessionFromBody({
+      ok: true,
+      rider: {
+        riderId: 'r-1', displayName: 'Boss', certified: true, privacyAckOk: true,
+        assignment: {
+          assignmentId: 'a-1', taskId: 't-1', orderId: 'o-1', status: 'acknowledged',
+          codeScelleRetour: v,
+        },
+      },
+    });
+
+  it('accepts the minted RS- shape and nothing else', () => {
+    expect(withRetour('RS-7Q2N-4KPM')?.assignment?.codeScelleRetour).toBe('RS-7Q2N-4KPM');
+  });
+
+  it('⚠ REFUSES the outbound seal and the pickup code in the return-seal slot — never a substitution', () => {
+    expect(withRetour('SC-4K7M-9PQR')?.assignment?.codeScelleRetour).toBeNull();
+    expect(withRetour('K7M-9PQ')?.assignment?.codeScelleRetour).toBeNull();
+  });
+
+  it('refuses anything else, and an absent seal is null, never invented', () => {
+    for (const bad of ['RS-7Q2N-4KP', 'RS-7q2n-4kpm', 'RS-7I2N-4KPM', '', 42, null, {}, undefined]) {
+      expect(withRetour(bad)?.assignment?.codeScelleRetour, String(bad)).toBeNull();
+    }
+  });
+
+  it('the two return KEYS ride the ramassage bound — and the seller’s is null until released', () => {
+    const both = riderSessionFromBody({
+      ok: true,
+      rider: {
+        riderId: 'r-1', displayName: 'Boss', certified: true, privacyAckOk: true,
+        assignment: {
+          assignmentId: 'a-1', taskId: 't-1', orderId: 'o-1', status: 'acknowledged',
+          codeRetour: 'RTR-K7M', retourConfirmeAt: '2026-09-17T09:30:00.000Z', codeRetourFournisseur: 'F2N-8QW',
+        },
+      },
+    });
+    expect(both?.assignment).toMatchObject({ codeRetour: 'RTR-K7M', retourConfirmeAt: '2026-09-17T09:30:00.000Z', codeRetourFournisseur: 'F2N-8QW' });
+    const none = riderSessionFromBody({
+      ok: true,
+      rider: {
+        riderId: 'r-1', displayName: 'Boss', certified: true, privacyAckOk: true,
+        assignment: { assignmentId: 'a-1', taskId: 't-1', orderId: 'o-1', status: 'acknowledged', codeRetour: 'SC-4K7M-9PQR', retourConfirmeAt: 'hier', codeRetourFournisseur: null },
+      },
+    });
+    expect(none?.assignment).toMatchObject({ codeRetour: null, retourConfirmeAt: null, codeRetourFournisseur: null });
+  });
+});
+
 describe('PORTE-CUSTODY part C — paymentMode is bounded to the canon §5.5 set', () => {
   const withMode = (v: unknown) =>
     riderSessionFromBody({

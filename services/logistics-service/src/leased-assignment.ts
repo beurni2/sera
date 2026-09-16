@@ -469,6 +469,23 @@ export class LeasedDispatch {
     return { ...outcome, leaseReleased: release.ok };
   }
 
+  /** RETOUR-VIVANT-1 — `deliver`'s twin: the course closed by a two-key
+   * return at the supplier (custody's word over the produce wire). The lease
+   * releases with the honest cause `completed` — the course IS complete, the
+   * package accounted for at its supplier (SE-I04: never unowned). */
+  async returnToSupplier(orderId: string, at: string): Promise<DeliverOutcome & { leaseReleased: boolean }> {
+    const outcome = this.deps.book.returnToSupplier(orderId, at);
+    if (!outcome.ok || outcome.duplicate) return { ...outcome, leaseReleased: false };
+    this.deps.witness.revoke(outcome.assignment.lease);
+    const release = await this.deps.authority.send({
+      kind: 'release',
+      command_id: `complete-${outcome.assignment.taskId}`,
+      taskId: outcome.assignment.taskId,
+      cause: 'completed',
+    });
+    return { ...outcome, leaseReleased: release.ok };
+  }
+
   /** Completion: the delivery closed — the lease releases with the honest
    * cause 'completed'. (No timestamp: the release command carries none by
    * design; the ledgered truth of WHEN lives with the custody records.) */

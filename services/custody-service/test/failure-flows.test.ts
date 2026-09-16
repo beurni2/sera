@@ -321,3 +321,45 @@ describe("WO-2.2 verifier findings — the exact attacks, replayed as regression
     expect(spine.isFeeRetainedRecorded(CHAIN.order_id)).toBe(true);
   });
 });
+
+describe('RETOUR-VIVANT-1 — openReturn: ONE act on the rider road, the arm picked by the spine’s own state', () => {
+  it('a recorded VALID rejection → the valid arm (no fee, fault from the seal), return opened', () => {
+    const spine = spineWithCourierCustody();
+    const inspected = spine.recordDoorInspection({
+      orderId: CHAIN.order_id, inspectionCategory: 'uncategorised_conservative',
+      packageOpened: false, manufacturerSealOpened: false, custodySealIntact: true, buyerAccepts: false,
+      refusalColumn: 'valid', startedAt: T, completedAt: T, evidenceBundleId: 'eb-valid',
+    }, T);
+    expect(inspected).toMatchObject({ ok: true, kind: 'valid_rejection', faultClass: 'seller' });
+    const opened = spine.openReturn({ returnSealId: 'return-seal-v', at: T });
+    expect(opened.ok).toBe(true);
+    if (!opened.ok) return;
+    expect(opened.events.map((e) => e.name)).toEqual(['delivery.refused.v1', 'return.logistics_requested.v1']);
+    expect(opened.events[0]!.payload).toMatchObject({ rejection: 'valid_rejection', fault_class: 'seller' });
+    expect(spine.isFeeRetainedRecorded(CHAIN.order_id)).toBe(false);
+    expect(spine.returnFlowState()).toBe('opened');
+  });
+
+  it('an escalated BUYER-FAULT outcome → the ladder arm (fee retained), return opened; the outcome rides the answer', () => {
+    const spine = spineWithCourierCustody();
+    spine.recordDoorRefusal('change_of_mind', T);
+    spine.escalateExpiredWindow(T_PLUS_16MIN);
+    const opened = spine.openReturn({ returnSealId: 'return-seal-b', at: T_PLUS_16MIN });
+    expect(opened.ok).toBe(true);
+    if (!opened.ok) return;
+    expect(opened.outcome?.family).toBe('return');
+    expect(opened.events[0]!.payload).toMatchObject({ family: 'return', reason_code: 'change_of_mind', fault_class: 'buyer', fee_retained: true });
+    expect(spine.isFeeRetainedRecorded(CHAIN.order_id)).toBe(true);
+  });
+
+  it('neither ground → refused closed under the road’s standing name; a RESCHEDULE arm opens no return either', () => {
+    const spine = spineWithCourierCustody();
+    expect(spine.openReturn({ returnSealId: 'x', at: T })).toEqual({ ok: false, reason: 'no_valid_rejection' });
+    spine.recordDoorRefusal('honest_absence', T);
+    expect(spine.openReturn({ returnSealId: 'x', at: T })).toEqual({ ok: false, reason: 'no_valid_rejection' }); // window still open
+    spine.escalateExpiredWindow(T_PLUS_16MIN); // reschedule arm
+    expect(spine.currentLadderOutcome()?.family).toBe('reschedule');
+    expect(spine.openReturn({ returnSealId: 'x', at: T_PLUS_16MIN })).toEqual({ ok: false, reason: 'no_valid_rejection' });
+    expect(spine.returnFlowState()).toBeNull();
+  });
+});

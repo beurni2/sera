@@ -55,7 +55,14 @@ export type AssignmentStatus =
    * (`custody.transferred_to_customer.v1` is the custody-domain moment this
    * mirrors) — never on a rider's claim: a carrier must never validate their
    * own delivery. */
-  | 'delivered';
+  | 'delivered'
+  /** RETOUR-VIVANT-1 (SE6.2 live) — the NAMED return terminal: the two-key
+   * handover consumed at custody, the package home with its supplier, the
+   * rider free. Entered ONLY on custody's ledger word over the produce
+   * wire (`custody.returned_to_supplier.v1` is the custody moment this
+   * mirrors) — never on a rider's claim. SE-I10: a return is a named exit,
+   * never a generic failure. */
+  | 'returned';
 
 export interface AssignmentRecord {
   assignmentId: string;
@@ -381,6 +388,26 @@ export class AssignmentBook {
     this.assignments.set(active.assignmentId, delivered);
     this.aggregateVersion += 1;
     return { ok: true, duplicate: false, assignment: delivered };
+  }
+
+  /** RETOUR-VIVANT-1 — `deliver`'s twin for the return road: the active
+   * course closes `returned` on custody's word; a redelivery of the wire
+   * settles `duplicate`; an order the book never carried (or already
+   * closed otherwise) settles `no_active_course` — permanent, never an
+   * error the at-least-once sender would hammer. */
+  returnToSupplier(orderId: string, at: string): DeliverOutcome {
+    const already = [...this.assignments.values()].find(
+      (a) => a.orderId === orderId && a.status === 'returned',
+    );
+    if (already !== undefined) return { ok: true, duplicate: true, assignment: already };
+    const active = [...this.assignments.values()].find(
+      (a) => a.orderId === orderId && ACTIVE_STATUSES.includes(a.status),
+    );
+    if (active === undefined) return { ok: false, reason: 'no_active_course' };
+    const returned: AssignmentRecord = { ...active, status: 'returned', deliveredAt: at };
+    this.assignments.set(active.assignmentId, returned);
+    this.aggregateVersion += 1;
+    return { ok: true, duplicate: false, assignment: returned };
   }
 
   /** Unacknowledged past deadline → back to the queue (assignment.expired.v1).

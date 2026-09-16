@@ -3,9 +3,14 @@ import {
   custodyWithCustomer,
   evidenceHeld,
   inspectionHeld,
+  returnOpened,
+  returnedToSupplier,
   transitArrived,
   transitDeparted,
+  validRejectionRecorded,
   verificationAccepted,
+  windowExpiredInto,
+  windowOpened,
   type CustodyAnswer,
 } from './custody-acts';
 import type { ActStage } from './act-memory';
@@ -168,6 +173,105 @@ export function dropOutcome(answer: CustodyAnswer): ActOutcomeKeys {
 /** Delivered, from the phase — the delivery screen's one terminal question. */
 export function dropDone(phase: ActPhase): boolean {
   return phase.kind === 'answered' && custodyWithCustomer(phase.answer);
+}
+
+/**
+ * ═══ RETOUR-VIVANT-1 — WHAT THE RIDER IS TOLD ON THE LADDER AND THE ROAD
+ * HOME ═══
+ *
+ * The same one rule: a refusal at the door is NOT an error. It is the §6.4
+ * ladder's first rung, a custody fact the ledger records, and the sentences
+ * below say the true thing in each case — the window is open, the window is
+ * not over yet, the fee stays, the package goes home, the keys did not open.
+ */
+
+/** After « Un souci ? » named its reason (`POST /rider/door/refusal`). */
+export function refusalOutcome(answer: CustodyAnswer): ActOutcomeKeys {
+  if (windowOpened(answer)) return { title: 'retry.status', tone: 'ok' };
+  if (answer.kind === 'refused') {
+    // The window already exists — a second reason cannot mint another one.
+    // Held truth, not a fault: the screen shows the window it already has.
+    if (answer.reason === 'ladder_already_open') return { title: 'retry.status', tone: 'ok' };
+    if (answer.reason === 'order_already_delivered') return { title: 'delivery.done', tone: 'ok' };
+    return { title: 'acts.refused', tone: 'refused' };
+  }
+  if (answer.kind === 'recorded') return { title: 'acts.refused', tone: 'refused' };
+  return sharedOutcome(answer);
+}
+
+/** After « Le temps est passé » (`POST /rider/door/expire`). `window_not_expired`
+ *  is a WAITING truth — custody's clock, not the phone's, and the same tap
+ *  will land once the hour on screen has passed. */
+export function expireOutcome(answer: CustodyAnswer): ActOutcomeKeys {
+  if (windowExpiredInto(answer) !== null) return { title: 'retry.expired_note', tone: 'ok' };
+  if (answer.kind === 'refused') {
+    if (answer.reason === 'window_not_expired') {
+      return { title: 'retry.not_expired', hint: 'retry.not_expired_hint', tone: 'waiting' };
+    }
+    return { title: 'acts.refused', tone: 'refused' };
+  }
+  if (answer.kind === 'recorded') return { title: 'acts.refused', tone: 'refused' };
+  return sharedOutcome(answer);
+}
+
+/** After « Préparer le retour » (`POST /rider/return/open`). */
+export function returnOpenOutcome(answer: CustodyAnswer): ActOutcomeKeys {
+  if (returnOpened(answer)) return { title: 'retour.ouvert', tone: 'ok' };
+  if (answer.kind === 'refused') {
+    // Custody has no refusal on record that sends this package home — the
+    // ladder was not walked to its end. Said plainly; retrying replays it.
+    if (answer.reason === 'no_valid_rejection' || answer.reason === 'no_buyer_fault_refusal') {
+      return { title: 'retour.pas_de_refus', hint: 'retour.pas_de_refus_hint', tone: 'refused' };
+    }
+    return { title: 'acts.refused', tone: 'refused' };
+  }
+  if (answer.kind === 'recorded') return { title: 'acts.refused', tone: 'refused' };
+  return sharedOutcome(answer);
+}
+
+/** After « Échanger les deux codes » (`POST /rider/return/handover`). A refused
+ *  pair burns nothing (the registry checks both before consuming either), so
+ *  « réessayez » is honest: the keys logistics armed land within moments. */
+export function handoverOutcome(answer: CustodyAnswer): ActOutcomeKeys {
+  if (returnedToSupplier(answer)) return { title: 'retour.done', tone: 'ok' };
+  if (answer.kind === 'refused') {
+    if (answer.reason === 'return_two_key_refused') {
+      return { title: 'retour.refuse_deux_cles', hint: 'retour.refuse_deux_cles_hint', tone: 'waiting' };
+    }
+    if (answer.reason === 'return_not_open') return { title: 'retour.not_open', tone: 'refused' };
+    return { title: 'acts.refused', tone: 'refused' };
+  }
+  if (answer.kind === 'recorded') return { title: 'acts.refused', tone: 'refused' };
+  return sharedOutcome(answer);
+}
+
+/** The ONE retry window is open on the ledger — this session's answer, or the
+ *  `ladder_already_open` twin (a relaunch that re-refused is told the window
+ *  it already has). */
+export function windowIsOpen(phase: ActPhase): boolean {
+  if (phase.kind !== 'answered') return false;
+  if (windowOpened(phase.answer)) return true;
+  return phase.answer.kind === 'refused' && phase.answer.reason === 'ladder_already_open';
+}
+
+/** Into which arm the window expired — the ledger's word, from the phase. */
+export function windowExpiredTo(phase: ActPhase): 'return' | 'reschedule' | null {
+  return phase.kind === 'answered' ? windowExpiredInto(phase.answer) : null;
+}
+
+/** The buyer's VALID refusal is on the ledger — the inspection's third answer. */
+export function validRejectionHeld(phase: ActPhase): boolean {
+  return phase.kind === 'answered' && validRejectionRecorded(phase.answer);
+}
+
+/** The return is open — gates the two-key screen on the ledger's word. */
+export function returnIsOpen(phase: ActPhase): boolean {
+  return phase.kind === 'answered' && returnOpened(phase.answer);
+}
+
+/** The package is home — the return road's terminal, from the phase. */
+export function returnDone(phase: ActPhase): boolean {
+  return phase.kind === 'answered' && returnedToSupplier(phase.answer);
 }
 
 /** Evidence held, from the phase — gates the code entry the way `maySeal`

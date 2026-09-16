@@ -241,6 +241,24 @@ interface CourseLivreeOutbox {
 }
 const COURSE_LIVREE_OUTBOX_KEY = 'custody:course-livree-outbox:v1';
 
+/**
+ * RETOUR-VIVANT-1 — the FIFTH and SIXTH wires, both to LOGISTICS on the
+ * course-livrée terms (its key, own state each, at-least-once, alarm-driven,
+ * `unsendable_no_config` an honest rest): RETOUR OUVERT — the return flow
+ * opened, so logistics mints the two handover keys and carries the rider's
+ * on his session; COURSE RETOURNÉE — the two keys consumed, custody with the
+ * seller, so the assignment closes `returned` and the rider walks free.
+ * Both fire from `commit()` on the SPINE's return state, never on a caller's
+ * claim, and their ids are deterministic per order: one order, one return.
+ */
+interface RetourOutbox {
+  status: 'pending' | 'delivered' | 'unsendable_no_config';
+  attempts: number;
+  body: { orderId: string; command_id: string; at: string };
+}
+const RETOUR_OUVERT_OUTBOX_KEY = 'custody:retour-ouvert-outbox:v1';
+const COURSE_RETOURNEE_OUTBOX_KEY = 'custody:course-retournee-outbox:v1';
+
 interface CustodyHead {
   /**
    * ⚠ VERIFIER BLOCKER (round 4) — THE CHAIN IS BOUND TOO. This object writes
@@ -300,7 +318,7 @@ function canonicalJson(value: unknown): string {
  *  transitions arrive with the rider's own authenticated hand (SE-LIVE-4);
  *  no route writes them today, so no half-built custody path exists. */
 export type CustodyCommand =
-  | { kind: 'arm_secret'; command_id: string; secretKind: 'pickup_verification_code' | 'custody_seal' | 'buyer_drop_code'; secretDigest: string; at: string }
+  | { kind: 'arm_secret'; command_id: string; secretKind: 'pickup_verification_code' | 'custody_seal' | 'buyer_drop_code' | 'seller_return_acceptance' | 'rider_return_confirmation'; secretDigest: string; at: string }
   | {
       kind: 'verify_pickup';
       command_id: string;
@@ -417,6 +435,56 @@ export type CustodyCommand =
       command_id: string;
       returnSealDigest: string;
       attribution: 'founder_attested' | 'rider_authenticated';
+      at: string;
+    }
+  | {
+      /**
+       * RETOUR-VIVANT-1 (SE6.1 live) — the §6.4 FIRST refusal at the door,
+       * by its canonical reason: opens the ONE retry window (family
+       * `retry`). A RIDER act with NO secret in it; every rule (custody
+       * with courier, one window ever, the taxonomy) lives in the spine.
+       */
+      kind: 'door_refusal';
+      command_id: string;
+      reasonCode: string;
+      attribution: 'founder_attested' | 'rider_authenticated';
+      at: string;
+    }
+  | {
+      /**
+       * RETOUR-VIVANT-1 — the window expired unresolved: the ladder
+       * proceeds (family `return` on an escalating reason, `reschedule`
+       * otherwise). The instant ON the command is what the spine judges
+       * against `windowExpiresAt`, so a replay re-decides byte-identically.
+       */
+      kind: 'door_expire';
+      command_id: string;
+      attribution: 'founder_attested' | 'rider_authenticated';
+      at: string;
+    }
+  | {
+      /**
+       * RETOUR-VIVANT-1 (SE6.2 live) — the two-key return handover at the
+       * supplier: the seller's return-acceptance key and the rider's
+       * confirmation key, BOTH digested at the door, consumed together or
+       * not at all (the spine's `consumeTwoKeys`). Custody courier → seller.
+       */
+      kind: 'return_handover';
+      command_id: string;
+      sellerKeyDigest: string;
+      riderKeyDigest: string;
+      attribution: 'founder_attested' | 'rider_authenticated';
+      at: string;
+    }
+  | {
+      /**
+       * RETOUR-VIVANT-1 (§6.5) — OPS ONLY: the dispatcher DECLARES a
+       * CustodyLiabilityClaim on a Séra-caused loss; the spine strict-parses
+       * the canon record and keeps it. A record, never a fund movement.
+       */
+      kind: 'file_claim';
+      command_id: string;
+      claim: unknown;
       at: string;
     };
 
@@ -848,7 +916,22 @@ export class CustodyDO {
       // STOCK-VENDU-1b — pure spine call on values stored ON the command,
       // like both door arms above: replay re-applies byte-identically.
       case 'open_return':
-        return spine.openValidRejectionReturn({ returnSealId: cmd.returnSealDigest, at: cmd.at });
+        // RETOUR-VIVANT-1 — the spine picks the arm from its OWN state (a
+        // valid rejection, or an escalated buyer-fault outcome), live and on
+        // replay alike; the command carries only the seal digest and the
+        // instant.
+        return spine.openReturn({ returnSealId: cmd.returnSealDigest, at: cmd.at });
+      // RETOUR-VIVANT-1 — pure spine calls on values stored ON the command,
+      // like every arm above: the ladder's two rungs, the two-key handover,
+      // the dispatcher's claim.
+      case 'door_refusal':
+        return spine.recordDoorRefusal(cmd.reasonCode, cmd.at);
+      case 'door_expire':
+        return spine.escalateExpiredWindow(cmd.at);
+      case 'return_handover':
+        return spine.completeReturnHandover(cmd.sellerKeyDigest, cmd.riderKeyDigest, cmd.at);
+      case 'file_claim':
+        return spine.fileCustodyLiabilityClaim(cmd.claim, cmd.at);
     }
   }
 
@@ -885,7 +968,10 @@ export class CustodyDO {
     const livreePending = await this.flushCourseLivree();
     // STOCK-VENDU-1b — the FOURTH wire, same terms: own state, shared alarm.
     const refusPending = await this.flushRefus();
-    const attempts = Math.max(eligibilityPending, transitPending, livreePending, refusPending);
+    // RETOUR-VIVANT-1 — the fifth and sixth wires, same terms.
+    const retourOuvertPending = await this.flushLogisticsWire(RETOUR_OUVERT_OUTBOX_KEY, '/produce/retour-ouvert');
+    const retourneePending = await this.flushLogisticsWire(COURSE_RETOURNEE_OUTBOX_KEY, '/produce/course-retournee');
+    const attempts = Math.max(eligibilityPending, transitPending, livreePending, refusPending, retourOuvertPending, retourneePending);
     if (attempts > 0) {
       const backoffMs = Math.min(30_000 * 2 ** Math.min(attempts, 7), 3_600_000);
       await this.state.storage.setAlarm(Date.now() + backoffMs).catch(() => undefined);
@@ -1047,6 +1133,53 @@ export class CustodyDO {
     }
   }
 
+  /**
+   * RETOUR-VIVANT-1 — one flush for both return wires, on `flushCourseLivree`'s
+   * exact terms: the SAME logistics binding and key (the `/produce/` door is
+   * one door), `res.ok` alone decides (logistics answers every settled
+   * condition 200), missing config is the honest `unsendable_no_config` rest,
+   * re-checked every flush and revived by a replayed return act.
+   */
+  private async flushLogisticsWire(key: string, path: string): Promise<number> {
+    const outbox = await this.state.storage.get<RetourOutbox>(key);
+    if (outbox === undefined || outbox.status !== 'pending') return 0;
+    const logistics = this.env.LOGISTICS;
+    const secret = this.env.SERA_COURSE_LIVREE_SECRET ?? '';
+    if (logistics === undefined || secret === '') {
+      await this.state.storage.put(key, { ...outbox, status: 'unsendable_no_config' } satisfies RetourOutbox);
+      return 0;
+    }
+    let delivered = false;
+    try {
+      const res = await logistics.fetch(new Request(`https://logistics${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${secret}` },
+        body: JSON.stringify(outbox.body),
+      }));
+      delivered = res.ok;
+    } catch {
+      delivered = false;
+    }
+    const attempts = outbox.attempts + 1;
+    await this.state.storage.put(key, { ...outbox, status: delivered ? 'delivered' : 'pending', attempts } satisfies RetourOutbox);
+    return delivered ? 0 : attempts;
+  }
+
+  /** RETOUR-VIVANT-1 — the return wires' revival on a replayed return act:
+   *  `reviveDropOutboxRows`' law, row by row on its own status. */
+  private async reviveRetourRows(): Promise<void> {
+    const revive: Record<string, unknown> = {};
+    for (const key of [RETOUR_OUVERT_OUTBOX_KEY, COURSE_RETOURNEE_OUTBOX_KEY]) {
+      const row = await this.state.storage.get<RetourOutbox>(key);
+      if (row !== undefined && row.status !== 'delivered') revive[key] = { ...row, status: 'pending' } satisfies RetourOutbox;
+    }
+    if (Object.keys(revive).length === 0) return;
+    await this.state.storage.put(revive);
+    if ((await this.state.storage.getAlarm()) === null) {
+      await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
+    }
+  }
+
   /** COURSE-LIVRÉE — the third wire's flush, on the eligibility wire's exact
    *  shape: `res.ok` alone decides (the logistics door answers EVERY settled
    *  condition — livree, deja_livree, aucune_course — with a 200, so a retry
@@ -1196,9 +1329,38 @@ export class CustodyDO {
         armRefus = true;
       }
     }
+    /**
+     * RETOUR-VIVANT-1 — the two return wires arm IN THE SAME PUT, on the
+     * spine's own return state: opened ⇒ logistics must mint the handover
+     * keys; closed ⇒ the course is home. Each row once per order (the ids
+     * are deterministic), never re-armed here — revival is the replayed
+     * act's job, as for every other wire.
+     */
+    let armRetour = false;
+    const returnState = this.spine?.returnFlowState() ?? null;
+    if (returnState !== null && this.chain !== null) {
+      const ouvert = await this.state.storage.get<RetourOutbox>(RETOUR_OUVERT_OUTBOX_KEY);
+      if (ouvert === undefined) {
+        puts[RETOUR_OUVERT_OUTBOX_KEY] = {
+          status: 'pending', attempts: 0,
+          body: { orderId: this.chain.order_id, command_id: `retour-ouvert-${this.chain.order_id}`, at: cmd.at },
+        } satisfies RetourOutbox;
+        armRetour = true;
+      }
+      if (returnState === 'closed') {
+        const retournee = await this.state.storage.get<RetourOutbox>(COURSE_RETOURNEE_OUTBOX_KEY);
+        if (retournee === undefined) {
+          puts[COURSE_RETOURNEE_OUTBOX_KEY] = {
+            status: 'pending', attempts: 0,
+            body: { orderId: this.chain.order_id, command_id: `course-retournee-${this.chain.order_id}`, at: cmd.at },
+          } satisfies RetourOutbox;
+          armRetour = true;
+        }
+      }
+    }
     await this.state.storage.put(puts);
     this.log = next;
-    if (armRefus) await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
+    if (armRefus || armRetour) await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
   }
 
   /** The head implied by a given log, with the CURRENT rebuilt ledger. */
@@ -1556,7 +1718,8 @@ export class CustodyDO {
         body === null ||
         !isBoundedStr(body['command_id'], MAX_ID) ||
         !isBoundedStr(body['secret'], MAX_SECRET) ||
-        (kind !== 'pickup_verification_code' && kind !== 'custody_seal' && kind !== 'buyer_drop_code')
+        (kind !== 'pickup_verification_code' && kind !== 'custody_seal' && kind !== 'buyer_drop_code' &&
+          kind !== 'seller_return_acceptance' && kind !== 'rider_return_confirmation')
       ) {
         return malformed();
       }
@@ -2389,7 +2552,12 @@ export class CustodyDO {
         at: (body['at'] as string | undefined) ?? new Date().toISOString(),
       };
       const prior = this.priorFor(cmd);
-      if (prior.kind === 'duplicate') return this.replayOutcome(prior.outcome, cmd);
+      if (prior.kind === 'duplicate') {
+        // RETOUR-VIVANT-1 — a redelivered return-open is the recovery moment
+        // for the retour-ouvert wire (the drop route's own law).
+        await this.reviveRetourRows();
+        return this.replayOutcome(prior.outcome, cmd);
+      }
       if (prior.kind === 'conflict') {
         return Response.json({ ok: false, reason: 'command_id_reused_with_other_content' }, { status: 409 });
       }
@@ -2401,6 +2569,190 @@ export class CustodyDO {
         | { ok: false; reason?: string };
       const recorded: RecordedOutcome = applied.ok
         ? { httpStatus: 200, body: { ok: true, kind: 'return_opened' } }
+        : { httpStatus: 409, body: { ok: false, reason: applied.reason ?? 'refused' } };
+      await this.commit(cmd, recorded);
+      return Response.json(recorded.body, { status: recorded.httpStatus });
+    }
+
+    /**
+     * ═══ RETOUR-VIVANT-1 — THE §6.4 LADDER AND THE §6.5 HANDOVER GET THEIR
+     * WIRES ═══
+     *
+     * The spine has held the ladder since WO-2.2 (`recordDoorRefusal`,
+     * `escalateExpiredWindow`, `applyBuyerFaultRefusal`) and the two-key
+     * handover since the same slice (`completeReturnHandover`), and NO route
+     * reached any of them: a buyer who could not pay at the door could never
+     * be refused by name, and a refused package could never come home to its
+     * supplier on the ledger. These routes are the wires and nothing else —
+     * same priorFor/conflict/tooLargeToCommit/commit discipline as every
+     * command above; the answers carry the canon outcome (a DeliveryOutcome,
+     * no event internals), never a franc.
+     *
+     * `/door/refusal` — RIDER act, no secret: the first refusal by its
+     * canonical reason opens the ONE retry window.
+     */
+    if (request.method === 'POST' && pathname === '/door/refusal') {
+      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      if (
+        body === null ||
+        !isBoundedStr(body['command_id'], MAX_ID) ||
+        !isBoundedStr(body['reasonCode'], MAX_ID) ||
+        (body['at'] !== undefined && !isIso(body['at']))
+      ) {
+        return malformed();
+      }
+      const refusalRider = request.headers.get('X-Rider-Authenticated');
+      const cmd: CustodyCommand = {
+        kind: 'door_refusal',
+        command_id: (body['command_id'] as string).trim(),
+        reasonCode: (body['reasonCode'] as string).trim(),
+        attribution: refusalRider !== null && refusalRider !== '' ? 'rider_authenticated' : 'founder_attested',
+        at: (body['at'] as string | undefined) ?? new Date().toISOString(),
+      };
+      const prior = this.priorFor(cmd);
+      if (prior.kind === 'duplicate') return this.replayOutcome(prior.outcome, cmd);
+      if (prior.kind === 'conflict') {
+        return Response.json({ ok: false, reason: 'command_id_reused_with_other_content' }, { status: 409 });
+      }
+      if (this.tooLargeToCommit(cmd)) {
+        return Response.json({ ok: false, reason: 'command_too_large' }, { status: 413 });
+      }
+      const applied = this.apply(this.spine, cmd) as
+        | { ok: true; outcome: unknown }
+        | { ok: false; reason?: string };
+      const recorded: RecordedOutcome = applied.ok
+        ? { httpStatus: 200, body: { ok: true, kind: 'window_opened', outcome: applied.outcome } }
+        : { httpStatus: 409, body: { ok: false, reason: applied.reason ?? 'refused' } };
+      await this.commit(cmd, recorded);
+      return Response.json(recorded.body, { status: recorded.httpStatus });
+    }
+
+    /**
+     * `/door/expire` — RIDER act, no secret: the window expired unresolved,
+     * the ladder proceeds. The spine judges the command's instant against
+     * `windowExpiresAt` (`window_not_expired` before it), so the rider's tap
+     * cannot shorten the window the buyer was promised.
+     */
+    if (request.method === 'POST' && pathname === '/door/expire') {
+      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      if (
+        body === null ||
+        !isBoundedStr(body['command_id'], MAX_ID) ||
+        (body['at'] !== undefined && !isIso(body['at']))
+      ) {
+        return malformed();
+      }
+      const expireRider = request.headers.get('X-Rider-Authenticated');
+      const cmd: CustodyCommand = {
+        kind: 'door_expire',
+        command_id: (body['command_id'] as string).trim(),
+        attribution: expireRider !== null && expireRider !== '' ? 'rider_authenticated' : 'founder_attested',
+        at: (body['at'] as string | undefined) ?? new Date().toISOString(),
+      };
+      const prior = this.priorFor(cmd);
+      if (prior.kind === 'duplicate') return this.replayOutcome(prior.outcome, cmd);
+      if (prior.kind === 'conflict') {
+        return Response.json({ ok: false, reason: 'command_id_reused_with_other_content' }, { status: 409 });
+      }
+      if (this.tooLargeToCommit(cmd)) {
+        return Response.json({ ok: false, reason: 'command_too_large' }, { status: 413 });
+      }
+      const applied = this.apply(this.spine, cmd) as
+        | { ok: true; outcome: unknown }
+        | { ok: false; reason?: string };
+      const recorded: RecordedOutcome = applied.ok
+        ? { httpStatus: 200, body: { ok: true, kind: 'window_expired', outcome: applied.outcome } }
+        : { httpStatus: 409, body: { ok: false, reason: applied.reason ?? 'refused' } };
+      await this.commit(cmd, recorded);
+      return Response.json(recorded.body, { status: recorded.httpStatus });
+    }
+
+    /**
+     * `/return/handover` — RIDER act at the SUPPLIER's counter: the seller's
+     * return-acceptance key and the rider's own confirmation key, both
+     * HASHED AT THE DOOR, consumed together or not at all. The answer names
+     * a two-key refusal without saying WHICH key failed (no oracle on a
+     * single-use secret); custody moves courier → seller only on the ledger's
+     * word, and the course-retournée wire arms inside `commit()`.
+     */
+    if (request.method === 'POST' && pathname === '/return/handover') {
+      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      if (
+        body === null ||
+        !isBoundedStr(body['command_id'], MAX_ID) ||
+        !isBoundedStr(body['sellerKey'], MAX_SECRET) ||
+        !isBoundedStr(body['riderKey'], MAX_SECRET) ||
+        (body['at'] !== undefined && !isIso(body['at']))
+      ) {
+        return malformed();
+      }
+      const handoverRider = request.headers.get('X-Rider-Authenticated');
+      const cmd: CustodyCommand = {
+        kind: 'return_handover',
+        command_id: (body['command_id'] as string).trim(),
+        sellerKeyDigest: digestSecret(body['sellerKey'] as string),
+        riderKeyDigest: digestSecret(body['riderKey'] as string),
+        attribution: handoverRider !== null && handoverRider !== '' ? 'rider_authenticated' : 'founder_attested',
+        at: (body['at'] as string | undefined) ?? new Date().toISOString(),
+      };
+      const prior = this.priorFor(cmd);
+      if (prior.kind === 'duplicate') {
+        await this.reviveRetourRows();
+        return this.replayOutcome(prior.outcome, cmd);
+      }
+      if (prior.kind === 'conflict') {
+        return Response.json({ ok: false, reason: 'command_id_reused_with_other_content' }, { status: 409 });
+      }
+      if (this.tooLargeToCommit(cmd)) {
+        return Response.json({ ok: false, reason: 'command_too_large' }, { status: 413 });
+      }
+      const applied = this.apply(this.spine, cmd) as
+        | { ok: true; event: unknown }
+        | { ok: false; reason?: string };
+      const recorded: RecordedOutcome = applied.ok
+        ? { httpStatus: 200, body: { ok: true, kind: 'returned_to_supplier' } }
+        : { httpStatus: 409, body: { ok: false, reason: applied.reason ?? 'refused' } };
+      await this.commit(cmd, recorded);
+      return Response.json(recorded.body, { status: recorded.httpStatus });
+    }
+
+    /**
+     * `/return/claim` — OPS ONLY (the rider allowlist never names it): the
+     * dispatcher declares a canon CustodyLiabilityClaim on a Séra-caused loss
+     * while the return flow exists. The spine strict-parses it; a record,
+     * never a fund movement (§6.5: « CustodyLiabilityClaim, not a
+     * Protection-Fund payout »).
+     */
+    if (request.method === 'POST' && pathname === '/return/claim') {
+      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      const claim = body?.['claim'];
+      if (
+        body === null ||
+        !isBoundedStr(body['command_id'], MAX_ID) ||
+        claim === null || typeof claim !== 'object' || Array.isArray(claim) ||
+        (body['at'] !== undefined && !isIso(body['at']))
+      ) {
+        return malformed();
+      }
+      const cmd: CustodyCommand = {
+        kind: 'file_claim',
+        command_id: (body['command_id'] as string).trim(),
+        claim,
+        at: (body['at'] as string | undefined) ?? new Date().toISOString(),
+      };
+      const prior = this.priorFor(cmd);
+      if (prior.kind === 'duplicate') return this.replayOutcome(prior.outcome, cmd);
+      if (prior.kind === 'conflict') {
+        return Response.json({ ok: false, reason: 'command_id_reused_with_other_content' }, { status: 409 });
+      }
+      if (this.tooLargeToCommit(cmd)) {
+        return Response.json({ ok: false, reason: 'command_too_large' }, { status: 413 });
+      }
+      const applied = this.apply(this.spine, cmd) as
+        | { ok: true; claim: unknown }
+        | { ok: false; reason?: string };
+      const recorded: RecordedOutcome = applied.ok
+        ? { httpStatus: 200, body: { ok: true, kind: 'claim_filed' } }
         : { httpStatus: 409, body: { ok: false, reason: applied.reason ?? 'refused' } };
       await this.commit(cmd, recorded);
       return Response.json(recorded.body, { status: recorded.httpStatus });

@@ -140,7 +140,7 @@ describe('riderView carries the funding fact’s paymentMode, additively', () =>
     const assignment = (moi.json['rider'] as Json)['assignment'] as Json;
     expect(assignment).toMatchObject({ orderId: 'ord-paymode-prepay', paymentMode: 'FULL_PREPAY' });
     // Additive: everything the app already parses is still on the read.
-    for (const field of ['assignmentId', 'taskId', 'status', 'codeRamassage', 'codeScelle', 'codeVerification']) {
+    for (const field of ['assignmentId', 'taskId', 'status', 'codeRamassage', 'codeScelle', 'codeVerification', 'codeScelleRetour', 'codeRetour', 'retourConfirmeAt', 'codeRetourFournisseur']) {
       expect(Object.hasOwn(assignment, field), `${field} must still ride /rider/moi`).toBe(true);
     }
   });

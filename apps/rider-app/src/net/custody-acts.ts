@@ -179,6 +179,16 @@ export interface DoorInspectionAct {
   readonly manufacturerSealOpened: boolean;
   readonly custodySealIntact: boolean;
   readonly buyerAccepts: boolean;
+  /**
+   * RETOUR-VIVANT-1 — present ONLY when the buyer REFUSES (`buyerAccepts`
+   * false): the §6.2 column of the refusal. The app sends `valid` alone — the
+   * category's valid-rejection list, judged by the SERVICE from
+   * `custodySealIntact` (seal broken → Séra's fault, intact → the seller's).
+   * The accept road keeps omitting it (the fixed contract, pinned by
+   * rendu-porte); `buyer_risk` is the ladder's road (« Un souci ? »), never
+   * this act's.
+   */
+  readonly refusalColumn?: 'valid';
   /** Frozen with the attempt (custody fingerprints the content — a moving
    *  clock would turn every retry into `command_id_reused_with_other_content`). */
   readonly startedAt: string;
@@ -198,6 +208,52 @@ export interface ConfirmDropAct {
   readonly commandId: CommandId;
   readonly orderId: string;
   readonly dropCode: string;
+}
+
+/**
+ * ═══ RETOUR-VIVANT-1 (SE6.1 + SE6.2 live) — THE LADDER AND THE ROAD HOME ═══
+ *
+ * Four acts on the rider door, the §6.4 ladder and the §6.5 return, each on
+ * the standing laws of every act above: never queued offline (a refusal, an
+ * expiry, a return and a handover are live custody statements — offline is an
+ * honest refusal), one minted command_id per attempt, and `at` NEVER sent:
+ * custody stamps the refusal's instant and computes the ONE retry window from
+ * ITS clock, so a rider's phone can neither shorten the window the buyer was
+ * promised nor date a custody transition.
+ */
+
+/** `POST /rider/door/refusal` — the buyer could not or would not take the
+ *  package; the reason is one of the canon taxonomy's ids and NOTHING else
+ *  (custody refuses an unknown one by name). No franc rides this act: the
+ *  fee's fate is the ledger's, computed nowhere on a phone (SE-I09). */
+export interface DoorRefusalAct {
+  readonly commandId: CommandId;
+  readonly orderId: string;
+  readonly reasonCode: string;
+}
+
+/** `POST /rider/return/open` — the refused package is re-sealed for the road
+ *  home « in a return bag with a NEW return-seal » (§6.4). The seal presented
+ *  is the MACHINE-CARRIED return seal the session holds (`codeScelleRetour`,
+ *  minted by logistics beside the outbound seal) — never the outbound seal,
+ *  never a value this phone invents. A custody secret: same no-offline law as
+ *  the seal at pickup. */
+export interface OpenReturnAct {
+  readonly commandId: CommandId;
+  readonly orderId: string;
+  readonly returnSealId: string;
+}
+
+/** `POST /rider/return/handover` — BOTH keys in one act, both-or-neither
+ *  (SE6.2): the supplier's acceptance key and the rider's own confirmation
+ *  key, both minted by logistics, both machine-carried on the session, the
+ *  seller's released only once the supplier typed the rider's on his console.
+ *  Custody consumes them together or refuses without burning either. */
+export interface ReturnHandoverAct {
+  readonly commandId: CommandId;
+  readonly orderId: string;
+  readonly sellerKey: string;
+  readonly riderKey: string;
 }
 
 /** Mint the identity of an act ONCE, at the gesture. Every retry reuses it. */
@@ -221,6 +277,16 @@ export interface CustodyActsPort {
    *  rider door (`POST /rider/door/inspection`). Same auth, same discipline. */
   recordDoorInspection(act: DoorInspectionAct, code: string): Promise<CustodyAnswer>;
   confirmDrop(act: ConfirmDropAct, code: string): Promise<CustodyAnswer>;
+  /** RETOUR-VIVANT-1 — the §6.4 ladder's first rung (`POST /rider/door/refusal`). */
+  refuseAtDoor(act: DoorRefusalAct, code: string): Promise<CustodyAnswer>;
+  /** RETOUR-VIVANT-1 — the window ran out (`POST /rider/door/expire`); custody's
+   *  clock decides whether it truly did (`window_not_expired` otherwise). */
+  expireWindow(code: string, orderId: string, commandId: CommandId): Promise<CustodyAnswer>;
+  /** RETOUR-VIVANT-1 — seal the refused package for home (`POST /rider/return/open`). */
+  openReturn(act: OpenReturnAct, code: string): Promise<CustodyAnswer>;
+  /** RETOUR-VIVANT-1 — the two-key handover at the supplier's counter
+   *  (`POST /rider/return/handover`). */
+  completeReturn(act: ReturnHandoverAct, code: string): Promise<CustodyAnswer>;
 }
 
 /** Custody's structured refusals arrive as `{ok:false, reason}` with a 4xx.
@@ -338,9 +404,11 @@ export function httpCustodyActs(
         manufacturerSealOpened: act.manufacturerSealOpened,
         custodySealIntact: act.custodySealIntact,
         buyerAccepts: act.buyerAccepts,
-        // `refusalColumn` DELIBERATELY absent — the accept road omits it
-        // (the fixed contract); the refusal road is the ladder's, not this
-        // button's. And no `at`: custody stamps its own clock, as always.
+        // `refusalColumn` rides ONLY on the valid-rejection road (RETOUR-
+        // VIVANT-1) — the accept road still omits it byte for byte (the
+        // fixed contract rendu-porte pins). And no `at`: custody stamps its
+        // own clock, as always.
+        ...(act.refusalColumn === undefined ? {} : { refusalColumn: act.refusalColumn }),
         startedAt: act.startedAt,
         completedAt: act.completedAt,
         evidenceBundleId: act.evidenceBundleId,
@@ -353,7 +421,102 @@ export function httpCustodyActs(
         dropCode: act.dropCode,
       });
     },
+    async refuseAtDoor(act, code) {
+      return post('/rider/door/refusal', code, {
+        orderId: act.orderId,
+        command_id: act.commandId,
+        reasonCode: act.reasonCode,
+        // No `at`: the window's expiry is CUSTODY's clock plus the policy,
+        // never this phone's — see the header block.
+      });
+    },
+    async expireWindow(code, orderId, commandId) {
+      return post('/rider/door/expire', code, {
+        orderId,
+        command_id: commandId,
+      });
+    },
+    async openReturn(act, code) {
+      return post('/rider/return/open', code, {
+        orderId: act.orderId,
+        command_id: act.commandId,
+        returnSealId: act.returnSealId,
+      });
+    },
+    async completeReturn(act, code) {
+      return post('/rider/return/handover', code, {
+        orderId: act.orderId,
+        command_id: act.commandId,
+        sellerKey: act.sellerKey,
+        riderKey: act.riderKey,
+      });
+    },
   };
+}
+
+/**
+ * ═══ RETOUR-VIVANT-1 — WHAT THE LEDGER SAID, READ BY NAME ═══
+ *
+ * Every reader below reads the exact field custody-do.ts sets (the A4 law:
+ * `recorded` is never `accepted`) — `kind` for the ladder and the return,
+ * never « the request worked ».
+ */
+
+/** The ONE retry window opened (`kind: 'window_opened'`, or its replay). */
+export function windowOpened(answer: CustodyAnswer): boolean {
+  return answer.kind === 'recorded' && answer.body['kind'] === 'window_opened';
+}
+
+/** When custody says the window closes — ITS clock, carried on the outcome
+ *  (`outcome.attempt.windowExpiresAt`). Null when the answer carries none:
+ *  the screen then shows the window without an hour rather than inventing
+ *  one from the phone's clock. */
+export function windowExpiresAtOf(answer: CustodyAnswer): string | null {
+  if (answer.kind !== 'recorded') return null;
+  const outcome = answer.body['outcome'];
+  if (outcome === null || typeof outcome !== 'object') return null;
+  const attempt = (outcome as Record<string, unknown>)['attempt'];
+  if (attempt === null || typeof attempt !== 'object') return null;
+  const at = (attempt as Record<string, unknown>)['windowExpiresAt'];
+  return typeof at === 'string' && !Number.isNaN(Date.parse(at)) ? at : null;
+}
+
+/** The window expired unresolved (`kind: 'window_expired'`) — and INTO which
+ *  arm, the ledger's own word: `return` (buyer fault, the fee retained, the
+ *  package goes home) or `reschedule` (honest absence / a provider failure —
+ *  nothing lost, another passage). Null while no expiry is recorded. */
+export function windowExpiredInto(answer: CustodyAnswer): 'return' | 'reschedule' | null {
+  if (answer.kind !== 'recorded' || answer.body['kind'] !== 'window_expired') return null;
+  const outcome = answer.body['outcome'];
+  if (outcome === null || typeof outcome !== 'object') return null;
+  const family = (outcome as Record<string, unknown>)['family'];
+  return family === 'return' || family === 'reschedule' ? family : null;
+}
+
+/** The buyer refused on a VALID ground (`kind: 'valid_rejection'`) — the
+ *  inspection act's third answer, beside `accepted` and `invalid_rejection`. */
+export function validRejectionRecorded(answer: CustodyAnswer): boolean {
+  return answer.kind === 'recorded' && answer.body['kind'] === 'valid_rejection';
+}
+
+/** Whose fault the SERVICE derived for a valid refusal (`faultClass` on the
+ *  answer): `sera` when the custody seal was broken, `seller` when the goods
+ *  did not match under an intact seal. Null on any other answer. */
+export function validRejectionFault(answer: CustodyAnswer): 'sera' | 'seller' | null {
+  if (answer.kind !== 'recorded' || !validRejectionRecorded(answer)) return null;
+  const fault = answer.body['faultClass'];
+  return fault === 'sera' || fault === 'seller' ? fault : null;
+}
+
+/** The return is OPEN on the ledger (`kind: 'return_opened'`, or its replay). */
+export function returnOpened(answer: CustodyAnswer): boolean {
+  return answer.kind === 'recorded' && answer.body['kind'] === 'return_opened';
+}
+
+/** The package is with its supplier (`kind: 'returned_to_supplier'`, or its
+ *  replay) — the return road's one terminal, by the ledger's word alone. */
+export function returnedToSupplier(answer: CustodyAnswer): boolean {
+  return answer.kind === 'recorded' && answer.body['kind'] === 'returned_to_supplier';
 }
 
 /** Delivered, by the Worker's own word (`status: 'custody_with_customer'`) —
