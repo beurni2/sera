@@ -415,3 +415,67 @@ describe('RETOUR-VIVANT-1 — the road home crosses BOTH real Workers', () => {
     }
   }, 60_000);
 });
+
+/**
+ * ═══ THE LOST UPDATE (seen ONCE under parallel load, closed) ═══
+ *
+ * The arm flush runs on the alarm and awaits custody twice; an outbound
+ * fetch does not hold the object's input gate, so the supplier's
+ * `/intake/retour/verify` can land BETWEEN those awaits. A flush that wrote
+ * back the row it captured before its awaits erased his `confirmeAt` — the
+ * cross-Worker seam read a null confirmation exactly once. This walk forces
+ * that interleaving deterministically: a custody STAND-IN (this file's one
+ * double, bounded to the produce door's two answers) types the supplier's
+ * confirmation into the REAL logistics Worker while it is still answering
+ * the rider-key arm, and the session must still carry the confirmation.
+ */
+describe('the arm flush cannot erase the supplier’s confirmation', () => {
+  it('the supplier types the rider’s code while custody is still answering the arm → /rider/moi keeps retourConfirmeAt', async () => {
+    const hold: Hold = {};
+    const custodyStandIn = new Miniflare({
+      modules: true,
+      script: `export default { async fetch(request, env) {
+        const path = new URL(request.url).pathname;
+        if (path === '/produce/order/open') return Response.json({ ok: true, status: 'opened' });
+        if (path === '/produce/secrets/arm') {
+          const body = await request.json();
+          if (body.kind === 'rider_return_confirmation') {
+            // The supplier at his console, at exactly this instant.
+            const res = await env.LOGISTICS.fetch(new Request('https://logistics/intake/retour/verify', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + env.INTAKE },
+              body: JSON.stringify({ command_id: 'sv-race', orderId: body.orderId, code: body.secret }),
+            }));
+            const verdict = await res.json();
+            return Response.json({ ok: true, armed: true, verdict: verdict.verdict });
+          }
+          return Response.json({ ok: true, armed: true });
+        }
+        return Response.json({ ok: false, reason: 'not_found' }, { status: 404 });
+      } }`,
+      serviceBindings: {
+        LOGISTICS: (request: Request) => hold.logistics!.dispatchFetch(request.url, request as never) as never,
+      },
+      bindings: { INTAKE },
+    });
+    live.push(custodyStandIn);
+    hold.custody = custodyStandIn;
+    spawnLogistics(hold);
+    const logistics = hold.logistics!;
+
+    const O = 'ord-retour-race-1';
+    const { code } = await courseConfiee(logistics, O, 'rider-retour-race', 'rr1');
+    // custody says the return opened (the real wire's exact body).
+    const ouvert = await produceDoor(logistics, '/produce/retour-ouvert', LIVREE_KEY, { orderId: O, command_id: `retour-ouvert-${O}`, at: T });
+    expect(ouvert.json).toEqual({ ok: true, status: 'retour_ouvert' });
+    // The alarm arms the rider's key; the stand-in confirms it mid-flight.
+    const confirme = await attendreMoi(logistics, code, (a) => a !== null && typeof a['retourConfirmeAt'] === 'string', 'the confirmation typed mid-arm was erased by the flush');
+    expect(confirme!['retourConfirmeAt']).toEqual(expect.any(String));
+    expect(confirme!['codeRetourFournisseur']).toMatch(CODE_SHAPE);
+    // …and it STAYS after the flush wrote its own state back: the arm is done
+    // (custody answered both), and the confirmation is still there.
+    await new Promise((r) => setTimeout(r, 1_500));
+    const apres = await moiAssignment(logistics, code);
+    expect(apres!['retourConfirmeAt']).toBe(confirme!['retourConfirmeAt']);
+  }, 60_000);
+});
