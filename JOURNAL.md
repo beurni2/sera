@@ -9,7 +9,9 @@ Format per entry:
 
 ---
 
-## 2026-09-16 · RETOUR-VIVANT-1 — SE6.1 + SE6.2 LIVE: the §6.4 ladder and the §6.5 road home, across both Workers and the rider's screen; the supplier's half in boutik-plus · BUILT on the branch (47335b8) · NOT MERGED · NOT DEPLOYED · awaiting the founder's word
+## 2026-09-16 · RETOUR-VIVANT-1 — SE6.1 + SE6.2 LIVE: the §6.4 ladder and the §6.5 road home, across both Workers and the rider's screen; the supplier's half in boutik-plus · MERGED AND DEPLOYED 2026-09-17 on the founder's « go »
+
+**MERGED + DEPLOYED (founder: « go », 2026-09-17).** main fast-forwarded 7522f9f → ac5b692 (the branch head, verified `merge-base --is-ancestor`). Runs on main at ac5b692, all `success`: ci #190 · expo-preview #135 (the rider app published) · custody-deploy #19 (id 35166074581, `workflow_dispatch`) · logistics-deploy #29 (id 35166076024, `workflow_dispatch`). Order kept: Séra's two Workers first, then Boutik+'s offer-service Worker and supplier console (its journal has those runs). The founder confirmed « they are green » and the API confirms it independently.
 
 **Founder, 2026-09-16: « Now build the remaining slices that does require the aggregator decision »** — read as the slices that do NOT require it (stated to him); the money side stays blocked on the aggregator. Started with the highest-stakes custody slices: SE6.2 (return road) and SE6.1 (ladder), one slice, because a refusal without a road home is a package nobody owns.
 
