@@ -148,6 +148,7 @@ describe('REPROGRAMMATION-2 — the courses already on their next passage, and t
     expect(t(renvoiRefusKey('custody_non_relie'))).toBe("Le service de garde n'a pas répondu. Réessayez.");
     expect(t(renvoiRefusKey('custody_unreachable'))).toBe("Le service de garde n'a pas répondu. Réessayez.");
     expect(t(renvoiRefusKey('custody_refused'))).toBe('Séra a refusé ce retour. Relisez le tableau.');
+    expect(t(renvoiRefusKey('retour_deja_ouvert'))).toBe('Le colis est déjà en route vers le vendeur. Relisez le tableau.');
     expect(t(renvoiRefusKey('reponse_sans_decision'))).toBe('Séra a refusé. Relisez le tableau.');
     for (const key of ['reprog.deuxieme_etat', 'reprog.deuxieme_fenetre', 'reprog.deuxieme_sans_fenetre', 'reprog.renvoyer', 'reprog.renvoi_titre', 'reprog.renvoi_confirm', 'reprog.renvoi_confirmer', 'reprog.renvoi_fait']) {
       expect(t(key), key).not.toBe('');

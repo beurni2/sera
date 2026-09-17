@@ -1740,6 +1740,12 @@
     "screenClass": "label"
   },
   {
+    "key": "reschedule.client_pas_la",
+    "fr": "Le client n'est pas là",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
     "key": "retour.decide_titre",
     "fr": "Séra renvoie le colis au vendeur.",
     "register": "neutral",

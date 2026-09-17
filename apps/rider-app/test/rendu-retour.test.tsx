@@ -747,6 +747,48 @@ describe('⚠ REPROGRAMMATION-2 — « Le client est là »: the buyer comes bac
     expect(s.shows('Livré. Merci.'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
   });
 
+  it('a mis-tap has a way back (verifier MINOR, closed): « Le client n’est pas là » returns to the poster without a kill, and the poster offers the door again', async () => {
+    const state = courseInMode('FULL_PREPAY');
+    const world = freshWorld();
+    const { s, w } = await toTheDoor([logistics(state), custody(world)]);
+    await s.press('Un souci ?');
+    await s.press('Client absent');
+    world.expired = true;
+    await s.press('Le temps est passé');
+    await s.press('Le client est là');
+    expect(s.shows('Le code de la cliente'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    expect(s.canPress("Le client n'est pas là"), 'the way back must be on the door').toBe(true);
+    await s.press("Le client n'est pas là");
+    expect(s.shows('On repasse un autre jour.'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    expect(s.shows('Le code de la cliente')).toBe(false);
+    expect(s.canPress('Le client est là')).toBe(true);
+    // Neither tap sent anything: the ledger saw the two ladder acts and no more.
+    expect(w.calls.filter((c) => c.path.startsWith('/rider/door/'))).toHaveLength(2);
+  });
+
+  it('killed after the expiry, then « Le client est là » on the relaunched poster (verifier MINOR, closed): the ledger’s one window is remembered as spent — no « Un souci ? » is offered over it, the phone line is', async () => {
+    const state = courseInMode('FULL_PREPAY');
+    const world = freshWorld();
+    const first = await toTheDoor([logistics(state), custody(world)]);
+    await first.s.press('Un souci ?');
+    await first.s.press('Client absent');
+    world.expired = true;
+    await first.s.press('Le temps est passé');
+    // Logistics carries the chain ids for a live course (what the remise
+    // composes from after a relaunch — REPROGRAMMATION-1's D3).
+    state.chaine = CHAINE;
+    const { s, w } = await relaunch(first.s, [logistics(state), custody(world)]);
+    expect(s.shows('On repasse un autre jour.'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    await s.press('Le client est là');
+    expect(s.shows('Le code de la cliente'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    expect(s.canPress('Un souci ?'), 'no second ladder over a window the ledger already closed').toBe(false);
+    expect(s.shows('Encore un souci ? Appelez Séra.')).toBe(true);
+    expect(w.calls.some((c) => c.path === '/rider/door/refusal')).toBe(false);
+    await s.type(DROP);
+    await s.press('Confirmer la remise');
+    expect(s.shows('Livré. Merci.'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+  });
+
   it('door mode: the buyer came back — her accord is asked again before the code card, her valid refusal stays reachable', async () => {
     const state = courseInMode('DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR');
     const world = freshWorld();

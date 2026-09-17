@@ -1747,6 +1747,9 @@ export class LogisticsDO {
         armAttempts: 0,
         armRest: 'none',
       };
+      // REPROGRAMMATION-2 (verifier MINOR, closed): the package is going home
+      // — a passage the founder might still fix over it leaves the desk.
+      this.reschedules.forgetOrder(orderId);
       await this.state.storage.put(SNAP_RETOURS, this.retours);
       if ((await this.state.storage.getAlarm()) === null) {
         await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
@@ -1960,6 +1963,10 @@ export class LogisticsDO {
       if (active.status !== 'acknowledged') return Response.json({ ok: false, reason: 'course_non_acceptee' }, { status: 409 });
       const decided = this.retourDecide[active.assignmentId];
       if (decided !== undefined) return Response.json({ ok: true, status: 'deja_decide', decideAt: decided.decideAt });
+      // The rider already opened the return (a valid refusal at the door):
+      // the package is on its way home without the founder's word — said by
+      // name, never relayed to a custody that would refuse `return_in_progress`.
+      if (this.retours[active.assignmentId] !== undefined) return Response.json({ ok: false, reason: 'retour_deja_ouvert' }, { status: 409 });
       const passage = this.reschedules.priorTaskIdsOf(active.taskId).length + 1;
       if (passage < 2 && this.reschedules.openFor(orderId) === undefined) {
         return Response.json({ ok: false, reason: 'course_non_reprogrammee' }, { status: 409 });
@@ -2179,8 +2186,13 @@ export class LogisticsDO {
     // the window the founder fixed: the list his « Renvoyer au vendeur » lever
     // also serves. A course whose return he already decided is on neither
     // list — it is going home.
+    // Neither list holds a course whose return is already open on this book
+    // (the rider's valid refusal): the package is going home, and a passage
+    // fixed over it would be a task minted for nothing.
+    const enRetour = (assignmentId: string): boolean =>
+      this.retourDecide[assignmentId] !== undefined || this.retours[assignmentId] !== undefined;
     const enDeuxiemePassage = assignments
-      .filter((record) => this.retourDecide[record.assignmentId] === undefined)
+      .filter((record) => !enRetour(record.assignmentId))
       .map((record) => ({ record, passage: this.reschedules.priorTaskIdsOf(record.taskId).length + 1 }))
       .filter(({ passage }) => passage >= 2)
       .map(({ record, passage }) => ({
@@ -2196,7 +2208,7 @@ export class LogisticsDO {
       queued,
       riders,
       assignments,
-      aReprogrammer: aReprogrammer.filter((row) => this.retourDecide[row.assignmentId] === undefined),
+      aReprogrammer: aReprogrammer.filter((row) => !enRetour(row.assignmentId)),
       enDeuxiemePassage,
     };
   }

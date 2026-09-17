@@ -326,6 +326,7 @@ const REFUS_RENVOI: Record<string, string> = {
   course_non_reprogrammee: 'reprog.refus_order_not_rescheduled',
   no_active_course: 'reprog.refus_no_active_course',
   course_non_acceptee: 'reprog.refus_course_non_acceptee',
+  retour_deja_ouvert: 'reprog.renvoi_deja_en_route',
   custody_non_relie: 'reprog.renvoi_garde_muette',
   custody_unreachable: 'reprog.renvoi_garde_muette',
   custody_refused: 'reprog.renvoi_refuse',

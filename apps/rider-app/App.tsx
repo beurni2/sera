@@ -1351,7 +1351,10 @@ export default function App() {
   const retourDecide = (liveAssignment?.retourDecideAt ?? null) !== null;
   /** The one §6.4 window is spent — on the 2e passage, or the moment it
    *  expired: no second ladder exists on the ledger to offer. */
-  const ladderSpent = passageCourant >= 2 || windowExpiredTo(expirePhase) !== null;
+  // The remembered rung counts too (verifier MINOR, closed): after a relaunch
+  // the expiry answer is gone from memory while the ledger's one window is
+  // still spent — the ladder must not be offered over it.
+  const ladderSpent = passageCourant >= 2 || windowExpiredTo(expirePhase) !== null || remembered === 'reschedule';
   const sendOpenReturn = useCallback(() => {
     if (riderCode === null || liveAssignment === null || scelleRetour === null) return;
     const attempt = attemptFor(`return-open|${liveAssignment.orderId}|${scelleRetour}`);
@@ -1457,6 +1460,17 @@ export default function App() {
       return (
         <>
           <FasoBody>{t('reschedule.souci_2e')}</FasoBody>
+          {/* REPROGRAMMATION-2 (verifier MINOR, closed): « Le client est là »
+              was a mis-tap — the way back to the poster, without a kill. */}
+          {clientRevenu ? (
+            <FasoGhostButton
+              label={t('reschedule.client_pas_la')}
+              onPress={() => {
+                setClientRevenu(false);
+                setReessaiEnCours(false);
+              }}
+            />
+          ) : null}
           {avecRefusValide && refusValideOuvert ? (
             <FasoCard>
               <FasoBody>{t('reject.seal_question')}</FasoBody>
@@ -1525,7 +1539,7 @@ export default function App() {
         />
       </>
     );
-  }, [refusalPhase, expirePhase, fenetreJusqua, refusValideOuvert, sendExpire, sendValidRejection, ladderSpent]);
+  }, [refusalPhase, expirePhase, fenetreJusqua, refusValideOuvert, sendExpire, sendValidRejection, ladderSpent, clientRevenu]);
 
   const signIn = useCallback(
     (typed: string) => {

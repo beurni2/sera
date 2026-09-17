@@ -493,6 +493,21 @@ describe('REPROGRAMMATION-1 — the next passage crosses BOTH real Workers, the 
     expect(await produce({ command_id: 'w-8', orderId: O2, at: T, outcome: outcome(O2, T2a) }))
       .toEqual({ status: 200, json: { ok: true, status: 'enregistre' } });
     expect(await desk(logistics).reprogrammations()).toMatchObject({ kind: 'ok', value: [{ orderId: O2, taskId: T2a }] });
+    // REPROGRAMMATION-2 (verifier MINOR, closed): the rider's VALID refusal
+    // at the door opens the return on custody, and the retour-ouvert wire
+    // lands here — the package is going home WITHOUT the founder's word. The
+    // course leaves both desk lists, the passage can no longer be fixed over
+    // it, and the lever home says so by name (never a relay custody would
+    // refuse `return_in_progress`).
+    expect((await produceDoor(logistics, '/produce/retour-ouvert', { orderId: O2, command_id: 'ro-rpd2', at: T })).json).toEqual({ ok: true, status: 'retour_ouvert' });
+    expect(await desk(logistics).reprogrammations()).toEqual({ kind: 'ok', value: [] });
+    // (O, above, is legitimately on its 2e passage and stays listed.)
+    const deuxiemes = await desk(logistics).deuxiemesPassages();
+    expect(deuxiemes.kind).toBe('ok');
+    if (deuxiemes.kind === 'ok') expect(deuxiemes.value.map((r) => r.orderId)).toEqual([O]);
+    expect(await desk(logistics).reprogrammer(O2, future, 'cmd-rpd2-fix')).toEqual({ kind: 'refused', reason: 'order_not_rescheduled' });
+    expect(await desk(logistics).renvoyer(O2, 'cmd-rpd2-rv')).toEqual({ kind: 'refused', reason: 'retour_deja_ouvert' });
+    expect(hold.custodyCalls.some((c) => c.path === '/produce/return/apply'), 'no relay over an open return').toBe(false);
     expect(await desk(logistics).retirer(O2)).toEqual({ kind: 'ok', value: 'retire' });
     expect(await desk(logistics).reprogrammations()).toEqual({ kind: 'ok', value: [] });
   });

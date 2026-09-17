@@ -1628,6 +1628,8 @@ if (app) {
       const oui = document.createElement('button');
       oui.className = 'reprog-renvoi-confirmer';
       oui.textContent = t('reprog.renvoi_confirmer');
+      // One act at a time on this desk: a fix in flight holds the return too.
+      oui.disabled = occupe;
       oui.addEventListener('click', () => {
         void renvoyerAuVendeur(orderId);
       });

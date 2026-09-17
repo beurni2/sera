@@ -992,7 +992,6 @@ export class CustodyDO {
     await this.ensureLoaded();
     let response: Response;
     try {
-      await this.healReprogrammationWire();
       response = await this.route(request);
     } catch {
       // In-memory state may hold a command that was applied but never
@@ -1616,6 +1615,9 @@ export class CustodyDO {
       }
       return Response.json({ ok: false, reason: failure }, { status: 409 });
     }
+    // REPROGRAMMATION-2 (verifier MINOR, closed): the wire heals only on a
+    // record this object agrees to serve — never on a tampered or misfiled one.
+    await this.healReprogrammationWire();
 
     if (objectName !== null && request.method !== 'GET') {
       const peek = (await request.clone().json().catch(() => null)) as Record<string, unknown> | null;

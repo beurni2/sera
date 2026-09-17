@@ -1114,5 +1114,11 @@
     "fr": "Séra a refusé ce retour. Relisez le tableau.",
     "register": "neutral",
     "screenClass": "status"
+  },
+  {
+    "key": "reprog.renvoi_deja_en_route",
+    "fr": "Le colis est déjà en route vers le vendeur. Relisez le tableau.",
+    "register": "neutral",
+    "screenClass": "status"
   }
 ]
