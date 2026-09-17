@@ -142,27 +142,50 @@ export function saisieKey(reason: 'incomplete' | 'fin_avant_debut' | 'passee'): 
 }
 
 /** The desk's own state: one fix in flight at a time, what was fixed (with
- *  its window, so the row can say it), and what was refused, by order. */
+ *  its window, so the row can say it), what was refused, by order — and the
+ *  ONE command each attempt rides on. */
 export interface FixationUi {
   readonly enVol: string | null;
   readonly faits: Readonly<Record<string, { readonly start: string; readonly end: string }>>;
   /** Catalog keys, by order — the refusal sentence the row shows. */
   readonly echecs: Readonly<Record<string, string>>;
+  /**
+   * VERIFIER MINOR (closed) — the command id of the attempt in progress, per
+   * order, WITH the window it carries. The door remembers what a command
+   * opened; a fresh id on every tap threw that away: a lost 200 (the 15 s
+   * timeout) then a second tap was told « Séra n'a pas encore reçu
+   * l'absence » over a passage the rider was already reading. The same
+   * window re-sent is the SAME act; a changed window is a new one.
+   */
+  readonly commandes: Readonly<Record<string, { readonly start: string; readonly end: string; readonly commandId: string }>>;
 }
 
-export const FIXATION_IDLE: FixationUi = { enVol: null, faits: {}, echecs: {} };
+export const FIXATION_IDLE: FixationUi = { enVol: null, faits: {}, echecs: {}, commandes: {} };
 
 /** Start a fix. Refused while another is in flight — two windows sent at once
- *  would race on the board's one read back. */
-export function commencerFixation(ui: FixationUi, orderId: string): FixationUi | null {
+ *  would race on the board's one read back. The command id is reused while
+ *  the window is the one already sent, minted afresh when it changed. */
+export function commencerFixation(
+  ui: FixationUi,
+  orderId: string,
+  fenetre: { readonly start: string; readonly end: string },
+  mint: () => string,
+): { readonly ui: FixationUi; readonly commandId: string } | null {
   if (ui.enVol !== null) return null;
   const echecs = { ...ui.echecs };
   delete echecs[orderId];
-  return { ...ui, enVol: orderId, echecs };
+  const prior = ui.commandes[orderId];
+  const commandId = prior !== undefined && prior.start === fenetre.start && prior.end === fenetre.end ? prior.commandId : mint();
+  return {
+    ui: { ...ui, enVol: orderId, echecs, commandes: { ...ui.commandes, [orderId]: { start: fenetre.start, end: fenetre.end, commandId } } },
+    commandId,
+  };
 }
 
 export function fixationFaite(ui: FixationUi, orderId: string, fenetre: { start: string; end: string }): FixationUi {
-  return { enVol: null, faits: { ...ui.faits, [orderId]: fenetre }, echecs: ui.echecs };
+  const commandes = { ...ui.commandes };
+  delete commandes[orderId];
+  return { enVol: null, faits: { ...ui.faits, [orderId]: fenetre }, echecs: ui.echecs, commandes };
 }
 
 export function fixationEchouee(ui: FixationUi, orderId: string, key: string): FixationUi {
@@ -178,6 +201,7 @@ const REFUS: Record<string, string> = {
   course_non_acceptee: 'reprog.refus_course_non_acceptee',
   no_active_course: 'reprog.refus_no_active_course',
   prior_task_missing: 'reprog.refus_no_active_course',
+  prior_task_mismatch: 'reprog.refus_prior_task_mismatch',
   fenetre_passee: 'reprog.saisie_passee',
   fenetre_invalide: 'reprog.saisie_fin_avant_debut',
   funding_projection_stale: 'reprog.refus_pas_prete',

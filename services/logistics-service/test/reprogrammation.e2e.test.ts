@@ -293,7 +293,7 @@ describe('REPROGRAMMATION-1 — the next passage crosses BOTH real Workers, the 
     // THE FOUNDER FIXES THE NEXT PASSAGE, through the console's own port.
     const start = new Date(Date.now() + 60 * 60_000).toISOString();
     const end = new Date(Date.now() + 3 * 60 * 60_000).toISOString();
-    const fixed = await desk(logistics).reprogrammer(O, { start, end });
+    const fixed = await desk(logistics).reprogrammer(O, { start, end }, 'cmd-rp1-fix');
     expect(fixed.kind, JSON.stringify(fixed)).toBe('ok');
     if (fixed.kind !== 'ok') return;
     const T2 = fixed.value.taskId;
@@ -330,12 +330,14 @@ describe('REPROGRAMMATION-1 — the next passage crosses BOTH real Workers, the 
     if (!moi.ok) return;
     expect(moi.session.assignment).toMatchObject({ passage: 2, fenetre: { start, end }, chaine: { taskId: T1, packageId: `pkg-${O}` } });
 
-    // IDEMPOTENT BY COMMAND, REFUSE-CLOSED BY STATE: a second fix of the same
-    // course (a fresh tap) is refused by name — nothing to fix any more.
-    const encore = await desk(logistics).reprogrammer(O, { start, end });
+    // IDEMPOTENT BY COMMAND: the console retries the SAME command (a lost
+    // answer) and is told the fix it already made — the same follow-up task.
+    const retried = await desk(logistics).reprogrammer(O, { start, end }, 'cmd-rp1-fix');
+    expect(retried).toEqual({ kind: 'ok', value: { taskId: T2 } });
+    // REFUSE-CLOSED BY STATE: a NEW command for the same course is refused by
+    // name — nothing to fix any more.
+    const encore = await desk(logistics).reprogrammer(O, { start, end }, 'cmd-rp1-fix-encore');
     expect(encore).toEqual({ kind: 'refused', reason: 'order_not_rescheduled' });
-    // (The exact-command replay is pinned in the doors test below, where the
-    // command id is known — the console's port mints its own.)
 
     // THE RIDER CANNOT BE GIVEN ANOTHER PACKAGE WHILE HE CARRIES THIS ONE:
     // the anchored lease is alive, the book's one-active rule holds.
@@ -362,7 +364,7 @@ describe('REPROGRAMMATION-1 — the next passage crosses BOTH real Workers, the 
     expect((again['lease'] as Json)['taskId']).toBe(other['taskId']);
   });
 
-  it('the doors refuse closed by name: no reschedule on record · a window already past · a reversed window · the produce door settles by name and rejects a foreign outcome', async () => {
+  it('the doors refuse closed by name: no reschedule on record · a window already past · a reversed window · the produce door settles by name, rejects a foreign outcome, and records nothing for a task the live course does not carry · a take-back and a retire leave no reschedule behind · the exact replay', async () => {
     const hold: Hold = {};
     spawnLogistics(hold);
     spawnCustody(hold);
@@ -370,17 +372,17 @@ describe('REPROGRAMMATION-1 — the next passage crosses BOTH real Workers, the 
 
     const O = 'ord-reprog-doors';
     const RIDER = 'rider-reprog-doors';
-    await courseConfiee(logistics, O, RIDER, 'rpd');
+    const { taskId: T1, assignmentId: A1 } = await courseConfiee(logistics, O, RIDER, 'rpd');
     const future = { start: new Date(Date.now() + 3_600_000).toISOString(), end: new Date(Date.now() + 7_200_000).toISOString() };
 
     // Nothing custody said yet: nothing to fix.
-    expect(await desk(logistics).reprogrammer(O, future)).toEqual({ kind: 'refused', reason: 'order_not_rescheduled' });
+    expect(await desk(logistics).reprogrammer(O, future, 'cmd-rpd-0')).toEqual({ kind: 'refused', reason: 'order_not_rescheduled' });
     // The window itself is judged before any state: past, then reversed.
-    expect(await desk(logistics).reprogrammer(O, { start: '2026-01-01T09:00:00.000Z', end: '2026-01-01T10:00:00.000Z' }))
+    expect(await desk(logistics).reprogrammer(O, { start: '2026-01-01T09:00:00.000Z', end: '2026-01-01T10:00:00.000Z' }, 'cmd-rpd-past'))
       .toEqual({ kind: 'refused', reason: 'fenetre_passee' });
-    expect(await desk(logistics).reprogrammer(O, { start: future.end, end: future.start })).toEqual({ kind: 'refused', reason: 'fenetre_invalide' });
+    expect(await desk(logistics).reprogrammer(O, { start: future.end, end: future.start }, 'cmd-rpd-rev')).toEqual({ kind: 'refused', reason: 'fenetre_invalide' });
     // The wrong key is the one door sentence.
-    expect(await desk(logistics, 'not-the-key').reprogrammer(O, future)).toEqual({ kind: 'bad_key' });
+    expect(await desk(logistics, 'not-the-key').reprogrammer(O, future, 'cmd-rpd-key')).toEqual({ kind: 'bad_key' });
 
     // The produce door: custody's key alone; every settled condition a 200 by
     // name; a body whose outcome names another order is a 400 (producer bug).
@@ -394,40 +396,65 @@ describe('REPROGRAMMATION-1 — the next passage crosses BOTH real Workers, the 
       taskId, orderId, family: 'reschedule', reasonCode: 'honest_absence', humanReasonRef: 'reason.honest_absence',
       faultClass: 'buyer', attempt: { number: 2, at: T },
     });
-    expect((await produce({ command_id: 'w-1', orderId: O, at: T, outcome: outcome(O, 'task-x') }, OPS)).status).toBe(401);
+    expect((await produce({ command_id: 'w-1', orderId: O, at: T, outcome: outcome(O, T1) }, OPS)).status).toBe(401);
     expect(await produce({ command_id: 'w-2', orderId: 'ord-nobody', at: T, outcome: outcome('ord-nobody', 'task-x') }))
       .toEqual({ status: 200, json: { ok: true, status: 'aucune_course' } });
-    expect((await produce({ command_id: 'w-3', orderId: O, at: T, outcome: outcome('ord-other', 'task-x') })).status).toBe(400);
-    expect((await produce({ command_id: 'w-4', orderId: O, at: T, outcome: { ...outcome(O, 'task-x'), family: 'retry' } })).status).toBe(400);
-    const first = await produce({ command_id: 'w-5', orderId: O, at: T, outcome: outcome(O, 'task-x') });
-    expect(first).toEqual({ status: 200, json: { ok: true, status: 'enregistre' } });
-    expect(await produce({ command_id: 'w-5', orderId: O, at: T, outcome: outcome(O, 'task-x') }))
-      .toEqual({ status: 200, json: { ok: true, status: 'deja_enregistre' } });
-    // Listed for the founder — and a reschedule naming a task that is NOT the
-    // live course's is refused at the fix, by name, moving nothing.
-    expect(await desk(logistics).reprogrammations()).toMatchObject({ kind: 'ok', value: [{ orderId: O, taskId: 'task-x', reasonCode: 'honest_absence' }] });
-    expect(await desk(logistics).reprogrammer(O, future)).toEqual({ kind: 'refused', reason: 'prior_task_mismatch' });
-    // Retiring the order takes the open reschedule with it (PURGE-ESSAI's law).
-    expect(await desk(logistics).retirer(O)).toEqual({ kind: 'ok', value: 'retire' });
+    expect((await produce({ command_id: 'w-3', orderId: O, at: T, outcome: outcome('ord-other', T1) })).status).toBe(400);
+    expect((await produce({ command_id: 'w-4', orderId: O, at: T, outcome: { ...outcome(O, T1), family: 'retry' } })).status).toBe(400);
+    // VERIFIER MAJOR (closed): an outcome naming a task the LIVE course does
+    // not carry (a redelivery after the follow-up, a stale outcome against a
+    // recomposed course) settles by name and records NOTHING — never a ghost
+    // row no fix could clear.
+    expect(await produce({ command_id: 'w-x', orderId: O, at: T, outcome: outcome(O, 'task-x') }))
+      .toEqual({ status: 200, json: { ok: true, status: 'tache_differente' } });
     expect(await desk(logistics).reprogrammations()).toEqual({ kind: 'ok', value: [] });
-
-    // IDEMPOTENT BY COMMAND: a second course, custody's word naming ITS task,
-    // fixed by a known command id — the exact replay answers the SAME
-    // follow-up (never a third attempt); a fresh id afterwards is refused
-    // by state.
-    const O2 = 'ord-reprog-doors-2';
-    const { taskId: T1 } = await courseConfiee(logistics, O2, 'rider-reprog-doors-2', 'rpd2');
-    expect(await produce({ command_id: 'w-6', orderId: O2, at: T, outcome: outcome(O2, T1) }))
+    expect(await desk(logistics).reprogrammer(O, future, 'cmd-rpd-ghost')).toEqual({ kind: 'refused', reason: 'order_not_rescheduled' });
+    // Custody's word naming the course's task: recorded once, then settled.
+    const first = await produce({ command_id: 'w-5', orderId: O, at: T, outcome: outcome(O, T1) });
+    expect(first).toEqual({ status: 200, json: { ok: true, status: 'enregistre' } });
+    expect(await produce({ command_id: 'w-5', orderId: O, at: T, outcome: outcome(O, T1) }))
+      .toEqual({ status: 200, json: { ok: true, status: 'deja_enregistre' } });
+    expect(await desk(logistics).reprogrammations()).toMatchObject({ kind: 'ok', value: [{ orderId: O, taskId: T1, reasonCode: 'honest_absence' }] });
+    // A TAKE-BACK leaves no reschedule behind (verifier MAJOR, closed): the
+    // next course composed for this order must not inherit a row naming a
+    // task it never had.
+    // The dispatcher's own assertion, truthful here: no pickup was ever verified
+    // on this course, so no custody ever began (the door refuses without it).
+    const takenBack = await ops(logistics, '/ops/assignment/take-back', { command_id: 'rpd-tb', assignmentId: A1, custodyNotBegun: true });
+    expect(takenBack['ok'], JSON.stringify(takenBack)).toBe(true);
+    expect(await desk(logistics).reprogrammations()).toEqual({ kind: 'ok', value: [] });
+    // Recomposed and re-assigned: custody's word for the NEW course lists it;
+    // the exact replay THROUGH THE PORT answers the same follow-up; a fresh
+    // command is refused by state.
+    const { taskId: T1b } = await courseConfiee(logistics, O, RIDER, 'rpd-b');
+    expect(T1b).not.toBe(T1);
+    expect(await produce({ command_id: 'w-6', orderId: O, at: T, outcome: outcome(O, T1b) }))
       .toEqual({ status: 200, json: { ok: true, status: 'enregistre' } });
-    const fix = { command_id: 'rpd2-fix', orderId: O2, fenetre: future };
-    const first2 = await ops(logistics, '/ops/reprogrammer', fix);
-    expect(first2).toMatchObject({ ok: true, duplicate: false, passage: 2, priorTaskIds: [T1] });
-    const replay = await ops(logistics, '/ops/reprogrammer', fix);
-    expect(replay).toEqual({ ok: true, duplicate: true, taskId: first2['taskId'], priorTaskIds: [T1], passage: 2 });
-    expect(await ops(logistics, '/ops/reprogrammer', { ...fix, command_id: 'rpd2-fix-again' })).toMatchObject({ ok: false, reason: 'order_not_rescheduled' });
+    expect(await desk(logistics).reprogrammations()).toMatchObject({ kind: 'ok', value: [{ orderId: O, taskId: T1b }] });
+    const fixed = await desk(logistics).reprogrammer(O, future, 'cmd-rpd-fix');
+    expect(fixed.kind, JSON.stringify(fixed)).toBe('ok');
+    if (fixed.kind !== 'ok') return;
+    expect(await desk(logistics).reprogrammer(O, future, 'cmd-rpd-fix')).toEqual({ kind: 'ok', value: { taskId: fixed.value.taskId } });
+    const raw = await ops(logistics, '/ops/reprogrammer', { command_id: 'cmd-rpd-fix', orderId: O, fenetre: future });
+    expect(raw).toEqual({ ok: true, duplicate: true, taskId: fixed.value.taskId, priorTaskIds: [T1b], passage: 2 });
+    expect(await desk(logistics).reprogrammer(O, future, 'cmd-rpd-fix-again')).toEqual({ kind: 'refused', reason: 'order_not_rescheduled' });
+    // A redelivery of custody's outcome AFTER the follow-up: the live course
+    // names its follow-up now — settled by name, nothing recorded.
+    expect(await produce({ command_id: 'w-7', orderId: O, at: T, outcome: outcome(O, T1b) }))
+      .toEqual({ status: 200, json: { ok: true, status: 'tache_differente' } });
+    expect(await desk(logistics).reprogrammations()).toEqual({ kind: 'ok', value: [] });
     // One live course, on the follow-up task, nothing queued twice.
     const board = (await ops(logistics, '/ops/board'))['board'] as Json;
-    expect((board['assignments'] as Json[]).filter((a) => a['orderId'] === O2).map((a) => a['taskId'])).toEqual([first2['taskId']]);
-    expect((board['queued'] as Json[]).filter((q) => q['orderId'] === O2)).toEqual([]);
+    expect((board['assignments'] as Json[]).filter((a) => a['orderId'] === O).map((a) => a['taskId'])).toEqual([fixed.value.taskId]);
+    expect((board['queued'] as Json[]).filter((q) => q['orderId'] === O)).toEqual([]);
+
+    // RETIRE takes an open reschedule with it (PURGE-ESSAI's law).
+    const O2 = 'ord-reprog-doors-2';
+    const { taskId: T2a } = await courseConfiee(logistics, O2, 'rider-reprog-doors-2', 'rpd2');
+    expect(await produce({ command_id: 'w-8', orderId: O2, at: T, outcome: outcome(O2, T2a) }))
+      .toEqual({ status: 200, json: { ok: true, status: 'enregistre' } });
+    expect(await desk(logistics).reprogrammations()).toMatchObject({ kind: 'ok', value: [{ orderId: O2, taskId: T2a }] });
+    expect(await desk(logistics).retirer(O2)).toEqual({ kind: 'ok', value: 'retire' });
+    expect(await desk(logistics).reprogrammations()).toEqual({ kind: 'ok', value: [] });
   });
 });

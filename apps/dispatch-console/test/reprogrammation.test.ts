@@ -107,16 +107,39 @@ describe('the window the founder types, judged before anything is sent', () => {
 });
 
 describe('one fix at a time, and every outcome said per course', () => {
-  it('starts one fix, refuses a second while it flies, records a fix with its window, records a refusal by sentence — and a new start clears the old refusal', () => {
-    const started = commencerFixation(FIXATION_IDLE, 'ord-a');
-    expect(started).toEqual({ enVol: 'ord-a', faits: {}, echecs: {} });
+  it('starts one fix on ONE command id, refuses a second while it flies, records a fix with its window (and forgets the command), records a refusal by sentence — and a new start clears the old refusal', () => {
+    let minted = 0;
+    const mint = () => `cmd-${(minted += 1)}`;
+    const W = { start: 's', end: 'e' };
+    const started = commencerFixation(FIXATION_IDLE, 'ord-a', W, mint);
+    expect(started).toEqual({
+      ui: { enVol: 'ord-a', faits: {}, echecs: {}, commandes: { 'ord-a': { start: 's', end: 'e', commandId: 'cmd-1' } } },
+      commandId: 'cmd-1',
+    });
     if (started === null) return;
-    expect(commencerFixation(started, 'ord-b')).toBeNull();
-    const fait = fixationFaite(started, 'ord-a', { start: 's', end: 'e' });
-    expect(fait).toEqual({ enVol: null, faits: { 'ord-a': { start: 's', end: 'e' } }, echecs: {} });
+    expect(commencerFixation(started.ui, 'ord-b', W, mint)).toBeNull();
+    const fait = fixationFaite(started.ui, 'ord-a', W);
+    expect(fait).toEqual({ enVol: null, faits: { 'ord-a': W }, echecs: {}, commandes: {} });
     const echec = fixationEchouee(fait, 'ord-b', 'reprog.refus_autre');
-    expect(echec).toEqual({ enVol: null, faits: { 'ord-a': { start: 's', end: 'e' } }, echecs: { 'ord-b': 'reprog.refus_autre' } });
-    expect(commencerFixation(echec, 'ord-b')).toEqual({ enVol: 'ord-b', faits: { 'ord-a': { start: 's', end: 'e' } }, echecs: {} });
+    expect(echec).toEqual({ enVol: null, faits: { 'ord-a': W }, echecs: { 'ord-b': 'reprog.refus_autre' }, commandes: {} });
+    const again = commencerFixation(echec, 'ord-b', W, mint);
+    expect(again?.ui).toEqual({ enVol: 'ord-b', faits: { 'ord-a': W }, echecs: {}, commandes: { 'ord-b': { start: 's', end: 'e', commandId: 'cmd-2' } } });
+  });
+
+  it('a retry of the SAME window rides the SAME command id (the door replays the fix it made); a changed window is a new act', () => {
+    let minted = 0;
+    const mint = () => `cmd-${(minted += 1)}`;
+    const W = { start: 's', end: 'e' };
+    const first = commencerFixation(FIXATION_IDLE, 'ord-a', W, mint);
+    if (first === null) throw new Error('unreachable');
+    // The wire was lost: the desk records a refusal and the founder taps again.
+    const lost = fixationEchouee(first.ui, 'ord-a', 'reprog.injoignable');
+    const retry = commencerFixation(lost, 'ord-a', W, mint);
+    expect(retry?.commandId).toBe('cmd-1');
+    expect(minted).toBe(1);
+    // He changed the hour: a fresh command, never the old one re-sent with new content.
+    const changed = commencerFixation(fixationEchouee(retry!.ui, 'ord-a', 'reprog.injoignable'), 'ord-a', { start: 's', end: 'e2' }, mint);
+    expect(changed?.commandId).toBe('cmd-2');
   });
 
   it('the door’s refusals each map to a sentence that resolves; the intake gate’s four collapse into one; the unknown gets the honest generic', () => {
@@ -124,6 +147,7 @@ describe('one fix at a time, and every outcome said per course', () => {
     expect(t(refusKey('course_non_acceptee'))).toContain("pas encore accepté");
     expect(t(refusKey('no_active_course'))).toContain("n'est plus sur le tableau");
     expect(t(refusKey('prior_task_missing'))).toContain("n'est plus sur le tableau");
+    expect(t(refusKey('prior_task_mismatch'))).toBe('Cette course a changé depuis. Relisez le tableau.');
     expect(t(refusKey('fenetre_passee'))).toBe('Ce créneau est déjà passé.');
     expect(t(refusKey('fenetre_invalide'))).toBe("L'heure de fin doit venir après le début.");
     for (const gate of ['funding_projection_stale', 'not_funded_for_mode', 'order_cancelled', 'readiness_projection_stale', 'not_readiness_confirmed']) {

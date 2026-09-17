@@ -119,8 +119,9 @@ test('the founder enters his key → the course custody sent back is listed with
   expect(Date.parse(String(fenetre['start']))).toBeLessThan(Date.parse(String(fenetre['end'])));
   expect(Date.parse(String(fenetre['end'])) - Date.parse(String(fenetre['start']))).toBe(2 * 3_600_000);
 
-  // The second tap is a FRESH act (a new command id), and it lands: reported
-  // in his words, and the row leaves because the BOARD says so.
+  // The second tap of the SAME window rides the SAME command id (the door
+  // replays the fix it made if the first answer was lost), and it lands:
+  // reported in his words, and the row leaves because the BOARD says so.
   const readsBefore = boardReads;
   await lever.click();
   await expect(desk.locator('.reprog-fait')).toContainText("ord-reprog — C'est fixé pour");
@@ -128,7 +129,8 @@ test('the founder enters his key → the course custody sent back is listed with
   await expect(desk.locator('.reprog-row')).toHaveCount(0);
   await expect(desk.locator('.reprog-state')).toHaveText('Aucun passage à fixer.');
   expect(fixes).toHaveLength(2);
-  expect(fixes[1]!['command_id']).not.toBe(first['command_id']);
+  expect(fixes[1]!['command_id']).toBe(first['command_id']);
+  expect(fixes[1]!['fenetre']).toEqual(first['fenetre']);
   expect(boardReads).toBeGreaterThan(readsBefore);
   // The tree survived every tap: the codes desk beside it is still whole.
   await expect(page.getByRole('heading', { name: 'Codes coursiers' })).toBeVisible();

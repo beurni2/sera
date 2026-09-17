@@ -52,7 +52,7 @@ import {
   type CoursesRead,
   type RetraitUi,
 } from './courses';
-import { resolveCourses } from './courses-port';
+import { reprogCommandId, resolveCourses } from './courses-port';
 import {
   FIXATION_IDLE,
   commencerFixation,
@@ -1558,11 +1558,11 @@ if (app) {
       renderReprog();
       return;
     }
-    const started = commencerFixation(fixation, orderId);
+    const started = commencerFixation(fixation, orderId, { start: composee.start, end: composee.end }, () => reprogCommandId(orderId));
     if (started === null) return;
-    fixation = started;
+    fixation = started.ui;
     renderReprog();
-    const answer = await coursesPort().reprogrammer(orderId, { start: composee.start, end: composee.end });
+    const answer = await coursesPort().reprogrammer(orderId, { start: composee.start, end: composee.end }, started.commandId);
     if (answer.kind === 'bad_key') {
       // A refused key escalates the whole desk — one door, one sentence.
       fixation = fixationEchouee(fixation, orderId, 'codes.cle_refusee');

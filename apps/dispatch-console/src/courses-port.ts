@@ -39,8 +39,10 @@ export interface CoursesPort {
   reprogrammations(): Promise<OpsAnswer<readonly ReprogRow[]>>;
   /** Fix the next passage: the door opens the follow-up task and moves the
    *  live course onto it. The follow-up's id comes home so the desk can say
-   *  the fix is REAL — a 200 that names no task is reported as a refusal. */
-  reprogrammer(orderId: string, fenetre: FenetrePassage): Promise<OpsAnswer<{ readonly taskId: string }>>;
+   *  the fix is REAL — a 200 that names no task is reported as a refusal.
+   *  The command id is the DESK's (one per attempt, reused on a retry of the
+   *  same window), so the door's replay ledger answers a retried tap. */
+  reprogrammer(orderId: string, fenetre: FenetrePassage, commandId: string): Promise<OpsAnswer<{ readonly taskId: string }>>;
 }
 
 const TIMEOUT_MS = 15_000;
@@ -69,10 +71,10 @@ function commandId(orderId: string): string {
   return `cmd-console-retirer-${orderId}-${crypto.randomUUID()}`;
 }
 
-/** The reprogram door's own id — fresh per tap for the same reason: a second
- *  tap after a refusal is a new act the door judges on the state as it now
- *  stands, never a replay of the refusal. */
-function reprogCommandId(orderId: string): string {
+/** The reprogram door's own id, minted by the DESK once per attempt: a retry
+ *  of the same window rides the same id (the door replays the fix it made),
+ *  a changed window is a new act. */
+export function reprogCommandId(orderId: string): string {
   return `cmd-console-reprog-${orderId}-${crypto.randomUUID()}`;
 }
 
@@ -132,10 +134,10 @@ export function httpCourses(
       return { kind: 'ok', value: answer.value };
     },
     reprogrammations: () => call('/ops/board', { method: 'GET' }, aReprogrammerRows),
-    async reprogrammer(orderId: string, fenetre: FenetrePassage): Promise<OpsAnswer<{ readonly taskId: string }>> {
+    async reprogrammer(orderId: string, fenetre: FenetrePassage, commandId: string): Promise<OpsAnswer<{ readonly taskId: string }>> {
       const answer = await call(
         '/ops/reprogrammer',
-        { method: 'POST', body: JSON.stringify({ command_id: reprogCommandId(orderId), orderId, fenetre }) },
+        { method: 'POST', body: JSON.stringify({ command_id: commandId, orderId, fenetre }) },
         taskIdOf,
       );
       if (answer.kind !== 'ok') return answer;

@@ -408,6 +408,10 @@ export class LeasedDispatch {
     if (!outcome.ok || outcome.duplicate || assignment === undefined) {
       return { ...outcome, leaseReleased: false };
     }
+    // REPROGRAMMATION-1 (verifier MAJOR, closed): a taken-back course leaves
+    // no open reschedule behind — it would otherwise list against the next
+    // course composed for the same order, naming a task that course never had.
+    this.deps.reschedules.forgetOrder(assignment.orderId);
     this.deps.witness.revoke(assignment.lease);
     const release = await this.deps.authority.send({
       kind: 'release',

@@ -1026,6 +1026,12 @@
     "screenClass": "status"
   },
   {
+    "key": "reprog.refus_prior_task_mismatch",
+    "fr": "Cette course a changé depuis. Relisez le tableau.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
     "key": "reprog.refus_pas_prete",
     "fr": "La commande n'est plus prête à livrer. Vérifiez le paiement et le vendeur, puis relisez.",
     "register": "money",

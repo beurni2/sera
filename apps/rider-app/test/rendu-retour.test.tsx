@@ -638,6 +638,29 @@ describe('⚠ REPROGRAMMATION-1 — the 2e passage reaches the rider’s phone, 
     expect(s.shows('Livré. Merci.'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
   });
 
+  it('door mode: the buyer was absent, so no accord was recorded at passage 1 — at the 2e passage her accord is asked again, her VALID refusal stays reachable, the ladder is not, and the accord opens the code card', async () => {
+    const state = courseInMode('DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR');
+    const world = freshWorld();
+    const { s } = await toTheDoor([logistics(state), custody(world)]);
+    expect(s.shows('La cliente regarde le colis.'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    await s.press('Un souci ?');
+    await s.press('Client absent');
+    world.expired = true;
+    await s.press('Le temps est passé');
+    expect(s.shows('On repasse un autre jour.')).toBe(true);
+    passageFixe(state);
+    await s.poll();
+    expect(s.shows('2e passage'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    // The §6.3 stage, again: her accord is the one primary action; her valid
+    // refusal is the inspection's road and stays; the ladder does not.
+    expect(s.canPress("La cliente est d'accord")).toBe(true);
+    expect(s.canPress('La cliente refuse le colis')).toBe(true);
+    expect(s.canPress('Un souci ?')).toBe(false);
+    expect(s.shows('Encore un souci ? Appelez Séra.')).toBe(true);
+    await s.press("La cliente est d'accord");
+    expect(s.shows('Le code de la cliente'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+  });
+
   it('a session that carries NO chain ids after a relaunch keeps the honest card — nothing is guessed', async () => {
     const state = courseInMode('FULL_PREPAY');
     const world = freshWorld();

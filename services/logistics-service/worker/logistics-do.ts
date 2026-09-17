@@ -1753,6 +1753,19 @@ export class LogisticsDO {
         .assignments.map(([, r]) => r)
         .find((r) => r.orderId === orderId && ACTIVE_ASSIGNMENT_STATUSES.includes(r.status));
       if (active === undefined) return Response.json({ ok: true, status: 'aucune_course' });
+      /**
+       * VERIFIER MAJOR (closed) — THE OUTCOME MUST NAME THE LIVE COURSE'S
+       * TASK. Custody's outcome names the chain's task (the first attempt);
+       * once a follow-up consumed the reschedule the course names ITS task,
+       * and a redelivery (custody is at-least-once: a lost 200 re-sends) or
+       * a stale outcome against a recomposed course would re-record a row no
+       * fix could ever clear — `prior_task_mismatch` for ever, the only
+       * clearing door a retire of a LIVE course. Settled by name instead:
+       * the sender stops, nothing is recorded.
+       */
+      if ((outcome as Record<string, unknown>)['taskId'] !== active.taskId) {
+        return Response.json({ ok: true, status: 'tache_differente' });
+      }
       if (this.reschedules.openFor(orderId) !== undefined) return Response.json({ ok: true, status: 'deja_enregistre' });
       const recorded = this.reschedules.recordRescheduleOutcome(outcome);
       if (!recorded.ok) return Response.json({ ok: false, reason: recorded.reason }, { status: 400 });
@@ -1798,12 +1811,9 @@ export class LogisticsDO {
       const orderId = (body['orderId'] as string).trim();
       const start = fenetre['start'] as string;
       const end = fenetre['end'] as string;
-      if (Date.parse(start) >= Date.parse(end)) {
-        return Response.json({ ok: false, reason: 'fenetre_invalide' }, { status: 400 });
-      }
-      if (Date.parse(end) <= Date.parse(now)) {
-        return Response.json({ ok: false, reason: 'fenetre_passee' }, { status: 400 });
-      }
+      // THE REPLAY IS JUDGED FIRST (verifier MINOR, closed): a retried tap
+      // whose window has meanwhile passed is still the fix it already made,
+      // never a fresh refusal over a passage the rider is already reading.
       const replay = this.reprogrammations[commandId];
       if (replay !== undefined) {
         return Response.json({
@@ -1813,6 +1823,12 @@ export class LogisticsDO {
           priorTaskIds: this.reschedules.priorTaskIdsOf(replay.taskId),
           passage: this.reschedules.priorTaskIdsOf(replay.taskId).length + 1,
         });
+      }
+      if (Date.parse(start) >= Date.parse(end)) {
+        return Response.json({ ok: false, reason: 'fenetre_invalide' }, { status: 400 });
+      }
+      if (Date.parse(end) <= Date.parse(now)) {
+        return Response.json({ ok: false, reason: 'fenetre_passee' }, { status: 400 });
       }
       const active = this.book
         .snapshot()
