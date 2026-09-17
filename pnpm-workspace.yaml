@@ -23,7 +23,12 @@ onlyBuiltDependencies:
 # Both RoundingLaw numerators go to 0/100; the waterfall, the fee fields and
 # every reconciliation identity stay standing. contracts + kernel-types move
 # together as always; ui-tokens is NOT moved — nothing here touches tokens.
+# DECOUVERTE-RETIREE-1 (founder ruling 2026-09-17) — re-pinned to canon 3.15.0
+# (sha 289db98): SP-I05 amended, there is no cross-reseller discovery. Docs only
+# on the canon side; zero shape change since 3.13.0 apart from 3.14.0's additive
+# @platform/taxonomy package (not consumed here). contracts, kernel-types and
+# certification move together, as always; ui-tokens and i18n keep their own pins.
 overrides:
-  "@platform/kernel-types": "git+https://github.com/beurni2/platform-contracts.git#35a21ea178ea3eb4cbb7d4d6c6264c5d2e5829ff&path:packages/kernel-types"
-  "@platform/contracts": "git+https://github.com/beurni2/platform-contracts.git#35a21ea178ea3eb4cbb7d4d6c6264c5d2e5829ff&path:packages/contracts"
+  "@platform/kernel-types": "git+https://github.com/beurni2/platform-contracts.git#289db98af8a9ac4db6950847bc730fd4a13b7fb7&path:packages/kernel-types"
+  "@platform/contracts": "git+https://github.com/beurni2/platform-contracts.git#289db98af8a9ac4db6950847bc730fd4a13b7fb7&path:packages/contracts"
   "@platform/ui-tokens": "git+https://github.com/beurni2/platform-contracts.git#a832df0a8ed9e9fc83083826bc11c2a2e57e615a&path:packages/ui-tokens"

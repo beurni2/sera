@@ -29,10 +29,10 @@ Reseller (own profile/store/listings/links/customers + order projections; MUST N
 
 ---
 
-## 3. Information architecture — two modes, one switch
-Default **Acheter**; switch to **Espace revendeur** and back.
-**Buyer:** Découvrir (reseller **stores** — deterministic featured/popular, by category/zone) · Rechercher (fuzzy → **stores**, matching-item hint) · Mes commandes (track, **pay at door where applicable**, **confirm with drop code**, rate) · Profil.
-**Reseller:** Opportunités (**Ajouter à ma boutique** — shows **net** earning) · Ma vitrine (**Partager**, discoverable toggle) · **Cercle** (membres · campagnes · financement campagne · avis vérifiés — build-gated) · Ventes · Clients · **Revenus** (net; resolve payout).
+## 3. Information architecture — two surfaces, one entry each
+*(Amended 2026-09-17, founder decision: Shop+ is the reseller's app; the buyer surface opens only from a reseller's link. There is no buyer-side « Découvrir » or « Rechercher » — see SP-I05.)*
+**Reseller app (Espace revendeur):** Opportunités (**Ajouter à ma boutique** — shows **net** earning) · Ma vitrine (**Partager**; en ligne once published — no directory listing) · **Cercle** (membres · campagnes · financement campagne · avis vérifiés — build-gated) · Ventes · Clients · **Revenus** (net; resolve payout).
+**Buyer PWA (from a reseller's signed link or QR only):** the reseller's vitrine · the signed offer · checkout · Mes commandes (track, **pay at door where applicable**, **confirm with drop code**, rate). The root of the PWA, reached without a link, says how Shop+ is entered and takes a link; it lists no stores.
 
 ---
 
@@ -41,14 +41,14 @@ Default **Acheter**; switch to **Espace revendeur** and back.
 - **SP-I02:** A listing MUST reference an active product version + active commission agreement + eligible offer version; markup is **versioned**, future-only.
 - **SP-I03:** Customer-facing pages MUST show the reseller as the commercial relationship and MUST NOT expose supplier identity/contact or **commission**.
 - **SP-I04:** Earnings MUST display **Quote/Ledger/Settlement projections only** (net), never a live recomputation.
-- **SP-I05:** Discovery MUST return **reseller stores, not a cross-reseller product pool**.
+- **SP-I05 (amended 2026-09-17, founder):** There is **no cross-reseller discovery**. A buyer reaches a store **only through that reseller's signed link or QR**; Shop+ never lists, searches, or ranks stores or products across resellers on any buyer surface. *(Rationale: a buyer one reseller brought must never shop around for a cheaper markup. The former wording — « discovery returns reseller stores, not a product pool » — is subsumed: there is no discovery to return anything.)*
 - **SP-I06:** Reseller earnings are **single-level**.
 - **SP-I07:** Customer contact tools MUST be relationship- and consent-scoped; other resellers' orders invisible.
 - **SP-I08:** **Canonical product assets cannot be replaced** by reseller product images.
 - **SP-I09:** A signed share link MUST encode an **attribution-token identity**.
 - **SP-I09b:** **Préséance de l'attribution.** 1. Un **code saisi explicitement au paiement** l'emporte — c'est l'acte délibéré de l'acheteuse. 2. Sinon, **l'arrivée non expirée la plus récente** l'emporte (*last-touch*). 3. Une fois la commande **verrouillée**, l'attribution est **immuable** (`first-lock-wins`, inchangé) ; un second jeton valide sur une commande verrouillée est refusé, honnêtement, sans ré-attribution silencieuse. 4. Une référence altérée, expirée ou non résolvable n'attribue **personne** et **ne bascule jamais vers la plateforme**.
 - **SP-I10:** The buyer **problem/report** path MUST remain as prominent as the confirmation path at delivery.
-- **SP-I11 (deterministic):** Discovery/search/ranking + marketing studio are deterministic; no learned ranking, no generative content; voice = audio.
+- **SP-I11 (deterministic):** Ordering within a store + the marketing studio are deterministic; no learned ranking, no generative content; voice = audio.
 - **SP-I12 (economics):** Checkout MUST use the canonical waterfall (§5.4); **commission is never added to the buyer price**; the reseller MUST see **`resellerNet`** before promoting.
 - **SP-I13 (payment truth):** Checkout MUST show exactly **what is paid now vs due at delivery**; no confirmed order without the **required funded legs** for its mode; **no duplicate charge on retry**.
 - **SP-I14 (Cercle funding):** Every financial campaign benefit MUST be funded from the reseller's **settled** earnings allocated at the **licensed payment partner** before it is advertised (maximum liability secured); pending earnings NEVER fund campaigns; Shop+ holds no funds and continuously reconciles its campaign subledger against provider truth — **divergence pauses new reservations, never existing customer promises**. General-purpose MoMo top-up is deferred pending approved payment structure.
@@ -190,7 +190,7 @@ Classify reason: `honest_absence | unusable_location | insufficient_balance | ch
 ---
 
 ## 8. App-specific data projections
-`opportunity_card` (with **net** example) · `reseller_store_view` · `reseller_sale_view` (with `paymentMode`, `amountDueAtDelivery`) · `reseller_customer_view` (consent) · `reseller_earnings_view` (**net**) · `store_index` (discoverable stores only) · `buyer_checkout_view` (paymentMode options, amountPaidAtCheckout, amountDueAtDelivery, eligibility).
+`opportunity_card` (with **net** example) · `reseller_store_view` · `reseller_sale_view` (with `paymentMode`, `amountDueAtDelivery`) · `reseller_customer_view` (consent) · `reseller_earnings_view` (**net**) · `buyer_checkout_view` (paymentMode options, amountPaidAtCheckout, amountDueAtDelivery, eligibility).
 
 ---
 
@@ -205,7 +205,7 @@ From authoritative events. **Activation:** payout-ready + ≥1 agreement + ≥1 
 3. Marketing studio + signed attribution tokens (lazy slideshow + fallback).
 4. **Buyer PWA two-option checkout** (immutable Quote, reservation, provider **paymentLegs**) + attribution lock.
 5. Mes commandes/Ventes (buyer-safe timeline) + **inspection + drop-code confirm** + **Option-B door payment → handoff** + equal problem path.
-6. Store discovery (`store_index`, deterministic) + discoverable toggle.
+6. ~~Store discovery (`store_index`, deterministic) + discoverable toggle.~~ **Retired 2026-09-17 (founder, SP-I05 amended):** no cross-reseller discovery; store-name moderation stays (Building Plan SP5.2).
 7. Revenus (**net**) + reputation + Clients (consent) + **buyer-refusal ladder + related-party tiers**.
 8. **(Build-gated) Cercle v1A → v1B → v1C** per the North Star spec §31 — begins only after the §12 Cercle build gate is fully satisfied.
 - Each slice: state approach → read code → build → write tests → human reviews code.
@@ -214,7 +214,7 @@ From authoritative events. **Activation:** payout-ready + ≥1 agreement + ≥1 
 
 ## 11. MVP acceptance + CI invariant gates
 **Acceptance:** reseller activates, sees opportunities with **net** earnings, sets markup, publishes, shares a signed link; buyer opens without install, sees **exactly one reseller** and **two clear payment options with what's-paid-now vs due**, gets an **all-in reconciling quote**, reserves, **pays once**, confirms; attribution stays locked; reseller sees **exact net** then provider-confirmed paid; out-of-stock hides future buying; **Option B: buyer pays product at door, provider-confirmed, then custody transfers**; report-issue/payment-uncertainty/supplier-timeout/failed-delivery/refund tested.
-**CI gates (fail the build):** **money model reconciles**; **reseller sees net, gross-first UI prohibited**; **commission never in buyer price**; no wallet/balance module; no learned-ranking/generative libs; **discovery returns stores, not a product pool**; every order has a locked `reseller_id`, none defaults to supplier/platform; **no supplier identity/contact or commission on customer surfaces**; attribution tamper fails closed; `reseller_id` immutable after confirmation; **no duplicate charge**; **no confirmed order without funded legs for its mode**; **reseller cannot enter drop code**; **buyerDropCode never exposed to seller**; problem path equally prominent; single-level; voice = audio; French default (**French Voice Standard copy-lint — Contract §10.5**); offline = pending. **Cercle gates (active once SP9 is built):** K ≤ 0.80×(C+M) enforced at creation; no benefit advertised without secured liability; at most one benefit per order; `customerShare + campaignShare == DeliveryFeeQuote`; fully-free ⇒ FULL_PREPAY; pending earnings cannot fund; verified proof only from validated deliveries; single-level referral with related-party tiers; landing page authoritative; reconciliation divergence pauses new reservations. **Media Kit gates (SP-I19):** personalized card carries reseller identity + price snapshot, never supplier identity; identity hierarchy Product→Reseller→Séra→Shop+ never inverted; hub-verified badge only when true; markup change expires old cards (no silent edit); every asset has a validity window; media assets carry licensed/owned reuse rights.
+**CI gates (fail the build):** **money model reconciles**; **reseller sees net, gross-first UI prohibited**; **commission never in buyer price**; no wallet/balance module; no learned-ranking/generative libs; **no cross-reseller discovery (no store directory, no search across stores, on any buyer surface)**; every order has a locked `reseller_id`, none defaults to supplier/platform; **no supplier identity/contact or commission on customer surfaces**; attribution tamper fails closed; `reseller_id` immutable after confirmation; **no duplicate charge**; **no confirmed order without funded legs for its mode**; **reseller cannot enter drop code**; **buyerDropCode never exposed to seller**; problem path equally prominent; single-level; voice = audio; French default (**French Voice Standard copy-lint — Contract §10.5**); offline = pending. **Cercle gates (active once SP9 is built):** K ≤ 0.80×(C+M) enforced at creation; no benefit advertised without secured liability; at most one benefit per order; `customerShare + campaignShare == DeliveryFeeQuote`; fully-free ⇒ FULL_PREPAY; pending earnings cannot fund; verified proof only from validated deliveries; single-level referral with related-party tiers; landing page authoritative; reconciliation divergence pauses new reservations. **Media Kit gates (SP-I19):** personalized card carries reseller identity + price snapshot, never supplier identity; identity hierarchy Product→Reseller→Séra→Shop+ never inverted; hub-verified badge only when true; markup change expires old cards (no silent edit); every asset has a validity window; media assets carry licensed/owned reuse rights.
 
 ---
 

@@ -1,5 +1,7 @@
 # Performance & Device Budgets — Contract §7.3 (named at E0, enforced from E1)
-**Status:** D17 CLOSED — founder-signed 2026-07-10 · **Version:** 1.0 · **Owner:** CTO-Supervisor (telemetry recalibration at E4)
+**Status:** D17 CLOSED — founder-signed 2026-07-10 · **Version:** 1.1 · **Owner:** CTO-Supervisor (telemetry recalibration at E4)
+
+> **Amendment 1.1 (founder-signed « 320 », 2026-08-31):** Initial PWA payload (buyer surface) raised **300 KB → 320 KB compressed**. The 300 KB line was signed before the boutique hero, the wishlist, voice notes and geolocation existed; it stood 99.9 % consumed (306 796 B of 307 200 B) when the GEO-CARTE-PRO map face (2 624 B) could no longer fit. On the reference 3G profile the 20 KB costs ~0.1 s once, then caches. The change is journalled in shop-plus (GEO-CARTE-PRO-1), per the Enforcement terms below. Every other value stands.
 
 > Contract §7.3: *"'Works on a low-end device' is not an acceptance criterion until the device and thresholds are named."* This document names them. Founder-signed values are canon; values marked **CTO-derived — tune at E4 telemetry** are conservative defaults that move only on measured E4 pilot data, never silently.
 
@@ -21,7 +23,7 @@ Every budget below is measured ON this profile. A screen that is beautiful on a 
 | Touch → feedback | **< 100 ms** |
 | Touch → result | **< 250 ms** |
 | Frozen scroll stretch | **never > 200 ms** |
-| Initial PWA payload (buyer surface) | **< 300 KB compressed** |
+| Initial PWA payload (buyer surface) | **< 320 KB compressed** (300 KB 2026-07-10 → 320 KB founder-signed 2026-08-31, Amendment 1.1) |
 | Offline queue durability | **every queued action survives app-kill AND device reboot** |
 | French long text | **never truncates meaning** (labels tested with real French strings) |
 
@@ -30,7 +32,7 @@ Every budget below is measured ON this profile. A screen that is beautiful on a 
 | §7.3 item | Budget | Provenance |
 |---|---|---|
 | Product-card payload | ≤ 25 KB compressed per card, thumbnail included | CTO-derived — tune at E4 telemetry |
-| Buyer-page JS payload | ≤ 150 KB compressed (inside the 300 KB founder-signed total) | CTO-derived — tune at E4 telemetry |
+| Buyer-page JS payload | ≤ 150 KB compressed (inside the 320 KB founder-signed total) | CTO-derived — tune at E4 telemetry |
 | Image sizes | thumbnail ≤ 15 KB · hero ≤ 80 KB · full view ≤ 150 KB | CTO-derived — tune at E4 telemetry |
 | Offline-queue size | ≥ 200 queued actions without degradation; ≤ 5 MB local storage | CTO-derived — tune at E4 telemetry |
 | Checkout response | server ≤ 800 ms p95 · end-to-end ≤ 2 s p95 on the reference network | CTO-derived — tune at E4 telemetry |

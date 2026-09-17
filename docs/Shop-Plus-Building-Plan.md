@@ -66,10 +66,10 @@ Every mock (Boutik+ projection, Séra delivery/handoff, provider) passes the **m
 
 ---
 
-## Phase 3 — Discovery, retention, risk
-### M5 — Store discovery
-| **SP5.1 store_index (deterministic)** ⚠ | L | Découvrir/Rechercher return **STORES**; matching-item preview only; **not a product pool**. |
-| **SP5.2 Discoverable toggle + moderation** | S | Off by default; store-name moderation. |
+## Phase 3 — Retention, risk
+### M5 — Store-name moderation *(amended 2026-09-17 — founder: no cross-reseller discovery, SP-I05)*
+| ~~**SP5.1 store_index (deterministic)**~~ | — | **RETIRED 2026-09-17 (founder).** A buyer reaches a store only through that reseller's signed link or QR; no directory, no search across stores, on any buyer surface. |
+| **SP5.2 Store-name moderation** | S | Store-name moderation on create/rename. *(The « discoverable » toggle is retired with SP5.1: without a directory it decided nothing; the wire field stays as the published/en-ligne fact.)* |
 
 ### M6 — Revenus, reputation, Clients + buyer/related-party risk
 | **SP6.1 Earnings read model (net)** | M | Projected/Locked/Eligible/Payable/Processing/Paid/Held/Adjusted (**net**, traced); **20% real from launch**; no withdrawal. |
