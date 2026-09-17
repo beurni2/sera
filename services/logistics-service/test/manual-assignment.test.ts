@@ -367,3 +367,58 @@ describe('RETOUR-VIVANT-1 — the returned terminal at the store (deliver’s tw
     expect(book.get('as-1')!.status).toBe('delivered');
   });
 });
+
+describe('REPROGRAMMATION-1 — the SAME course moves onto its follow-up task (the reschedule wire, live)', () => {
+  const FOLLOW_UP = {
+    type: 'delivery', id: 'task-2', orderId: ORDER,
+    location: { pin: { lat: 12.37, lng: -1.52 }, zone: 'Gounghin', landmark: 'Face à la pharmacie', directions: 'Porte bleue', maskedRelay: 'relay-abc' },
+    window: { start: '2026-07-10T09:00:00.000Z', end: '2026-07-10T11:00:00.000Z' }, status: 'ready',
+  };
+  const admitFollowUp = (queue: ReadyQueue) =>
+    queue.onTaskReady(
+      {
+        name: 'logistics.task_ready.v1',
+        envelope: { command_id: 'cmd-ready-2', correlation_id: CORR, aggregateVersion: 1, actor: 'test', serverTime: T, version: '1' },
+        payload: { task: FOLLOW_UP },
+      },
+      T,
+    );
+
+  it('an ACKNOWLEDGED course re-targets in place: same id, same rider, SAME lease, the new task — which reads `assigned`; the drop then closes it under the new task', () => {
+    const { queue, book } = world();
+    expect(book.assign(assignCmd()).ok).toBe(true);
+    expect(book.acknowledge('as-1', 'server_confirmed')).toMatchObject({ ok: true, pending: false });
+    expect(admitFollowUp(queue).admitted).toBe(true);
+    expect(queue.recheckAssignable('task-2')).toEqual({ assignable: true });
+
+    const moved = book.retargetTask('as-1', 'task-2');
+    expect(moved).toMatchObject({
+      ok: true,
+      assignment: { assignmentId: 'as-1', taskId: 'task-2', orderId: ORDER, riderId: 'r-1', status: 'acknowledged', lease: { taskId: 'task-1', riderId: 'r-1', version: 1 } },
+    });
+    expect(book.get('as-1')?.taskId).toBe('task-2');
+    // The follow-up is taken — nobody else can ever be handed it.
+    expect(queue.recheckAssignable('task-2')).toEqual({ assignable: false, reason: 'already_assigned' });
+    // The rider still carries: exactly one active course, and the delivery
+    // closes THAT course, now named by its follow-up task.
+    const delivered = book.deliver(ORDER, '2026-07-10T10:00:00.000Z');
+    expect(delivered).toMatchObject({ ok: true, duplicate: false, assignment: { assignmentId: 'as-1', taskId: 'task-2', status: 'delivered' } });
+  });
+
+  it('refuses closed and moves nothing: unknown course · not yet acknowledged · a task of another order · a task the gate no longer admits (stale) — and a refusal re-evaluates', () => {
+    const { funding, queue, book } = world();
+    expect(book.retargetTask('nobody', 'task-2')).toEqual({ ok: false, reason: 'unknown_assignment' });
+    expect(book.assign(assignCmd()).ok).toBe(true);
+    expect(admitFollowUp(queue).admitted).toBe(true);
+    expect(book.retargetTask('as-1', 'task-2')).toEqual({ ok: false, reason: 'not_acknowledged' });
+    expect(book.acknowledge('as-1', 'server_confirmed')).toMatchObject({ ok: true, pending: false });
+    expect(book.retargetTask('as-1', 'task-of-nobody')).toEqual({ ok: false, reason: 'order_mismatch' });
+    // SE1.1's second check at the move: a stale projection refuses by name.
+    funding.goStale(1);
+    expect(book.retargetTask('as-1', 'task-2')).toEqual({ ok: false, reason: 'task_not_assignable', detail: 'funding_projection_stale' });
+    expect(book.get('as-1')?.taskId).toBe('task-1');
+    expect(queue.get('task-2')?.status).toBe('queued');
+    // Fresh again → the same move succeeds (refusals never poison).
+    expect(book.retargetTask('as-1', 'task-2')).toMatchObject({ ok: true });
+  });
+});

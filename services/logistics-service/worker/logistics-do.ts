@@ -23,7 +23,7 @@ import {
   type ReadinessCheck,
   type ReadyQueueSnapshot,
 } from '../src/ready-queue.js';
-import { RescheduleBook } from '../src/reschedule.js';
+import { RescheduleBook, type RescheduleBookSnapshot } from '../src/reschedule.js';
 import {
   PRIVACY_NOTICE_VERSION,
   RiderRegistry,
@@ -144,6 +144,18 @@ const SNAP_CUSTODY_OUTBOX = 'snap:custody-outbox:v1';
  * this object's own storage, exactly as the pickup code's does.
  */
 const SNAP_RETOURS = 'snap:retours:v1';
+/**
+ * REPROGRAMMATION-1 (SE6.1 live — the reschedule wire). Custody's
+ * `reschedule` outcome (honest absence, unusable place, a provider failure:
+ * the §6.4 window expired on a NON-escalating reason) reaches this object
+ * over the produce door and rests in the RescheduleBook until the founder
+ * fixes the next passage; the book was rebuilt EMPTY on every wake until this
+ * key existed. `SNAP_REPROGRAMMATIONS` is the reprogram door's own replay
+ * ledger (command_id → what it opened), so a retried tap answers the SAME
+ * follow-up task rather than opening a third attempt.
+ */
+const SNAP_RESCHEDULES = 'snap:reschedules:v1';
+const SNAP_REPROGRAMMATIONS = 'snap:reprogrammations:v1';
 const CODEHASH_PREFIX = 'codehash:';
 const RIDERCODE_PREFIX = 'ridercode:';
 
@@ -298,6 +310,13 @@ function mintCodeScelleRetour(): string {
   return `RS-${raw.slice(0, 4)}-${raw.slice(4, 8)}`;
 }
 
+/** Single-package pilot (founder ruling 3): the package id custody's chain
+ *  was opened with IS the order's own. Minted in one place so the rider's
+ *  session and the produce wire can never disagree about it. */
+function packageIdOf(orderId: string): string {
+  return `pkg-${orderId}`;
+}
+
 /** The one 401 — IDENTICAL to the router's, for every rider-door rejection. */
 function unauthorized(): Response {
   return Response.json({ error: 'unauthorized' }, { status: 401 });
@@ -362,7 +381,10 @@ export class LogisticsDO {
   private custodyOutbox: Record<string, CustodyProduceRow> = {};
   /** RETOUR-VIVANT-1 — keyed by assignmentId, like the ramassage handshake. */
   private retours: Record<string, RetourRow> = {};
+  /** REPROGRAMMATION-1 — the reprogram door's replay ledger, by command_id. */
+  private reprogrammations: Record<string, { orderId: string; taskId: string }> = {};
   private queue!: ReadyQueue;
+  private reschedules!: RescheduleBook;
   private registry!: RiderRegistry;
   private witness!: GrantedLeaseWitness;
   private book!: AssignmentBook;
@@ -399,7 +421,7 @@ export class LogisticsDO {
 
   private async ensureLoaded(): Promise<void> {
     if (this.loaded) return;
-    const keys = [SNAP_QUEUE, SNAP_REGISTRY, SNAP_BOOK, SNAP_LEASE, SNAP_WITNESS, SNAP_PROJECTIONS, SNAP_BRIEFS, SNAP_RAMASSAGE, SNAP_CODE_VERIFICATION, SNAP_CUSTODY_OUTBOX, SNAP_RETOURS];
+    const keys = [SNAP_QUEUE, SNAP_REGISTRY, SNAP_BOOK, SNAP_LEASE, SNAP_WITNESS, SNAP_PROJECTIONS, SNAP_BRIEFS, SNAP_RAMASSAGE, SNAP_CODE_VERIFICATION, SNAP_CUSTODY_OUTBOX, SNAP_RETOURS, SNAP_RESCHEDULES, SNAP_REPROGRAMMATIONS];
     const stored = await this.state.storage.get<unknown>(keys);
     const lease = stored.get(SNAP_LEASE) as LeaseAuthorityState | undefined;
     this.leaseState = lease ?? emptyLeaseState();
@@ -411,9 +433,13 @@ export class LogisticsDO {
     this.codesVerification = (stored.get(SNAP_CODE_VERIFICATION) as Record<string, { code: string; scelle?: string; scelleRetour?: string }> | undefined) ?? {};
     this.custodyOutbox = (stored.get(SNAP_CUSTODY_OUTBOX) as Record<string, CustodyProduceRow> | undefined) ?? {};
     this.retours = (stored.get(SNAP_RETOURS) as Record<string, RetourRow> | undefined) ?? {};
+    this.reprogrammations = (stored.get(SNAP_REPROGRAMMATIONS) as Record<string, { orderId: string; taskId: string }> | undefined) ?? {};
     this.queue = new ReadyQueue(this.projections());
     const queueSnap = stored.get(SNAP_QUEUE) as ReadyQueueSnapshot | undefined;
     if (queueSnap !== undefined) this.queue.restore(queueSnap);
+    this.reschedules = new RescheduleBook(this.queue);
+    const reschedSnap = stored.get(SNAP_RESCHEDULES) as RescheduleBookSnapshot | undefined;
+    if (reschedSnap !== undefined) this.reschedules.restore(reschedSnap);
     this.registry = new RiderRegistry();
     const registrySnap = stored.get(SNAP_REGISTRY) as RiderRegistrySnapshot | undefined;
     if (registrySnap !== undefined) this.registry.restore(registrySnap);
@@ -429,7 +455,7 @@ export class LogisticsDO {
       registry: this.registry,
       queue: this.queue,
       book: this.book,
-      reschedules: new RescheduleBook(this.queue),
+      reschedules: this.reschedules,
     });
     this.loaded = true;
   }
@@ -447,6 +473,8 @@ export class LogisticsDO {
       [SNAP_CODE_VERIFICATION]: this.codesVerification,
       [SNAP_CUSTODY_OUTBOX]: this.custodyOutbox,
       [SNAP_RETOURS]: this.retours,
+      [SNAP_RESCHEDULES]: this.reschedules.snapshot(),
+      [SNAP_REPROGRAMMATIONS]: this.reprogrammations,
     });
   }
 
@@ -552,7 +580,7 @@ export class LogisticsDO {
           // Single-package pilot (founder ruling 3): the package id is the
           // order's own, and the correlation is the order's own — the same
           // shapes the founder's hand used to type at the ops door.
-          packageId: `pkg-${orderId}`,
+          packageId: packageIdOf(orderId),
           correlationId: `corr-${orderId}`,
           supplierId: next.supplierRef,
           paymentMode: next.paymentMode,
@@ -1700,6 +1728,134 @@ export class LogisticsDO {
       });
     }
 
+    /**
+     * REPROGRAMMATION-1 — the SEVENTH wire from custody: the §6.4 window
+     * expired on a NON-escalating reason, the ladder proceeded to a canonical
+     * `reschedule` DeliveryOutcome (attempt 2), the rider keeps the package
+     * (§6.5). The outcome rests in the RescheduleBook until the founder fixes
+     * the next passage on his console. Every settled condition answers 200 by
+     * name so the at-least-once sender can stop; only a malformed or
+     * non-canonical body is a 400 — a producer bug, and a repeating refusal
+     * in both Workers' logs is the eligibility wire's own taxonomy for it.
+     */
+    if (request.method === 'POST' && pathname === '/produce/reprogrammation') {
+      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      if (body === null || !isStr(body['command_id']) || !isStr(body['orderId']) || !isIso(body['at'])) {
+        return malformed();
+      }
+      const orderId = (body['orderId'] as string).trim();
+      const outcome = body['outcome'];
+      if (outcome === null || typeof outcome !== 'object' || (outcome as Record<string, unknown>)['orderId'] !== orderId) {
+        return malformed();
+      }
+      const active = this.book
+        .snapshot()
+        .assignments.map(([, r]) => r)
+        .find((r) => r.orderId === orderId && ACTIVE_ASSIGNMENT_STATUSES.includes(r.status));
+      if (active === undefined) return Response.json({ ok: true, status: 'aucune_course' });
+      if (this.reschedules.openFor(orderId) !== undefined) return Response.json({ ok: true, status: 'deja_enregistre' });
+      const recorded = this.reschedules.recordRescheduleOutcome(outcome);
+      if (!recorded.ok) return Response.json({ ok: false, reason: recorded.reason }, { status: 400 });
+      return Response.json({ ok: true, status: 'enregistre' });
+    }
+
+    /**
+     * ═══ REPROGRAMMATION-1 — THE FOUNDER FIXES THE NEXT PASSAGE ═══
+     *
+     * Custody said « reschedule » and the rider still holds the package. This
+     * door opens the WO-2.7 follow-up task — a NEW task id on the SAME order,
+     * the buyer's next window as its window, the first attempt's location —
+     * through the FULL intake gate again (funded per mode + ready + not
+     * cancelled + not stale: a reschedule buys a new attempt, never a
+     * bypass), closes the prior task lawfully, and moves the SAME live course
+     * onto it (`LeasedDispatch.reprogrammer`: same assignment, same rider,
+     * same anchored lease — never a second course for a package the rider
+     * already carries, never an instant where he reads as free). The rider's
+     * next `/rider/moi` carries the follow-up's window and `passage: 2`.
+     *
+     * Custody is untouched: the chain, the seal and the buyer's code are
+     * exactly what they were, and the drop at the 2e passage is the ordinary
+     * drop. The brief (voice note + proof photos) follows the course onto the
+     * new task id so nothing the rider was shown disappears.
+     *
+     * Idempotent by COMMAND (a retried tap answers the follow-up it already
+     * opened) and refuse-closed by STATE: no open reschedule → nothing to fix;
+     * an unacknowledged course → not yet; a window already past → said so.
+     */
+    if (request.method === 'POST' && pathname === '/ops/reprogrammer') {
+      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      const fenetre = body?.['fenetre'] as Record<string, unknown> | undefined;
+      if (
+        body === null ||
+        !isStr(body['command_id']) ||
+        !isStr(body['orderId']) ||
+        fenetre === null || typeof fenetre !== 'object' ||
+        !isIso(fenetre['start']) || !isIso(fenetre['end'])
+      ) {
+        return malformed();
+      }
+      const commandId = (body['command_id'] as string).trim();
+      const orderId = (body['orderId'] as string).trim();
+      const start = fenetre['start'] as string;
+      const end = fenetre['end'] as string;
+      if (Date.parse(start) >= Date.parse(end)) {
+        return Response.json({ ok: false, reason: 'fenetre_invalide' }, { status: 400 });
+      }
+      if (Date.parse(end) <= Date.parse(now)) {
+        return Response.json({ ok: false, reason: 'fenetre_passee' }, { status: 400 });
+      }
+      const replay = this.reprogrammations[commandId];
+      if (replay !== undefined) {
+        return Response.json({
+          ok: true,
+          duplicate: true,
+          taskId: replay.taskId,
+          priorTaskIds: this.reschedules.priorTaskIdsOf(replay.taskId),
+          passage: this.reschedules.priorTaskIdsOf(replay.taskId).length + 1,
+        });
+      }
+      const active = this.book
+        .snapshot()
+        .assignments.map(([, r]) => r)
+        .find((r) => r.orderId === orderId && ACTIVE_ASSIGNMENT_STATUSES.includes(r.status));
+      if (active === undefined) return Response.json({ ok: false, reason: 'no_active_course' }, { status: 409 });
+      if (active.status !== 'acknowledged') return Response.json({ ok: false, reason: 'course_non_acceptee' }, { status: 409 });
+      const open = this.reschedules.openFor(orderId);
+      if (open === undefined) return Response.json({ ok: false, reason: 'order_not_rescheduled' }, { status: 409 });
+      const prior = this.queue.get(active.taskId);
+      if (prior === undefined) return Response.json({ ok: false, reason: 'prior_task_missing' }, { status: 409 });
+      // The follow-up: the prior attempt's canonical task, re-identified and
+      // re-windowed — through the pinned canon, exactly as `/ops/task` composes.
+      let newTask: unknown;
+      try {
+        newTask = DeliveryTaskSchema.parse({ ...prior.task, id: `task-${crypto.randomUUID()}`, window: { start, end }, status: 'ready' });
+      } catch {
+        return malformed();
+      }
+      const outcome = this.dispatch.reprogrammer({
+        command_id: commandId,
+        dispatcherId: OPS_ACTOR,
+        assignmentId: active.assignmentId,
+        priorTaskId: active.taskId,
+        newTask,
+        at: now,
+      });
+      if (!outcome.ok) {
+        return Response.json({ ok: false, reason: outcome.reason, ...(outcome.detail !== undefined ? { detail: outcome.detail } : {}) }, { status: 409 });
+      }
+      const brief = this.briefs[active.taskId];
+      if (brief !== undefined) this.briefs[outcome.taskId] = brief;
+      this.reprogrammations[commandId] = { orderId, taskId: outcome.taskId };
+      return Response.json({
+        ok: true,
+        duplicate: false,
+        taskId: outcome.taskId,
+        priorTaskIds: outcome.priorTaskIds,
+        passage: outcome.priorTaskIds.length + 1,
+        fenetre: { start, end },
+      });
+    }
+
     // ── Rider door (personal code — resolved HERE, hashes live with the book) ──
     if (pathname.startsWith('/rider/')) {
       const header = request.headers.get('Authorization') ?? '';
@@ -1844,6 +2000,7 @@ export class LogisticsDO {
     queued: { taskId: string; orderId: string; admittedAt: string; window: unknown; location: unknown }[];
     riders: (RiderRecord & { shift: unknown; assignable: boolean })[];
     assignments: AssignmentRecord[];
+    aReprogrammer: { orderId: string; taskId: string; assignmentId: string; riderId: string; reasonCode: string; recordedAt: string }[];
   } {
     const queued = this.queue.queuedTasks().map((q) => ({
       taskId: q.task.id,
@@ -1865,7 +2022,26 @@ export class LogisticsDO {
       .snapshot()
       .assignments.map(([, record]) => record)
       .filter((record) => ACTIVE_ASSIGNMENT_STATUSES.includes(record.status));
-    return { queued, riders, assignments };
+    // REPROGRAMMATION-1 — the courses custody sent back to the founder for a
+    // next passage: each names the LIVE course still carrying the package. An
+    // open reschedule whose course is gone (retired between the wire and the
+    // read) is not a row — there is nothing left to fix a passage for.
+    const aReprogrammer = this.reschedules
+      .openAll()
+      .flatMap(([orderId, outcome]) => {
+        const course = assignments.find((record) => record.orderId === orderId);
+        if (course === undefined) return [];
+        return [{
+          orderId,
+          taskId: outcome.taskId,
+          assignmentId: course.assignmentId,
+          riderId: course.riderId,
+          reasonCode: outcome.reasonCode,
+          recordedAt: outcome.attempt.at,
+        }];
+      })
+      .sort((a, b) => (a.orderId < b.orderId ? -1 : 1));
+    return { queued, riders, assignments, aReprogrammer };
   }
 
   private riderView(riderId: string): Record<string, unknown> {
@@ -1963,6 +2139,27 @@ export class LogisticsDO {
                 this.retours[assignment.assignmentId]?.confirmeAt !== undefined
                   ? (this.retours[assignment.assignmentId]?.codeFournisseur ?? null)
                   : null,
+              /**
+               * REPROGRAMMATION-1 — which attempt this course is on: 1 on the
+               * first road, 2 once the founder fixed the next passage (the
+               * follow-up task's lineage, never a counter this app keeps).
+               * The window above is then the NEXT passage's — the app says
+               * « 2e passage » and shows it.
+               */
+              passage: this.reschedules.priorTaskIdsOf(assignment.taskId).length + 1,
+              /**
+               * The ids CUSTODY's chain was opened with, as this object opened
+               * it (the produce row is the record of what was said): the task
+               * of the FIRST attempt and the order's own package. The app's
+               * delivery evidence must name exactly these — after a relaunch
+               * (routine on the 2e passage, another day) the seal answer that
+               * used to carry them is gone from the phone. `null` on a course
+               * this object never opened a chain for: honest, never guessed.
+               */
+              chaine:
+                this.custodyOutbox[assignment.orderId] === undefined
+                  ? null
+                  : { taskId: this.custodyOutbox[assignment.orderId]!.taskId, packageId: packageIdOf(assignment.orderId) },
             },
     };
   }

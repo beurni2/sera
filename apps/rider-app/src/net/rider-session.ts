@@ -123,6 +123,62 @@ export interface RiderAssignment {
    * Never typed, never shown prominently; `null` until the supplier's word.
    */
   readonly codeRetourFournisseur: string | null;
+  /**
+   * REPROGRAMMATION-1 (SE6.1 live) — which attempt this course is on, as
+   * logistics counts it from the follow-up task's lineage: 1 on the first
+   * road, 2 once the founder fixed the next passage. Never a counter this
+   * phone keeps. Bounded to a whole number ≥ 1; anything else reads as 1.
+   */
+  readonly passage: number;
+  /**
+   * The course's window, as two ISO instants — on a 2e passage it is the
+   * NEXT passage the founder fixed, and the screen says so. Bounded: both
+   * instants must parse, or the window is absent (never half a window).
+   */
+  readonly fenetre: { readonly start: string; readonly end: string } | null;
+  /**
+   * The ids custody's chain was opened with, as LOGISTICS opened it (the
+   * first attempt's task, the order's own package). The delivery evidence
+   * must name exactly these; after a relaunch — routine on a 2e passage,
+   * another day — the seal answer that used to carry them is gone from the
+   * phone, and this is what lets the remise still compose. Memory never
+   * outranks a live answer: the seal answer's chain wins when this session
+   * has one. `null` when logistics carries none — honest, never guessed.
+   */
+  readonly chaine: { readonly taskId: string; readonly packageId: string } | null;
+}
+
+function passageOrOne(v: unknown): number {
+  return typeof v === 'number' && Number.isInteger(v) && v >= 1 ? v : 1;
+}
+
+function fenetreOrNull(v: unknown): { readonly start: string; readonly end: string } | null {
+  if (v === null || typeof v !== 'object') return null;
+  const w = v as Record<string, unknown>;
+  const start = isoOrNull(w['start']);
+  const end = isoOrNull(w['end']);
+  return start === null || end === null ? null : { start, end };
+}
+
+function chaineOrNull(v: unknown): { readonly taskId: string; readonly packageId: string } | null {
+  if (v === null || typeof v !== 'object') return null;
+  const c = v as Record<string, unknown>;
+  const taskId = c['taskId'];
+  const packageId = c['packageId'];
+  if (typeof taskId !== 'string' || taskId.trim() === '' || typeof packageId !== 'string' || packageId.trim() === '') return null;
+  return { taskId, packageId };
+}
+
+/**
+ * The window in the rider's own words: the day, then the two hours — read in
+ * the phone's locale, never composed by hand. Pure, so the screen stays thin.
+ */
+export function fenetreLisible(fenetre: { readonly start: string; readonly end: string }): string {
+  const start = new Date(fenetre.start);
+  const end = new Date(fenetre.end);
+  const jour = start.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
+  const heure = (d: Date) => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return `${jour}, ${heure(start)}–${heure(end)}`;
 }
 
 /** The two canon payment modes (§5.5) — the closed set this parser admits. */
@@ -259,6 +315,11 @@ export function riderSessionFromBody(body: unknown): RiderSession | null {
         codeRetour: codeRamassageOrNull(a['codeRetour']),
         retourConfirmeAt: isoOrNull(a['retourConfirmeAt']),
         codeRetourFournisseur: codeRamassageOrNull(a['codeRetourFournisseur']),
+        // REPROGRAMMATION-1 — the attempt number, the window it names, and
+        // the chain ids custody was opened with, each on its own bound.
+        passage: passageOrOne(a['passage']),
+        fenetre: fenetreOrNull(a['window']),
+        chaine: chaineOrNull(a['chaine']),
       };
     }
   }

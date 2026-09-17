@@ -112,4 +112,44 @@ export class RescheduleBook {
   priorTaskIdsOf(taskId: string): readonly string[] {
     return this.lineage.get(taskId) ?? [];
   }
+
+  /** REPROGRAMMATION-1 — the reschedule custody recorded for this order and
+   *  that no follow-up has consumed yet; the founder's « à reprogrammer »
+   *  list reads it, the reprogram door checks it before opening anything. */
+  openFor(orderId: string): DeliveryOutcome | undefined {
+    return this.openReschedules.get(orderId);
+  }
+
+  openAll(): readonly [string, DeliveryOutcome][] {
+    return [...this.openReschedules.entries()];
+  }
+
+  /** PURGE-ESSAI's law applied here: a retired order leaves no reschedule
+   *  behind for a course that no longer exists. Lineage stays — it names
+   *  task ids, and a retired task id is never reused. */
+  forgetOrder(orderId: string): void {
+    this.openReschedules.delete(orderId);
+  }
+
+  /**
+   * SE-LIVE-1's durable-composition law, ADDITIVE ONLY: until
+   * REPROGRAMMATION-1 this book was rebuilt EMPTY on every Durable Object
+   * wake, so a reschedule custody's wire delivered was gone by the founder's
+   * next read. The snapshot is the whole truth of this store.
+   */
+  snapshot(): RescheduleBookSnapshot {
+    return { open: [...this.openReschedules.entries()], lineage: [...this.lineage.entries()] };
+  }
+
+  restore(snap: RescheduleBookSnapshot): void {
+    this.openReschedules.clear();
+    for (const [orderId, outcome] of snap.open) this.openReschedules.set(orderId, outcome);
+    this.lineage.clear();
+    for (const [taskId, prior] of snap.lineage) this.lineage.set(taskId, prior);
+  }
+}
+
+export interface RescheduleBookSnapshot {
+  open: [string, DeliveryOutcome][];
+  lineage: [string, readonly string[]][];
 }

@@ -1,0 +1,433 @@
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { Miniflare } from 'miniflare';
+import { afterEach, describe, expect, it } from 'vitest';
+import { createManualConnectivity } from '../../../apps/rider-app/src/offline/connectivity';
+import { httpShiftActs } from '../../../apps/rider-app/src/net/shift-acts';
+import { httpRiderSession } from '../../../apps/rider-app/src/net/httpRiderSession';
+import { httpCourses } from '../../../apps/dispatch-console/src/courses-port';
+
+/**
+ * ═══ REPROGRAMMATION-1 — THE NEXT PASSAGE, REAL AGAINST REAL ═══
+ *
+ * SE6.1's remaining piece. RETOUR-VIVANT-1 left the non-escalating arm of the
+ * §6.4 ladder at « Gardez le colis, Séra vous appelle » — and Séra was never
+ * told. The two Miniflares below each run the OTHER Worker's shipped bundle
+ * behind the service binding, and the CONSOLE's own port and the RIDER app's
+ * own ports drive the founder's and the rider's halves, so the whole passage
+ * runs on the bytes wrangler deploys:
+ *
+ *   rider    ──/rider/door/refusal · /ops/door/expire──▶ custody   (reschedule)
+ *   custody  ──/produce/reprogrammation────────────────▶ logistics (the 7th wire)
+ *   console  ──GET /ops/board · POST /ops/reprogrammer─▶ logistics (next passage)
+ *   rider    ──GET /rider/moi──────────────────────────▶ logistics (« 2e passage »)
+ *   rider    ──/rider/delivery/drop────────────────────▶ custody   (the ordinary drop)
+ *   custody  ──/produce/course-livree──────────────────▶ logistics (course `delivered`)
+ *
+ * The proof is asked of the LEDGERS — custody's custodian, the board, the
+ * rider's session, and the rider being GIVEN A NEW COURSE at the end (the
+ * stranded-lease assertion, SE-I01) — never of a response alone.
+ */
+
+const OPS = 'test-ops-reprog';
+const INTAKE = 'test-intake-reprog';
+const VERIFY = 'test-verify-reprog';
+const CUSTODY_OPS = 'test-custody-ops-reprog';
+const PRODUCE_KEY = 'test-produce-key-reprog';
+const SHOP_ARM_KEY = 'test-shop-arm-key-reprog';
+const LIVREE_KEY = 'test-course-livree-key-reprog';
+const SUPPLIER = 'supplier-reprog-1';
+
+const CUSTODY_SCRIPT = join(import.meta.dirname, '..', '..', 'custody-service', 'dist-worker', 'worker.mjs');
+
+let live: Miniflare[] = [];
+afterEach(async () => {
+  await Promise.all(live.map((m) => m.dispose()));
+  live = [];
+});
+
+interface Hold {
+  custody?: Miniflare;
+  logistics?: Miniflare;
+}
+
+function spawnCustody(hold: Hold): Miniflare {
+  const mf = new Miniflare({
+    modules: [{ type: 'ESModule', path: 'custody-worker.mjs', contents: readFileSync(CUSTODY_SCRIPT, 'utf8') }],
+    compatibilityDate: '2025-07-05',
+    compatibilityFlags: ['nodejs_compat'],
+    durableObjects: { CUSTODY: 'CustodyDO', PACKAGE_CLAIM: 'PackageClaimDO' },
+    durableObjectsPersist: mkdtempSync(join(tmpdir(), 'reprog-custody-')),
+    serviceBindings: {
+      LOGISTICS: (request: Request) => hold.logistics!.dispatchFetch(request.url, request as never) as never,
+    },
+    bindings: {
+      SERA_CUSTODY_OPS_SECRET: CUSTODY_OPS,
+      SERA_PRODUCE_SECRET: PRODUCE_KEY,
+      SHOP_ARM_SECRET: SHOP_ARM_KEY,
+      SERA_RIDER_VERIFY_SECRET: VERIFY,
+      SERA_COURSE_LIVREE_SECRET: LIVREE_KEY,
+    },
+  });
+  live.push(mf);
+  hold.custody = mf;
+  return mf;
+}
+
+function spawnLogistics(hold: Hold): Miniflare {
+  const mf = new Miniflare({
+    modules: true,
+    scriptPath: 'dist-worker/worker.mjs',
+    durableObjects: { LOGISTICS: 'LogisticsDO' },
+    durableObjectsPersist: mkdtempSync(join(tmpdir(), 'reprog-logistics-')),
+    serviceBindings: {
+      CUSTODY: (request: Request) => hold.custody!.dispatchFetch(request.url, request as never) as never,
+    },
+    bindings: {
+      SERA_OPS_SECRET: OPS,
+      SERA_INTAKE_SECRET: INTAKE,
+      SERA_RIDER_VERIFY_SECRET: VERIFY,
+      SERA_PRODUCE_SECRET: PRODUCE_KEY,
+      SERA_COURSE_LIVREE_SECRET: LIVREE_KEY,
+    },
+  });
+  live.push(mf);
+  hold.logistics = mf;
+  return mf;
+}
+
+type Json = Record<string, unknown>;
+
+async function ops(mf: Miniflare, path: string, body?: unknown): Promise<Json> {
+  const res = await mf.dispatchFetch(`http://logistics${path}`, {
+    method: body === undefined ? 'GET' : 'POST',
+    headers: { Authorization: `Bearer ${OPS}`, 'Content-Type': 'application/json' },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+  return (await res.json()) as Json;
+}
+
+async function intake(mf: Miniflare, path: string, body: unknown): Promise<Json> {
+  const res = await mf.dispatchFetch(`http://logistics${path}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${INTAKE}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  expect(res.status, path).toBe(200);
+  return (await res.json()) as Json;
+}
+
+async function riderCustody(mf: Miniflare, path: string, code: string, body: unknown): Promise<{ status: number; json: Json }> {
+  const res = await mf.dispatchFetch(`http://custody${path}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${code}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return { status: res.status, json: (await res.json()) as Json };
+}
+
+async function custodyOps(mf: Miniflare, path: string, body: unknown): Promise<{ status: number; json: Json }> {
+  const res = await mf.dispatchFetch(`http://custody${path}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${CUSTODY_OPS}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return { status: res.status, json: (await res.json()) as Json };
+}
+
+function appPorts(mf: Miniflare) {
+  const fetchFn = ((url: string, init?: RequestInit) => mf.dispatchFetch(url, init as never)) as never;
+  const net = createManualConnectivity('online');
+  return { acts: httpShiftActs('http://logistics', net, fetchFn), session: httpRiderSession('http://logistics', net, fetchFn) };
+}
+
+/** The dispatch console's OWN port — the desk the founder fixes the passage on. */
+function desk(mf: Miniflare, key: string = OPS) {
+  const fetchFn = ((url: string, init?: RequestInit) => mf.dispatchFetch(url, init as never)) as never;
+  return httpCourses('http://logistics', key, fetchFn);
+}
+
+const T = '2026-09-17T09:00:00.000Z';
+const LOC = { zone: 'Zogona, Ouagadougou', landmark: "À l'échangeur", directions: 'Après le rond-point', maskedRelay: '' };
+const WIN = { start: T, end: '2026-09-17T16:00:00.000Z' };
+const ALL_PASS = { produit_conforme: true, quantite_complete: true, emballage_intact: true };
+const plus16 = (): string => new Date(Date.now() + 16 * 60_000).toISOString();
+const AUDIO = 'media/5a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d';
+
+async function courseConfiee(mf: Miniflare, orderId: string, riderId: string, prefix: string) {
+  await intake(mf, '/intake/funding', { orderId, status: 'funded', paymentMode: 'FULL_PREPAY', asOf: T });
+  await intake(mf, '/intake/readiness', { orderId, ready: true, asOf: T, supplierRef: SUPPLIER });
+  const composed = await ops(mf, '/ops/task', { command_id: `${prefix}-t`, orderId, location: LOC, window: WIN, repereAudioRef: AUDIO });
+  expect(composed['ok'], JSON.stringify(composed)).toBe(true);
+  const roster = (await ops(mf, '/ops/riders')) as { riders?: { riderId: string }[] };
+  if (!(roster.riders ?? []).some((r) => r.riderId === riderId)) {
+    await ops(mf, '/ops/riders', { riderId, displayName: 'Boss', phoneAlias: prefix });
+    await ops(mf, '/ops/riders/certify', { riderId, certified: true });
+  }
+  const code = (await ops(mf, '/ops/rider-code/mint', { riderId }))['code'] as string;
+  const { acts } = appPorts(mf);
+  await acts.ackPrivacy(code);
+  const shift = await acts.startShift(code);
+  if (!shift.ok && (shift as { refus?: string }).refus !== 'already_on_shift') throw new Error(`start refused: ${JSON.stringify(shift)}`);
+  const granted = await ops(mf, '/ops/assign', { command_id: `${prefix}-a`, taskId: composed['taskId'], riderId });
+  expect(granted['ok'], JSON.stringify(granted)).toBe(true);
+  const assignmentId = (granted['assignment'] as Json)['assignmentId'] as string;
+  const accepted = await acts.accepterCourse(code, assignmentId);
+  expect(accepted.ok, JSON.stringify(accepted)).toBe(true);
+  return { code, assignmentId, taskId: composed['taskId'] as string };
+}
+
+async function attendreChaine(custody: Miniflare, orderId: string): Promise<void> {
+  for (let i = 0; i < 80; i += 1) {
+    const res = await custody.dispatchFetch(`http://custody/ops/ledger?orderId=${orderId}`, {
+      headers: { Authorization: `Bearer ${CUSTODY_OPS}` },
+    });
+    await res.text();
+    if (res.status === 200) return;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  throw new Error('custody chain never opened');
+}
+
+async function custodian(custody: Miniflare, orderId: string): Promise<unknown> {
+  const res = await custody.dispatchFetch(`http://custody/ops/ledger?orderId=${orderId}`, {
+    headers: { Authorization: `Bearer ${CUSTODY_OPS}` },
+  });
+  return ((await res.json()) as Json)['currentCustodian'];
+}
+
+async function moiAssignment(mf: Miniflare, code: string): Promise<Json | null> {
+  const res = await mf.dispatchFetch('http://logistics/rider/moi', { headers: { Authorization: `Bearer ${code}` } });
+  expect(res.status).toBe(200);
+  const json = (await res.json()) as Json;
+  return (json['rider'] as Json)['assignment'] as Json | null;
+}
+
+async function attendre<T>(read: () => Promise<T>, done: (v: T) => boolean, why: string): Promise<T> {
+  let last!: T;
+  for (let i = 0; i < 80; i += 1) {
+    last = await read();
+    if (done(last)) return last;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  throw new Error(`${why} — last: ${JSON.stringify(last)}`);
+}
+
+/** The rider's road on custody, up to the door: verified, sealed, the
+ *  buyer's code armed by Shop+, evidence recorded and auto-decided. */
+async function jusquaLaPorte(custody: Miniflare, logistics: Miniflare, orderId: string, code: string, prefix: string): Promise<{ codeScelle: string; drop: string }> {
+  await attendreChaine(custody, orderId);
+  const { session } = appPorts(logistics);
+  const moi = await session.signIn(code);
+  if (!moi.ok) throw new Error('sign-in refused');
+  const assignment = moi.session.assignment as unknown as Json;
+  const pv = assignment['codeVerification'] as string;
+  const sc = assignment['codeScelle'] as string;
+  const verified = await riderCustody(custody, '/rider/verification', code, {
+    orderId, command_id: `${prefix}-v`, presentedPickupCode: pv, checkResults: ALL_PASS, dwellSec: 150, evidenceBundleId: `ev-${prefix}`,
+  });
+  expect(verified.status, JSON.stringify(verified.json)).toBe(200);
+  const began = await riderCustody(custody, '/rider/custody/begin', code, { orderId, command_id: `${prefix}-b`, custodySealId: sc, sealPhotoRefs: [] });
+  expect(began.status, JSON.stringify(began.json)).toBe(200);
+  const chain = began.json['chain'] as Json;
+  const drop = `DROP-${prefix}`;
+  const armed = await custody.dispatchFetch('http://custody/produce-shop/secrets/arm', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${SHOP_ARM_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ orderId, command_id: `${prefix}-arm-drop`, kind: 'buyer_drop_code', secret: drop }),
+  });
+  expect(armed.status).toBe(200);
+  await armed.text();
+  const evidence = await riderCustody(custody, '/rider/delivery/evidence', code, {
+    orderId, command_id: `${prefix}-e`,
+    bundle: { taskId: chain['task_id'], packageId: chain['package_id'], custodySealId: sc, artifacts: [], capturedAt: T },
+  });
+  expect(evidence.status, JSON.stringify(evidence.json)).toBe(200);
+  return { codeScelle: sc, drop };
+}
+
+describe('REPROGRAMMATION-1 — the next passage crosses BOTH real Workers, the console and the rider’s phone', () => {
+  it('honest absence → custody reschedules → the 7th wire lists the course « à reprogrammer » on the console → the founder fixes the window → the SAME course carries the follow-up task, the rider reads « 2e passage » with the window and the same codes → the ordinary drop closes it → the lease is released and the rider can be given a new course', async () => {
+    const hold: Hold = {};
+    spawnLogistics(hold);
+    spawnCustody(hold);
+    const logistics = hold.logistics!;
+    const custody = hold.custody!;
+
+    const O = 'ord-reprog-1';
+    const RIDER = 'rider-reprog-1';
+    const { code, assignmentId, taskId: T1 } = await courseConfiee(logistics, O, RIDER, 'rp1');
+    const { codeScelle, drop } = await jusquaLaPorte(custody, logistics, O, code, 'rp1');
+
+    // BEFORE: passage 1, the chain ids logistics opened custody with, no
+    // course waiting for a passage on the founder's desk.
+    const avant = await moiAssignment(logistics, code);
+    expect(avant).toMatchObject({ taskId: T1, passage: 1, chaine: { taskId: T1, packageId: `pkg-${O}` }, codeScelle });
+    expect(await desk(logistics).reprogrammations()).toEqual({ kind: 'ok', value: [] });
+
+    // The ladder, on the rider's own door; the expiry attested by custody's
+    // founder door sixteen minutes on (the one lever a test has on the clock).
+    const refused = await riderCustody(custody, '/rider/door/refusal', code, { orderId: O, command_id: 'rp1-ref', reasonCode: 'honest_absence' });
+    expect(refused.status, JSON.stringify(refused.json)).toBe(200);
+    const expired = await custodyOps(custody, '/ops/door/expire', { orderId: O, command_id: 'rp1-exp', at: plus16() });
+    expect(expired.status, JSON.stringify(expired.json)).toBe(200);
+    expect(expired.json['outcome']).toMatchObject({ family: 'reschedule', reasonCode: 'honest_absence' });
+
+    // THE 7TH WIRE CROSSED: the founder's desk lists the course, off the
+    // real board, through the console's own port — the reason, the rider by
+    // name, the first attempt's task.
+    const listed = await attendre(
+      () => desk(logistics).reprogrammations(),
+      (a) => a.kind === 'ok' && a.value.length === 1,
+      'the reschedule never reached the console',
+    );
+    expect(listed).toMatchObject({ kind: 'ok', value: [{ orderId: O, taskId: T1, riderName: 'Boss', reasonCode: 'honest_absence' }] });
+    if (listed.kind !== 'ok') return;
+    expect(Number.isFinite(Date.parse(listed.value[0]!.recordedAt))).toBe(true);
+    // The rider still carries: the ledger says so, and so does the board.
+    expect(await custodian(custody, O)).toBe(`courier:${RIDER}`);
+    const boardAvant = (await ops(logistics, '/ops/board'))['board'] as Json;
+    expect((boardAvant['riders'] as Json[]).find((r) => r['riderId'] === RIDER)?.['assignable']).toBe(false);
+
+    // THE FOUNDER FIXES THE NEXT PASSAGE, through the console's own port.
+    const start = new Date(Date.now() + 60 * 60_000).toISOString();
+    const end = new Date(Date.now() + 3 * 60 * 60_000).toISOString();
+    const fixed = await desk(logistics).reprogrammer(O, { start, end });
+    expect(fixed.kind, JSON.stringify(fixed)).toBe('ok');
+    if (fixed.kind !== 'ok') return;
+    const T2 = fixed.value.taskId;
+    expect(T2).not.toBe(T1);
+
+    // ASK THE LEDGERS. The desk is clear; the SAME assignment now names the
+    // follow-up task; no task is queued (the prior closed, the follow-up is
+    // assigned); the order is not back on « à préparer »; the rider is busy.
+    expect(await desk(logistics).reprogrammations()).toEqual({ kind: 'ok', value: [] });
+    const board = (await ops(logistics, '/ops/board'))['board'] as Json;
+    expect(board['aReprogrammer']).toEqual([]);
+    expect(board['queued']).toEqual([]);
+    const course = (board['assignments'] as Json[]).find((a) => a['orderId'] === O);
+    expect(course).toMatchObject({ assignmentId, taskId: T2, riderId: RIDER, status: 'acknowledged', lease: { taskId: T1 } });
+    expect((board['riders'] as Json[]).find((r) => r['riderId'] === RIDER)?.['assignable']).toBe(false);
+    expect((await ops(logistics, '/ops/a-preparer'))['attente']).toEqual([]);
+    // A fresh compose for the same order refuses: the follow-up IS its task.
+    const recompose = await ops(logistics, '/ops/task', { command_id: 'rp1-t-again', orderId: O, location: LOC, window: WIN });
+    expect(recompose).toMatchObject({ ok: false, reason: 'order_already_has_task', taskId: T2 });
+
+    // THE RIDER'S PHONE: « 2e passage », the founder's window, the same
+    // codes and seal (custody is untouched), the chain ids of the FIRST
+    // attempt (what custody's chain holds), the brief carried over.
+    const apres = await moiAssignment(logistics, code);
+    expect(apres).toMatchObject({
+      assignmentId, taskId: T2, status: 'acknowledged', passage: 2,
+      window: { start, end }, location: LOC,
+      codeScelle, chaine: { taskId: T1, packageId: `pkg-${O}` }, repereAudioRef: AUDIO,
+    });
+    expect(apres?.['codeVerification']).toBe(avant?.['codeVerification']);
+    // …and through the app's own parser, the fields the screen turns on.
+    const moi = await appPorts(logistics).session.signIn(code);
+    expect(moi.ok).toBe(true);
+    if (!moi.ok) return;
+    expect(moi.session.assignment).toMatchObject({ passage: 2, fenetre: { start, end }, chaine: { taskId: T1, packageId: `pkg-${O}` } });
+
+    // IDEMPOTENT BY COMMAND, REFUSE-CLOSED BY STATE: a second fix of the same
+    // course (a fresh tap) is refused by name — nothing to fix any more.
+    const encore = await desk(logistics).reprogrammer(O, { start, end });
+    expect(encore).toEqual({ kind: 'refused', reason: 'order_not_rescheduled' });
+    // (The exact-command replay is pinned in the doors test below, where the
+    // command id is known — the console's port mints its own.)
+
+    // THE RIDER CANNOT BE GIVEN ANOTHER PACKAGE WHILE HE CARRIES THIS ONE:
+    // the anchored lease is alive, the book's one-active rule holds.
+    const O2 = 'ord-reprog-1-other';
+    await intake(logistics, '/intake/funding', { orderId: O2, status: 'funded', paymentMode: 'FULL_PREPAY', asOf: T });
+    await intake(logistics, '/intake/readiness', { orderId: O2, ready: true, asOf: T, supplierRef: SUPPLIER });
+    const other = await ops(logistics, '/ops/task', { command_id: 'rp1-t2', orderId: O2, location: LOC, window: WIN });
+    expect(other['ok']).toBe(true);
+    const refusedOther = await ops(logistics, '/ops/assign', { command_id: 'rp1-a-other', taskId: other['taskId'], riderId: RIDER });
+    expect(refusedOther['ok']).toBe(false);
+
+    // THE 2E PASSAGE: the ordinary drop, with the SAME buyer's code — custody
+    // → customer, the course-livrée wire closes the course `delivered`, the
+    // rider is free AND ASSIGNABLE (the lease released by ITS task, T1).
+    const dropped = await riderCustody(custody, '/rider/delivery/drop', code, { orderId: O, command_id: 'rp1-drop', dropCode: drop });
+    expect(dropped.status, JSON.stringify(dropped.json)).toBe(200);
+    expect(dropped.json).toMatchObject({ ok: true, status: 'custody_with_customer' });
+    expect(await custodian(custody, O)).toBe('customer');
+    await attendre(() => moiAssignment(logistics, code), (a) => a === null, 'the course never closed on the rider’s session');
+    const fin = (await ops(logistics, '/ops/board'))['board'] as Json;
+    expect((fin['riders'] as Json[]).find((r) => r['riderId'] === RIDER)?.['assignable']).toBe(true);
+    const again = await ops(logistics, '/ops/assign', { command_id: 'rp1-a-again', taskId: other['taskId'], riderId: RIDER });
+    expect(again['ok'], `the delivered rider must be grantable again — ${JSON.stringify(again)}`).toBe(true);
+    expect((again['lease'] as Json)['taskId']).toBe(other['taskId']);
+  });
+
+  it('the doors refuse closed by name: no reschedule on record · a window already past · a reversed window · the produce door settles by name and rejects a foreign outcome', async () => {
+    const hold: Hold = {};
+    spawnLogistics(hold);
+    spawnCustody(hold);
+    const logistics = hold.logistics!;
+
+    const O = 'ord-reprog-doors';
+    const RIDER = 'rider-reprog-doors';
+    await courseConfiee(logistics, O, RIDER, 'rpd');
+    const future = { start: new Date(Date.now() + 3_600_000).toISOString(), end: new Date(Date.now() + 7_200_000).toISOString() };
+
+    // Nothing custody said yet: nothing to fix.
+    expect(await desk(logistics).reprogrammer(O, future)).toEqual({ kind: 'refused', reason: 'order_not_rescheduled' });
+    // The window itself is judged before any state: past, then reversed.
+    expect(await desk(logistics).reprogrammer(O, { start: '2026-01-01T09:00:00.000Z', end: '2026-01-01T10:00:00.000Z' }))
+      .toEqual({ kind: 'refused', reason: 'fenetre_passee' });
+    expect(await desk(logistics).reprogrammer(O, { start: future.end, end: future.start })).toEqual({ kind: 'refused', reason: 'fenetre_invalide' });
+    // The wrong key is the one door sentence.
+    expect(await desk(logistics, 'not-the-key').reprogrammer(O, future)).toEqual({ kind: 'bad_key' });
+
+    // The produce door: custody's key alone; every settled condition a 200 by
+    // name; a body whose outcome names another order is a 400 (producer bug).
+    const produce = async (body: unknown, key: string = LIVREE_KEY) => {
+      const res = await logistics.dispatchFetch('http://logistics/produce/reprogrammation', {
+        method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      });
+      return { status: res.status, json: (await res.json()) as Json };
+    };
+    const outcome = (orderId: string, taskId: string) => ({
+      taskId, orderId, family: 'reschedule', reasonCode: 'honest_absence', humanReasonRef: 'reason.honest_absence',
+      faultClass: 'buyer', attempt: { number: 2, at: T },
+    });
+    expect((await produce({ command_id: 'w-1', orderId: O, at: T, outcome: outcome(O, 'task-x') }, OPS)).status).toBe(401);
+    expect(await produce({ command_id: 'w-2', orderId: 'ord-nobody', at: T, outcome: outcome('ord-nobody', 'task-x') }))
+      .toEqual({ status: 200, json: { ok: true, status: 'aucune_course' } });
+    expect((await produce({ command_id: 'w-3', orderId: O, at: T, outcome: outcome('ord-other', 'task-x') })).status).toBe(400);
+    expect((await produce({ command_id: 'w-4', orderId: O, at: T, outcome: { ...outcome(O, 'task-x'), family: 'retry' } })).status).toBe(400);
+    const first = await produce({ command_id: 'w-5', orderId: O, at: T, outcome: outcome(O, 'task-x') });
+    expect(first).toEqual({ status: 200, json: { ok: true, status: 'enregistre' } });
+    expect(await produce({ command_id: 'w-5', orderId: O, at: T, outcome: outcome(O, 'task-x') }))
+      .toEqual({ status: 200, json: { ok: true, status: 'deja_enregistre' } });
+    // Listed for the founder — and a reschedule naming a task that is NOT the
+    // live course's is refused at the fix, by name, moving nothing.
+    expect(await desk(logistics).reprogrammations()).toMatchObject({ kind: 'ok', value: [{ orderId: O, taskId: 'task-x', reasonCode: 'honest_absence' }] });
+    expect(await desk(logistics).reprogrammer(O, future)).toEqual({ kind: 'refused', reason: 'prior_task_mismatch' });
+    // Retiring the order takes the open reschedule with it (PURGE-ESSAI's law).
+    expect(await desk(logistics).retirer(O)).toEqual({ kind: 'ok', value: 'retire' });
+    expect(await desk(logistics).reprogrammations()).toEqual({ kind: 'ok', value: [] });
+
+    // IDEMPOTENT BY COMMAND: a second course, custody's word naming ITS task,
+    // fixed by a known command id — the exact replay answers the SAME
+    // follow-up (never a third attempt); a fresh id afterwards is refused
+    // by state.
+    const O2 = 'ord-reprog-doors-2';
+    const { taskId: T1 } = await courseConfiee(logistics, O2, 'rider-reprog-doors-2', 'rpd2');
+    expect(await produce({ command_id: 'w-6', orderId: O2, at: T, outcome: outcome(O2, T1) }))
+      .toEqual({ status: 200, json: { ok: true, status: 'enregistre' } });
+    const fix = { command_id: 'rpd2-fix', orderId: O2, fenetre: future };
+    const first2 = await ops(logistics, '/ops/reprogrammer', fix);
+    expect(first2).toMatchObject({ ok: true, duplicate: false, passage: 2, priorTaskIds: [T1] });
+    const replay = await ops(logistics, '/ops/reprogrammer', fix);
+    expect(replay).toEqual({ ok: true, duplicate: true, taskId: first2['taskId'], priorTaskIds: [T1], passage: 2 });
+    expect(await ops(logistics, '/ops/reprogrammer', { ...fix, command_id: 'rpd2-fix-again' })).toMatchObject({ ok: false, reason: 'order_not_rescheduled' });
+    // One live course, on the follow-up task, nothing queued twice.
+    const board = (await ops(logistics, '/ops/board'))['board'] as Json;
+    expect((board['assignments'] as Json[]).filter((a) => a['orderId'] === O2).map((a) => a['taskId'])).toEqual([first2['taskId']]);
+    expect((board['queued'] as Json[]).filter((q) => q['orderId'] === O2)).toEqual([]);
+  });
+});

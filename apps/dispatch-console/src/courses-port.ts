@@ -1,4 +1,5 @@
 import { boardCourses, type CourseRow } from './courses';
+import { aReprogrammerRows, type ReprogRow } from './reprogrammation';
 import { logisticsBase, type OpsAnswer } from './rider-codes-port';
 
 /**
@@ -22,11 +23,24 @@ type FetchFn = (input: string, init?: RequestInit) => Promise<Response>;
 /** What the retire door answered, for the ONE order it was asked about. */
 export type RetraitStatus = 'retire' | 'inconnu';
 
+/** REPROGRAMMATION-1 — the next passage, two ISO instants. */
+export interface FenetrePassage {
+  readonly start: string;
+  readonly end: string;
+}
+
 export interface CoursesPort {
   board(): Promise<OpsAnswer<readonly CourseRow[]>>;
   /** `inconnu` is a SUCCESS: the board no longer holds that order, which is
    *  what the founder asked for. A re-run of the sweep converges. */
   retirer(orderId: string): Promise<OpsAnswer<RetraitStatus>>;
+  /** REPROGRAMMATION-1 — the courses custody sent back for a next passage,
+   *  off the SAME board read the courses desk uses. */
+  reprogrammations(): Promise<OpsAnswer<readonly ReprogRow[]>>;
+  /** Fix the next passage: the door opens the follow-up task and moves the
+   *  live course onto it. The follow-up's id comes home so the desk can say
+   *  the fix is REAL — a 200 that names no task is reported as a refusal. */
+  reprogrammer(orderId: string, fenetre: FenetrePassage): Promise<OpsAnswer<{ readonly taskId: string }>>;
 }
 
 const TIMEOUT_MS = 15_000;
@@ -53,6 +67,18 @@ function readReason(body: unknown): string {
  *  across taps so a retried removal is a fresh, honest act. */
 function commandId(orderId: string): string {
   return `cmd-console-retirer-${orderId}-${crypto.randomUUID()}`;
+}
+
+/** The reprogram door's own id — fresh per tap for the same reason: a second
+ *  tap after a refusal is a new act the door judges on the state as it now
+ *  stands, never a replay of the refusal. */
+function reprogCommandId(orderId: string): string {
+  return `cmd-console-reprog-${orderId}-${crypto.randomUUID()}`;
+}
+
+function taskIdOf(body: unknown): { taskId: string } | null {
+  const taskId = body !== null && typeof body === 'object' ? (body as Record<string, unknown>)['taskId'] : null;
+  return typeof taskId === 'string' && taskId !== '' ? { taskId } : null;
 }
 
 /** The door's own two answers, and nothing invented for a third. */
@@ -105,6 +131,20 @@ export function httpCourses(
       if (answer.value === null) return { kind: 'refused', reason: 'reponse_sans_statut' };
       return { kind: 'ok', value: answer.value };
     },
+    reprogrammations: () => call('/ops/board', { method: 'GET' }, aReprogrammerRows),
+    async reprogrammer(orderId: string, fenetre: FenetrePassage): Promise<OpsAnswer<{ readonly taskId: string }>> {
+      const answer = await call(
+        '/ops/reprogrammer',
+        { method: 'POST', body: JSON.stringify({ command_id: reprogCommandId(orderId), orderId, fenetre }) },
+        taskIdOf,
+      );
+      if (answer.kind !== 'ok') return answer;
+      // A 200 THAT NAMES NO FOLLOW-UP TASK IS NOT A FIXED PASSAGE (the retire
+      // door's own law): the rider's phone would show nothing new, and the
+      // desk would have told the founder otherwise.
+      if (answer.value === null) return { kind: 'refused', reason: 'reponse_sans_tache' };
+      return { kind: 'ok', value: answer.value };
+    },
   };
 }
 
@@ -112,7 +152,7 @@ export function httpCourses(
  *  that reads as « nothing to retire ». */
 export function unwiredCourses(): CoursesPort {
   const no = async (): Promise<OpsAnswer<never>> => ({ kind: 'unreachable' });
-  return { board: no, retirer: no };
+  return { board: no, retirer: no, reprogrammations: no, reprogrammer: no };
 }
 
 export function resolveCourses(opsKey: string, base: string = logisticsBase()): CoursesPort {

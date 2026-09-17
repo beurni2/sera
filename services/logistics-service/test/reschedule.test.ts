@@ -194,3 +194,36 @@ describe('custody isolation of the reschedule path (structural)', () => {
     expect(source).not.toMatch(/CustodyLedger|custody-ledger|custody-spine|CustodySpine/);
   });
 });
+
+describe('REPROGRAMMATION-1 — the book survives a wake, and the founder can read what is open', () => {
+  it('snapshot → restore carries the open reschedule and the lineage; openFor/openAll read them; a retired order drops only the open one', () => {
+    const { queue, book } = world();
+    expect(book.openFor(ORDER)).toBeUndefined();
+    expect(book.recordRescheduleOutcome(rescheduleOutcome())).toEqual({ ok: true, orderId: ORDER });
+    expect(book.openFor(ORDER)).toMatchObject({ taskId: 'task-77-1', family: 'reschedule', reasonCode: 'honest_absence' });
+    expect(book.openAll().map(([orderId]) => orderId)).toEqual([ORDER]);
+
+    // A fresh object on the same queue, fed the snapshot: the same truth.
+    const revived = new RescheduleBook(queue);
+    revived.restore(book.snapshot());
+    expect(revived.openFor(ORDER)).toEqual(book.openFor(ORDER));
+    const opened = revived.openFollowUpTask({ command_id: 'cmd-f-snap', dispatcherId: 'd-1', priorTaskId: 'task-77-1', newTask: taskShape('task-77-2'), at: T });
+    expect(opened).toMatchObject({ ok: true, priorTaskIds: ['task-77-1'], intake: { admitted: true } });
+    // Consumed: nothing is open any more, and the lineage survives a second wake.
+    expect(revived.openFor(ORDER)).toBeUndefined();
+    const again = new RescheduleBook(queue);
+    again.restore(revived.snapshot());
+    expect(again.priorTaskIdsOf('task-77-2')).toEqual(['task-77-1']);
+    expect(again.openAll()).toEqual([]);
+
+    // forgetOrder (PURGE-ESSAI's law): the open reschedule goes, the lineage stays.
+    expect(again.recordRescheduleOutcome(rescheduleOutcome({ taskId: 'task-77-2' }))).toEqual({ ok: true, orderId: ORDER });
+    again.forgetOrder(ORDER);
+    expect(again.openFor(ORDER)).toBeUndefined();
+    expect(again.priorTaskIdsOf('task-77-2')).toEqual(['task-77-1']);
+    // An empty book restores to an empty book — no invented rows.
+    const empty = new RescheduleBook(queue);
+    empty.restore({ open: [], lineage: [] });
+    expect(empty.openAll()).toEqual([]);
+  });
+});

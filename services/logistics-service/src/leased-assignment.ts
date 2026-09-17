@@ -265,10 +265,60 @@ export class LeasedDispatch {
     const release = await this.deps.authority.send({
       kind: 'release',
       command_id: `decline-${assignmentId}`,
-      taskId: assignment.taskId,
+      taskId: assignment.lease.taskId,
       cause: 'declined',
     });
     return { ...outcome, leaseReleased: release.ok };
+  }
+
+  /**
+   * REPROGRAMMATION-1 (SE6.1 live) — the reschedule wire's follow-up on the
+   * LIVE road: custody recorded a `reschedule` while the rider still holds the
+   * package, the founder fixed the next passage, and the SAME course moves
+   * onto the follow-up task. The RescheduleBook admits it through the FULL
+   * WO-1.2 intake gate (funded-per-mode + ready + not cancelled + not stale)
+   * and closes the prior task lawfully; the book then re-targets the live
+   * assignment (its own second check). Nothing touches custody.
+   *
+   * ⚠ THE LEASE IS NOT RELEASED AND NOT RE-ACQUIRED, on purpose — a
+   * deliberate departure from `openFollowUpTask` above, whose law fits a task
+   * handed out afresh. Here the rider's ANCHORED lease is his hold on this
+   * package's course, and it must not lapse for a single instant: releasing
+   * it would let THE authority grant him another package while the ledger
+   * says he carries this one (`rider_already_leased` is the guard that
+   * matters, and it needs the lease alive). The lease still names the FIRST
+   * task; every release below therefore goes by `lease.taskId`, never by the
+   * assignment's current task — the follow-up task itself needs no lease of
+   * its own, because it is `assigned` in the queue and nobody else can ever
+   * acquire it. Refusals happen BEFORE anything moves; a book refusal after
+   * the follow-up was admitted cannot occur (the route pre-checks the same
+   * facts inside one input-gated request) and is thrown, so the caller's
+   * catch drops the half-applied state rather than persisting it.
+   */
+  reprogrammer(args: {
+    command_id: string;
+    dispatcherId: string;
+    assignmentId: string;
+    priorTaskId: string;
+    newTask: unknown;
+    at: string;
+  }):
+    | { ok: true; assignment: AssignmentRecord; taskId: string; priorTaskIds: readonly string[] }
+    | { ok: false; reason: string; detail?: string } {
+    const opened = this.deps.reschedules.openFollowUpTask({
+      command_id: args.command_id,
+      dispatcherId: args.dispatcherId,
+      priorTaskId: args.priorTaskId,
+      newTask: args.newTask,
+      at: args.at,
+    });
+    if (!opened.ok) return { ok: false, reason: opened.reason };
+    if (!opened.intake.admitted) return { ok: false, reason: opened.intake.reason };
+    const moved = this.deps.book.retargetTask(args.assignmentId, opened.task.id);
+    if (!moved.ok) {
+      throw new Error(`reprogrammer: follow-up ${opened.task.id} admitted but the course could not move (${moved.reason})`);
+    }
+    return { ok: true, assignment: moved.assignment, taskId: opened.task.id, priorTaskIds: opened.priorTaskIds };
   }
 
   /**
@@ -362,7 +412,7 @@ export class LeasedDispatch {
     const release = await this.deps.authority.send({
       kind: 'release',
       command_id: `take-back-${assignmentId}`,
-      taskId: assignment.taskId,
+      taskId: assignment.lease.taskId,
       cause: 'taken_back',
     });
     return { ...outcome, leaseReleased: release.ok };
@@ -400,7 +450,12 @@ export class LeasedDispatch {
   }> {
     const assignments = this.deps.book.forgetOrder(orderId);
     const queueTaskIds = this.deps.queue.forgetOrder(orderId);
-    const taskIds = [...new Set([...queueTaskIds, ...assignments.map((a) => a.taskId)])];
+    // REPROGRAMMATION-1: a retired order leaves no open reschedule behind.
+    this.deps.reschedules.forgetOrder(orderId);
+    // The lease's own task is in the union too: after a reprogram the
+    // assignment names its follow-up task while the lease still names the
+    // first one (see `reprogrammer`), and the lease is what must be released.
+    const taskIds = [...new Set([...queueTaskIds, ...assignments.flatMap((a) => [a.taskId, a.lease.taskId])])];
     for (const assignment of assignments) this.deps.witness.revoke(assignment.lease);
     let leasesReleased = 0;
     for (const taskId of taskIds) {
@@ -460,10 +515,14 @@ export class LeasedDispatch {
     const outcome = this.deps.book.deliver(orderId, at);
     if (!outcome.ok || outcome.duplicate) return { ...outcome, leaseReleased: false };
     this.deps.witness.revoke(outcome.assignment.lease);
+    // By the LEASE's task (REPROGRAMMATION-1): after a 2e passage the course
+    // names its follow-up task while the anchored lease still names the first
+    // — releasing by the current task would leave the lease alive and the
+    // delivered rider `rider_already_leased` for ever.
     const release = await this.deps.authority.send({
       kind: 'release',
-      command_id: `complete-${outcome.assignment.taskId}`,
-      taskId: outcome.assignment.taskId,
+      command_id: `complete-${outcome.assignment.lease.taskId}`,
+      taskId: outcome.assignment.lease.taskId,
       cause: 'completed',
     });
     return { ...outcome, leaseReleased: release.ok };
@@ -479,8 +538,8 @@ export class LeasedDispatch {
     this.deps.witness.revoke(outcome.assignment.lease);
     const release = await this.deps.authority.send({
       kind: 'release',
-      command_id: `complete-${outcome.assignment.taskId}`,
-      taskId: outcome.assignment.taskId,
+      command_id: `complete-${outcome.assignment.lease.taskId}`,
+      taskId: outcome.assignment.lease.taskId,
       cause: 'completed',
     });
     return { ...outcome, leaseReleased: release.ok };

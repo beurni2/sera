@@ -402,3 +402,38 @@ describe('PORTE-CUSTODY part C — paymentMode is bounded to the canon §5.5 set
     expect(a?.paymentMode).toBeNull();
   });
 });
+
+describe('REPROGRAMMATION-1 — the attempt number, the window and the chain ids ride the session, each bounded', () => {
+  const withAssignment = (over: Record<string, unknown>) =>
+    riderSessionFromBody({ ...MOI, rider: { ...MOI.rider, assignment: { ...MOI.rider.assignment, ...over } } });
+
+  it('parses all three when the wire carries them well-formed', () => {
+    const s = withAssignment({
+      passage: 2,
+      window: { start: '2026-09-18T10:00:00.000Z', end: '2026-09-18T12:00:00.000Z' },
+      chaine: { taskId: 'task-first', packageId: 'pkg-ord-1' },
+    });
+    expect(s?.assignment).toMatchObject({
+      passage: 2,
+      fenetre: { start: '2026-09-18T10:00:00.000Z', end: '2026-09-18T12:00:00.000Z' },
+      chaine: { taskId: 'task-first', packageId: 'pkg-ord-1' },
+    });
+  });
+
+  it('an old Worker sending none of them still yields a whole session: passage 1, no window, no chain', () => {
+    const s = riderSessionFromBody(MOI);
+    // MOI's window is the demo's `{from, to}` shape — not two instants, so no window.
+    expect(s?.assignment).toMatchObject({ passage: 1, fenetre: null, chaine: null });
+  });
+
+  it('bounds: a passage that is not a whole number ≥ 1 reads as 1; half a window is no window; a chain missing an id is no chain', () => {
+    for (const passage of [0, -1, 2.5, '2', null, undefined]) {
+      expect(withAssignment({ passage })?.assignment?.passage, `passage=${String(passage)}`).toBe(1);
+    }
+    expect(withAssignment({ window: { start: '2026-09-18T10:00:00.000Z', end: 'demain' } })?.assignment?.fenetre).toBeNull();
+    expect(withAssignment({ window: { start: '2026-09-18T10:00:00.000Z' } })?.assignment?.fenetre).toBeNull();
+    expect(withAssignment({ chaine: { taskId: 'task-first' } })?.assignment?.chaine).toBeNull();
+    expect(withAssignment({ chaine: { taskId: '', packageId: 'pkg-1' } })?.assignment?.chaine).toBeNull();
+    expect(withAssignment({ chaine: 'task-first' })?.assignment?.chaine).toBeNull();
+  });
+});

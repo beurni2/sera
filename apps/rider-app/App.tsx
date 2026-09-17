@@ -66,7 +66,7 @@ import { SosButton, SosSheet, type SosState } from './src/ui/faso-sos';
 import { FasoSignIn } from './src/ui/faso-signin';
 import { IDLE, refusalKeys, submit as submitSignIn, type SignInState } from './src/net/signin-model';
 import { isWired, resolveRiderSession } from './src/net/resolveRiderSession';
-import { assignmentStateKey, landmarkLines, onShiftFromSession, pinItineraire } from './src/net/rider-session';
+import { assignmentStateKey, fenetreLisible, landmarkLines, onShiftFromSession, pinItineraire } from './src/net/rider-session';
 import { refusServiceKey, resolveShiftActs } from './src/net/shift-acts';
 
 /** How often a signed-in wired build re-asks `/rider/moi`. The ack window is
@@ -1135,9 +1135,20 @@ export default function App() {
    * `409 command_id_reused_with_other_content` — which the screen reads as
    * « Séra a refusé ». Same law as the seal: one attempt, one id, retry safe.
    */
+  /**
+   * REPROGRAMMATION-1 — the chain ids the remise names: this session's seal
+   * answer first (a live ledger answer), else the SESSION's `chaine` (what
+   * logistics opened custody with). Until this fallback a phone killed
+   * between the seal and the door landed on « il manque des repères » for
+   * good — and the 2e passage is, routinely, another day on a relaunched
+   * app. Memory never outranks an answer; a session that carries none keeps
+   * the honest card.
+   */
+  const idsRemise = livraisonIds ?? liveAssignment?.chaine ?? null;
+
   const sendDeliveryEvidence = useCallback(() => {
     if (riderCode === null || liveAssignment === null) return;
-    if (livraisonIds === null || sealPourRemise === null) return;
+    if (idsRemise === null || sealPourRemise === null) return;
     const attempt = attemptFor(`delivery-evidence|${liveAssignment.orderId}`);
     const held = capturedAtFor.current.get(attempt.id) ?? new Date().toISOString();
     capturedAtFor.current.set(attempt.id, held);
@@ -1147,15 +1158,15 @@ export default function App() {
           commandId: attempt.id,
           orderId: liveAssignment.orderId,
           custodySealId: sealPourRemise,
-          taskId: livraisonIds.taskId,
-          packageId: livraisonIds.packageId,
+          taskId: idsRemise.taskId,
+          packageId: idsRemise.packageId,
           artifacts: [],
           capturedAt: held,
         },
         riderCode,
       ),
     );
-  }, [custodyActs, riderCode, liveAssignment, livraisonIds, sealPourRemise, runAct, attemptFor]);
+  }, [custodyActs, riderCode, liveAssignment, idsRemise, sealPourRemise, runAct, attemptFor]);
 
   /**
    * The bundle, fired by the ARRIVAL rather than by a tap — the founder's flow
@@ -1170,7 +1181,7 @@ export default function App() {
   const preuveAuto = roadArrived(arrivePhase, remembered)
     && !evidenceIsHeld(evidencePhase)
     && evidencePhase.kind === 'idle'
-    && livraisonIds !== null
+    && idsRemise !== null
     && sealPourRemise !== null;
   useEffect(() => {
     if (!WIRED || !preuveAuto) return;
@@ -1317,6 +1328,15 @@ export default function App() {
    * phone invents (A7's law), never the outbound seal standing in for it.
    */
   const scelleRetour = liveAssignment?.codeScelleRetour ?? null;
+  /**
+   * REPROGRAMMATION-1 — which attempt this course is on, from the SESSION
+   * (logistics counts it off the follow-up task's lineage). On the 2e passage
+   * the ladder's poster and window yield to the door road again, and the
+   * ladder itself is not re-offered: custody opens ONE window per order
+   * (§6.4), so a second absence has no rung to record — the phone says to
+   * call Séra, which is the honest state (journalled as open).
+   */
+  const passageCourant = liveAssignment?.passage ?? 1;
   const sendOpenReturn = useCallback(() => {
     if (riderCode === null || liveAssignment === null || scelleRetour === null) return;
     const attempt = attemptFor(`return-open|${liveAssignment.orderId}|${scelleRetour}`);
@@ -1415,6 +1435,25 @@ export default function App() {
    * Called as `{PorteSoucis(…)}`, never as an element (the RepereVoix law).
    */
   const PorteSoucis = useCallback((avecRefusValide: boolean): React.JSX.Element => {
+    if (passageCourant >= 2) {
+      // The 2e passage: no second window exists on the ledger to offer. The
+      // buyer's VALID refusal (door mode) is the inspection's road, not the
+      // ladder's, and stays reachable.
+      return (
+        <>
+          <FasoBody>{t('reschedule.souci_2e')}</FasoBody>
+          {avecRefusValide && refusValideOuvert ? (
+            <FasoCard>
+              <FasoBody>{t('reject.seal_question')}</FasoBody>
+              <FasoSecondaryButton label={t('reject.seal_intact')} onPress={() => sendValidRejection(true)} />
+              <FasoDangerButton label={t('reject.seal_broken')} onPress={() => sendValidRejection(false)} />
+            </FasoCard>
+          ) : avecRefusValide ? (
+            <FasoGhostButton label={t('reject.action')} onPress={() => setRefusValideOuvert(true)} />
+          ) : null}
+        </>
+      );
+    }
     if (windowIsOpen(refusalPhase)) {
       return (
         <>
@@ -1471,7 +1510,7 @@ export default function App() {
         />
       </>
     );
-  }, [refusalPhase, expirePhase, fenetreJusqua, refusValideOuvert, sendExpire, sendValidRejection]);
+  }, [refusalPhase, expirePhase, fenetreJusqua, refusValideOuvert, sendExpire, sendValidRejection, passageCourant]);
 
   const signIn = useCallback(
     (typed: string) => {
@@ -2240,6 +2279,17 @@ export default function App() {
                       door. */}
                   {RepereVoix()}
                   <FasoStatusChip tone="info" label={t(assignmentStateKey(liveAssignment.status))} />
+                  {/* REPROGRAMMATION-1 — the 2e passage the founder fixed: said
+                      first, with its window in the rider's own words, above
+                      everything the door road shows again below. */}
+                  {liveAssignment.passage >= 2 ? (
+                    <>
+                      <FasoStatusChip tone="info" label={t('reschedule.passage_titre')} />
+                      {liveAssignment.fenetre !== null ? (
+                        <FasoBody>{`${t('reschedule.passage_fenetre')} ${fenetreLisible(liveAssignment.fenetre)}`}</FasoBody>
+                      ) : null}
+                    </>
+                  ) : null}
 
                   {/* RAMASSAGE (founder order 2026-08-09) — the handover code
                       the rider SAYS to the supplier at the stall; the
@@ -2539,7 +2589,7 @@ export default function App() {
                               })()
                             ) : null}
                           </>
-                        ) : rescheduleDue(expirePhase, remembered) ? (
+                        ) : rescheduleDue(expirePhase, remembered, passageCourant) ? (
                           /**
                            * The non-escalating arm (honest absence, unusable
                            * place, a provider failure): nothing is lost, the
@@ -2558,7 +2608,7 @@ export default function App() {
                               <FasoBody>{t('reschedule.live_note')}</FasoBody>
                             </FasoCard>
                           </>
-                        ) : windowIsOpen(refusalPhase) && !reessaiEnCours ? (
+                        ) : windowIsOpen(refusalPhase) && !reessaiEnCours && passageCourant < 2 ? (
                           /**
                            * R12's retry arm, LIVE: the ONE window custody
                            * opened, its hour from the LEDGER's answer (never
@@ -2621,10 +2671,10 @@ export default function App() {
                           <>
                             <FasoPosterTitle>{t('delivery.title')}</FasoPosterTitle>
                             <FasoBody>{t('delivery.body')}</FasoBody>
-                            {livraisonIds === null || sealPourRemise === null ? (
-                              /* The ids the bundle must name are gone (an app
-                                 killed mid-course, or a Worker that predates
-                                 the chain answer). Honest, and never guessed. */
+                            {idsRemise === null || sealPourRemise === null ? (
+                              /* The ids the bundle must name are gone (a Worker
+                                 that predates the chain answer, and a session
+                                 that carries none). Honest, and never guessed. */
                               <FasoCard>
                                 <FasoBody>{t('delivery.ids_missing')}</FasoBody>
                               </FasoCard>

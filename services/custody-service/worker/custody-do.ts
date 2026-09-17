@@ -254,10 +254,23 @@ const COURSE_LIVREE_OUTBOX_KEY = 'custody:course-livree-outbox:v1';
 interface RetourOutbox {
   status: 'pending' | 'delivered' | 'unsendable_no_config';
   attempts: number;
-  body: { orderId: string; command_id: string; at: string };
+  /** `outcome` rides the reprogrammation wire only: the canonical
+   *  `reschedule` DeliveryOutcome logistics' RescheduleBook strict-parses. */
+  body: { orderId: string; command_id: string; at: string; outcome?: unknown };
 }
 const RETOUR_OUVERT_OUTBOX_KEY = 'custody:retour-ouvert-outbox:v1';
 const COURSE_RETOURNEE_OUTBOX_KEY = 'custody:course-retournee-outbox:v1';
+/**
+ * REPROGRAMMATION-1 (SE6.1 live) — the SEVENTH wire, on the same terms: the
+ * §6.4 window expired on a NON-escalating reason (honest absence, unusable
+ * place, a provider failure), the ladder proceeded to a canonical
+ * `reschedule` outcome, the rider keeps the package (§6.5). Logistics must
+ * hear it so the founder can fix the next passage; until this wire existed
+ * the outcome was recorded on the ledger and reached nobody. Armed inside
+ * `commit()` on the SPINE's ladder state, once per order (the id is
+ * deterministic), revived by a replayed `/door/expire`.
+ */
+const REPROGRAMMATION_OUTBOX_KEY = 'custody:reprogrammation-outbox:v1';
 
 interface CustodyHead {
   /**
@@ -971,7 +984,9 @@ export class CustodyDO {
     // RETOUR-VIVANT-1 — the fifth and sixth wires, same terms.
     const retourOuvertPending = await this.flushLogisticsWire(RETOUR_OUVERT_OUTBOX_KEY, '/produce/retour-ouvert');
     const retourneePending = await this.flushLogisticsWire(COURSE_RETOURNEE_OUTBOX_KEY, '/produce/course-retournee');
-    const attempts = Math.max(eligibilityPending, transitPending, livreePending, refusPending, retourOuvertPending, retourneePending);
+    // REPROGRAMMATION-1 — the seventh wire, same terms.
+    const reprogPending = await this.flushLogisticsWire(REPROGRAMMATION_OUTBOX_KEY, '/produce/reprogrammation');
+    const attempts = Math.max(eligibilityPending, transitPending, livreePending, refusPending, retourOuvertPending, retourneePending, reprogPending);
     if (attempts > 0) {
       const backoffMs = Math.min(30_000 * 2 ** Math.min(attempts, 7), 3_600_000);
       await this.state.storage.setAlarm(Date.now() + backoffMs).catch(() => undefined);
@@ -1170,10 +1185,12 @@ export class CustodyDO {
   }
 
   /** RETOUR-VIVANT-1 — the return wires' revival on a replayed return act:
-   *  `reviveDropOutboxRows`' law, row by row on its own status. */
-  private async reviveRetourRows(): Promise<void> {
+   *  `reviveDropOutboxRows`' law, row by row on its own status. The
+   *  reprogrammation wire (REPROGRAMMATION-1) revives the same way, on a
+   *  replayed `/door/expire`, by naming its own key. */
+  private async reviveRetourRows(keys: readonly string[] = [RETOUR_OUVERT_OUTBOX_KEY, COURSE_RETOURNEE_OUTBOX_KEY]): Promise<void> {
     const revive: Record<string, unknown> = {};
-    for (const key of [RETOUR_OUVERT_OUTBOX_KEY, COURSE_RETOURNEE_OUTBOX_KEY]) {
+    for (const key of keys) {
       const row = await this.state.storage.get<RetourOutbox>(key);
       if (row !== undefined && row.status !== 'delivered') revive[key] = { ...row, status: 'pending' } satisfies RetourOutbox;
     }
@@ -1360,6 +1377,24 @@ export class CustodyDO {
           } satisfies RetourOutbox;
           armRetour = true;
         }
+      }
+    }
+    /**
+     * REPROGRAMMATION-1 — the seventh wire arms IN THE SAME PUT, on the
+     * spine's own ladder state: a `reschedule` outcome means the rider keeps
+     * the package and the founder must fix the next passage. The canonical
+     * outcome rides the body (logistics strict-parses it); once per order —
+     * the ladder opens one window, ever, so one reschedule is all there is.
+     */
+    const ladder = this.spine?.currentLadderOutcome() ?? null;
+    if (ladder !== null && ladder.family === 'reschedule' && this.chain !== null) {
+      const reprog = await this.state.storage.get<RetourOutbox>(REPROGRAMMATION_OUTBOX_KEY);
+      if (reprog === undefined) {
+        puts[REPROGRAMMATION_OUTBOX_KEY] = {
+          status: 'pending', attempts: 0,
+          body: { orderId: this.chain.order_id, command_id: `reprogrammation-${this.chain.order_id}`, at: cmd.at, outcome: ladder },
+        } satisfies RetourOutbox;
+        armRetour = true;
       }
     }
     await this.state.storage.put(puts);
@@ -2664,7 +2699,13 @@ export class CustodyDO {
         at: expireRider !== null && expireRider !== '' ? new Date().toISOString() : ((body['at'] as string | undefined) ?? new Date().toISOString()),
       };
       const prior = this.priorFor(cmd);
-      if (prior.kind === 'duplicate') return this.replayOutcome(prior.outcome, cmd);
+      if (prior.kind === 'duplicate') {
+        // REPROGRAMMATION-1 — the replayed expiry is the reschedule wire's
+        // recovery hook (the standing law: a redelivered act revives a
+        // stranded wire), exactly as a replayed return act revives its own.
+        await this.reviveRetourRows([REPROGRAMMATION_OUTBOX_KEY]);
+        return this.replayOutcome(prior.outcome, cmd);
+      }
       if (prior.kind === 'conflict') {
         return Response.json({ ok: false, reason: 'command_id_reused_with_other_content' }, { status: 409 });
       }

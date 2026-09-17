@@ -1711,7 +1711,25 @@
   },
   {
     "key": "reschedule.live_note",
-    "fr": "Gardez le colis avec vous. Séra vous appelle pour le prochain passage.",
+    "fr": "Gardez le colis avec vous. Vous verrez ici le prochain passage.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "reschedule.passage_titre",
+    "fr": "2e passage",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "reschedule.passage_fenetre",
+    "fr": "Prochain passage :",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "reschedule.souci_2e",
+    "fr": "Encore un souci ? Appelez Séra.",
     "register": "neutral",
     "screenClass": "instruction"
   },

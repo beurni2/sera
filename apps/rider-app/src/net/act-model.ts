@@ -390,7 +390,12 @@ export function validRejectionDue(inspectionPhase: ActPhase, remembered: ActStag
   return validRejectionHeld(inspectionPhase) || remembered === 'valid_rejection';
 }
 
-export function rescheduleDue(expirePhase: ActPhase, remembered: ActStage): boolean {
+/** REPROGRAMMATION-1 — the poster « On repasse un autre jour » is due only
+ *  while the founder has NOT yet fixed the next passage: once the session
+ *  says `passage ≥ 2` the door road is the rider's screen again, whatever
+ *  this session's phase or the remembered rung still say about the first. */
+export function rescheduleDue(expirePhase: ActPhase, remembered: ActStage, passage: number = 1): boolean {
+  if (passage >= 2) return false;
   return windowExpiredTo(expirePhase) === 'reschedule' || remembered === 'reschedule';
 }
 

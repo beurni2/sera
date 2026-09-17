@@ -856,5 +856,197 @@
     "fr": "Relire le tableau",
     "register": "neutral",
     "screenClass": "label"
+  },
+  {
+    "key": "reprog.section",
+    "fr": "Prochain passage à fixer",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "reprog.intro",
+    "fr": "Le client était absent ou le lieu introuvable. Le coursier garde le colis. Fixez le prochain passage : il s'affiche sur son téléphone.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "reprog.pas_relie_aide",
+    "fr": "Renseignez l'adresse du service pour voir ces courses.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "reprog.cle_dabord",
+    "fr": "Entrez la clé dans « Codes coursiers » pour voir ces courses.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "reprog.chargement",
+    "fr": "Un instant…",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "reprog.echec",
+    "fr": "Le tableau n'a pas répondu.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "reprog.echec_aide",
+    "fr": "Le service ne répond pas. Relisez plus tard.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "reprog.vide",
+    "fr": "Aucun passage à fixer.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "reprog.vide_aide",
+    "fr": "Quand un client est absent, sa course arrive ici.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "reprog.raison_honest_absence",
+    "fr": "Client absent",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "reprog.raison_unusable_location",
+    "fr": "Lieu introuvable",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "reprog.raison_provider_failure",
+    "fr": "Panne du paiement",
+    "register": "money",
+    "screenClass": "status"
+  },
+  {
+    "key": "reprog.raison_autre",
+    "fr": "Livraison à refaire",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "reprog.colis_avec",
+    "fr": "colis avec",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "reprog.depuis",
+    "fr": "Depuis",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "reprog.jour",
+    "fr": "Jour",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "reprog.debut",
+    "fr": "De",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "reprog.fin",
+    "fr": "À",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "reprog.fixer",
+    "fr": "Fixer le passage",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "reprog.en_cours",
+    "fr": "Envoi…",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "reprog.fait",
+    "fr": "C'est fixé pour",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "reprog.fait_aide",
+    "fr": "Le coursier le voit sur son téléphone.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "reprog.saisie_incomplete",
+    "fr": "Choisissez le jour et les deux heures.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "reprog.saisie_fin_avant_debut",
+    "fr": "L'heure de fin doit venir après le début.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "reprog.saisie_passee",
+    "fr": "Ce créneau est déjà passé.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "reprog.refus_order_not_rescheduled",
+    "fr": "Séra n'a pas encore reçu l'absence. Relisez dans un instant.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "reprog.refus_course_non_acceptee",
+    "fr": "Le coursier n'a pas encore accepté la course.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "reprog.refus_no_active_course",
+    "fr": "Cette course n'est plus sur le tableau.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "reprog.refus_pas_prete",
+    "fr": "La commande n'est plus prête à livrer. Vérifiez le paiement et le vendeur, puis relisez.",
+    "register": "money",
+    "screenClass": "status"
+  },
+  {
+    "key": "reprog.refus_autre",
+    "fr": "Séra a refusé. Relisez le tableau.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "reprog.injoignable",
+    "fr": "Séra n'a pas répondu. Réessayez.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "reprog.relire",
+    "fr": "Relire",
+    "register": "neutral",
+    "screenClass": "label"
   }
 ]

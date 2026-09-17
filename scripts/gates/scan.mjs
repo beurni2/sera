@@ -72,7 +72,10 @@ export const DOT_DIRS_OK = new Set([
    canon vocabulary that is vetted at source in platform-contracts — the same
    reason node_modules is excluded. The bundle's only other input is repo
    source under services/, which IS scanned. */
-const EXCLUDED_DIRS = new Set(['node_modules', 'dist', 'dist-worker', '.turbo', '.expo', '.git', 'coverage']);
+// `dist-wired` joined at REPROGRAMMATION-1: the dispatch console's second
+// preview build (same-origin logistics base for the driven browser walk) —
+// build output like `dist`, never source.
+const EXCLUDED_DIRS = new Set(['node_modules', 'dist', 'dist-worker', 'dist-wired', '.turbo', '.expo', '.git', 'coverage']);
 const SCANNED_EXTENSIONS = /\.(ts|tsx|mts|cts|js|jsx|mjs|cjs|json|sql|ya?ml)$/;
 
 export function* walkFiles(root, extensions = SCANNED_EXTENSIONS, seen = new Set()) {

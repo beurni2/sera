@@ -415,6 +415,43 @@ export class AssignmentBook {
     return { ok: true, duplicate: false, assignment: returned };
   }
 
+  /**
+   * REPROGRAMMATION-1 (SE6.1 live, the reschedule wire) — the SAME course
+   * moves onto its FOLLOW-UP task. On the live road the rider still HOLDS the
+   * package when custody records a `reschedule` (§6.5: custody stays with the
+   * courier), so the WO-2.7 follow-up task cannot be handed out like a fresh
+   * one: a second active assignment would put the rider on two courses, and
+   * closing this one first would show him FREE while the ledger says he
+   * carries — the exact « never unowned » breach SE-I10 names. So the
+   * assignment is RE-TARGETED in place: same id, same rider, same lease, the
+   * new task id (whose window is the next passage). Custody untouched by
+   * construction (no custody surface exists here); the queue only moves the
+   * follow-up from `queued` to `assigned` after the SE1.1 second check —
+   * a reschedule buys a new attempt, never a bypass.
+   *
+   * Only an ACKNOWLEDGED course can move: the rider said yes to this package
+   * once, and custody's reschedule presupposes he reached the door with it.
+   * No platform event, the take-back precedent: the canon event-name union
+   * carries no re-target name, and the lineage (`RescheduleBook`) plus the
+   * record's own `taskId` are the audit.
+   */
+  retargetTask(assignmentId: string, newTaskId: string):
+    | { ok: true; assignment: AssignmentRecord }
+    | { ok: false; reason: 'unknown_assignment' | 'not_acknowledged' | 'order_mismatch' | 'task_not_assignable'; detail?: string } {
+    const assignment = this.assignments.get(assignmentId);
+    if (!assignment) return { ok: false, reason: 'unknown_assignment' };
+    if (assignment.status !== 'acknowledged') return { ok: false, reason: 'not_acknowledged' };
+    const queued = this.queue.get(newTaskId);
+    if (queued === undefined || queued.orderId !== assignment.orderId) return { ok: false, reason: 'order_mismatch' };
+    const taskCheck = this.queue.recheckAssignable(newTaskId);
+    if (!taskCheck.assignable) return { ok: false, reason: 'task_not_assignable', detail: taskCheck.reason };
+    const moved: AssignmentRecord = { ...assignment, taskId: newTaskId };
+    this.assignments.set(assignmentId, moved);
+    this.queue.markAssigned(newTaskId);
+    this.aggregateVersion += 1;
+    return { ok: true, assignment: moved };
+  }
+
   /** Unacknowledged past deadline → back to the queue (assignment.expired.v1).
    * NOTE (CTO ruling, WO-4.3 commit 3): the LEASED path no longer calls this —
    * LeasedDispatch.expireDue expires by LEASE truth via expireByTasks (an

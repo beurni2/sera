@@ -54,6 +54,11 @@ interface CourseState {
   codeRetourFournisseur: string | null;
   /** The course-retournée wire closed the course: `/rider/moi` answers no assignment. */
   closed: boolean;
+  /** REPROGRAMMATION-1 — logistics' word on the attempt, the window it names,
+   *  and the chain ids custody was opened with (null = an older Worker). */
+  passage: number;
+  window: { start: string; end: string } | null;
+  chaine: { taskId: string; packageId: string } | null;
 }
 
 function logistics(state: CourseState): Route {
@@ -82,6 +87,9 @@ function logistics(state: CourseState): Route {
                   codeRetour: state.codeRetour,
                   retourConfirmeAt: state.retourConfirmeAt,
                   codeRetourFournisseur: state.codeRetourFournisseur,
+                  passage: state.passage,
+                  window: state.window,
+                  chaine: state.chaine,
                 },
           },
         },
@@ -104,6 +112,9 @@ interface RetourWorld {
   expired: boolean;
   expiredInto: 'return' | 'reschedule' | null;
   returnOpen: boolean;
+  /** The delivery evidence is ON the ledger (one bundle, held once — the
+   *  spine refuses a second by name, BEFORE it even reads the ids). */
+  preuveTenue: boolean;
   /** Logistics' arm landed on custody: the exact pair the handover must present. */
   armed: { seller: string; rider: string } | null;
   returned: boolean;
@@ -126,7 +137,13 @@ function custody(world: RetourWorld): Route {
     }
     if (path === '/rider/transit/depart') return { status: 200, json: { ok: true, status: 'departed' } };
     if (path === '/rider/transit/arrive') return { status: 200, json: { ok: true, status: 'arrived' } };
-    if (path === '/rider/delivery/evidence') return { status: 200, json: { ok: true, status: 'evidence_recorded' } };
+    if (path === '/rider/delivery/evidence') {
+      // custody-spine.ts: `evidence_already_submitted` is judged FIRST — a
+      // held bundle answers so whatever ids the second submission names.
+      if (world.preuveTenue) return { status: 409, json: { ok: false, reason: 'evidence_already_submitted' } };
+      world.preuveTenue = true;
+      return { status: 200, json: { ok: true, status: 'evidence_recorded' } };
+    }
     const id = String(body?.['command_id']);
     const prior = replay(id);
     if (path === '/rider/door/inspection') {
@@ -189,10 +206,11 @@ function custody(world: RetourWorld): Route {
 
 const freshWorld = (): RetourWorld => ({
   inspectionRecorded: false, validRejection: false, ladder: null, expired: false, expiredInto: null,
-  returnOpen: false, armed: null, returned: false, recorded: new Map(),
+  returnOpen: false, preuveTenue: false, armed: null, returned: false, recorded: new Map(),
 });
 const courseInMode = (paymentMode: string): CourseState => ({
   status: 'active_unacknowledged', paymentMode, codeRetour: null, retourConfirmeAt: null, codeRetourFournisseur: null, closed: false,
+  passage: 1, window: null, chaine: null,
 });
 
 beforeEach(() => {
@@ -536,5 +554,107 @@ describe('⚠ RETOUR-VIVANT — the buyer’s VALID refusal at a pay-at-door ins
     expect(w.calls.find((c) => c.path === '/rider/door/inspection')?.body).toMatchObject({ custodySealIntact: true, buyerAccepts: false, refusalColumn: 'valid' });
     expect(s.shows('La faute est notée pour le vendeur'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
     expect(s.shows('La faute est notée pour Séra')).toBe(false);
+  });
+});
+
+/** REPROGRAMMATION-1 — the founder fixed the next passage: what `/rider/moi`
+ *  then carries, exactly as logistics-do's riderView says it. */
+const PASSAGE_2 = { start: '2026-09-18T10:00:00.000Z', end: '2026-09-18T12:00:00.000Z' };
+const CHAINE = { taskId: 'task-retour-1', packageId: `pkg-${ORDER}` };
+const fenetreAttendue = (): string => {
+  const jour = new Date(PASSAGE_2.start).toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
+  const h = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return `Prochain passage : ${jour}, ${h(PASSAGE_2.start)}–${h(PASSAGE_2.end)}`;
+};
+const passageFixe = (state: CourseState): void => {
+  state.passage = 2;
+  state.window = PASSAGE_2;
+  state.chaine = CHAINE;
+};
+
+describe('⚠ REPROGRAMMATION-1 — the 2e passage reaches the rider’s phone, and the door road opens again', () => {
+  it('« Client absent » → expiry → the poster says the next passage will show HERE → the founder fixes it (the poll brings it) → « 2e passage » with the window → no second ladder, the phone line instead → the code card is back → the buyer’s code lands the delivery', async () => {
+    const state = courseInMode('FULL_PREPAY');
+    const world = freshWorld();
+    const { s, w } = await toTheDoor([logistics(state), custody(world)]);
+    await s.press('Un souci ?');
+    await s.press('Client absent');
+    world.expired = true;
+    await s.press('Le temps est passé');
+    expect(s.shows('On repasse un autre jour.'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    // Honest about what happens next: the passage arrives on this screen —
+    // no longer « Séra vous appelle ».
+    expect(s.shows('Vous verrez ici le prochain passage.')).toBe(true);
+    expect(s.shows('Le code de la cliente')).toBe(false);
+
+    // THE FOUNDER FIXED THE NEXT PASSAGE — logistics says passage 2 and the
+    // window; the poll is how it reaches the phone.
+    passageFixe(state);
+    await s.poll();
+    expect(s.shows('2e passage'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    expect(s.shows(fenetreAttendue()), 'the window, in the rider’s own words').toBe(true);
+    expect(s.shows('On repasse un autre jour.'), 'the poster yields to the door road').toBe(false);
+    expect(s.shows('On attend un peu.'), 'the spent window is not re-offered').toBe(false);
+    // The door road is back — and the ladder is NOT: one window per order.
+    expect(s.shows('Le code de la cliente')).toBe(true);
+    expect(s.canPress('Un souci ?')).toBe(false);
+    expect(s.shows('Encore un souci ? Appelez Séra.')).toBe(true);
+    // The buyer’s code, this time: the ordinary drop.
+    await s.type(DROP);
+    expect(s.canPress('Confirmer la remise')).toBe(true);
+    await s.press('Confirmer la remise');
+    const drop = w.calls.find((c) => c.path === '/rider/delivery/drop');
+    expect(drop?.body).toMatchObject({ orderId: ORDER, dropCode: DROP });
+    expect(s.shows('Livré. Merci.'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+  });
+
+  it('killed between the expiry and the 2e passage (another day, a relaunched app): relaunch lands on the door with « 2e passage » — the evidence composes from the SESSION’s chain ids, is told it is held, and the delivery finishes', async () => {
+    const state = courseInMode('FULL_PREPAY');
+    const world = freshWorld();
+    const first = await toTheDoor([logistics(state), custody(world)]);
+    await first.s.press('Un souci ?');
+    await first.s.press('Client absent');
+    world.expired = true;
+    await first.s.press('Le temps est passé');
+    expect(first.s.shows('On repasse un autre jour.')).toBe(true);
+    expect(world.preuveTenue, 'the first passage held the evidence').toBe(true);
+
+    passageFixe(state);
+    const { s, w } = await relaunch(first.s, [logistics(state), custody(world)]);
+    expect(s.shows('2e passage'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    expect(s.shows(fenetreAttendue())).toBe(true);
+    expect(s.shows('On repasse un autre jour.')).toBe(false);
+    // The remise composed WITHOUT this session’s seal answer: the ids are the
+    // session’s `chaine` (what logistics opened custody with), the seal the
+    // session’s — and custody’s « already submitted » reads as held.
+    const evidence = w.calls.find((c) => c.path === '/rider/delivery/evidence');
+    expect(evidence, 'the evidence never re-composed after the relaunch — « il manque des repères » for good').toBeDefined();
+    expect(evidence?.body?.['bundle']).toMatchObject({ taskId: CHAINE.taskId, packageId: CHAINE.packageId, custodySealId: SEAL });
+    expect(s.shows('il manque des repères'), 'never the honest-but-dead card when the session carries the ids').toBe(false);
+    expect(s.shows('Le code de la cliente'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    expect(s.canPress('Un souci ?')).toBe(false);
+    await s.type(DROP);
+    await s.press('Confirmer la remise');
+    expect(s.shows('Livré. Merci.'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+  });
+
+  it('a session that carries NO chain ids after a relaunch keeps the honest card — nothing is guessed', async () => {
+    const state = courseInMode('FULL_PREPAY');
+    const world = freshWorld();
+    const first = await toTheDoor([logistics(state), custody(world)]);
+    await first.s.press('Un souci ?');
+    await first.s.press('Client absent');
+    world.expired = true;
+    await first.s.press('Le temps est passé');
+    state.passage = 2;
+    state.window = PASSAGE_2;
+    // chaine stays null: an older logistics Worker.
+    const { s, w } = await relaunch(first.s, [logistics(state), custody(world)]);
+    expect(s.shows('2e passage')).toBe(true);
+    expect(w.calls.some((c) => c.path === '/rider/delivery/evidence')).toBe(false);
+    expect(s.shows('Le code de la cliente')).toBe(false);
+    // The honest card, with its way out (a phone call) — never a guessed id.
+    expect(s.shows('il manque des repères'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    expect(s.shows('Appelez Séra pour finir la remise.')).toBe(true);
   });
 });

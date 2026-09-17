@@ -53,6 +53,21 @@ import {
   type RetraitUi,
 } from './courses';
 import { resolveCourses } from './courses-port';
+import {
+  FIXATION_IDLE,
+  commencerFixation,
+  composerFenetre,
+  fenetreLisible,
+  fixationEchouee,
+  fixationFaite,
+  raisonKey,
+  refusKey,
+  reprogView,
+  saisieKey,
+  type FenetreSaisie,
+  type FixationUi,
+  type ReprogRead,
+} from './reprogrammation';
 
 /**
  * WO-6.1 — the dispatch-console RESKINNED on Grand Teint (ui-tokens v0.9.0,
@@ -447,6 +462,47 @@ style.textContent = `
     font-weight: ${typo.scale.title.wght}; letter-spacing: var(--ls-label); text-transform: uppercase;
     cursor: pointer; justify-self: start; margin-top: var(--space-sm);
   }
+  /* REPROGRAMMATION-1 — the next passage desk. Fixing a passage is LIVE WORK
+     (a rider is holding a package for it), so its one lever wears the filled
+     ink of a primary action — the assign button's own grammar — and each row
+     is one course, one window, one act. */
+  .reprog-desk { display: grid; gap: var(--space-sm); }
+  .reprog-state { margin: 0; font-size: var(--type-body); color: var(--ink); }
+  .reprog-hint { margin: 0; font-size: var(--type-label); color: var(--muted); }
+  .reprog-notice { margin: 0; font-size: var(--type-body); color: var(--danger); }
+  .reprog-fait { margin: 0; color: var(--ink); background: var(--sand); border-left: var(--hair-strong) solid var(--accent-strong); padding: var(--space-xs) var(--space-sm); font-size: var(--type-body); }
+  .reprog-row {
+    display: grid; gap: var(--space-xs); padding: var(--space-sm) 0;
+    border-bottom: var(--hair) solid var(--hairline);
+  }
+  .reprog-row-order { margin: 0; font-size: var(--type-row); color: var(--ink); }
+  .reprog-row-etat {
+    margin: 0; color: var(--muted); font-size: var(--type-label);
+    font-weight: ${typo.scale.label.wght}; letter-spacing: var(--ls-label); text-transform: uppercase;
+  }
+  .reprog-row-depuis { margin: 0; font-size: var(--type-label); color: var(--muted); }
+  .reprog-form { display: flex; gap: var(--space-sm); align-items: center; flex-wrap: wrap; padding-top: var(--space-xs); }
+  .reprog-champ { display: flex; gap: var(--space-xs); align-items: center; color: var(--muted); font-size: var(--type-label); font-weight: ${typo.scale.label.wght}; letter-spacing: var(--ls-label); text-transform: uppercase; }
+  .reprog-desk input {
+    min-height: var(--touch); padding: 0 var(--space-sm);
+    font-size: var(--type-body); color: var(--ink);
+    background: var(--paper); border: var(--hair) solid var(--hairline-strong);
+    border-radius: 0;
+  }
+  button.reprog-fixer {
+    min-height: var(--touch); padding: 0 var(--space-xl); border: 0; border-radius: var(--radius-btn);
+    background: var(--ink); color: var(--on-ink); font-size: var(--type-row);
+    font-weight: ${typo.scale.title.wght}; letter-spacing: var(--ls-label); text-transform: uppercase;
+    cursor: pointer;
+  }
+  button.reprog-fixer:disabled { opacity: 0.6; cursor: not-allowed; }
+  button.reprog-relire {
+    min-height: var(--touch); border: 0; background: none; color: var(--accent-strong);
+    font-size: var(--type-label); font-weight: ${typo.scale.label.wght};
+    letter-spacing: var(--ls-label); text-transform: uppercase; text-decoration: underline;
+    cursor: pointer; padding: 0; justify-self: start;
+  }
+  button.reprog-relire:disabled { color: var(--muted); cursor: not-allowed; opacity: 0.6; }
 `;
 document.head.appendChild(style);
 
@@ -1097,6 +1153,8 @@ if (app) {
         // desk below opens on the same key, so it reads the board now rather
         // than sitting on « entrez la clé » next to an open codes desk.
         void refreshCourses();
+        // REPROGRAMMATION-1 — and the next-passage desk, on the same key.
+        void refreshReprog();
       };
       open.addEventListener('click', enter);
       input.addEventListener('keydown', (e) => {
@@ -1125,6 +1183,8 @@ if (app) {
         // than leaving a board on screen that no key can act on any more.
         coursesRead = { kind: 'loading' };
         renderCourses();
+        reprogRead = { kind: 'loading' };
+        renderReprog();
       });
       codesSection.appendChild(again);
       return;
@@ -1443,14 +1503,186 @@ if (app) {
   }
 
   renderCourses();
-  /**
-   * THE COURSES DESK SITS ABOVE THE CODES DESK, AND BOTH SIT AT THE BOTTOM.
-   * A dispatcher's screen is ordered by urgency and neither of these is live
-   * work: one cleans the board, the other hands out identities. The codes desk
-   * stays LAST (its own e2e pins that), and this one lands just above it — the
-   * two administrative sections together, under everything operational.
+
+  /* ───────── REPROGRAMMATION-1 — LE PROCHAIN PASSAGE À FIXER (live) ─────────
+   *
+   * SE6.1 live (Sera-Build-Spec §6.5: « dispatcher applies retry / reschedule /
+   * return / incident; custody stays with courier »). A buyer was absent, or
+   * the place could not be found, or the payment provider was down: custody
+   * recorded a `reschedule`, the rider KEEPS the package, and the course
+   * arrives here over the seventh wire. The founder fixes ONE window — a day,
+   * a start, an end — and the same course moves onto its follow-up task; the
+   * rider's phone then says « 2e passage » with that window.
+   *
+   * This is LIVE WORK, not administration: a rider is holding a package for
+   * it. So the section sits ABOVE the two administrative desks, and its one
+   * lever is a primary action. The list is the BOARD's own truth: a fixed
+   * passage leaves the list on the re-read, never on the response, and the
+   * report of what was fixed stays on screen — as the retire desk keeps its
+   * failures — until he reloads.
    */
-  main.append(coursesHeading, coursesSection, codesHeading, codesSection);
+  const reprogHeading = document.createElement('h2');
+  reprogHeading.textContent = t('reprog.section');
+  const reprogSection = document.createElement('section');
+  reprogSection.className = 'reprog-desk';
+
+  let reprogRead: ReprogRead = { kind: 'loading' };
+  let fixation: FixationUi = FIXATION_IDLE;
+  /** What he typed, per course — kept across renders so a refusal never
+   *  wipes the day he chose. */
+  const saisies = new Map<string, FenetreSaisie>();
+
+  async function refreshReprog(): Promise<void> {
+    if (opsKey === null) {
+      renderReprog();
+      return;
+    }
+    reprogRead = { kind: 'loading' };
+    renderReprog();
+    const answer = await coursesPort().reprogrammations();
+    reprogRead =
+      answer.kind === 'ok'
+        ? { kind: 'ok', rows: answer.value }
+        : answer.kind === 'bad_key'
+          ? { kind: 'bad_key' }
+          : { kind: 'failed' };
+    renderReprog();
+  }
+
+  /** One fix, through the reducer: the window is judged here first (the same
+   *  three refusals the door has), then ONE call, then the board's own word. */
+  async function fixerPassage(orderId: string): Promise<void> {
+    const composee = composerFenetre(saisies.get(orderId) ?? { jour: '', debut: '', fin: '' }, new Date());
+    if (!composee.ok) {
+      fixation = fixationEchouee(fixation, orderId, saisieKey(composee.reason));
+      renderReprog();
+      return;
+    }
+    const started = commencerFixation(fixation, orderId);
+    if (started === null) return;
+    fixation = started;
+    renderReprog();
+    const answer = await coursesPort().reprogrammer(orderId, { start: composee.start, end: composee.end });
+    if (answer.kind === 'bad_key') {
+      // A refused key escalates the whole desk — one door, one sentence.
+      fixation = fixationEchouee(fixation, orderId, 'codes.cle_refusee');
+      reprogRead = { kind: 'bad_key' };
+      renderReprog();
+      return;
+    }
+    if (answer.kind === 'ok') {
+      fixation = fixationFaite(fixation, orderId, { start: composee.start, end: composee.end });
+      saisies.delete(orderId);
+      renderReprog();
+      // The board's own truth: the row leaves because logistics says so.
+      await refreshReprog();
+      return;
+    }
+    fixation = fixationEchouee(fixation, orderId, answer.kind === 'refused' ? refusKey(answer.reason) : 'reprog.injoignable');
+    renderReprog();
+  }
+
+  function renderReprog(): void {
+    reprogSection.replaceChildren();
+
+    if (logisticsBase() === '') {
+      reprogSection.append(line('reprog-state', t('codes.pas_relie')), line('reprog-hint', t('reprog.pas_relie_aide')));
+      return;
+    }
+    if (opsKey === null) {
+      reprogSection.appendChild(line('reprog-state', t('reprog.cle_dabord')));
+      return;
+    }
+    if (reprogRead.kind === 'bad_key') {
+      reprogSection.append(line('reprog-state', t('codes.cle_refusee')), line('reprog-hint', t('codes.cle_refusee_aide')));
+      return;
+    }
+
+    reprogSection.appendChild(line('reprog-hint', t('reprog.intro')));
+
+    // The report of what was fixed this session stays on screen, in his words.
+    for (const [orderId, fenetre] of Object.entries(fixation.faits)) {
+      reprogSection.appendChild(line('reprog-fait', `${orderId} — ${t('reprog.fait')} ${fenetreLisible(fenetre)}. ${t('reprog.fait_aide')}`));
+    }
+
+    const view = reprogView(reprogRead);
+    if (view === null) return;
+    if (view.kind !== 'liste') {
+      reprogSection.appendChild(line('reprog-state', t(view.message)));
+      if (view.kind === 'failed') reprogSection.appendChild(line('reprog-hint', t('reprog.echec_aide')));
+      if (view.kind === 'empty') reprogSection.appendChild(line('reprog-hint', t('reprog.vide_aide')));
+    } else {
+      for (const course of view.rows) {
+        const row = document.createElement('div');
+        row.className = 'reprog-row';
+        const etat = course.riderName === undefined
+          ? t(raisonKey(course.reasonCode))
+          : `${t(raisonKey(course.reasonCode))} · ${t('reprog.colis_avec')} ${course.riderName}`;
+        row.append(line('reprog-row-order', course.orderId), line('reprog-row-etat', etat));
+        const depuis = new Date(course.recordedAt);
+        if (!Number.isNaN(depuis.getTime())) {
+          row.appendChild(line('reprog-row-depuis', `${t('reprog.depuis')} ${depuis.toLocaleDateString([], { day: 'numeric', month: 'short' })} ${hhmm(course.recordedAt)}`));
+        }
+
+        // The window: a day and two hours, in HIS local time. The typed values
+        // survive a refusal and a re-render.
+        const form = document.createElement('div');
+        form.className = 'reprog-form';
+        const saisie = saisies.get(course.orderId) ?? { jour: '', debut: '', fin: '' };
+        const champ = (cle: 'jour' | 'debut' | 'fin', type: 'date' | 'time'): HTMLLabelElement => {
+          const label = document.createElement('label');
+          label.className = 'reprog-champ';
+          label.append(t(`reprog.${cle}`));
+          const input = document.createElement('input');
+          input.type = type;
+          input.value = saisie[cle];
+          input.setAttribute('aria-label', t(`reprog.${cle}`));
+          input.disabled = fixation.enVol !== null;
+          input.addEventListener('input', () => {
+            saisies.set(course.orderId, { ...(saisies.get(course.orderId) ?? { jour: '', debut: '', fin: '' }), [cle]: input.value });
+          });
+          label.appendChild(input);
+          return label;
+        };
+        form.append(champ('jour', 'date'), champ('debut', 'time'), champ('fin', 'time'));
+        const fixer = document.createElement('button');
+        fixer.className = 'reprog-fixer';
+        fixer.textContent = t(fixation.enVol === course.orderId ? 'reprog.en_cours' : 'reprog.fixer');
+        fixer.disabled = fixation.enVol !== null;
+        fixer.addEventListener('click', () => {
+          void fixerPassage(course.orderId);
+        });
+        form.appendChild(fixer);
+        row.appendChild(form);
+
+        // A refused fix says why, on its own row — never a silent no-op.
+        const echec = fixation.echecs[course.orderId];
+        if (echec !== undefined) row.appendChild(line('reprog-notice', t(echec)));
+        reprogSection.appendChild(row);
+      }
+    }
+
+    const relire = document.createElement('button');
+    relire.className = 'reprog-relire';
+    relire.textContent = t('reprog.relire');
+    relire.disabled = fixation.enVol !== null;
+    relire.addEventListener('click', () => {
+      void refreshReprog();
+    });
+    reprogSection.appendChild(relire);
+  }
+
+  renderReprog();
+  /**
+   * THE NEXT-PASSAGE DESK IS LIVE WORK AND SITS ABOVE THE TWO ADMINISTRATIVE
+   * DESKS. Then: THE COURSES DESK SITS ABOVE THE CODES DESK, AND BOTH SIT AT
+   * THE BOTTOM. A dispatcher's screen is ordered by urgency and neither of
+   * those two is live work: one cleans the board, the other hands out
+   * identities. The codes desk stays LAST (its own e2e pins that), the courses
+   * desk just above it — the two administrative sections together, under
+   * everything operational.
+   */
+  main.append(reprogHeading, reprogSection, coursesHeading, coursesSection, codesHeading, codesSection);
 
   // The REAL service-side deadline, ONE sweep for BOTH stores (WO-4.3).
   setInterval(() => {

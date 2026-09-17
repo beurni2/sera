@@ -24,17 +24,20 @@ test('the console shell boots on the sera theme with catalog strings', async ({ 
   // SE-LIVE-4e adds a SIXTH: « Codes coursiers », the founder mints the code a
   // rider types to enter Séra. PURGE-ESSAI adds a SEVENTH: « Courses du
   // tableau », the real board he retires his test courses from — the two LIVE
-  // sections, together at the bottom. The count is pinned deliberately so a
+  // sections, together at the bottom. REPROGRAMMATION-1 adds an EIGHTH:
+  // « Prochain passage à fixer », live work (a rider holds a package for it),
+  // above the two administrative desks. The count is pinned deliberately so a
   // section cannot appear or vanish unnoticed, so it is raised here on purpose
   // rather than loosened.
-  await expect(page.locator('h2')).toHaveCount(7);
+  await expect(page.locator('h2')).toHaveCount(8);
   await expect(page.locator('h2').first()).toHaveText('Prêt à assigner');
   await expect(page.locator('h2').nth(1)).toHaveText('Tableau en direct');
   await expect(page.locator('h2').nth(2)).toHaveText('Bureau des exceptions');
   await expect(page.locator('h2').nth(3)).toHaveText('Remise exceptionnelle');
   await expect(page.locator('h2').nth(4)).toHaveText('Suivi des colis');
-  await expect(page.locator('h2').nth(5)).toHaveText('Courses du tableau');
-  await expect(page.locator('h2').nth(6)).toHaveText('Codes coursiers');
+  await expect(page.locator('h2').nth(5)).toHaveText('Prochain passage à fixer');
+  await expect(page.locator('h2').nth(6)).toHaveText('Courses du tableau');
+  await expect(page.locator('h2').nth(7)).toHaveText('Codes coursiers');
   await expect(page.getByText('Temps de contrôle au ramassage : 165 s — Dans la cible')).toBeVisible();
   await expect(page.getByText('12:18 · Retour au vendeur · Argent pas prêt')).toBeVisible();
   // D7 staffed-hours default — copy only.
