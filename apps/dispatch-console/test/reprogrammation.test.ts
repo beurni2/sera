@@ -1,14 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import {
   FIXATION_IDLE,
+  RENVOI_IDLE,
   aReprogrammerRows,
+  annulerRenvoi,
   commencerFixation,
+  commencerRenvoi,
   composerFenetre,
+  demanderRenvoi,
+  enDeuxiemePassageRows,
   fenetreLisible,
   fixationEchouee,
   fixationFaite,
   raisonKey,
   refusKey,
+  renvoiEchoue,
+  renvoiFait,
+  renvoiRefusKey,
   reprogView,
   saisieKey,
 } from '../src/reprogrammation';
@@ -64,14 +72,87 @@ describe('what the board says is waiting for a passage', () => {
     expect(t(raisonKey('something_new'))).toBe('Livraison à refaire');
   });
 
-  it('the view: bad key escalates (null), loading/failed/empty each a sentence, a list is the rows', () => {
+  it('the view: bad key escalates (null), loading/failed/empty each a sentence, a list is the rows of BOTH lists — empty only when both are', () => {
     expect(reprogView({ kind: 'bad_key' })).toBeNull();
     expect(reprogView({ kind: 'loading' })).toEqual({ kind: 'loading', message: 'reprog.chargement' });
     expect(reprogView({ kind: 'failed' })).toEqual({ kind: 'failed', message: 'reprog.echec' });
-    expect(reprogView({ kind: 'ok', rows: [] })).toEqual({ kind: 'empty', message: 'reprog.vide' });
+    expect(reprogView({ kind: 'ok', rows: [], deuxiemes: [] })).toEqual({ kind: 'empty', message: 'reprog.vide' });
     const rows = aReprogrammerRows(BOARD);
-    expect(reprogView({ kind: 'ok', rows })).toEqual({ kind: 'liste', rows });
+    const deuxiemes = enDeuxiemePassageRows(BOARD_2E);
+    expect(reprogView({ kind: 'ok', rows, deuxiemes: [] })).toEqual({ kind: 'liste', rows, deuxiemes: [] });
+    expect(reprogView({ kind: 'ok', rows: [], deuxiemes })).toEqual({ kind: 'liste', rows: [], deuxiemes });
     for (const key of ['reprog.chargement', 'reprog.echec', 'reprog.vide']) expect(t(key)).not.toBe('');
+  });
+});
+
+/** REPROGRAMMATION-2 — the board's second list, as logistics-do's board says it. */
+const BOARD_2E = {
+  ok: true,
+  board: {
+    queued: [],
+    riders: [{ riderId: 'rider-boss', displayName: 'Boss', certified: true, assignable: false }],
+    assignments: [],
+    aReprogrammer: [],
+    enDeuxiemePassage: [
+      { orderId: 'ord-b', taskId: 'task-b2', assignmentId: 'as-b', riderId: 'rider-boss', passage: 2, window: { start: '2026-09-18T10:00:00.000Z', end: '2026-09-18T12:00:00.000Z' } },
+      { orderId: 'ord-a', taskId: 'task-a2', assignmentId: 'as-a', riderId: 'rider-awa', passage: 'deux', window: null },
+      { orderId: '', taskId: 'task-x', riderId: 'rider-boss', passage: 2, window: null },
+    ],
+  },
+};
+
+describe('REPROGRAMMATION-2 — the courses already on their next passage, and the lever home', () => {
+  it('reads one row per course with the fixed window, names the rider, bounds the passage to ≥ 2, half a window is no window, sorts stably, drops a row that names no order; an older board reads as none', () => {
+    const rows = enDeuxiemePassageRows(BOARD_2E);
+    expect(rows.map((r) => r.orderId)).toEqual(['ord-a', 'ord-b']);
+    expect(rows[1]).toEqual({ orderId: 'ord-b', taskId: 'task-b2', riderName: 'Boss', passage: 2, fenetre: { start: '2026-09-18T10:00:00.000Z', end: '2026-09-18T12:00:00.000Z' } });
+    expect(rows[0]).toEqual({ orderId: 'ord-a', taskId: 'task-a2', riderName: 'rider-awa', passage: 2, fenetre: null });
+    expect(enDeuxiemePassageRows({ board: { enDeuxiemePassage: [{ orderId: 'o', window: { start: 'x' } }] } })[0]?.fenetre).toBeNull();
+    expect(enDeuxiemePassageRows(BOARD)).toEqual([]);
+    expect(enDeuxiemePassageRows(null)).toEqual([]);
+  });
+
+  it('the confirmation is the consent: a lever opens ONE card (a second course’s closes the first), cancel closes it, only the course whose card is open can be sent, one act in flight, the same command id on a retry, the decision recorded with custody’s instant, a refusal by sentence — and asking again clears it', () => {
+    let minted = 0;
+    const mint = () => `cmd-${(minted += 1)}`;
+    // Nothing is sent without the card: no consent, no act.
+    expect(commencerRenvoi(RENVOI_IDLE, 'ord-a', mint)).toBeNull();
+    const asked = demanderRenvoi(RENVOI_IDLE, 'ord-a');
+    expect(asked).toEqual({ ...RENVOI_IDLE, demande: 'ord-a' });
+    expect(demanderRenvoi(asked, 'ord-b').demande).toBe('ord-b');
+    expect(annulerRenvoi(asked)).toEqual(RENVOI_IDLE);
+    // Only the course asked about can be sent.
+    expect(commencerRenvoi(asked, 'ord-b', mint)).toBeNull();
+    const started = commencerRenvoi(asked, 'ord-a', mint);
+    expect(started).toEqual({ ui: { demande: null, enVol: 'ord-a', faits: {}, echecs: {}, commandes: { 'ord-a': 'cmd-1' } }, commandId: 'cmd-1' });
+    if (started === null) return;
+    // While it flies: no second card, no second act.
+    expect(demanderRenvoi(started.ui, 'ord-b')).toBe(started.ui);
+    expect(commencerRenvoi(demanderRenvoi(started.ui, 'ord-b'), 'ord-b', mint)).toBeNull();
+    // The wire was lost: a refusal by sentence, then the SAME command on the retry.
+    const lost = renvoiEchoue(started.ui, 'ord-a', 'reprog.injoignable');
+    expect(lost).toEqual({ demande: null, enVol: null, faits: {}, echecs: { 'ord-a': 'reprog.injoignable' }, commandes: { 'ord-a': 'cmd-1' } });
+    const retry = commencerRenvoi(demanderRenvoi(lost, 'ord-a'), 'ord-a', mint);
+    expect(retry?.commandId).toBe('cmd-1');
+    expect(retry?.ui.echecs).toEqual({});
+    expect(minted).toBe(1);
+    // Decided: custody's instant kept, the command forgotten.
+    const fait = renvoiFait(retry!.ui, 'ord-a', '2026-09-17T10:00:00.000Z');
+    expect(fait).toEqual({ demande: null, enVol: null, faits: { 'ord-a': '2026-09-17T10:00:00.000Z' }, echecs: {}, commandes: {} });
+  });
+
+  it('the decider door’s refusals each resolve to a sentence: not yet rescheduled shares the fixer’s sentence, custody out of reach is ONE sentence for both causes, custody’s refusal is named, the unknown gets the honest generic', () => {
+    expect(t(renvoiRefusKey('course_non_reprogrammee'))).toContain("n'a pas encore reçu l'absence");
+    expect(t(renvoiRefusKey('no_active_course'))).toContain("n'est plus sur le tableau");
+    expect(t(renvoiRefusKey('course_non_acceptee'))).toContain('pas encore accepté');
+    expect(t(renvoiRefusKey('custody_non_relie'))).toBe("Le service de garde n'a pas répondu. Réessayez.");
+    expect(t(renvoiRefusKey('custody_unreachable'))).toBe("Le service de garde n'a pas répondu. Réessayez.");
+    expect(t(renvoiRefusKey('custody_refused'))).toBe('Séra a refusé ce retour. Relisez le tableau.');
+    expect(t(renvoiRefusKey('reponse_sans_decision'))).toBe('Séra a refusé. Relisez le tableau.');
+    for (const key of ['reprog.deuxieme_etat', 'reprog.deuxieme_fenetre', 'reprog.deuxieme_sans_fenetre', 'reprog.renvoyer', 'reprog.renvoi_titre', 'reprog.renvoi_confirm', 'reprog.renvoi_confirmer', 'reprog.renvoi_fait']) {
+      expect(t(key), key).not.toBe('');
+    }
+    expect(t('reprog.renvoi_confirm')).toContain('Aucun frais pour le client.');
   });
 });
 

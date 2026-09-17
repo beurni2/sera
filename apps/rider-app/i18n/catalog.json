@@ -1734,6 +1734,24 @@
     "screenClass": "instruction"
   },
   {
+    "key": "reschedule.client_la",
+    "fr": "Le client est là",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "retour.decide_titre",
+    "fr": "Séra renvoie le colis au vendeur.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "retour.decide_body",
+    "fr": "Aucun frais pour le client.",
+    "register": "money",
+    "screenClass": "status"
+  },
+  {
     "key": "reject.action",
     "fr": "La cliente refuse le colis",
     "register": "neutral",

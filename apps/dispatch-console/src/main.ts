@@ -52,20 +52,28 @@ import {
   type CoursesRead,
   type RetraitUi,
 } from './courses';
-import { reprogCommandId, resolveCourses } from './courses-port';
+import { renvoiCommandId, reprogCommandId, resolveCourses } from './courses-port';
 import {
   FIXATION_IDLE,
+  RENVOI_IDLE,
+  annulerRenvoi,
   commencerFixation,
+  commencerRenvoi,
   composerFenetre,
+  demanderRenvoi,
   fenetreLisible,
   fixationEchouee,
   fixationFaite,
   raisonKey,
   refusKey,
+  renvoiEchoue,
+  renvoiFait,
+  renvoiRefusKey,
   reprogView,
   saisieKey,
   type FenetreSaisie,
   type FixationUi,
+  type RenvoiUi,
   type ReprogRead,
 } from './reprogrammation';
 
@@ -503,6 +511,31 @@ style.textContent = `
     cursor: pointer; padding: 0; justify-self: start;
   }
   button.reprog-relire:disabled { color: var(--muted); cursor: not-allowed; opacity: 0.6; }
+  /* REPROGRAMMATION-2 — « Renvoyer au vendeur » ends a delivery, so the lever
+     WHISPERS (the courses desk's secondary grammar) and only its confirmation,
+     asked on purpose, is loud — in danger, never in the fixer's ink. */
+  button.reprog-renvoyer, button.reprog-renvoi-annuler {
+    min-height: var(--touch); border: 0; background: none; color: var(--accent-strong);
+    font-size: var(--type-label); font-weight: ${typo.scale.label.wght};
+    letter-spacing: var(--ls-label); text-transform: uppercase; text-decoration: underline;
+    cursor: pointer; padding: 0; justify-self: start;
+  }
+  button.reprog-renvoyer:disabled { color: var(--muted); cursor: not-allowed; opacity: 0.6; }
+  .reprog-renvoi-card {
+    border: calc(var(--hair-strong) * 2) solid var(--danger); background: var(--paper);
+    padding: var(--space-lg); display: grid; gap: var(--space-xs);
+  }
+  .reprog-renvoi-titre {
+    margin: 0; color: var(--danger); font-size: var(--type-title);
+    font-weight: ${typo.scale.title.wght}; letter-spacing: var(--ls-label); text-transform: uppercase;
+  }
+  .reprog-renvoi-ligne { margin: 0; font-size: var(--type-body); color: var(--ink); }
+  button.reprog-renvoi-confirmer {
+    min-height: var(--touch); padding: 0 var(--space-xl); border: 0; border-radius: var(--radius-btn);
+    background: var(--danger); color: var(--on-ink); font-size: var(--type-row);
+    font-weight: ${typo.scale.title.wght}; letter-spacing: var(--ls-label); text-transform: uppercase;
+    cursor: pointer; justify-self: start; margin-top: var(--space-sm);
+  }
 `;
 document.head.appendChild(style);
 
@@ -1528,6 +1561,7 @@ if (app) {
 
   let reprogRead: ReprogRead = { kind: 'loading' };
   let fixation: FixationUi = FIXATION_IDLE;
+  let renvoi: RenvoiUi = RENVOI_IDLE;
   /** What he typed, per course — kept across renders so a refusal never
    *  wipes the day he chose. */
   const saisies = new Map<string, FenetreSaisie>();
@@ -1539,14 +1573,86 @@ if (app) {
     }
     reprogRead = { kind: 'loading' };
     renderReprog();
-    const answer = await coursesPort().reprogrammations();
+    // The two lists of this desk, off the board: a refused key on either is
+    // the one door sentence; a board that did not answer either is « failed ».
+    const [attente, deuxiemes] = await Promise.all([coursesPort().reprogrammations(), coursesPort().deuxiemesPassages()]);
     reprogRead =
-      answer.kind === 'ok'
-        ? { kind: 'ok', rows: answer.value }
-        : answer.kind === 'bad_key'
+      attente.kind === 'ok' && deuxiemes.kind === 'ok'
+        ? { kind: 'ok', rows: attente.value, deuxiemes: deuxiemes.value }
+        : attente.kind === 'bad_key' || deuxiemes.kind === 'bad_key'
           ? { kind: 'bad_key' }
           : { kind: 'failed' };
     renderReprog();
+  }
+
+  /**
+   * REPROGRAMMATION-2 — the package goes home, on the founder's confirmed
+   * word: ONE call, then the board's own re-read (the course leaves both
+   * lists because logistics says so, never because the desk assumed it).
+   */
+  async function renvoyerAuVendeur(orderId: string): Promise<void> {
+    const started = commencerRenvoi(renvoi, orderId, () => renvoiCommandId(orderId));
+    if (started === null) return;
+    renvoi = started.ui;
+    renderReprog();
+    const answer = await coursesPort().renvoyer(orderId, started.commandId);
+    if (answer.kind === 'bad_key') {
+      renvoi = renvoiEchoue(renvoi, orderId, 'codes.cle_refusee');
+      reprogRead = { kind: 'bad_key' };
+      renderReprog();
+      return;
+    }
+    if (answer.kind === 'ok') {
+      renvoi = renvoiFait(renvoi, orderId, answer.value.decideAt);
+      renderReprog();
+      await refreshReprog();
+      return;
+    }
+    renvoi = renvoiEchoue(renvoi, orderId, answer.kind === 'refused' ? renvoiRefusKey(answer.reason) : 'reprog.injoignable');
+    renderReprog();
+  }
+
+  /** The lever home, on a row of either list; the confirmation card under it
+   *  when he asked. While anything flies on this desk, the lever waits. */
+  function leverRenvoi(row: HTMLDivElement, orderId: string): void {
+    const occupe = fixation.enVol !== null || renvoi.enVol !== null;
+    if (renvoi.demande === orderId) {
+      const card = document.createElement('div');
+      card.className = 'reprog-renvoi-card';
+      card.append(
+        line('reprog-renvoi-titre', t('reprog.renvoi_titre')),
+        line('reprog-renvoi-ligne', orderId),
+        // The money sentence is the decision's meaning, read before every act.
+        line('reprog-renvoi-ligne', t('reprog.renvoi_confirm')),
+      );
+      const oui = document.createElement('button');
+      oui.className = 'reprog-renvoi-confirmer';
+      oui.textContent = t('reprog.renvoi_confirmer');
+      oui.addEventListener('click', () => {
+        void renvoyerAuVendeur(orderId);
+      });
+      const non = document.createElement('button');
+      non.className = 'reprog-renvoi-annuler';
+      non.textContent = t('courses.annuler');
+      non.addEventListener('click', () => {
+        renvoi = annulerRenvoi(renvoi);
+        renderReprog();
+      });
+      card.append(oui, non);
+      row.appendChild(card);
+      return;
+    }
+    const lever = document.createElement('button');
+    lever.className = 'reprog-renvoyer';
+    lever.textContent = t(renvoi.enVol === orderId ? 'reprog.en_cours' : 'reprog.renvoyer');
+    lever.disabled = occupe;
+    lever.addEventListener('click', () => {
+      renvoi = demanderRenvoi(renvoi, orderId);
+      renderReprog();
+    });
+    row.appendChild(lever);
+    const echec = renvoi.echecs[orderId];
+    if (echec !== undefined) row.appendChild(line('reprog-notice', t(echec)));
   }
 
   /** One fix, through the reducer: the window is judged here first (the same
@@ -1604,6 +1710,9 @@ if (app) {
     for (const [orderId, fenetre] of Object.entries(fixation.faits)) {
       reprogSection.appendChild(line('reprog-fait', `${orderId} — ${t('reprog.fait')} ${fenetreLisible(fenetre)}. ${t('reprog.fait_aide')}`));
     }
+    for (const orderId of Object.keys(renvoi.faits)) {
+      reprogSection.appendChild(line('reprog-fait', `${orderId} — ${t('reprog.renvoi_fait')}`));
+    }
 
     const view = reprogView(reprogRead);
     if (view === null) return;
@@ -1648,7 +1757,7 @@ if (app) {
         const fixer = document.createElement('button');
         fixer.className = 'reprog-fixer';
         fixer.textContent = t(fixation.enVol === course.orderId ? 'reprog.en_cours' : 'reprog.fixer');
-        fixer.disabled = fixation.enVol !== null;
+        fixer.disabled = fixation.enVol !== null || renvoi.enVol !== null;
         fixer.addEventListener('click', () => {
           void fixerPassage(course.orderId);
         });
@@ -1658,6 +1767,21 @@ if (app) {
         // A refused fix says why, on its own row — never a silent no-op.
         const echec = fixation.echecs[course.orderId];
         if (echec !== undefined) row.appendChild(line('reprog-notice', t(echec)));
+        // The other decision, whispering under the fixer: home instead.
+        leverRenvoi(row, course.orderId);
+        reprogSection.appendChild(row);
+      }
+      // REPROGRAMMATION-2 — the courses already on their next passage: the
+      // window he fixed, the rider by name, and the one lever home.
+      for (const course of view.deuxiemes) {
+        const row = document.createElement('div');
+        row.className = 'reprog-row reprog-row-deuxieme';
+        const etat = course.riderName === undefined
+          ? t('reprog.deuxieme_etat')
+          : `${t('reprog.deuxieme_etat')} · ${t('reprog.colis_avec')} ${course.riderName}`;
+        row.append(line('reprog-row-order', course.orderId), line('reprog-row-etat', etat));
+        row.appendChild(line('reprog-row-depuis', course.fenetre === null ? t('reprog.deuxieme_sans_fenetre') : `${t('reprog.deuxieme_fenetre')} ${fenetreLisible(course.fenetre)}`));
+        leverRenvoi(row, course.orderId);
         reprogSection.appendChild(row);
       }
     }
@@ -1665,7 +1789,7 @@ if (app) {
     const relire = document.createElement('button');
     relire.className = 'reprog-relire';
     relire.textContent = t('reprog.relire');
-    relire.disabled = fixation.enVol !== null;
+    relire.disabled = fixation.enVol !== null || renvoi.enVol !== null;
     relire.addEventListener('click', () => {
       void refreshReprog();
     });

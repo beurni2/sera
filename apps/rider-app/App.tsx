@@ -483,6 +483,11 @@ export default function App() {
   const [raisonOuverte, setRaisonOuverte] = useState(false);
   const [reessaiEnCours, setReessaiEnCours] = useState(false);
   const [refusValideOuvert, setRefusValideOuvert] = useState(false);
+  /** REPROGRAMMATION-2 — the buyer reappeared after the window expired,
+   *  before the founder fixed a passage: the rider goes back to the door
+   *  road. A screen choice, never a custody claim (custody accepts the
+   *  ordinary drop right then); a relaunch simply asks again. */
+  const [clientRevenu, setClientRevenu] = useState(false);
   /** `capturedAt` is part of the bundle custody FINGERPRINTS, so it is minted
    *  once per attempt and reused on retry — a moving clock would turn every
    *  retry into `command_id_reused_with_other_content`. */
@@ -848,6 +853,7 @@ export default function App() {
     setRaisonOuverte(false);
     setReessaiEnCours(false);
     setRefusValideOuvert(false);
+    setClientRevenu(false);
     setLivraisonIds(null);
     setSealSaisi(null);
     setVerifyBundleId(null);
@@ -1337,6 +1343,15 @@ export default function App() {
    * call Séra, which is the honest state (journalled as open).
    */
   const passageCourant = liveAssignment?.passage ?? 1;
+  /**
+   * REPROGRAMMATION-2 — the DISPATCHER decided this rescheduled package goes
+   * home (the session carries custody's accepted decision): the screen turns
+   * to the return road, the seal act and the two keys stay the rider's.
+   */
+  const retourDecide = (liveAssignment?.retourDecideAt ?? null) !== null;
+  /** The one §6.4 window is spent — on the 2e passage, or the moment it
+   *  expired: no second ladder exists on the ledger to offer. */
+  const ladderSpent = passageCourant >= 2 || windowExpiredTo(expirePhase) !== null;
   const sendOpenReturn = useCallback(() => {
     if (riderCode === null || liveAssignment === null || scelleRetour === null) return;
     const attempt = attemptFor(`return-open|${liveAssignment.orderId}|${scelleRetour}`);
@@ -1435,10 +1450,10 @@ export default function App() {
    * Called as `{PorteSoucis(…)}`, never as an element (the RepereVoix law).
    */
   const PorteSoucis = useCallback((avecRefusValide: boolean): React.JSX.Element => {
-    if (passageCourant >= 2) {
-      // The 2e passage: no second window exists on the ledger to offer. The
-      // buyer's VALID refusal (door mode) is the inspection's road, not the
-      // ladder's, and stays reachable.
+    if (ladderSpent) {
+      // The 2e passage, or a buyer back after the window expired: no second
+      // window exists on the ledger to offer. The buyer's VALID refusal (door
+      // mode) is the inspection's road, not the ladder's, and stays reachable.
       return (
         <>
           <FasoBody>{t('reschedule.souci_2e')}</FasoBody>
@@ -1510,7 +1525,7 @@ export default function App() {
         />
       </>
     );
-  }, [refusalPhase, expirePhase, fenetreJusqua, refusValideOuvert, sendExpire, sendValidRejection, passageCourant]);
+  }, [refusalPhase, expirePhase, fenetreJusqua, refusValideOuvert, sendExpire, sendValidRejection, ladderSpent]);
 
   const signIn = useCallback(
     (typed: string) => {
@@ -2521,7 +2536,7 @@ export default function App() {
                               </>
                             )}
                           </>
-                        ) : refusedFinalDue(expirePhase, remembered) || validRejectionDue(inspectionPhase, remembered) ? (
+                        ) : refusedFinalDue(expirePhase, remembered) || validRejectionDue(inspectionPhase, remembered) || retourDecide ? (
                           /**
                            * ═══ RETOUR-VIVANT-1 — R12's refused_final arm and
                            * the buyer's VALID refusal, both ending in « Préparer
@@ -2547,6 +2562,14 @@ export default function App() {
                                   return fault === null ? null : <FasoBody>{t(fault === 'sera' ? 'reject.fault_sera' : 'reject.fault_seller')}</FasoBody>;
                                 })()}
                                 <FasoBody>{t('reject.no_fee')}</FasoBody>
+                              </>
+                            ) : retourDecide && !refusedFinalDue(expirePhase, remembered) ? (
+                              /* REPROGRAMMATION-2 — Séra's decision on a
+                                 rescheduled course: home, and no fee (the
+                                 buyer was absent, not refusing). */
+                              <>
+                                <FasoPosterTitle>{t('retour.decide_titre')}</FasoPosterTitle>
+                                <FasoBody>{t('retour.decide_body')}</FasoBody>
                               </>
                             ) : (
                               <>
@@ -2589,7 +2612,7 @@ export default function App() {
                               })()
                             ) : null}
                           </>
-                        ) : rescheduleDue(expirePhase, remembered, passageCourant) ? (
+                        ) : rescheduleDue(expirePhase, remembered, passageCourant) && !clientRevenu ? (
                           /**
                            * The non-escalating arm (honest absence, unusable
                            * place, a provider failure): nothing is lost, the
@@ -2607,6 +2630,17 @@ export default function App() {
                             <FasoCard>
                               <FasoBody>{t('reschedule.live_note')}</FasoBody>
                             </FasoCard>
+                            {/* REPROGRAMMATION-2 (founder, 2026-09-17): the buyer
+                                came back before a passage was fixed — the door
+                                road again, right now. Custody accepts the
+                                ordinary drop; the spent window is not re-offered. */}
+                            <FasoGhostButton
+                              label={t('reschedule.client_la')}
+                              onPress={() => {
+                                setClientRevenu(true);
+                                setReessaiEnCours(true);
+                              }}
+                            />
                           </>
                         ) : windowIsOpen(refusalPhase) && !reessaiEnCours && passageCourant < 2 ? (
                           /**

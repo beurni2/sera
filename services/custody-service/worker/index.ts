@@ -202,7 +202,11 @@ const RIDER_ROUTES: ReadonlySet<string> = new Set([
  * door reaches a read, a verification, or any delivery act. The kind check
  * below is the enforcement, not the comment.
  */
-const PRODUCE_ROUTES: ReadonlySet<string> = new Set(['POST /order/open', 'POST /secrets/arm']);
+// REPROGRAMMATION-2 — logistics' door also carries the DISPATCHER's decision
+// on a rescheduled course (`/return/apply`: the founder's console act, relayed
+// on his ops key) and the wire reviver it calls on his board read. Neither
+// arms a secret, reads a record, or moves custody.
+const PRODUCE_ROUTES: ReadonlySet<string> = new Set(['POST /order/open', 'POST /secrets/arm', 'POST /return/apply', 'POST /wires/reviver']);
 const PRODUCE_SHOP_ROUTES: ReadonlySet<string> = new Set(['POST /secrets/arm', 'POST /door-signal']);
 
 async function timingSafeEqual(a: string, b: string): Promise<boolean> {

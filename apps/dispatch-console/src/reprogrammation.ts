@@ -55,6 +55,56 @@ export function aReprogrammerRows(body: unknown): readonly ReprogRow[] {
   return rows.sort((a, b) => (a.orderId < b.orderId ? -1 : 1));
 }
 
+/**
+ * ═══ REPROGRAMMATION-2 — the second list and the lever home ═══
+ *
+ * A live course already ON its follow-up task (passage ≥ 2), with the window
+ * the founder fixed. The founder's other decision — « Renvoyer au vendeur »
+ * (Sera-Build-Spec §6.5: « dispatcher applies … return ») — is offered on
+ * BOTH lists: a buyer absent again at the 2e passage, or no second trip worth
+ * planning. Custody records the return with NO fee retained (an absence is
+ * not a refusal — founder, 2026-09-17); the rider's phone turns to the road
+ * home.
+ */
+export interface DeuxiemePassageRow {
+  readonly orderId: string;
+  /** The follow-up task the live course now carries. */
+  readonly taskId: string;
+  readonly riderName?: string | undefined;
+  readonly passage: number;
+  /** The window the founder fixed — null when the board carries none. */
+  readonly fenetre: { readonly start: string; readonly end: string } | null;
+}
+
+export function enDeuxiemePassageRows(body: unknown): readonly DeuxiemePassageRow[] {
+  const board = pick(pick(body, 'board'), null);
+  const riders = new Map<string, string>();
+  for (const entry of array(pick(board, 'riders'))) {
+    const riderId = str(pick(entry, 'riderId'));
+    if (riderId === '') continue;
+    const name = str(pick(entry, 'displayName'));
+    riders.set(riderId, name === '' ? riderId : name);
+  }
+  const rows: DeuxiemePassageRow[] = [];
+  for (const entry of array(pick(board, 'enDeuxiemePassage'))) {
+    const orderId = str(pick(entry, 'orderId'));
+    if (orderId === '') continue;
+    const riderId = str(pick(entry, 'riderId'));
+    const passage = pick(entry, 'passage');
+    const window = pick(entry, 'window');
+    const start = str(pick(window, 'start'));
+    const end = str(pick(window, 'end'));
+    rows.push({
+      orderId,
+      taskId: str(pick(entry, 'taskId')),
+      ...(riderId === '' ? {} : { riderName: riders.get(riderId) ?? riderId }),
+      passage: typeof passage === 'number' && Number.isInteger(passage) && passage >= 2 ? passage : 2,
+      fenetre: start === '' || end === '' ? null : { start, end },
+    });
+  }
+  return rows.sort((a, b) => (a.orderId < b.orderId ? -1 : 1));
+}
+
 function pick(value: unknown, key: string | null): unknown {
   if (value === null || typeof value !== 'object') return undefined;
   return key === null ? value : (value as Record<string, unknown>)[key];
@@ -85,21 +135,21 @@ export type ReprogRead =
   | { readonly kind: 'loading' }
   | { readonly kind: 'bad_key' }
   | { readonly kind: 'failed' }
-  | { readonly kind: 'ok'; readonly rows: readonly ReprogRow[] };
+  | { readonly kind: 'ok'; readonly rows: readonly ReprogRow[]; readonly deuxiemes: readonly DeuxiemePassageRow[] };
 
 export type ReprogView =
   | { readonly kind: 'loading'; readonly message: string }
   | { readonly kind: 'failed'; readonly message: string }
   | { readonly kind: 'empty'; readonly message: string }
-  | { readonly kind: 'liste'; readonly rows: readonly ReprogRow[] };
+  | { readonly kind: 'liste'; readonly rows: readonly ReprogRow[]; readonly deuxiemes: readonly DeuxiemePassageRow[] };
 
 export function reprogView(read: ReprogRead): ReprogView | null {
   if (read.kind === 'bad_key') return null;
   if (read.kind === 'loading') return { kind: 'loading', message: 'reprog.chargement' };
   if (read.kind === 'failed') return { kind: 'failed', message: 'reprog.echec' };
   // Nothing to fix is a GOOD state, and it says so.
-  if (read.rows.length === 0) return { kind: 'empty', message: 'reprog.vide' };
-  return { kind: 'liste', rows: read.rows };
+  if (read.rows.length === 0 && read.deuxiemes.length === 0) return { kind: 'empty', message: 'reprog.vide' };
+  return { kind: 'liste', rows: read.rows, deuxiemes: read.deuxiemes };
 }
 
 /** What the founder typed: a day and two clock times, in HIS local time. */
@@ -214,6 +264,75 @@ const REFUS: Record<string, string> = {
 
 export function refusKey(reason: string): string {
   return REFUS[reason] ?? 'reprog.refus_autre';
+}
+
+/**
+ * The « Renvoyer au vendeur » desk state: the ONE confirmation on screen,
+ * the one act in flight, what was decided (custody's instant), what was
+ * refused (a sentence, by order), and the one command each order's attempt
+ * rides on — a retried tap after a lost answer is the same act, and both
+ * doors (logistics by state, custody by command id) answer it as already
+ * done.
+ */
+export interface RenvoiUi {
+  /** The course whose confirmation card is open. Null = nothing is being asked. */
+  readonly demande: string | null;
+  readonly enVol: string | null;
+  /** Custody's instant for the decision, by order. */
+  readonly faits: Readonly<Record<string, string>>;
+  readonly echecs: Readonly<Record<string, string>>;
+  readonly commandes: Readonly<Record<string, string>>;
+}
+
+export const RENVOI_IDLE: RenvoiUi = { demande: null, enVol: null, faits: {}, echecs: {}, commandes: {} };
+
+/** Open the confirmation for ONE course. Refused (unchanged) while an act
+ *  flies; opening a second course's card closes the first — one question at
+ *  a time on the desk. The order's old refusal is cleared: he is trying again. */
+export function demanderRenvoi(ui: RenvoiUi, orderId: string): RenvoiUi {
+  if (ui.enVol !== null) return ui;
+  const echecs = { ...ui.echecs };
+  delete echecs[orderId];
+  return { ...ui, demande: orderId, echecs };
+}
+
+export function annulerRenvoi(ui: RenvoiUi): RenvoiUi {
+  return { ...ui, demande: null };
+}
+
+/** Send the decision he confirmed. Only the course whose card is open can be
+ *  sent — the confirmation IS the consent. The command id is reused on a
+ *  retry of the same order (the door replays what it did), minted once. */
+export function commencerRenvoi(ui: RenvoiUi, orderId: string, mint: () => string): { readonly ui: RenvoiUi; readonly commandId: string } | null {
+  if (ui.enVol !== null || ui.demande !== orderId) return null;
+  const commandId = ui.commandes[orderId] ?? mint();
+  return { ui: { ...ui, demande: null, enVol: orderId, commandes: { ...ui.commandes, [orderId]: commandId } }, commandId };
+}
+
+export function renvoiFait(ui: RenvoiUi, orderId: string, decideAt: string): RenvoiUi {
+  const commandes = { ...ui.commandes };
+  delete commandes[orderId];
+  return { demande: null, enVol: null, faits: { ...ui.faits, [orderId]: decideAt }, echecs: ui.echecs, commandes };
+}
+
+export function renvoiEchoue(ui: RenvoiUi, orderId: string, key: string): RenvoiUi {
+  return { ...ui, enVol: null, echecs: { ...ui.echecs, [orderId]: key } };
+}
+
+/** The decider door's refusals, each a sentence the founder can act on. The
+ *  two ways custody can be out of reach are ONE sentence (his next act is the
+ *  same: try again); custody's own refusal is named as such. */
+const REFUS_RENVOI: Record<string, string> = {
+  course_non_reprogrammee: 'reprog.refus_order_not_rescheduled',
+  no_active_course: 'reprog.refus_no_active_course',
+  course_non_acceptee: 'reprog.refus_course_non_acceptee',
+  custody_non_relie: 'reprog.renvoi_garde_muette',
+  custody_unreachable: 'reprog.renvoi_garde_muette',
+  custody_refused: 'reprog.renvoi_refuse',
+};
+
+export function renvoiRefusKey(reason: string): string {
+  return REFUS_RENVOI[reason] ?? 'reprog.refus_autre';
 }
 
 /** The window in the founder's words: the day, then the two hours, in his

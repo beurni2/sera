@@ -518,6 +518,9 @@ export class LeasedDispatch {
   async deliver(orderId: string, at: string): Promise<DeliverOutcome & { leaseReleased: boolean }> {
     const outcome = this.deps.book.deliver(orderId, at);
     if (!outcome.ok || outcome.duplicate) return { ...outcome, leaseReleased: false };
+    // REPROGRAMMATION-2: the rider delivered on the spot while a passage was
+    // still waiting to be fixed — nothing is left to reprogram.
+    this.deps.reschedules.forgetOrder(orderId);
     this.deps.witness.revoke(outcome.assignment.lease);
     // By the LEASE's task (REPROGRAMMATION-1): after a 2e passage the course
     // names its follow-up task while the anchored lease still names the first
@@ -539,6 +542,7 @@ export class LeasedDispatch {
   async returnToSupplier(orderId: string, at: string): Promise<DeliverOutcome & { leaseReleased: boolean }> {
     const outcome = this.deps.book.returnToSupplier(orderId, at);
     if (!outcome.ok || outcome.duplicate) return { ...outcome, leaseReleased: false };
+    this.deps.reschedules.forgetOrder(orderId);
     this.deps.witness.revoke(outcome.assignment.lease);
     const release = await this.deps.authority.send({
       kind: 'release',

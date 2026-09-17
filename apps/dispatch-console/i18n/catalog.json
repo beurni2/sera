@@ -1054,5 +1054,65 @@
     "fr": "Relire",
     "register": "neutral",
     "screenClass": "label"
+  },
+  {
+    "key": "reprog.deuxieme_etat",
+    "fr": "2e passage fixé",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "reprog.deuxieme_fenetre",
+    "fr": "Passage prévu",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "reprog.deuxieme_sans_fenetre",
+    "fr": "Passage prévu, sans heure connue.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "reprog.renvoyer",
+    "fr": "Renvoyer au vendeur",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "reprog.renvoi_titre",
+    "fr": "Renvoyer ce colis au vendeur ?",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "reprog.renvoi_confirm",
+    "fr": "Le colis retourne au vendeur. Aucun frais pour le client. Le coursier le voit sur son téléphone.",
+    "register": "money",
+    "screenClass": "general"
+  },
+  {
+    "key": "reprog.renvoi_confirmer",
+    "fr": "Oui, renvoyer",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "reprog.renvoi_fait",
+    "fr": "Retour décidé. Le coursier ramène le colis au vendeur.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "reprog.renvoi_garde_muette",
+    "fr": "Le service de garde n'a pas répondu. Réessayez.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "reprog.renvoi_refuse",
+    "fr": "Séra a refusé ce retour. Relisez le tableau.",
+    "register": "neutral",
+    "screenClass": "status"
   }
 ]

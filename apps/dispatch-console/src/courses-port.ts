@@ -1,5 +1,5 @@
 import { boardCourses, type CourseRow } from './courses';
-import { aReprogrammerRows, type ReprogRow } from './reprogrammation';
+import { aReprogrammerRows, enDeuxiemePassageRows, type DeuxiemePassageRow, type ReprogRow } from './reprogrammation';
 import { logisticsBase, type OpsAnswer } from './rider-codes-port';
 
 /**
@@ -43,6 +43,14 @@ export interface CoursesPort {
    *  The command id is the DESK's (one per attempt, reused on a retry of the
    *  same window), so the door's replay ledger answers a retried tap. */
   reprogrammer(orderId: string, fenetre: FenetrePassage, commandId: string): Promise<OpsAnswer<{ readonly taskId: string }>>;
+  /** REPROGRAMMATION-2 — the live courses already on their follow-up task,
+   *  off the same board read. */
+  deuxiemesPassages(): Promise<OpsAnswer<readonly DeuxiemePassageRow[]>>;
+  /** Send a rescheduled package home. The door relays to custody FIRST and
+   *  answers only on custody's word; the instant it answers is custody's.
+   *  A 200 that names no instant is reported as a refusal — the rider's phone
+   *  would not have turned, and the desk must not say it did. */
+  renvoyer(orderId: string, commandId: string): Promise<OpsAnswer<{ readonly decideAt: string }>>;
 }
 
 const TIMEOUT_MS = 15_000;
@@ -81,6 +89,18 @@ export function reprogCommandId(orderId: string): string {
 function taskIdOf(body: unknown): { taskId: string } | null {
   const taskId = body !== null && typeof body === 'object' ? (body as Record<string, unknown>)['taskId'] : null;
   return typeof taskId === 'string' && taskId !== '' ? { taskId } : null;
+}
+
+/** The decider door's own id, minted once per order on the desk and reused
+ *  on a retry: logistics answers `deja_decide` by state, and custody replays
+ *  the relayed command by this id if logistics' own write was lost. */
+export function renvoiCommandId(orderId: string): string {
+  return `cmd-console-renvoi-${orderId}-${crypto.randomUUID()}`;
+}
+
+function decideAtOf(body: unknown): { decideAt: string } | null {
+  const decideAt = body !== null && typeof body === 'object' ? (body as Record<string, unknown>)['decideAt'] : null;
+  return typeof decideAt === 'string' && decideAt !== '' ? { decideAt } : null;
 }
 
 /** The door's own two answers, and nothing invented for a third. */
@@ -147,6 +167,17 @@ export function httpCourses(
       if (answer.value === null) return { kind: 'refused', reason: 'reponse_sans_tache' };
       return { kind: 'ok', value: answer.value };
     },
+    deuxiemesPassages: () => call('/ops/board', { method: 'GET' }, enDeuxiemePassageRows),
+    async renvoyer(orderId: string, commandId: string): Promise<OpsAnswer<{ readonly decideAt: string }>> {
+      const answer = await call(
+        '/ops/retour/decider',
+        { method: 'POST', body: JSON.stringify({ command_id: commandId, orderId }) },
+        decideAtOf,
+      );
+      if (answer.kind !== 'ok') return answer;
+      if (answer.value === null) return { kind: 'refused', reason: 'reponse_sans_decision' };
+      return { kind: 'ok', value: answer.value };
+    },
   };
 }
 
@@ -154,7 +185,7 @@ export function httpCourses(
  *  that reads as « nothing to retire ». */
 export function unwiredCourses(): CoursesPort {
   const no = async (): Promise<OpsAnswer<never>> => ({ kind: 'unreachable' });
-  return { board: no, retirer: no, reprogrammations: no, reprogrammer: no };
+  return { board: no, retirer: no, reprogrammations: no, reprogrammer: no, deuxiemesPassages: no, renvoyer: no };
 }
 
 export function resolveCourses(opsKey: string, base: string = logisticsBase()): CoursesPort {

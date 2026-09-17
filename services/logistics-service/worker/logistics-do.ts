@@ -156,6 +156,14 @@ const SNAP_RETOURS = 'snap:retours:v1';
  */
 const SNAP_RESCHEDULES = 'snap:reschedules:v1';
 const SNAP_REPROGRAMMATIONS = 'snap:reprogrammations:v1';
+/**
+ * REPROGRAMMATION-2 — the DISPATCHER's return decision on a rescheduled
+ * course, keyed by assignmentId: recorded here only AFTER custody accepted
+ * it (`/produce/return/apply`, relayed on the founder's console act), and
+ * carried to the rider's session as `retourDecideAt` so his phone turns to
+ * the return road. Custody still moves only on the two-key handover.
+ */
+const SNAP_RETOUR_DECIDE = 'snap:retour-decide:v1';
 const CODEHASH_PREFIX = 'codehash:';
 const RIDERCODE_PREFIX = 'ridercode:';
 
@@ -383,6 +391,11 @@ export class LogisticsDO {
   private retours: Record<string, RetourRow> = {};
   /** REPROGRAMMATION-1 — the reprogram door's replay ledger, by command_id. */
   private reprogrammations: Record<string, { orderId: string; taskId: string }> = {};
+  /** REPROGRAMMATION-2 — the dispatcher's return decisions, by assignmentId. */
+  private retourDecide: Record<string, { orderId: string; decideAt: string }> = {};
+  /** REPROGRAMMATION-2 — when each live course's custody wires were last
+   *  asked to revive (in memory: a throttle, never a fact). */
+  private wiresRevivedAt: Record<string, number> = {};
   private queue!: ReadyQueue;
   private reschedules!: RescheduleBook;
   private registry!: RiderRegistry;
@@ -421,7 +434,7 @@ export class LogisticsDO {
 
   private async ensureLoaded(): Promise<void> {
     if (this.loaded) return;
-    const keys = [SNAP_QUEUE, SNAP_REGISTRY, SNAP_BOOK, SNAP_LEASE, SNAP_WITNESS, SNAP_PROJECTIONS, SNAP_BRIEFS, SNAP_RAMASSAGE, SNAP_CODE_VERIFICATION, SNAP_CUSTODY_OUTBOX, SNAP_RETOURS, SNAP_RESCHEDULES, SNAP_REPROGRAMMATIONS];
+    const keys = [SNAP_QUEUE, SNAP_REGISTRY, SNAP_BOOK, SNAP_LEASE, SNAP_WITNESS, SNAP_PROJECTIONS, SNAP_BRIEFS, SNAP_RAMASSAGE, SNAP_CODE_VERIFICATION, SNAP_CUSTODY_OUTBOX, SNAP_RETOURS, SNAP_RESCHEDULES, SNAP_REPROGRAMMATIONS, SNAP_RETOUR_DECIDE];
     const stored = await this.state.storage.get<unknown>(keys);
     const lease = stored.get(SNAP_LEASE) as LeaseAuthorityState | undefined;
     this.leaseState = lease ?? emptyLeaseState();
@@ -434,6 +447,7 @@ export class LogisticsDO {
     this.custodyOutbox = (stored.get(SNAP_CUSTODY_OUTBOX) as Record<string, CustodyProduceRow> | undefined) ?? {};
     this.retours = (stored.get(SNAP_RETOURS) as Record<string, RetourRow> | undefined) ?? {};
     this.reprogrammations = (stored.get(SNAP_REPROGRAMMATIONS) as Record<string, { orderId: string; taskId: string }> | undefined) ?? {};
+    this.retourDecide = (stored.get(SNAP_RETOUR_DECIDE) as Record<string, { orderId: string; decideAt: string }> | undefined) ?? {};
     this.queue = new ReadyQueue(this.projections());
     const queueSnap = stored.get(SNAP_QUEUE) as ReadyQueueSnapshot | undefined;
     if (queueSnap !== undefined) this.queue.restore(queueSnap);
@@ -475,7 +489,46 @@ export class LogisticsDO {
       [SNAP_RETOURS]: this.retours,
       [SNAP_RESCHEDULES]: this.reschedules.snapshot(),
       [SNAP_REPROGRAMMATIONS]: this.reprogrammations,
+      [SNAP_RETOUR_DECIDE]: this.retourDecide,
     });
+  }
+
+  /**
+   * REPROGRAMMATION-2 — the founder's board read doubles as the recovery
+   * hook for CUSTODY's wires too (the house law: a redelivered act or a
+   * daily read revives a stranded wire, never a hand). For every live course
+   * whose chain this object opened, custody's `/wires/reviver` re-arms a
+   * reschedule row its spine says is due and wakes any rested return row —
+   * so an order that was already in `reschedule` when the wire shipped tells
+   * logistics on the founder's first read, not on its next act. Throttled to
+   * once a minute per course, bounded, and never in the request's way: a
+   * custody that does not answer costs the board nothing.
+   */
+  private async reviveCustodyWires(): Promise<void> {
+    const custody = this.env.CUSTODY;
+    const key = this.env.SERA_PRODUCE_SECRET ?? '';
+    if (custody === undefined || key === '') return;
+    const nowMs = Date.now();
+    const due = this.book
+      .snapshot()
+      .assignments.map(([, r]) => r)
+      .filter((r) => ACTIVE_ASSIGNMENT_STATUSES.includes(r.status))
+      .map((r) => r.orderId)
+      .filter((orderId) => this.custodyOutbox[orderId]?.phase === 'done' && (this.wiresRevivedAt[orderId] ?? 0) + 60_000 < nowMs)
+      .slice(0, 20);
+    for (const orderId of due) this.wiresRevivedAt[orderId] = nowMs;
+    await Promise.all(due.map(async (orderId) => {
+      try {
+        const res = await custody.fetch(new Request('https://custody/produce/wires/reviver', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+          body: JSON.stringify({ orderId }),
+        }));
+        await res.text();
+      } catch {
+        // Not this read's affair: the next read asks again.
+      }
+    }));
   }
 
   /**
@@ -758,6 +811,8 @@ export class LogisticsDO {
       // VRAI-ROUTE — the founder's daily read doubles as the recovery hook
       // for a producer row parked before its config or supplier existed.
       await this.reviveCustodyProduce();
+      // REPROGRAMMATION-2 — and for custody's own wires back to this book.
+      await this.reviveCustodyWires();
       return Response.json({ ok: true, board: this.board() });
     }
     if (request.method === 'POST' && pathname === '/ops/riders') {
@@ -1872,6 +1927,68 @@ export class LogisticsDO {
       });
     }
 
+    /**
+     * ═══ REPROGRAMMATION-2 — THE DISPATCHER SENDS A RESCHEDULED COURSE HOME ═══
+     *
+     * §6.5: « dispatcher applies retry / reschedule / return ». The buyer was
+     * absent again at the 2e passage, or the founder will not plan another
+     * trip: his console act arrives here on his ops key and is RELAYED to
+     * custody's produce door (`/return/apply`) on this object's own key —
+     * custody records the decision on the ladder (fee NOT retained: an
+     * absence is not a refusal), and ONLY then does this book remember it.
+     * The rider's next `/rider/moi` carries `retourDecideAt`, his phone turns
+     * to the return road, and everything from there is RETOUR-VIVANT-1's:
+     * the seal, the two keys, custody courier → seller on the ledger's word.
+     *
+     * Refuse-closed by state: no live acknowledged course; a course custody
+     * never rescheduled (no open reschedule, first passage) — custody would
+     * refuse `no_reschedule_to_return` anyway, said here first in the
+     * founder's words; custody unreachable is a 503 said as such, never a
+     * silent « done ». Idempotent by state (`deja_decide`), and custody
+     * replays the relayed command by id if this book's write was lost.
+     */
+    if (request.method === 'POST' && pathname === '/ops/retour/decider') {
+      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      if (body === null || !isStr(body['command_id']) || !isStr(body['orderId'])) return malformed();
+      const commandId = (body['command_id'] as string).trim();
+      const orderId = (body['orderId'] as string).trim();
+      const active = this.book
+        .snapshot()
+        .assignments.map(([, r]) => r)
+        .find((r) => r.orderId === orderId && ACTIVE_ASSIGNMENT_STATUSES.includes(r.status));
+      if (active === undefined) return Response.json({ ok: false, reason: 'no_active_course' }, { status: 409 });
+      if (active.status !== 'acknowledged') return Response.json({ ok: false, reason: 'course_non_acceptee' }, { status: 409 });
+      const decided = this.retourDecide[active.assignmentId];
+      if (decided !== undefined) return Response.json({ ok: true, status: 'deja_decide', decideAt: decided.decideAt });
+      const passage = this.reschedules.priorTaskIdsOf(active.taskId).length + 1;
+      if (passage < 2 && this.reschedules.openFor(orderId) === undefined) {
+        return Response.json({ ok: false, reason: 'course_non_reprogrammee' }, { status: 409 });
+      }
+      const custody = this.env.CUSTODY;
+      const key = this.env.SERA_PRODUCE_SECRET ?? '';
+      if (custody === undefined || key === '') return Response.json({ ok: false, reason: 'custody_non_relie' }, { status: 503 });
+      let res: Response;
+      try {
+        res = await custody.fetch(new Request('https://custody/produce/return/apply', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+          body: JSON.stringify({ orderId, command_id: `retour-decide-${commandId}`, at: now }),
+        }));
+      } catch {
+        return Response.json({ ok: false, reason: 'custody_unreachable' }, { status: 503 });
+      }
+      const answer = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+      if (res.status >= 500) return Response.json({ ok: false, reason: 'custody_unreachable' }, { status: 503 });
+      if (!res.ok) {
+        return Response.json({ ok: false, reason: 'custody_refused', detail: typeof answer?.['reason'] === 'string' ? answer['reason'] : 'refused' }, { status: 409 });
+      }
+      this.retourDecide[active.assignmentId] = { orderId, decideAt: now };
+      // The passage the founder might still have fixed is off the desk: the
+      // package is going home.
+      this.reschedules.forgetOrder(orderId);
+      return Response.json({ ok: true, status: 'retour_decide', decideAt: now, outcome: answer?.['outcome'] ?? null });
+    }
+
     // ── Rider door (personal code — resolved HERE, hashes live with the book) ──
     if (pathname.startsWith('/rider/')) {
       const header = request.headers.get('Authorization') ?? '';
@@ -2017,6 +2134,7 @@ export class LogisticsDO {
     riders: (RiderRecord & { shift: unknown; assignable: boolean })[];
     assignments: AssignmentRecord[];
     aReprogrammer: { orderId: string; taskId: string; assignmentId: string; riderId: string; reasonCode: string; recordedAt: string }[];
+    enDeuxiemePassage: { orderId: string; taskId: string; assignmentId: string; riderId: string; passage: number; window: unknown }[];
   } {
     const queued = this.queue.queuedTasks().map((q) => ({
       taskId: q.task.id,
@@ -2057,7 +2175,30 @@ export class LogisticsDO {
         }];
       })
       .sort((a, b) => (a.orderId < b.orderId ? -1 : 1));
-    return { queued, riders, assignments, aReprogrammer };
+    // REPROGRAMMATION-2 — the live courses already on a follow-up task, with
+    // the window the founder fixed: the list his « Renvoyer au vendeur » lever
+    // also serves. A course whose return he already decided is on neither
+    // list — it is going home.
+    const enDeuxiemePassage = assignments
+      .filter((record) => this.retourDecide[record.assignmentId] === undefined)
+      .map((record) => ({ record, passage: this.reschedules.priorTaskIdsOf(record.taskId).length + 1 }))
+      .filter(({ passage }) => passage >= 2)
+      .map(({ record, passage }) => ({
+        orderId: record.orderId,
+        taskId: record.taskId,
+        assignmentId: record.assignmentId,
+        riderId: record.riderId,
+        passage,
+        window: this.queue.get(record.taskId)?.task.window ?? null,
+      }))
+      .sort((a, b) => (a.orderId < b.orderId ? -1 : 1));
+    return {
+      queued,
+      riders,
+      assignments,
+      aReprogrammer: aReprogrammer.filter((row) => this.retourDecide[row.assignmentId] === undefined),
+      enDeuxiemePassage,
+    };
   }
 
   private riderView(riderId: string): Record<string, unknown> {
@@ -2163,6 +2304,12 @@ export class LogisticsDO {
                * « 2e passage » and shows it.
                */
               passage: this.reschedules.priorTaskIdsOf(assignment.taskId).length + 1,
+              /**
+               * REPROGRAMMATION-2 — the dispatcher decided the package goes
+               * home (custody accepted it first). The app turns to the
+               * return road; the seal act and the two keys stay the rider's.
+               */
+              retourDecideAt: this.retourDecide[assignment.assignmentId]?.decideAt ?? null,
               /**
                * The ids CUSTODY's chain was opened with, as this object opened
                * it (the produce row is the record of what was said): the task

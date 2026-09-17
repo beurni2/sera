@@ -59,6 +59,9 @@ interface CourseState {
   passage: number;
   window: { start: string; end: string } | null;
   chaine: { taskId: string; packageId: string } | null;
+  /** REPROGRAMMATION-2 — the dispatcher decided the package goes home
+   *  (custody accepted first); logistics carries the instant on `/rider/moi`. */
+  retourDecideAt: string | null;
 }
 
 function logistics(state: CourseState): Route {
@@ -90,6 +93,7 @@ function logistics(state: CourseState): Route {
                   passage: state.passage,
                   window: state.window,
                   chaine: state.chaine,
+                  retourDecideAt: state.retourDecideAt,
                 },
           },
         },
@@ -111,6 +115,10 @@ interface RetourWorld {
   /** Custody's clock says the window has passed. The TEST moves it, as time would. */
   expired: boolean;
   expiredInto: 'return' | 'reschedule' | null;
+  /** REPROGRAMMATION-2 — the dispatcher's `/produce/return/apply` landed on
+   *  custody: the ladder now reads `return`, so the rider's return-open door
+   *  opens exactly as it does after an escalating expiry (spine `openReturn`). */
+  returnDecided: boolean;
   returnOpen: boolean;
   /** The delivery evidence is ON the ledger (one bundle, held once — the
    *  spine refuses a second by name, BEFORE it even reads the ids). */
@@ -180,7 +188,7 @@ function custody(world: RetourWorld): Route {
     }
     if (path === '/rider/return/open') {
       if (prior !== null) return prior;
-      if (!world.validRejection && world.expiredInto !== 'return') return commit(id, { status: 409, json: { ok: false, reason: 'no_valid_rejection' } });
+      if (!world.validRejection && world.expiredInto !== 'return' && !world.returnDecided) return commit(id, { status: 409, json: { ok: false, reason: 'no_valid_rejection' } });
       world.returnOpen = true;
       return commit(id, { status: 200, json: { ok: true, kind: 'return_opened' } });
     }
@@ -206,11 +214,11 @@ function custody(world: RetourWorld): Route {
 
 const freshWorld = (): RetourWorld => ({
   inspectionRecorded: false, validRejection: false, ladder: null, expired: false, expiredInto: null,
-  returnOpen: false, preuveTenue: false, armed: null, returned: false, recorded: new Map(),
+  returnDecided: false, returnOpen: false, preuveTenue: false, armed: null, returned: false, recorded: new Map(),
 });
 const courseInMode = (paymentMode: string): CourseState => ({
   status: 'active_unacknowledged', paymentMode, codeRetour: null, retourConfirmeAt: null, codeRetourFournisseur: null, closed: false,
-  passage: 1, window: null, chaine: null,
+  passage: 1, window: null, chaine: null, retourDecideAt: null,
 });
 
 beforeEach(() => {
@@ -679,5 +687,145 @@ describe('⚠ REPROGRAMMATION-1 — the 2e passage reaches the rider’s phone, 
     // The honest card, with its way out (a phone call) — never a guessed id.
     expect(s.shows('il manque des repères'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
     expect(s.shows('Appelez Séra pour finir la remise.')).toBe(true);
+  });
+});
+
+/**
+ * ═══ REPROGRAMMATION-2 — the two roads out of « On repasse un autre jour »
+ * that did not exist: the buyer comes back before a passage is fixed, and
+ * the dispatcher sends the package home ═══
+ */
+const DECIDE_AT = '2026-09-17T10:00:00.000Z';
+/** Custody accepted the dispatcher's decision, then logistics carried it. */
+const retourDecide = (state: CourseState, world: RetourWorld): void => {
+  world.returnDecided = true;
+  state.retourDecideAt = DECIDE_AT;
+};
+/** The rider's whole road home from the decision poster, on the session's two keys. */
+async function routeDuRetour(s: Awaited<ReturnType<typeof mountRider>>, w: ReturnType<typeof wire>, state: CourseState, world: RetourWorld) {
+  await s.press('Préparer le retour');
+  expect(w.calls.find((c) => c.path === '/rider/return/open')?.body).toMatchObject({ orderId: ORDER, returnSealId: RETSEAL });
+  expect(s.shows('Rendre le colis au vendeur'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+  state.codeRetour = CLE_COURSIER;
+  state.retourConfirmeAt = '2026-09-17T10:30:00.000Z';
+  state.codeRetourFournisseur = CLE_VENDEUR;
+  world.armed = { seller: CLE_VENDEUR, rider: CLE_COURSIER };
+  await s.poll();
+  expect(s.canPress('Échanger les deux codes')).toBe(true);
+  await s.press('Échanger les deux codes');
+  expect(s.shows('Colis rendu au vendeur.'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+  expect(w.calls.find((c) => c.path === '/rider/return/handover')?.body).toMatchObject({ sellerKey: CLE_VENDEUR, riderKey: CLE_COURSIER });
+}
+
+describe('⚠ REPROGRAMMATION-2 — « Le client est là »: the buyer comes back before any passage is fixed', () => {
+  it('« Client absent » → expiry → the poster offers « Le client est là » → the door road NOW, no second ladder → the buyer’s code lands the delivery on the SAME course', async () => {
+    const state = courseInMode('FULL_PREPAY');
+    const world = freshWorld();
+    const { s, w } = await toTheDoor([logistics(state), custody(world)]);
+    await s.press('Un souci ?');
+    await s.press('Client absent');
+    world.expired = true;
+    await s.press('Le temps est passé');
+    expect(s.shows('On repasse un autre jour.'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    expect(s.canPress('Le client est là'), 'the way back to the door must be on the poster').toBe(true);
+    expect(s.shows('Le code de la cliente')).toBe(false);
+
+    await s.press('Le client est là');
+    // The tree survived; the door road is back, still passage 1, no new window
+    // offered (the one window is spent), the phone line instead.
+    expect(s.shows('Le code de la cliente'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    expect(s.shows('On repasse un autre jour.')).toBe(false);
+    expect(s.shows('On attend un peu.'), 'the spent window is not re-offered').toBe(false);
+    expect(s.canPress('Un souci ?')).toBe(false);
+    expect(s.shows('Encore un souci ? Appelez Séra.')).toBe(true);
+    // No act fired by itself: nothing was sent to custody on the tap.
+    expect(w.calls.filter((c) => c.path.startsWith('/rider/door/'))).toHaveLength(2);
+    await s.type(DROP);
+    expect(s.canPress('Confirmer la remise')).toBe(true);
+    await s.press('Confirmer la remise');
+    expect(w.calls.find((c) => c.path === '/rider/delivery/drop')?.body).toMatchObject({ orderId: ORDER, dropCode: DROP });
+    expect(s.shows('Livré. Merci.'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+  });
+
+  it('door mode: the buyer came back — her accord is asked again before the code card, her valid refusal stays reachable', async () => {
+    const state = courseInMode('DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR');
+    const world = freshWorld();
+    const { s } = await toTheDoor([logistics(state), custody(world)]);
+    await s.press('Un souci ?');
+    await s.press('Client absent');
+    world.expired = true;
+    await s.press('Le temps est passé');
+    await s.press('Le client est là');
+    expect(s.canPress("La cliente est d'accord"), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    expect(s.canPress('La cliente refuse le colis')).toBe(true);
+    expect(s.canPress('Un souci ?')).toBe(false);
+    await s.press("La cliente est d'accord");
+    expect(s.shows('Le code de la cliente'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+  });
+});
+
+describe('⚠ REPROGRAMMATION-2 — the dispatcher sends a rescheduled package home: no fee, the same road home', () => {
+  it('before any passage is fixed: the poll brings the decision → « Séra renvoie le colis au vendeur » with NO fee sentence → « Préparer le retour » opens the return on custody → the keys → « Colis rendu »', async () => {
+    const state = courseInMode('FULL_PREPAY');
+    const world = freshWorld();
+    const { s, w } = await toTheDoor([logistics(state), custody(world)]);
+    await s.press('Un souci ?');
+    await s.press('Client absent');
+    world.expired = true;
+    await s.press('Le temps est passé');
+    expect(s.shows('On repasse un autre jour.')).toBe(true);
+    expect(s.shows('Préparer le retour'), 'no return before the decision').toBe(false);
+
+    retourDecide(state, world);
+    await s.poll();
+    expect(s.shows('Séra renvoie le colis au vendeur.'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    expect(s.shows('Aucun frais pour le client.'), 'the money register: an absence is not a refusal').toBe(true);
+    expect(s.shows('Les frais de course restent pris.'), 'the buyer-fault fee sentence must NOT appear on a dispatcher return').toBe(false);
+    expect(s.shows('On repasse un autre jour.')).toBe(false);
+    expect(s.shows('Le client est là'), 'no door road once the package is going home').toBe(false);
+    expect(s.shows(RETSEAL)).toBe(true);
+    expect(s.canPress('Préparer le retour')).toBe(true);
+    await routeDuRetour(s, w, state, world);
+    expect(w.calls.some((c) => c.path === '/rider/delivery/drop')).toBe(false);
+  });
+
+  it('at the 2e passage (code card on screen): the decision replaces the door road — the code card leaves, the return road opens', async () => {
+    const state = courseInMode('FULL_PREPAY');
+    const world = freshWorld();
+    const { s, w } = await toTheDoor([logistics(state), custody(world)]);
+    await s.press('Un souci ?');
+    await s.press('Client absent');
+    world.expired = true;
+    await s.press('Le temps est passé');
+    passageFixe(state);
+    await s.poll();
+    expect(s.shows('Le code de la cliente'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+
+    retourDecide(state, world);
+    await s.poll();
+    expect(s.shows('Séra renvoie le colis au vendeur.'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    expect(s.shows('Le code de la cliente'), 'the buyer’s code must not be asked over a decided return').toBe(false);
+    expect(s.canPress('Préparer le retour')).toBe(true);
+    await routeDuRetour(s, w, state, world);
+  });
+
+  it('killed after the decision: relaunch lands on « Séra renvoie le colis au vendeur » off the SESSION — never the code card, nothing re-opened', async () => {
+    const state = courseInMode('FULL_PREPAY');
+    const world = freshWorld();
+    const first = await toTheDoor([logistics(state), custody(world)]);
+    await first.s.press('Un souci ?');
+    await first.s.press('Client absent');
+    world.expired = true;
+    await first.s.press('Le temps est passé');
+    retourDecide(state, world);
+
+    const { s, w } = await relaunch(first.s, [logistics(state), custody(world)]);
+    expect(s.shows('Séra renvoie le colis au vendeur.'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    expect(s.shows('Aucun frais pour le client.')).toBe(true);
+    expect(s.shows('Le code de la cliente')).toBe(false);
+    expect(s.shows('On repasse un autre jour.')).toBe(false);
+    expect(w.calls.some((c) => c.path === '/rider/return/open')).toBe(false);
+    expect(s.canPress('Préparer le retour')).toBe(true);
+    await routeDuRetour(s, w, state, world);
   });
 });

@@ -499,6 +499,18 @@ export type CustodyCommand =
       command_id: string;
       claim: unknown;
       at: string;
+    }
+  | {
+      /**
+       * REPROGRAMMATION-2 (§6.5) — the DISPATCHER applies `return` on a
+       * rescheduled course. Reaches the object through the founder's ops
+       * door or logistics' produce door (the console's act, relayed); never
+       * the rider's. A decision on the record — the return still opens by
+       * the rider's own seal act, custody still moves on the two keys.
+       */
+      kind: 'apply_return';
+      command_id: string;
+      at: string;
     };
 
 /**
@@ -945,13 +957,42 @@ export class CustodyDO {
         return spine.completeReturnHandover(cmd.sellerKeyDigest, cmd.riderKeyDigest, cmd.at);
       case 'file_claim':
         return spine.fileCustodyLiabilityClaim(cmd.claim, cmd.at);
+      case 'apply_return':
+        return spine.applyDispatcherReturn(cmd.at);
     }
+  }
+
+  /**
+   * REPROGRAMMATION-2 — THE RESCHEDULE WIRE HEALS ITSELF ON WAKE. The arm
+   * lives in `commit()`, so an order that was already in `reschedule` when
+   * the wire was deployed had no row and would have told logistics nothing
+   * until its next act — while the rider's copy now promises the passage will
+   * appear on his phone. Any touch of the object (a founder read, the
+   * reviver door, an act) arms the missing row from the spine's own state.
+   * One storage read, and only when the ladder says `reschedule`; the row is
+   * idempotent with the commit-time arm (same key, same deterministic id).
+   */
+  private async healReprogrammationWire(): Promise<'armed' | 'present' | 'not_due'> {
+    if (this.chain === null || this.spine === null) return 'not_due';
+    const ladder = this.spine.currentLadderOutcome();
+    if (ladder === null || ladder.family !== 'reschedule') return 'not_due';
+    const row = await this.state.storage.get<RetourOutbox>(REPROGRAMMATION_OUTBOX_KEY);
+    if (row !== undefined) return 'present';
+    await this.state.storage.put(REPROGRAMMATION_OUTBOX_KEY, {
+      status: 'pending', attempts: 0,
+      body: { orderId: this.chain.order_id, command_id: `reprogrammation-${this.chain.order_id}`, at: ladder.attempt.at, outcome: ladder },
+    } satisfies RetourOutbox);
+    if ((await this.state.storage.getAlarm()) === null) {
+      await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
+    }
+    return 'armed';
   }
 
   async fetch(request: Request): Promise<Response> {
     await this.ensureLoaded();
     let response: Response;
     try {
+      await this.healReprogrammationWire();
       response = await this.route(request);
     } catch {
       // In-memory state may hold a command that was applied but never
@@ -2770,6 +2811,62 @@ export class CustodyDO {
         : { httpStatus: 409, body: { ok: false, reason: applied.reason ?? 'refused' } };
       await this.commit(cmd, recorded);
       return Response.json(recorded.body, { status: recorded.httpStatus });
+    }
+
+    /**
+     * REPROGRAMMATION-2 — `/return/apply`: the DISPATCHER applies `return` on
+     * a rescheduled course (§6.5). Reachable through the founder's ops door
+     * and through logistics' produce door (the console's act, relayed on the
+     * founder's key); the rider allowlist never names it. The spine records
+     * the decision; the retour-ouvert wire arms only when the RIDER opens
+     * the return with the seal, exactly as before.
+     */
+    if (request.method === 'POST' && pathname === '/return/apply') {
+      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      if (body === null || !isBoundedStr(body['command_id'], MAX_ID) || (body['at'] !== undefined && !isIso(body['at']))) {
+        return malformed();
+      }
+      const cmd: CustodyCommand = {
+        kind: 'apply_return',
+        command_id: (body['command_id'] as string).trim(),
+        at: (body['at'] as string | undefined) ?? new Date().toISOString(),
+      };
+      const prior = this.priorFor(cmd);
+      if (prior.kind === 'duplicate') return this.replayOutcome(prior.outcome, cmd);
+      if (prior.kind === 'conflict') {
+        return Response.json({ ok: false, reason: 'command_id_reused_with_other_content' }, { status: 409 });
+      }
+      if (this.tooLargeToCommit(cmd)) {
+        return Response.json({ ok: false, reason: 'command_too_large' }, { status: 413 });
+      }
+      const applied = this.apply(this.spine, cmd) as
+        | { ok: true; outcome: unknown }
+        | { ok: false; reason?: string };
+      const recorded: RecordedOutcome = applied.ok
+        ? { httpStatus: 200, body: { ok: true, kind: 'return_applied', outcome: applied.outcome } }
+        : { httpStatus: 409, body: { ok: false, reason: applied.reason ?? 'refused' } };
+      await this.commit(cmd, recorded);
+      return Response.json(recorded.body, { status: recorded.httpStatus });
+    }
+
+    /**
+     * REPROGRAMMATION-2 — `/wires/reviver`: re-arms this order's rested
+     * wires to logistics (the house recovery law, on demand): the
+     * reschedule row from the spine's state if it is missing, and any
+     * return or reschedule row parked `unsendable_no_config` back to
+     * pending. Idempotent; answers the state so the caller can see it. Ops
+     * and produce doors — logistics calls it for every live course on the
+     * founder's board read.
+     */
+    if (request.method === 'POST' && pathname === '/wires/reviver') {
+      const healed = await this.healReprogrammationWire();
+      await this.reviveRetourRows([RETOUR_OUVERT_OUTBOX_KEY, COURSE_RETOURNEE_OUTBOX_KEY, REPROGRAMMATION_OUTBOX_KEY]);
+      const reprog = await this.state.storage.get<RetourOutbox>(REPROGRAMMATION_OUTBOX_KEY);
+      return Response.json({
+        ok: true,
+        ladder: this.spine.currentLadderOutcome()?.family ?? null,
+        reprogrammation: healed === 'armed' ? 'armed' : (reprog?.status ?? null),
+      });
     }
 
     /**

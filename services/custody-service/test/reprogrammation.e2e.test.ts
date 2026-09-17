@@ -36,6 +36,8 @@ const RIDER = 'rider-reprog-0001';
 const RIDER_CODE = 'SR-REPROG-PERSONAL-0001';
 const SUPPLIER = 'supplier-reprog-1';
 
+const SELLER_KEY = 'RTF-SELLER-KEY-REPROG';
+const RIDER_KEY = 'RTR-RIDER-KEY-REPROG';
 const ALL_PASS = { produit_conforme: true, quantite_complete: true, emballage_intact: true };
 const T = '2026-09-17T09:00:00.000Z';
 /** The founder's attested instant, sixteen minutes past the Worker's NOW. */
@@ -156,6 +158,16 @@ async function attendreProduce(world: LogisticsWorld, path: string, orderId: str
   throw new Error(`${path} never reached logistics — seen: ${JSON.stringify(world.produce)}`);
 }
 
+/** Logistics' half of the handshake, through the SAME door it uses live. */
+async function logisticsArmsTheKeys(mf: Miniflare, orderId: string): Promise<void> {
+  expect((await call(mf, 'POST', '/produce/secrets/arm', PRODUCE_KEY, {
+    orderId, command_id: `arm-retour-rider-${orderId}`, kind: 'rider_return_confirmation', secret: RIDER_KEY,
+  })).status).toBe(200);
+  expect((await call(mf, 'POST', '/produce/secrets/arm', PRODUCE_KEY, {
+    orderId, command_id: `arm-retour-seller-${orderId}`, kind: 'seller_return_acceptance', secret: SELLER_KEY,
+  })).status).toBe(200);
+}
+
 async function ledgerCustodian(mf: Miniflare, orderId: string): Promise<unknown> {
   return (await call(mf, 'GET', `/ops/ledger?orderId=${orderId}`, OPS)).json['currentCustodian'];
 }
@@ -221,6 +233,74 @@ describe('REPROGRAMMATION-1 — the reschedule reaches logistics, and the 2e pas
     expect(dropped.json).toMatchObject({ ok: true, status: 'custody_with_customer' });
     expect(await ledgerCustodian(mf, O)).toBe('customer');
     await attendreProduce(world, '/produce/course-livree', O);
+    await mf.dispose();
+  });
+
+  it('REPROGRAMMATION-2 — the DISPATCHER applies the return on a rescheduled course (logistics’ produce key, never the rider’s door): the ladder advances to `return` with NO fee → the rider opens the return with the seal → the keys → the two-key handover → custody with the seller → the course goes home; the reviver answers the state', async () => {
+    const world: LogisticsWorld = { produce: [] };
+    const mf = boot(freshDir('decide'), world);
+    const O = 'ord-reprog-decide';
+    await prepaidArmed(mf, O, 'PICKUP-D1', 'DROP-D1');
+    await atTheDoor(mf, O, 'PICKUP-D1', 'SEAL-D1');
+
+    // Before any reschedule there is no return to apply — refused by name.
+    const tooEarly = await call(mf, 'POST', '/produce/return/apply', PRODUCE_KEY, { orderId: O, command_id: 'ra-0' });
+    expect(tooEarly.status).toBe(409);
+    expect(tooEarly.json).toMatchObject({ ok: false, reason: 'no_reschedule_to_return' });
+
+    expect((await call(mf, 'POST', '/rider/door/refusal', RIDER_CODE, { orderId: O, command_id: 'ref-d', reasonCode: 'honest_absence' })).status).toBe(200);
+    const expired = await call(mf, 'POST', '/ops/door/expire', OPS, { orderId: O, command_id: 'exp-d', at: plus16() });
+    expect(expired.json['outcome']).toMatchObject({ family: 'reschedule', attempt: { number: 2 } });
+    await attendreProduce(world, '/produce/reprogrammation', O);
+
+    // The rider's door never names it (the allowlist answers not_found).
+    expect((await call(mf, 'POST', '/rider/return/apply', RIDER_CODE, { orderId: O, command_id: 'ra-r' })).status).toBe(404);
+    // Neither producer arms nothing here: Shop+'s door does not carry it.
+    expect((await call(mf, 'POST', '/produce-shop/return/apply', SHOP_ARM_KEY, { orderId: O, command_id: 'ra-s' })).status).toBe(404);
+
+    // THE DISPATCHER'S DECISION, relayed by logistics on its own key: the
+    // canonical outcome advances one attempt, family `return`, same reason,
+    // same fault — a decision on the record, nothing moved.
+    const applied = await call(mf, 'POST', '/produce/return/apply', PRODUCE_KEY, { orderId: O, command_id: 'ra-1' });
+    expect(applied.status, JSON.stringify(applied.json)).toBe(200);
+    expect(applied.json).toMatchObject({ ok: true, kind: 'return_applied', outcome: { family: 'return', reasonCode: 'honest_absence', faultClass: 'buyer', attempt: { number: 3 } } });
+    expect(await ledgerCustodian(mf, O)).toBe(`courier:${RIDER}`);
+    // Replay by id answers the same; a fresh id finds no reschedule any more.
+    const replay = await call(mf, 'POST', '/produce/return/apply', PRODUCE_KEY, { orderId: O, command_id: 'ra-1' });
+    expect(replay.status).toBe(200);
+    expect(replay.json).toMatchObject({ ok: true, kind: 'return_applied', duplicate: true });
+    const again = await call(mf, 'POST', '/produce/return/apply', PRODUCE_KEY, { orderId: O, command_id: 'ra-2' });
+    expect(again.status).toBe(409);
+    expect(again.json).toMatchObject({ ok: false, reason: 'no_reschedule_to_return' });
+    // No return wire yet: the return opens only by the rider's own seal act.
+    expect(world.produce.some((p) => p.path === '/produce/retour-ouvert')).toBe(false);
+
+    // The reviver (ops or produce door) answers the state, idempotently.
+    const revived = await call(mf, 'POST', '/produce/wires/reviver', PRODUCE_KEY, { orderId: O });
+    expect(revived.status).toBe(200);
+    expect(revived.json).toEqual({ ok: true, ladder: 'return', reprogrammation: 'delivered' });
+    expect((await call(mf, 'POST', '/ops/wires/reviver', OPS, { orderId: O })).json).toEqual({ ok: true, ladder: 'return', reprogrammation: 'delivered' });
+
+    // The rider opens the return with the NEW seal: the buyer-fault arm runs
+    // on the dispatcher's decision — and retains NO fee.
+    const opened = await call(mf, 'POST', '/rider/return/open', RIDER_CODE, { orderId: O, command_id: 'ret-d', returnSealId: 'RETSEAL-D1' });
+    expect(opened.status, JSON.stringify(opened.json)).toBe(200);
+    expect(opened.json).toMatchObject({ ok: true, kind: 'return_opened' });
+    const refus = (await eventsOf(mf, O)).find((e) => e.name === 'delivery.refused.v1');
+    expect(refus?.payload).toMatchObject({ order_id: O, family: 'return', reason_code: 'honest_absence', fault_class: 'buyer', fee_retained: false });
+    // Once the return is open, a decision cannot be applied again.
+    const late = await call(mf, 'POST', '/produce/return/apply', PRODUCE_KEY, { orderId: O, command_id: 'ra-3' });
+    expect(late.status).toBe(409);
+    expect(late.json).toMatchObject({ ok: false, reason: 'return_in_progress' });
+
+    // RETOUR-VIVANT-1's road home, unchanged: the fifth wire, the keys, both
+    // or neither, custody courier → seller, the sixth wire.
+    await attendreProduce(world, '/produce/retour-ouvert', O);
+    await logisticsArmsTheKeys(mf, O);
+    const home = await call(mf, 'POST', '/rider/return/handover', RIDER_CODE, { orderId: O, command_id: 'ho-d', sellerKey: SELLER_KEY, riderKey: RIDER_KEY });
+    expect(home.status, JSON.stringify(home.json)).toBe(200);
+    expect(await ledgerCustodian(mf, O)).toBe(`seller:${SUPPLIER}`);
+    await attendreProduce(world, '/produce/course-retournee', O);
     await mf.dispose();
   });
 

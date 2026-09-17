@@ -437,3 +437,16 @@ describe('REPROGRAMMATION-1 — the attempt number, the window and the chain ids
     expect(withAssignment({ chaine: 'task-first' })?.assignment?.chaine).toBeNull();
   });
 });
+
+describe('REPROGRAMMATION-2 — the dispatcher’s return decision rides the session as an instant, bounded like every date', () => {
+  const withAssignment = (over: Record<string, unknown>) =>
+    riderSessionFromBody({ ...MOI, rider: { ...MOI.rider, assignment: { ...MOI.rider.assignment, ...over } } });
+
+  it('an ISO instant is carried; absent, null, or anything that is not a date reads as no decision — the phone never turns to the return road on a guess', () => {
+    expect(withAssignment({ retourDecideAt: '2026-09-17T10:00:00.000Z' })?.assignment?.retourDecideAt).toBe('2026-09-17T10:00:00.000Z');
+    expect(riderSessionFromBody(MOI)?.assignment?.retourDecideAt).toBeNull();
+    for (const bad of [null, undefined, '', 'hier', 42, true, {}]) {
+      expect(withAssignment({ retourDecideAt: bad })?.assignment?.retourDecideAt, JSON.stringify(bad)).toBeNull();
+    }
+  });
+});

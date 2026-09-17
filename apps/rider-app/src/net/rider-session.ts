@@ -146,6 +146,13 @@ export interface RiderAssignment {
    * has one. `null` when logistics carries none — honest, never guessed.
    */
   readonly chaine: { readonly taskId: string; readonly packageId: string } | null;
+  /**
+   * REPROGRAMMATION-2 — when the DISPATCHER decided this rescheduled package
+   * goes home (custody accepted the decision first). The screen turns to the
+   * return road: the seal act and the two keys stay the rider's own. ISO or
+   * null, bounded like every date.
+   */
+  readonly retourDecideAt: string | null;
 }
 
 function passageOrOne(v: unknown): number {
@@ -320,6 +327,7 @@ export function riderSessionFromBody(body: unknown): RiderSession | null {
         passage: passageOrOne(a['passage']),
         fenetre: fenetreOrNull(a['window']),
         chaine: chaineOrNull(a['chaine']),
+        retourDecideAt: isoOrNull(a['retourDecideAt']),
       };
     }
   }

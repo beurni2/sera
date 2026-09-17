@@ -1,6 +1,7 @@
 import {
   CustodyLiabilityClaimSchema,
   type PaymentMode,
+  DeliveryOutcomeSchema,
   EvidenceBundleSchema,
   PlatformEventSchema,
   ValidationDecisionSchema,
@@ -63,6 +64,7 @@ export type SpineRefusal =
   | 'no_valid_rejection'
   | 'inspection_already_recorded'
   | 'return_in_progress'
+  | 'no_reschedule_to_return'
   | 'producer_actor_mismatch';
 
 export interface ChainIds {
@@ -95,6 +97,13 @@ export class CustodySpine {
   private ladderOutcome: DeliveryOutcome | null = null;
   /** WO-2.2: fee-retained is a RECORD, never a movement (SE §6.4). */
   private feeRetainedForOrder = new Set<string>();
+  /**
+   * REPROGRAMMATION-2 — the DISPATCHER applied the return on a rescheduled
+   * course (§6.5: « dispatcher applies retry/reschedule/return »): the buyer
+   * was absent, not refusing, so the buyer-fault return arm below retains NO
+   * fee when it runs on this decision (founder's call, 2026-09-17).
+   */
+  private dispatcherReturnFeeWaived = false;
   private returnFlow: { state: 'opened' | 'closed'; returnSealId: string } | null = null;
   private readonly liabilityClaims: CustodyLiabilityClaim[] = [];
   /** WO-2.4 door state. Option-B (SE-I11): inspect BEFORE pay, pay BEFORE
@@ -835,14 +844,18 @@ export class CustodySpine {
       payload: { sealKind: 'return_seal' },
       at: args.at,
     });
-    this.feeRetainedForOrder.add(this.chain.order_id);
+    // REPROGRAMMATION-2: the fee stays ONLY on a refusal at the door; a return
+    // the dispatcher applied after an absence retains nothing (a record either
+    // way — Séra emits signals, never amounts).
+    const feeRetained = !this.dispatcherReturnFeeWaived;
+    if (feeRetained) this.feeRetainedForOrder.add(this.chain.order_id);
     const refused = this.emit('delivery.refused.v1', `door-refusal-${this.chain.order_id}`, {
       order_id: this.chain.order_id,
       task_id: this.chain.task_id,
       family: outcome.family,
       reason_code: outcome.reasonCode,
       fault_class: outcome.faultClass,
-      fee_retained: true,
+      fee_retained: feeRetained,
     }, args.at);
     this.returnFlow = { state: 'opened', returnSealId: args.returnSealId };
     const returnRequested = this.emit('return.logistics_requested.v1', `return-open-${this.chain.order_id}`, {
@@ -871,6 +884,41 @@ export class CustodySpine {
       return this.applyBuyerFaultRefusal(args);
     }
     return { ok: false, reason: 'no_valid_rejection' };
+  }
+
+  /**
+   * REPROGRAMMATION-2 (§6.5: « dispatcher applies retry/reschedule/return ») —
+   * the DISPATCHER turns a `reschedule` into a `return`: the buyer was absent
+   * again at the 2e passage, or the founder decided not to plan another
+   * trip. The ladder's canonical outcome advances one attempt with family
+   * `return` (same reason, same fault attribution); the return itself still
+   * opens ONLY by the rider's own act with the return seal (`openReturn`),
+   * and custody still moves ONLY on the two-key handover — this records a
+   * decision, it moves nothing. Refuse-closed under the road's standing
+   * names; a course custody never rescheduled has no return to apply.
+   */
+  applyDispatcherReturn(at: string):
+    | { ok: true; outcome: DeliveryOutcome }
+    | { ok: false; reason: SpineRefusal } {
+    if (this.eligibilityEmittedForOrder.has(this.chain.order_id)) return { ok: false, reason: 'order_already_delivered' };
+    if (!this.custodyWithCourier) return { ok: false, reason: 'custody_not_with_courier' };
+    if (this.validRejection !== null || this.returnFlow !== null) return { ok: false, reason: 'return_in_progress' };
+    const current = this.ladderOutcome;
+    if (current === null || current.family !== 'reschedule') return { ok: false, reason: 'no_reschedule_to_return' };
+    const outcome = DeliveryOutcomeSchema.parse({
+      ...current,
+      family: 'return',
+      attempt: { number: current.attempt.number + 1, at },
+    });
+    this.ladderOutcome = outcome;
+    this.dispatcherReturnFeeWaived = true;
+    this.ledger.append({
+      packageId: this.chain.package_id,
+      kind: 'validation_decision',
+      payload: { result: 'dispatcher_return_applied', family: outcome.family, reasonCode: outcome.reasonCode, feeRetained: false },
+      at,
+    });
+    return { ok: true, outcome };
   }
 
   /** The ladder's current rung — read by the door routes' answers, never a
