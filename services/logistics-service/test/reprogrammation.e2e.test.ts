@@ -431,12 +431,21 @@ describe('REPROGRAMMATION-1 — the next passage crosses BOTH real Workers, the 
     expect(await produce({ command_id: 'w-6', orderId: O, at: T, outcome: outcome(O, T1b) }))
       .toEqual({ status: 200, json: { ok: true, status: 'enregistre' } });
     expect(await desk(logistics).reprogrammations()).toMatchObject({ kind: 'ok', value: [{ orderId: O, taskId: T1b }] });
-    const fixed = await desk(logistics).reprogrammer(O, future, 'cmd-rpd-fix');
+    // A SHORT window — it ends three seconds from now — so the replay below
+    // can be asked AFTER it passed (verifier MINOR, closed): a retried tap is
+    // still the fix it already made, never `fenetre_passee` over a passage the
+    // rider is already reading.
+    const court = { start: new Date(Date.now() + 1_000).toISOString(), end: new Date(Date.now() + 3_000).toISOString() };
+    const fixed = await desk(logistics).reprogrammer(O, court, 'cmd-rpd-fix');
     expect(fixed.kind, JSON.stringify(fixed)).toBe('ok');
     if (fixed.kind !== 'ok') return;
-    expect(await desk(logistics).reprogrammer(O, future, 'cmd-rpd-fix')).toEqual({ kind: 'ok', value: { taskId: fixed.value.taskId } });
-    const raw = await ops(logistics, '/ops/reprogrammer', { command_id: 'cmd-rpd-fix', orderId: O, fenetre: future });
+    await new Promise((r) => setTimeout(r, Date.parse(court.end) - Date.now() + 300));
+    expect(Date.parse(court.end)).toBeLessThan(Date.now());
+    expect(await desk(logistics).reprogrammer(O, court, 'cmd-rpd-fix')).toEqual({ kind: 'ok', value: { taskId: fixed.value.taskId } });
+    const raw = await ops(logistics, '/ops/reprogrammer', { command_id: 'cmd-rpd-fix', orderId: O, fenetre: court });
     expect(raw).toEqual({ ok: true, duplicate: true, taskId: fixed.value.taskId, priorTaskIds: [T1b], passage: 2 });
+    // …while a FRESH command with that passed window is refused as such.
+    expect(await desk(logistics).reprogrammer(O, court, 'cmd-rpd-fix-passee')).toEqual({ kind: 'refused', reason: 'fenetre_passee' });
     expect(await desk(logistics).reprogrammer(O, future, 'cmd-rpd-fix-again')).toEqual({ kind: 'refused', reason: 'order_not_rescheduled' });
     // A redelivery of custody's outcome AFTER the follow-up: the live course
     // names its follow-up now — settled by name, nothing recorded.
