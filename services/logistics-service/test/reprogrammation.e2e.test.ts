@@ -392,7 +392,7 @@ describe('REPROGRAMMATION-1 — the next passage crosses BOTH real Workers, the 
     const again = await ops(logistics, '/ops/assign', { command_id: 'rp1-a-again', taskId: other['taskId'], riderId: RIDER });
     expect(again['ok'], `the delivered rider must be grantable again — ${JSON.stringify(again)}`).toBe(true);
     expect((again['lease'] as Json)['taskId']).toBe(other['taskId']);
-  });
+  }, 60_000);
 
   it('the doors refuse closed by name: no reschedule on record · a window already past · a reversed window · the produce door settles by name, rejects a foreign outcome, and records nothing for a task the live course does not carry · a take-back and a retire leave no reschedule behind · the exact replay', async () => {
     const hold: Hold = { custodyCalls: [] };
@@ -510,7 +510,9 @@ describe('REPROGRAMMATION-1 — the next passage crosses BOTH real Workers, the 
     expect(hold.custodyCalls.some((c) => c.path === '/produce/return/apply'), 'no relay over an open return').toBe(false);
     expect(await desk(logistics).retirer(O2)).toEqual({ kind: 'ok', value: 'retire' });
     expect(await desk(logistics).reprogrammations()).toEqual({ kind: 'ok', value: [] });
-  });
+    // An explicit budget (ci #192 on main timed out at vitest's default 5 s on
+    // the CI runner: two Workers, a deliberate 3 s wait, ~4 s locally).
+  }, 60_000);
 });
 
 /**
