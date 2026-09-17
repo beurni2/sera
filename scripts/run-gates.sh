@@ -329,14 +329,19 @@ capture copy-lint-administrative fail pnpm exec copy-lint gates/fixtures/negativ
 log "gate: French Voice copy-lint — NEGATIVE FIXTURE (veuillez/séquestre + marketing-in-money + Mooré-in-instruction, must fail)"
 capture copy-lint-negative fail pnpm exec copy-lint gates/fixtures/negative/catalog.negative.json
 
+# THE VERSION IS READ, NOT TYPED (the canon repo's own law): it was hardcoded here
+# as 3.13.0 and the 3.15.0 repin (DECOUVERTE-RETIREE-1) tripped over it — the
+# INSTALLED package is the one truth, and the drift-check compares against it.
+CANON_VERSION="$(node -p "require('@platform/contracts/package.json').version")"
+log "canon version installed: $CANON_VERSION"
 log "gate: contracts drift-check — honest /docs copy vs pinned canon manifest (must pass)"
-capture drift-check-positive pass pnpm exec drift-check docs --pinned-version 3.13.0
+capture drift-check-positive pass pnpm exec drift-check docs --pinned-version "$CANON_VERSION"
 
 log "gate: contracts drift-check — TAMPERED doc (must fail)"
 DRIFT_TMP="$(mktemp -d)"
 cp -r docs "$DRIFT_TMP/docs"
 printf '\nrogue edit — this consumer copy drifted from canon\n' >> "$DRIFT_TMP/docs/Sera-Build-Spec.md"
-capture drift-check-negative fail pnpm exec drift-check "$DRIFT_TMP/docs" --pinned-version 3.13.0
+capture drift-check-negative fail pnpm exec drift-check "$DRIFT_TMP/docs" --pinned-version "$CANON_VERSION"
 rm -rf "$DRIFT_TMP"
 
 log "dispatch console — Playwright harness (shell boots on the sera theme)"
