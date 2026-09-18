@@ -603,7 +603,7 @@ export class LogisticsDO {
    *  him (« cancelled task can't leave custody inventory »). */
   private manifestCourses(riderId: string): ManifestCourse[] {
     const mine = courierActor(riderId);
-    return this.book
+    const rows: ManifestCourse[] = this.book
       .snapshot()
       .assignments.map(([, r]) => r)
       .filter((r) => r.riderId === riderId)
@@ -616,6 +616,18 @@ export class LogisticsDO {
         retourOuvert: this.retours[r.assignmentId] !== undefined,
         retourDecide: this.retourDecide[r.assignmentId] !== undefined,
       }));
+    // A course the desk RETIRED has no book row left (the orchestrator sweeps
+    // book, queue, lease and witness together), yet the ledger may still place
+    // its package with this rider: the fact read after the sweep is the only
+    // trace, and it rides the inventory with no stop until a real road moves
+    // it. « Cancelled task can't leave custody inventory » is the LEDGER's
+    // word — the book's silence is a task-status fact and decides nothing.
+    const listed = new Set(rows.map((r) => r.orderId));
+    for (const [orderId, fact] of Object.entries(this.custodyFacts)) {
+      if (fact.custodian !== mine || listed.has(orderId)) continue;
+      rows.push({ assignmentId: `sans-course-${orderId}`, taskId: '', orderId, active: false, retourOuvert: false, retourDecide: false });
+    }
+    return rows;
   }
 
   /** Refresh custody's word for every course the rider's manifest reads.
@@ -635,8 +647,30 @@ export class LogisticsDO {
    *  acknowledgment is not covered — the desk must look again. */
   private finDeServiceCouvre(riderId: string, held: readonly string[]): FinDeServiceRow | undefined {
     const row = this.finDeService[riderId];
-    if (row === undefined) return undefined;
+    // Nothing carried ⇒ nothing to cover: an exception « for nothing » would
+    // be a standing permission, never given.
+    if (row === undefined || held.length === 0) return undefined;
     return held.every((id) => row.packageIds.includes(id)) ? row : undefined;
+  }
+
+  /** A pending exception that no longer covers what the ledger places with
+   *  the rider — the package left by a real road, or another was picked up
+   *  after the ack — is STALE: dropped, so it can neither lie to the rider's
+   *  screen nor hide the desk's lever behind « en attente ». Answers whether
+   *  a row was dropped (the caller persists). */
+  private pruneFinDeService(riderId: string): boolean {
+    if (this.finDeService[riderId] === undefined) return false;
+    if (this.finDeServiceCouvre(riderId, this.manifestFor(riderId).custodyInventory) !== undefined) return false;
+    delete this.finDeService[riderId];
+    return true;
+  }
+
+  /** The pending exceptions the desk may act on: only those still covering
+   *  what the ledger places with their rider (as last heard). */
+  private finDeServiceEnAttente(): Record<string, FinDeServiceRow> {
+    return Object.fromEntries(
+      Object.entries(this.finDeService).filter(([riderId]) => this.finDeServiceCouvre(riderId, this.manifestFor(riderId).custodyInventory) !== undefined),
+    );
   }
 
   /**
@@ -1246,7 +1280,7 @@ export class LogisticsDO {
     /** The registry's exception log — every custody-holding end-shift that
      *  actually happened, with the dispatcher's ack and the next owner. */
     if (request.method === 'GET' && pathname === '/ops/shift/exceptions') {
-      return Response.json({ ok: true, exceptions: this.registry.custodyExceptionLog(), enAttente: this.finDeService });
+      return Response.json({ ok: true, exceptions: this.registry.custodyExceptionLog(), enAttente: this.finDeServiceEnAttente() });
     }
     if (request.method === 'GET' && pathname === '/ops/riders') {
       // Same `assignable` semantics as the board — one meaning, both doors.
@@ -2347,6 +2381,9 @@ export class LogisticsDO {
         // (one bounded call per live course; the pilot has one).
         await this.refreshCustody(riderId, now);
         await this.state.storage.put(SNAP_CUSTODY_FACTS, this.custodyFacts);
+        // …and a pending exception the fresh word no longer covers is dropped
+        // here, on his own read — never a standing permission.
+        if (this.pruneFinDeService(riderId)) await this.state.storage.put(SNAP_FIN_DE_SERVICE, this.finDeService);
         return Response.json({ ok: true, rider: this.riderView(riderId) });
       }
       /**
@@ -2421,7 +2458,9 @@ export class LogisticsDO {
           heldPackageIds: held,
           ...(exception === undefined ? {} : { exception: { dispatcherAckId: exception.dispatcherAckId, nextOwner: exception.nextOwner } }),
         });
-        if (outcome.ok && held.length > 0) delete this.finDeService[riderId];
+        // Consumed by ANY end that succeeded — used (logged on the registry),
+        // or moot (nothing carried any more): a row never outlives the shift.
+        if (outcome.ok) delete this.finDeService[riderId];
         // FLOTTE-1 — the shift record closes with the registry's word.
         if (outcome.ok) this.flotte = closeShift(this.flotte, riderId, now);
         await this.persist();
@@ -2593,7 +2632,7 @@ export class LogisticsDO {
       aReprogrammer: aReprogrammer.filter((row) => !enRetour(row.assignmentId)),
       enDeuxiemePassage,
       manifestes,
-      finDeService: this.finDeService,
+      finDeService: this.finDeServiceEnAttente(),
     };
   }
 

@@ -58,6 +58,9 @@ export type RefusService =
   | 'already_on_shift'
   | 'not_on_shift'
   | 'custody_would_be_orphaned'
+  // MANIFESTE-1 — the door could not read the ledger: the shift stays on,
+  // said by name (the action is « try again », the cause is not hidden).
+  | 'custody_unverifiable'
   | 'autre';
 
 export type ActeServiceResult =
@@ -112,6 +115,7 @@ export function refusFromBody(body: unknown): RefusService {
     'already_on_shift',
     'not_on_shift',
     'custody_would_be_orphaned',
+    'custody_unverifiable',
   ];
   return known.includes(reason as RefusService) ? (reason as RefusService) : 'autre';
 }
@@ -130,6 +134,8 @@ export function refusServiceKey(refus: RefusService): string {
       return 'service.refus_deja';
     case 'custody_would_be_orphaned':
       return 'service.refus_garde';
+    case 'custody_unverifiable':
+      return 'service.refus_garde_illisible';
     default:
       return 'service.act_failed';
   }
@@ -162,8 +168,10 @@ export function httpShiftActs(
       return shift === null ? { ok: false, reason: 'unreachable' } : { ok: true, shift };
     }
     // 404/409 carry the registry's named reason; 5xx and the rest are the
-    // directory failing, which is « try again », never a refusal invented.
-    if (res.status === 404 || res.status === 409) {
+    // directory failing, which is « try again », never a refusal invented —
+    // except the ONE 503 the door names (custody could not be read: the shift
+    // stays on, and the rider is told why, not just « no answer »).
+    if (res.status === 404 || res.status === 409 || (res.status === 503 && refusFromBody(body) === 'custody_unverifiable')) {
       return { ok: false, reason: 'refused', refus: refusFromBody(body) };
     }
     return { ok: false, reason: 'unreachable' };

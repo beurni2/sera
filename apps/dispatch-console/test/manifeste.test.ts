@@ -10,6 +10,7 @@ import {
   finRefusKey,
   manifesteRows,
   nextOwnerKey,
+  refReprise,
 } from '../src/manifeste';
 
 /** MANIFESTE-1 — the desk's pure read and its one-card-at-a-time state. */
@@ -67,6 +68,12 @@ describe('manifesteRows — the board’s manifests, read defensively, sorted by
     expect(finRefusKey('rider_not_carrying')).toBe('fin_service.refus_pas_de_colis');
     expect(finRefusKey('custody_unverifiable')).toBe('fin_service.refus_garde_illisible');
     expect(finRefusKey('anything_else')).toBe('fin_service.echec');
+  });
+
+  it('« un autre coursier reprend » names WHICH one — blank or spaces is nobody, and nobody is refused locally', () => {
+    expect(refReprise('')).toBeNull();
+    expect(refReprise('   ')).toBeNull();
+    expect(refReprise('  rider-awa ')).toBe('rider-awa');
   });
 });
 

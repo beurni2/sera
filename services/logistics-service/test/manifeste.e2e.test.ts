@@ -386,4 +386,129 @@ describe('MANIFESTE-1 — one manifest, one current stop, and the end of service
     // port reads a 503 with a reason as a refusal, so the founder sees why).
     expect(await desk(logistics).autoriserFinDeService(RIDER, { kind: 'return_to_hub_task', ref: O }, 'cmd-fs-3')).toEqual({ kind: 'refused', reason: 'custody_unverifiable' });
   }, 30_000);
+
+  it('a course the desk RETIRED over a sealed package (the book forgets it entirely) cannot leave the inventory either: the package stays his with no stop — on his phone, on the board, through the desk — and still blocks the end of service until the desk gives it a road', async () => {
+    const hold: Hold = { custodyCalls: [] };
+    spawnLogistics(hold);
+    spawnCustody(hold);
+    const logistics = hold.logistics!;
+    const custody = hold.custody!;
+    const O = 'ord-manif-4';
+    const RIDER = 'rider-manif-4';
+    const PKG = `pkg-${O}`;
+    const { code } = await courseConfiee(logistics, O, RIDER, 'm4');
+    const { acts } = appPorts(logistics);
+    await custodyAuCoursier(custody, logistics, O, code, 'm4');
+    expect(await custodian(custody, O)).toBe(`courier:${RIDER}`);
+
+    // The desk RETIRES the order: book, queue, lease and witness forget it together.
+    const retired = await ops(logistics, '/ops/order/retirer', { command_id: 'm4-ret', orderId: O });
+    expect(retired['ok'], JSON.stringify(retired)).toBe(true);
+    expect((await moi(logistics, code))['assignment']).toBeNull();
+    // THE LEDGER WINS over the book's silence: still his, no stop, not closed.
+    const m = (await moi(logistics, code))['manifest'] as Json;
+    expect(m).toMatchObject({ status: 'active', custodyInventory: [PKG], orderedStops: [], currentStop: null });
+    expect(m['custodyReadings']).toMatchObject([{ orderId: O, reading: 'coursier' }]);
+    expect(((await ops(logistics, '/ops/board'))['board'] as Json)['manifestes']).toHaveProperty([RIDER]);
+    expect(await desk(logistics).manifestes()).toMatchObject({ kind: 'ok', value: [{ riderId: RIDER, currentStop: null, stopsCount: 0, packageIds: [PKG], finDeService: null }] });
+    // …and the end of service is refused until the desk names a road.
+    expect(await acts.endShift(code)).toEqual({ ok: false, reason: 'refused', refus: 'custody_would_be_orphaned' });
+    expect(await desk(logistics).autoriserFinDeService(RIDER, { kind: 'return_to_hub_task', ref: PKG }, 'cmd-fs-4')).toEqual({ kind: 'ok', value: { status: 'autorisee', packageIds: [PKG] } });
+    expect((await acts.endShift(code)).ok).toBe(true);
+    expect((await ops(logistics, '/ops/shift/exceptions'))['exceptions']).toMatchObject([{ riderId: RIDER, packageIds: [PKG], dispatcherAckId: 'cmd-fs-4' }]);
+    // The ledger did not move.
+    expect(await custodian(custody, O)).toBe(`courier:${RIDER}`);
+  }, 60_000);
+
+  it('an exception NOT used is never a standing permission: the rider delivers instead → his screen no longer says « authorized », the desk no longer says « en attente » → the end of service consumes nothing and logs nothing → the next day a new sealed package is refused again', async () => {
+    const hold: Hold = { custodyCalls: [] };
+    spawnLogistics(hold);
+    spawnCustody(hold);
+    const logistics = hold.logistics!;
+    const custody = hold.custody!;
+    const O = 'ord-manif-5';
+    const RIDER = 'rider-manif-5';
+    const PKG = `pkg-${O}`;
+    const { code } = await courseConfiee(logistics, O, RIDER, 'm5');
+    const { acts } = appPorts(logistics);
+    await custodyAuCoursier(custody, logistics, O, code, 'm5');
+    expect(await desk(logistics).autoriserFinDeService(RIDER, { kind: 'reassignment', ref: 'rider-awa' }, 'cmd-fs-5')).toEqual({ kind: 'ok', value: { status: 'autorisee', packageIds: [PKG] } });
+    expect((await moi(logistics, code))['finDeServiceAutorisee']).toBe(true);
+    expect(await desk(logistics).manifestes()).toMatchObject({ kind: 'ok', value: [{ riderId: RIDER, finDeService: { nextOwner: 'reassignment', packageIds: [PKG] } }] });
+
+    // He delivers instead: the package leaves his hands by the REAL road.
+    const drop = 'DROP-M5';
+    const armed = await custody.dispatchFetch('http://custody/produce-shop/secrets/arm', {
+      method: 'POST', headers: { Authorization: `Bearer ${SHOP_ARM_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderId: O, command_id: 'm5-arm-drop', kind: 'buyer_drop_code', secret: drop }),
+    });
+    expect(armed.status).toBe(200);
+    await armed.text();
+    const chain = (await moi(logistics, code))['assignment'] as Json;
+    const evidence = await riderCustody(custody, '/rider/delivery/evidence', code, {
+      orderId: O, command_id: 'm5-e',
+      bundle: { taskId: (chain['chaine'] as Json)['taskId'], packageId: PKG, custodySealId: chain['codeScelle'], artifacts: [], capturedAt: T },
+    });
+    expect(evidence.status, JSON.stringify(evidence.json)).toBe(200);
+    const dropped = await riderCustody(custody, '/rider/delivery/drop', code, { orderId: O, command_id: 'm5-drop', dropCode: drop });
+    expect(dropped.status, JSON.stringify(dropped.json)).toBe(200);
+    expect(await custodian(custody, O)).toBe('customer');
+
+    // His next read: nothing carried ⇒ the authorization is GONE from his screen…
+    const rider = await attendre(async () => moi(logistics, code), (r) => (r['manifest'] as Json)['status'] === 'closed', 'the manifest never closed after the delivery');
+    expect(rider['finDeServiceAutorisee']).toBe(false);
+    // …and from the desk: nothing pending, nothing to hide a lever behind.
+    expect((await ops(logistics, '/ops/shift/exceptions'))['enAttente']).toEqual({});
+    expect(await desk(logistics).manifestes()).toEqual({ kind: 'ok', value: [] });
+    // The old ack is GONE, not merely hidden: its exact replay no longer answers « déjà autorisée ».
+    expect(await desk(logistics).autoriserFinDeService(RIDER, { kind: 'reassignment', ref: 'rider-awa' }, 'cmd-fs-5')).toEqual({ kind: 'refused', reason: 'rider_not_carrying' });
+    // The end of service consumes nothing and LOGS nothing — no phantom hand-off.
+    expect((await acts.endShift(code)).ok).toBe(true);
+    expect((await ops(logistics, '/ops/shift/exceptions'))['exceptions']).toEqual([]);
+
+    // THE NEXT DAY: a new course, sealed — refused again; no standing permission survived.
+    const O2 = 'ord-manif-5b';
+    const { code: code2 } = await courseConfiee(logistics, O2, RIDER, 'm5b');
+    await custodyAuCoursier(custody, logistics, O2, code2, 'm5b');
+    expect(await custodian(custody, O2)).toBe(`courier:${RIDER}`);
+    expect((await moi(logistics, code2))['finDeServiceAutorisee']).toBe(false);
+    expect(await acts.endShift(code2)).toEqual({ ok: false, reason: 'refused', refus: 'custody_would_be_orphaned' });
+    expect(await desk(logistics).manifestes()).toMatchObject({ kind: 'ok', value: [{ riderId: RIDER, packageIds: [`pkg-${O2}`], finDeService: null }] });
+  }, 90_000);
+
+  it('the end of service itself consumes a moot exception: authorized, delivered instead, and the shift ended with NO read in between — the old ack is gone (its replay is refused), nothing was logged', async () => {
+    const hold: Hold = { custodyCalls: [] };
+    spawnLogistics(hold);
+    spawnCustody(hold);
+    const logistics = hold.logistics!;
+    const custody = hold.custody!;
+    const O = 'ord-manif-6';
+    const RIDER = 'rider-manif-6';
+    const PKG = `pkg-${O}`;
+    const { code } = await courseConfiee(logistics, O, RIDER, 'm6');
+    const { acts } = appPorts(logistics);
+    await custodyAuCoursier(custody, logistics, O, code, 'm6');
+    expect(await desk(logistics).autoriserFinDeService(RIDER, { kind: 'return_to_hub_task', ref: PKG }, 'cmd-fs-6')).toEqual({ kind: 'ok', value: { status: 'autorisee', packageIds: [PKG] } });
+    const drop = 'DROP-M6';
+    const armed = await custody.dispatchFetch('http://custody/produce-shop/secrets/arm', {
+      method: 'POST', headers: { Authorization: `Bearer ${SHOP_ARM_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderId: O, command_id: 'm6-arm-drop', kind: 'buyer_drop_code', secret: drop }),
+    });
+    expect(armed.status).toBe(200);
+    await armed.text();
+    const chain = (await moi(logistics, code))['assignment'] as Json;
+    const evidence = await riderCustody(custody, '/rider/delivery/evidence', code, {
+      orderId: O, command_id: 'm6-e',
+      bundle: { taskId: (chain['chaine'] as Json)['taskId'], packageId: PKG, custodySealId: chain['codeScelle'], artifacts: [], capturedAt: T },
+    });
+    expect(evidence.status, JSON.stringify(evidence.json)).toBe(200);
+    const dropped = await riderCustody(custody, '/rider/delivery/drop', code, { orderId: O, command_id: 'm6-drop', dropCode: drop });
+    expect(dropped.status, JSON.stringify(dropped.json)).toBe(200);
+    expect(await custodian(custody, O)).toBe('customer');
+    // Straight to the end of service — the door reads the ledger itself.
+    expect((await acts.endShift(code)).ok).toBe(true);
+    expect((await ops(logistics, '/ops/shift/exceptions'))['exceptions']).toEqual([]);
+    expect(await desk(logistics).autoriserFinDeService(RIDER, { kind: 'return_to_hub_task', ref: PKG }, 'cmd-fs-6')).toEqual({ kind: 'refused', reason: 'rider_not_carrying' });
+    expect((await moi(logistics, code))['finDeServiceAutorisee']).toBe(false);
+  }, 60_000);
 });

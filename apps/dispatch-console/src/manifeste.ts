@@ -89,6 +89,14 @@ export function nextOwnerKey(kind: NextOwnerKind): string {
   return kind === 'return_to_hub_task' ? 'fin_service.base' : 'fin_service.autre_coursier';
 }
 
+/** « Un autre coursier reprend » names WHICH one: the typed courier, or
+ *  nothing — the desk refuses locally rather than send a hand-off to nobody
+ *  (the registry's audit records the next owner as written here). */
+export function refReprise(saisie: string): string | null {
+  const qui = saisie.trim();
+  return qui === '' ? null : qui;
+}
+
 /** A door refusal, in the founder's words. */
 export function finRefusKey(reason: string): string {
   switch (reason) {

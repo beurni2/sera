@@ -630,6 +630,12 @@
     "screenClass": "status"
   },
   {
+    "key": "service.refus_garde_illisible",
+    "fr": "Séra n'a pas pu vérifier votre colis. Vous restez en ligne. Réessayez dans un moment.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
     "key": "service.act_failed",
     "fr": "Pas de réponse. Réessayez dans un moment.",
     "register": "neutral",

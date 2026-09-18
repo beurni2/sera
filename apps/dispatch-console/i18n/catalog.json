@@ -1224,6 +1224,18 @@
     "screenClass": "general"
   },
   {
+    "key": "fin_service.coursier_qui",
+    "fr": "Quel coursier reprend le colis ?",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "fin_service.coursier_manquant",
+    "fr": "Dites quel coursier reprend le colis.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
     "key": "fin_service.annuler",
     "fr": "Annuler",
     "register": "neutral",

@@ -117,11 +117,18 @@ test('a rider carrying a package is listed with his ONE current stop → the lev
   expect(authorizations[0]).toMatchObject({ riderId: 'rider-boss', nextOwner: { kind: 'return_to_hub_task', ref: 'pkg-1' } });
   const firstId = authorizations[0]!['command_id'];
 
-  // The second, the other choice: recorded; the SAME command id rides the retry.
+  // The other choice with NOBODY named: refused here, nothing sent, the card stays.
+  await boss.locator('.fin-service-autre').click();
+  await expect(boss.locator('.reprog-notice')).toContainText('Dites quel coursier reprend le colis.');
+  await expect(boss.locator('.fin-service-card')).toBeVisible();
+  expect(authorizations).toHaveLength(1);
+
+  // The courier named: recorded with WHO; the SAME command id rides the retry.
+  await boss.locator('.fin-service-coursier').fill('Awa');
   await boss.locator('.fin-service-autre').click();
   await expect(desk.locator('.reprog-fait').first()).toContainText('Fin de service autorisée');
   expect(authorizations).toHaveLength(2);
-  expect(authorizations[1]).toMatchObject({ command_id: firstId, riderId: 'rider-boss', nextOwner: { kind: 'reassignment', ref: 'pkg-1' } });
+  expect(authorizations[1]).toMatchObject({ command_id: firstId, riderId: 'rider-boss', nextOwner: { kind: 'reassignment', ref: 'Awa' } });
   // The board's own re-read: the row now reads « en attente du coursier », no lever.
   await expect(boss).toContainText('Autorisation donnée, en attente du coursier.');
   await expect(boss).toContainText('Un autre coursier reprend le colis');

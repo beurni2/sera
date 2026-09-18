@@ -63,6 +63,7 @@ import {
   finFaite,
   finRefusKey,
   nextOwnerKey,
+  refReprise,
   type FinServiceUi,
   type ManifesteRow,
   type NextOwner,
@@ -1615,6 +1616,9 @@ if (app) {
   type ManifesteRead = { kind: 'loading' } | { kind: 'ok'; rows: readonly ManifesteRow[] } | { kind: 'bad_key' } | { kind: 'failed' };
   let manifesteRead: ManifesteRead = { kind: 'loading' };
   let finService: FinServiceUi = FIN_SERVICE_IDLE;
+  // The courier typed on the open card — kept across the desk's re-renders
+  // (a refusal redraws the card), cleared when the card closes.
+  let coursierReprise = '';
 
   async function refreshManifestes(): Promise<void> {
     if (opsKey === null) {
@@ -1648,6 +1652,7 @@ if (app) {
       return;
     }
     finService = finFaite(finService, riderId);
+    coursierReprise = '';
     await refreshManifestes();
   }
 
@@ -1661,6 +1666,8 @@ if (app) {
         line('reprog-renvoi-ligne', m.riderName),
         line('reprog-renvoi-ligne', t('fin_service.aide')),
       );
+      // The base has no task of its own yet (the hub road is the next slice):
+      // its reference is the packages themselves. A hand-off names WHO.
       const ref = m.packageIds.join(',');
       const base = document.createElement('button');
       base.className = 'reprog-renvoi-confirmer fin-service-base';
@@ -1669,21 +1676,38 @@ if (app) {
       base.addEventListener('click', () => {
         void autoriserFin(m.riderId, { kind: 'return_to_hub_task', ref });
       });
+      const qui = document.createElement('input');
+      qui.className = 'reprog-champ fin-service-coursier';
+      qui.type = 'text';
+      qui.placeholder = t('fin_service.coursier_qui');
+      qui.value = coursierReprise;
+      qui.disabled = occupe;
+      qui.addEventListener('input', () => {
+        coursierReprise = qui.value;
+      });
       const autre = document.createElement('button');
       autre.className = 'reprog-renvoi-confirmer fin-service-autre';
       autre.textContent = t('fin_service.autre_coursier');
       autre.disabled = occupe;
       autre.addEventListener('click', () => {
-        void autoriserFin(m.riderId, { kind: 'reassignment', ref });
+        const reprend = refReprise(coursierReprise);
+        if (reprend === null) {
+          // Nobody named: refused HERE, nothing sent — the card stays.
+          finService = finEchouee(finService, m.riderId, 'fin_service.coursier_manquant');
+          renderManifestes();
+          return;
+        }
+        void autoriserFin(m.riderId, { kind: 'reassignment', ref: reprend });
       });
       const non = document.createElement('button');
       non.className = 'reprog-renvoi-annuler fin-service-annuler';
       non.textContent = t('fin_service.annuler');
       non.addEventListener('click', () => {
+        coursierReprise = '';
         finService = annulerFin(finService);
         renderManifestes();
       });
-      card.append(base, autre, non);
+      card.append(base, qui, autre, non);
       row.appendChild(card);
       const echec = finService.echecs[m.riderId];
       if (echec !== undefined) row.appendChild(line('reprog-notice', t(echec)));

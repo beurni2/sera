@@ -29,8 +29,9 @@ interface Etat {
   etape: 'ramassage' | 'livraison' | 'retour';
   carried: boolean;
   finAutorisee: boolean;
-  /** What the end-shift door answers: the registry's word, or its refusal. */
-  finRefus: 'custody_would_be_orphaned' | null;
+  /** What the end-shift door answers: the registry's word, its refusal, or
+   *  the ONE 503 it names (custody could not be read — the shift stays on). */
+  finRefus: 'custody_would_be_orphaned' | 'custody_unverifiable' | null;
 }
 
 function logistics(state: Etat): Route {
@@ -67,6 +68,7 @@ function logistics(state: Etat): Route {
       return { status: 200, json: { ok: true } };
     }
     if (path === '/rider/shift/end') {
+      if (state.finRefus === 'custody_unverifiable') return { status: 503, json: { ok: false, reason: state.finRefus } };
       if (state.finRefus !== null) return { status: 409, json: { ok: false, reason: state.finRefus } };
       state.shift = 'off_shift';
       return { status: 200, json: { ok: true, state: { status: 'off_shift' }, pending: false } };
@@ -152,6 +154,24 @@ describe('MANIFESTE-1 — the one current stop on the course screen', () => {
     await s.press('Passer hors ligne');
     await s.settle();
     expect(s.shows("Vous portez encore un colis. Finissez la course d'abord."), JSON.stringify(s.texts())).toBe(true);
+    expect(s.shows('Étape en cours : livraison chez le client'), 'the course must still be on screen').toBe(true);
+    expect(s.canPress('Passer hors ligne'), 'the act stays reachable').toBe(true);
+  });
+
+  it('the door’s 503 (custody could not be read) is said BY NAME — the shift stays on, the course stays on screen, the act stays reachable — never the generic « pas de réponse »', async () => {
+    const state = etat();
+    state.carried = true;
+    state.etape = 'livraison';
+    state.finAutorisee = true;
+    state.finRefus = 'custody_unverifiable';
+    const { s } = await signedIn([logistics(state)]);
+    await s.press('Accepter la course');
+    expect(s.canPress('Passer hors ligne')).toBe(true);
+    await s.press('Passer hors ligne');
+    await s.settle();
+    expect(s.texts().length, 'the tree unmounted').toBeGreaterThan(0);
+    expect(s.shows("Séra n'a pas pu vérifier votre colis. Vous restez en ligne. Réessayez dans un moment."), JSON.stringify(s.texts())).toBe(true);
+    expect(s.shows('Pas de réponse. Réessayez dans un moment.'), 'the cause is named, not hidden behind « no answer »').toBe(false);
     expect(s.shows('Étape en cours : livraison chez le client'), 'the course must still be on screen').toBe(true);
     expect(s.canPress('Passer hors ligne'), 'the act stays reachable').toBe(true);
   });
