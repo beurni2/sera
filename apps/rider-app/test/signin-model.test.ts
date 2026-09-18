@@ -21,6 +21,7 @@ const SESSION = {
   noticeVersion: 'v1',
   shift: null,
   assignment: null,
+  manifest: { currentStop: null, stopsCount: 0, custodyCount: 0, finDeServiceAutorisee: false },
 };
 
 const portThat = (result: SignInResult, spy?: { calls: string[] }): RiderSessionPort => ({

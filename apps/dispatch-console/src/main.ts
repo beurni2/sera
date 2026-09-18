@@ -68,6 +68,24 @@ import {
   type NextOwner,
 } from './manifeste';
 import {
+  COUT_LIGNES,
+  ENTRY_KINDS,
+  OVERHEAD_ITEMS,
+  SCALAR_FIELDS,
+  SCENARIOS,
+  entreeKey,
+  flotteRefusKey,
+  francs,
+  hypothesesDepuisSaisie,
+  motoStatutKey,
+  saisieDepuisHypotheses,
+  type CoutLigne,
+  type EntryKind,
+  type FlotteVue,
+  type Scenario,
+} from './flotte';
+import { flotteCommandId, resolveFlotte } from './flotte-port';
+import {
   FIXATION_IDLE,
   RENVOI_IDLE,
   annulerRenvoi,
@@ -1205,6 +1223,8 @@ if (app) {
         void refreshReprog();
         // MANIFESTE-1 — and the riders' manifests.
         void refreshManifestes();
+        // FLOTTE-1 — and the fleet book.
+        void refreshFlotte();
       };
       open.addEventListener('click', enter);
       input.addEventListener('keydown', (e) => {
@@ -1237,6 +1257,8 @@ if (app) {
         renderReprog();
         manifesteRead = { kind: 'loading' };
         renderManifestes();
+        flotteRead = { kind: 'loading' };
+        renderFlotte();
       });
       codesSection.appendChild(again);
       return;
@@ -1994,8 +2016,395 @@ if (app) {
    * desk just above it — the two administrative sections together, under
    * everything operational.
    */
-  // MANIFESTE-1 — the riders' live state sits above the next-passage desk.
-  main.append(manifesteHeading, manifesteSection, reprogHeading, reprogSection, coursesHeading, coursesSection, codesHeading, codesSection);
+  /**
+   * ═══ FLOTTE-1 (SE7.2) — THE FLEET DESK ═══
+   *
+   * « Vehicle docs/maintenance/fuel/odometer; DeliveryCost decomposition
+   * (direct/return/allocated/fully-loaded, low/base/high); utilization +
+   * deliveries/moto/day. » The founder's facts, typed here and kept on the
+   * logistics Worker; the figures derived there and read back. ⏳ The cost
+   * hypotheses are HIS numbers — the desk shows « à renseigner » until he
+   * types them and never a default figure. Administrative: it sits with the
+   * courses and codes desks, under everything operational.
+   */
+  const flotteHeading = document.createElement('h2');
+  flotteHeading.textContent = t('flotte.titre');
+  const flotteSection = document.createElement('section');
+  flotteSection.className = 'flotte-desk';
+
+  type FlotteRead = { kind: 'loading' } | { kind: 'ok'; vue: FlotteVue } | { kind: 'bad_key' } | { kind: 'failed' };
+  let flotteRead: FlotteRead = { kind: 'loading' };
+  /** ONE act in flight on this desk. */
+  let flotteBusy: string | null = null;
+  let flotteNotice: string | null = null;
+  const flotteFaits: string[] = [];
+  const hypSaisie: Record<string, string> = {};
+  let hypSaisieChargee = false;
+  const noterSaisie = new Map<string, Record<string, string>>();
+  const declarerSaisie = { label: '', tranche: '' };
+  const coutSaisie = { orderId: '', d: '' };
+  let couts: Readonly<Record<Scenario, CoutLigne>> | null = null;
+  let coutNotice: string | null = null;
+  const flottePort = () => resolveFlotte(opsKey ?? '');
+
+  async function refreshFlotte(): Promise<void> {
+    if (opsKey === null) {
+      renderFlotte();
+      return;
+    }
+    flotteRead = { kind: 'loading' };
+    renderFlotte();
+    const answer = await flottePort().lire();
+    flotteRead = answer.kind === 'ok' ? { kind: 'ok', vue: answer.value } : answer.kind === 'bad_key' ? { kind: 'bad_key' } : { kind: 'failed' };
+    // What he typed comes back to him, once, from the book — never overwriting a draft.
+    if (answer.kind === 'ok' && answer.value.hypotheses !== null && !hypSaisieChargee) {
+      Object.assign(hypSaisie, saisieDepuisHypotheses(answer.value.hypotheses));
+      hypSaisieChargee = true;
+    }
+    renderFlotte();
+  }
+
+  /** One act through one gate: a second tap cannot start a second act; a
+   *  refused key escalates the whole desk; a refusal is said by name. */
+  async function acteFlotte(acte: string, call: () => Promise<{ kind: string; reason?: string }>, fait: string): Promise<void> {
+    if (flotteBusy !== null) return;
+    flotteBusy = acte;
+    flotteNotice = null;
+    renderFlotte();
+    const answer = await call();
+    flotteBusy = null;
+    if (answer.kind === 'bad_key') {
+      flotteRead = { kind: 'bad_key' };
+      renderFlotte();
+      return;
+    }
+    if (answer.kind !== 'ok') {
+      flotteNotice = answer.kind === 'refused' ? flotteRefusKey(answer.reason ?? '') : 'flotte.echec';
+      renderFlotte();
+      return;
+    }
+    flotteFaits.push(fait);
+    await refreshFlotte();
+  }
+
+  const champ = (cls: string, placeholder: string, value: string, onInput: (v: string) => void, type = 'text'): HTMLInputElement => {
+    const input = document.createElement('input');
+    input.className = cls;
+    input.type = type;
+    input.placeholder = placeholder;
+    input.setAttribute('aria-label', placeholder);
+    input.value = value;
+    input.disabled = flotteBusy !== null;
+    input.addEventListener('input', () => onInput(input.value));
+    return input;
+  };
+  const bouton = (cls: string, label: string, onClick: () => void): HTMLButtonElement => {
+    const b = document.createElement('button');
+    b.className = cls;
+    b.textContent = label;
+    b.disabled = flotteBusy !== null;
+    b.addEventListener('click', onClick);
+    return b;
+  };
+  const entier = (raw: string): number | undefined => {
+    const v = raw.trim();
+    return v === '' ? undefined : Number(v);
+  };
+
+  function renderFlotte(): void {
+    flotteSection.replaceChildren();
+    if (logisticsBase() === '') {
+      flotteSection.append(line('reprog-state', t('codes.pas_relie')), line('reprog-hint', t('flotte.pas_relie_aide')));
+      return;
+    }
+    if (opsKey === null) {
+      flotteSection.appendChild(line('reprog-state', t('reprog.cle_dabord')));
+      return;
+    }
+    if (flotteRead.kind === 'bad_key') {
+      flotteSection.append(line('reprog-state', t('codes.cle_refusee')), line('reprog-hint', t('codes.cle_refusee_aide')));
+      return;
+    }
+    flotteSection.appendChild(line('reprog-hint', t('flotte.intro')));
+    for (const fait of flotteFaits) flotteSection.appendChild(line('reprog-fait', t(fait)));
+    if (flotteNotice !== null) flotteSection.appendChild(line('reprog-notice flotte-notice', t(flotteNotice)));
+    if (flotteRead.kind === 'loading') {
+      flotteSection.appendChild(line('reprog-state', t('flotte.lecture')));
+      return;
+    }
+    if (flotteRead.kind === 'failed') {
+      flotteSection.append(line('reprog-state', t('flotte.echec_lecture')), line('reprog-hint', t('reprog.echec_aide')));
+      return;
+    }
+    const vue = flotteRead.vue;
+    const riders = codesRead.kind === 'ok' ? codesRead.riders : [];
+    const nom = (riderId: string | null): string => (riderId === null ? '' : (riders.find((r) => r.riderId === riderId)?.displayName ?? riderId));
+    const motoLabel = (vehicleId: string | null): string => (vehicleId === null ? '' : (vue.motos.find((m) => m.vehicleId === vehicleId)?.label ?? vehicleId));
+
+    // ── The motos ──
+    if (vue.motos.length === 0) flotteSection.appendChild(line('reprog-state flotte-vide', t('flotte.vide')));
+    for (const m of vue.motos) {
+      const row = document.createElement('div');
+      row.className = 'reprog-row flotte-moto';
+      row.append(
+        line('reprog-row-order flotte-moto-label', m.label),
+        line('reprog-row-etat flotte-moto-etat', `${t(motoStatutKey(m.status))} · ${t('flotte.tranche')} ${m.fleetTranche} · ${m.odometerKm} ${t('flotte.km')}`),
+      );
+      if (m.docs.length > 0) {
+        row.appendChild(line('reprog-row-depuis flotte-moto-docs', `${t('flotte.papiers')} : ${m.docs.map((d) => `${d.kind} — ${d.expiresAt.slice(0, 10)}`).join(' · ')}`));
+      }
+      row.appendChild(line('reprog-row-depuis flotte-moto-garde', m.checkedOutBy === null ? t('flotte.libre') : `${t('flotte.confiee_a')} ${nom(m.checkedOutBy)}`));
+
+      // Who holds it.
+      const confier = document.createElement('div');
+      confier.className = 'reprog-form flotte-confier';
+      const select = document.createElement('select');
+      select.className = 'flotte-confier-select';
+      select.setAttribute('aria-label', t('flotte.confier'));
+      select.disabled = flotteBusy !== null;
+      const none = document.createElement('option');
+      none.value = '';
+      none.textContent = t('flotte.personne');
+      select.appendChild(none);
+      for (const r of riders) {
+        const o = document.createElement('option');
+        o.value = r.riderId;
+        o.textContent = r.displayName;
+        if (r.riderId === m.checkedOutBy) o.selected = true;
+        select.appendChild(o);
+      }
+      confier.append(
+        select,
+        bouton('reprog-fixer flotte-confier-btn', t('flotte.confier'), () => {
+          const riderId = select.value === '' ? null : select.value;
+          void acteFlotte(`confier:${m.vehicleId}`, () => flottePort().confier({ commandId: flotteCommandId('confier'), vehicleId: m.vehicleId, riderId }), riderId === null ? 'flotte.reprise' : 'flotte.confiee');
+        }),
+      );
+      row.appendChild(confier);
+
+      // A note on the moto: a repair, a charge, a reading, a paper.
+      const saisie = noterSaisie.get(m.vehicleId) ?? { kind: 'maintenance', note: '', km: '', cout: '', kwh: '', docKind: '', docDate: '' };
+      noterSaisie.set(m.vehicleId, saisie);
+      const noter = document.createElement('div');
+      noter.className = 'reprog-form flotte-noter';
+      const kind = document.createElement('select');
+      kind.className = 'flotte-noter-kind';
+      kind.setAttribute('aria-label', t('flotte.noter'));
+      kind.disabled = flotteBusy !== null;
+      for (const k of ENTRY_KINDS) {
+        const o = document.createElement('option');
+        o.value = k;
+        o.textContent = t(entreeKey(k));
+        if (k === saisie['kind']) o.selected = true;
+        kind.appendChild(o);
+      }
+      kind.addEventListener('change', () => {
+        saisie['kind'] = kind.value;
+        renderFlotte();
+      });
+      noter.appendChild(kind);
+      const k = saisie['kind'] as EntryKind;
+      if (k === 'document') {
+        noter.append(
+          champ('flotte-noter-doc-kind', t('flotte.doc_kind_placeholder'), saisie['docKind'] ?? '', (v) => { saisie['docKind'] = v; }),
+          champ('flotte-noter-doc-date', t('flotte.doc_date'), saisie['docDate'] ?? '', (v) => { saisie['docDate'] = v; }, 'date'),
+        );
+      } else {
+        if (k !== 'energie') noter.appendChild(champ('flotte-noter-km', t('flotte.km_placeholder'), saisie['km'] ?? '', (v) => { saisie['km'] = v; }, 'number'));
+        if (k !== 'compteur') noter.appendChild(champ('flotte-noter-cout', t('flotte.cout_placeholder'), saisie['cout'] ?? '', (v) => { saisie['cout'] = v; }, 'number'));
+        if (k === 'energie') noter.appendChild(champ('flotte-noter-kwh', t('flotte.kwh_placeholder'), saisie['kwh'] ?? '', (v) => { saisie['kwh'] = v; }, 'number'));
+        noter.appendChild(champ('flotte-noter-note', t('flotte.note_placeholder'), saisie['note'] ?? '', (v) => { saisie['note'] = v; }));
+      }
+      noter.appendChild(
+        bouton('reprog-fixer flotte-noter-btn', t('flotte.envoyer'), () => {
+          const km = entier(saisie['km'] ?? '');
+          const cout = entier(saisie['cout'] ?? '');
+          const kwh = saisie['kwh'] === undefined || saisie['kwh'].trim() === '' ? undefined : Number(saisie['kwh'].replace(',', '.'));
+          const doc = k === 'document' ? { kind: (saisie['docKind'] ?? '').trim(), expiresAt: (saisie['docDate'] ?? '').trim() === '' ? '' : new Date(`${saisie['docDate']}T00:00:00.000Z`).toISOString() } : undefined;
+          void acteFlotte(
+            `noter:${m.vehicleId}`,
+            () => flottePort().noter({ commandId: flotteCommandId('noter'), vehicleId: m.vehicleId, kind: k, note: saisie['note'] ?? '', odometerKm: km, costFcfa: cout, kwh, doc }),
+            'flotte.notee',
+          ).then(() => {
+            if (flotteNotice === null) noterSaisie.set(m.vehicleId, { ...saisie, note: '', km: '', cout: '', kwh: '', docKind: '', docDate: '' });
+          });
+        }),
+      );
+      row.appendChild(noter);
+      flotteSection.appendChild(row);
+    }
+
+    // ── Declare a moto ──
+    const declarer = document.createElement('div');
+    declarer.className = 'reprog-form flotte-declarer';
+    declarer.append(
+      line('reprog-row-etat', t('flotte.declarer_titre')),
+      champ('flotte-label', t('flotte.label_placeholder'), declarerSaisie.label, (v) => { declarerSaisie.label = v; }),
+      champ('flotte-tranche', t('flotte.tranche_placeholder'), declarerSaisie.tranche, (v) => { declarerSaisie.tranche = v; }, 'number'),
+      bouton('reprog-fixer flotte-declarer-btn', t('flotte.declarer'), () => {
+        const tranche = entier(declarerSaisie.tranche) ?? 1;
+        void acteFlotte('declarer', () => flottePort().declarerMoto({ commandId: flotteCommandId('moto'), label: declarerSaisie.label, fleetTranche: tranche }), 'flotte.declaree').then(() => {
+          if (flotteNotice === null) {
+            declarerSaisie.label = '';
+            declarerSaisie.tranche = '';
+          }
+        });
+      }),
+    );
+    flotteSection.appendChild(declarer);
+
+    // ── Papers due ──
+    const docs = document.createElement('div');
+    docs.className = 'reprog-row flotte-docs-dus';
+    docs.appendChild(line('reprog-row-order', t('flotte.docs_titre')));
+    if (vue.documentsDus.length === 0) docs.appendChild(line('reprog-row-depuis', t('flotte.docs_vide')));
+    for (const d of vue.documentsDus) {
+      docs.appendChild(line(d.expire ? 'reprog-notice' : 'reprog-row-etat', `${d.label} · ${d.kind} · ${d.expiresAt.slice(0, 10)} · ${t(d.expire ? 'flotte.papier_expire' : 'flotte.papier_a_renouveler')}`));
+    }
+    flotteSection.appendChild(docs);
+
+    // ── Utilization ──
+    const u = vue.utilisation;
+    const util = document.createElement('div');
+    util.className = 'reprog-row flotte-util';
+    util.appendChild(line('reprog-row-order', `${t('flotte.util_titre')} (${u.windowDays} ${t('flotte.jours')})`));
+    util.appendChild(line('reprog-row-etat', `${u.livrees} ${t('flotte.util_livrees')} · ${u.retournees} ${t('flotte.util_retournees')} · ${u.motosActives} ${t('flotte.util_motos')}`));
+    util.appendChild(
+      line('reprog-row-etat flotte-util-yardstick', u.livraisonsParMotoParJour === null ? t('flotte.util_sans_moto') : `${u.livraisonsParMotoParJour} ${t('flotte.util_par_moto_jour')}`),
+    );
+    util.appendChild(line('reprog-row-depuis', u.tauxEchec === null ? t('flotte.util_aucune_course') : `${Math.round(u.tauxEchec * 100)} % ${t('flotte.util_taux_echec')}`));
+    for (const p of u.parMoto) util.appendChild(line('reprog-row-depuis', `${p.label} : ${p.livrees} ${t('flotte.util_livrees')} · ${p.retournees} ${t('flotte.util_retournees')}`));
+    flotteSection.appendChild(util);
+
+    // ── Shifts ──
+    const services = document.createElement('div');
+    services.className = 'reprog-row flotte-services';
+    services.appendChild(line('reprog-row-order', t('flotte.services_titre')));
+    if (vue.shifts.length === 0) services.appendChild(line('reprog-row-depuis', t('flotte.services_vide')));
+    for (const s of vue.shifts.slice(0, 10)) {
+      const debut = `${s.startedAt.slice(0, 10)} ${hhmm(s.startedAt)}`;
+      const fin = s.endedAt === null ? t('flotte.service_en_cours') : hhmm(s.endedAt);
+      services.appendChild(line('reprog-row-depuis', `${nom(s.riderId)} · ${motoLabel(s.vehicleId) || t('flotte.sans_moto')} · ${debut} → ${fin}`));
+    }
+    flotteSection.appendChild(services);
+
+    // ── The cost of a delivery: his hypotheses, then the decomposition ──
+    const cout = document.createElement('div');
+    cout.className = 'reprog-row flotte-cout';
+    cout.append(line('reprog-row-order', t('flotte.cout_titre')), line('reprog-hint', t('flotte.hyp_intro')));
+    if (vue.hypotheses === null) cout.appendChild(line('reprog-notice flotte-hyp-absentes', t('flotte.hyp_absentes')));
+    const table = document.createElement('table');
+    table.className = 'flotte-hyp';
+    const head = document.createElement('tr');
+    head.append(document.createElement('th'));
+    for (const s of SCENARIOS) {
+      const th = document.createElement('th');
+      th.textContent = t(`flotte.scenario_${s}`);
+      head.appendChild(th);
+    }
+    table.appendChild(head);
+    for (const f of [...SCALAR_FIELDS, ...OVERHEAD_ITEMS]) {
+      const tr = document.createElement('tr');
+      const th = document.createElement('th');
+      th.textContent = t(`flotte.h_${f}`);
+      tr.appendChild(th);
+      for (const s of SCENARIOS) {
+        const td = document.createElement('td');
+        const key = `${s}.${f}`;
+        td.appendChild(champ('flotte-hyp-champ', t(`flotte.h_${f}`), hypSaisie[key] ?? '', (v) => { hypSaisie[key] = v; }));
+        tr.appendChild(td);
+      }
+      table.appendChild(tr);
+    }
+    cout.appendChild(table);
+    cout.appendChild(
+      bouton('reprog-fixer flotte-hyp-btn', t('flotte.hyp_enregistrer'), () => {
+        const composed = hypothesesDepuisSaisie(hypSaisie);
+        if (!composed.ok) {
+          const [s, f] = composed.champ.split('.');
+          flotteNotice = null;
+          coutNotice = `${t('flotte.hyp_champ_invalide')} ${t(`flotte.scenario_${s}`)} — ${t(`flotte.h_${f}`)}`;
+          renderFlotte();
+          return;
+        }
+        coutNotice = null;
+        void acteFlotte('hypotheses', () => flottePort().hypotheses({ commandId: flotteCommandId('hypotheses'), hypotheses: composed.hypotheses }), 'flotte.hyp_enregistrees');
+      }),
+    );
+    if (coutNotice !== null) cout.appendChild(line('reprog-notice flotte-cout-notice', coutNotice));
+    if (vue.hypotheses !== null) {
+      const calc = document.createElement('div');
+      calc.className = 'reprog-form flotte-calcul';
+      calc.append(
+        champ('flotte-cout-order', t('flotte.cout_order_placeholder'), coutSaisie.orderId, (v) => { coutSaisie.orderId = v; }),
+        champ('flotte-cout-d', t('flotte.cout_d_placeholder'), coutSaisie.d, (v) => { coutSaisie.d = v; }, 'number'),
+        bouton('reprog-fixer flotte-cout-btn', t('flotte.calculer'), () => {
+          const d = entier(coutSaisie.d);
+          if (coutSaisie.orderId.trim() === '' || d === undefined || !Number.isInteger(d) || d < 0) {
+            coutNotice = t('flotte.refus_saisie');
+            renderFlotte();
+            return;
+          }
+          if (flotteBusy !== null) return;
+          flotteBusy = 'cout';
+          coutNotice = null;
+          renderFlotte();
+          void flottePort().cout(coutSaisie.orderId.trim(), d).then((answer) => {
+            flotteBusy = null;
+            if (answer.kind === 'bad_key') {
+              flotteRead = { kind: 'bad_key' };
+            } else if (answer.kind !== 'ok') {
+              couts = null;
+              coutNotice = t(answer.kind === 'refused' ? flotteRefusKey(answer.reason) : 'flotte.echec');
+            } else {
+              couts = answer.value;
+            }
+            renderFlotte();
+          });
+        }),
+      );
+      cout.appendChild(calc);
+      if (couts !== null) {
+        const res = document.createElement('table');
+        res.className = 'flotte-cout-table';
+        const h = document.createElement('tr');
+        h.append(document.createElement('th'));
+        for (const s of SCENARIOS) {
+          const th = document.createElement('th');
+          th.textContent = t(`flotte.scenario_${s}`);
+          h.appendChild(th);
+        }
+        res.appendChild(h);
+        for (const l of COUT_LIGNES) {
+          const tr = document.createElement('tr');
+          tr.className = 'flotte-cout-ligne';
+          const th = document.createElement('th');
+          th.textContent = t(`flotte.cout_${l}`);
+          tr.appendChild(th);
+          for (const s of SCENARIOS) {
+            const td = document.createElement('td');
+            td.textContent = francs(couts[s][l]);
+            tr.appendChild(td);
+          }
+          res.appendChild(tr);
+        }
+        cout.appendChild(res);
+      }
+    }
+    flotteSection.appendChild(cout);
+
+    const relire = bouton('reprog-relire flotte-relire', t('flotte.relire'), () => {
+      void refreshFlotte();
+    });
+    flotteSection.appendChild(relire);
+  }
+
+  renderFlotte();
+
+  // MANIFESTE-1 — the riders' live state sits above the next-passage desk;
+  // FLOTTE-1 — the fleet desk is administrative and sits with the courses
+  // and codes desks (the codes desk stays LAST).
+  main.append(manifesteHeading, manifesteSection, reprogHeading, reprogSection, coursesHeading, coursesSection, flotteHeading, flotteSection, codesHeading, codesSection);
 
   // The REAL service-side deadline, ONE sweep for BOTH stores (WO-4.3).
   setInterval(() => {

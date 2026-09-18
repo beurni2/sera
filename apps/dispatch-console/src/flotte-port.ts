@@ -12,8 +12,17 @@ export type FlotteAnswer<T> = { kind: 'ok'; value: T } | { kind: 'bad_key' } | {
 
 export interface FlottePort {
   lire(): Promise<FlotteAnswer<FlotteVue>>;
-  declarerMoto(cmd: { commandId: string; vehicleId?: string; label: string; fleetTranche: number; status?: string; odometerKm?: number }): Promise<FlotteAnswer<{ status: string; vehicleId: string }>>;
-  noter(cmd: { commandId: string; vehicleId: string; kind: string; note?: string; odometerKm?: number; costFcfa?: number; kwh?: number; doc?: { kind: string; expiresAt: string } }): Promise<FlotteAnswer<{ status: string }>>;
+  declarerMoto(cmd: { commandId: string; vehicleId?: string | undefined; label: string; fleetTranche: number; status?: string | undefined; odometerKm?: number | undefined }): Promise<FlotteAnswer<{ status: string; vehicleId: string }>>;
+  noter(cmd: {
+    commandId: string;
+    vehicleId: string;
+    kind: string;
+    note?: string | undefined;
+    odometerKm?: number | undefined;
+    costFcfa?: number | undefined;
+    kwh?: number | undefined;
+    doc?: { kind: string; expiresAt: string } | undefined;
+  }): Promise<FlotteAnswer<{ status: string }>>;
   confier(cmd: { commandId: string; vehicleId: string; riderId: string | null }): Promise<FlotteAnswer<{ status: string }>>;
   hypotheses(cmd: { commandId: string; hypotheses: unknown }): Promise<FlotteAnswer<{ status: string }>>;
   cout(orderId: string, deliveryFunding: number): Promise<FlotteAnswer<Readonly<Record<Scenario, CoutLigne>>>>;

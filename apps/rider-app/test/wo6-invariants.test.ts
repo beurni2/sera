@@ -164,17 +164,52 @@ describe('Money — Séra emits signals, never money: NO franc amount anywhere',
   // A rendered franc amount: a number, then a REAL separator (space/nbsp/nnbsp),
   // then the currency unit \u2014 \u00ab 12 500 F \u00bb, \u00ab 5 000 FCFA \u00bb \u2014 or the word franc.
   // The separator requirement excludes token names like \u00ab U+202F \u00bb.
+  //
+  // FLOTTE-1 (SE7.2) \u2014 THE ONE NAMED ALLOWANCE. Sera-Build-Spec \u00a77.1 is
+  // NORMATIVE: S\u00e9ra OWNS `DeliveryCost` and must report it \u00ab low/base/high \u00bb;
+  // the founder's fleet desk on the console is where those francs show. They
+  // are S\u00e9ra's own COSTS under the founder's typed hypotheses \u2014 never a
+  // price, a fee, a payout or proceeds (SE-I09's letter), and no rider
+  // surface ever shows them (the scan below keeps every rider surface
+  // franc-free). The formatter lives in `apps/dispatch-console/src/flotte.ts`
+  // and the ONLY call on the console shell is the cost table's cell. The scan
+  // stays STRICT: on that one file the formatter's identifier is lifted out of
+  // its two syntactic positions (the import name, the one call) \u2014 both
+  // counted \u2014 and nothing else is let through; the assertion after the scan
+  // pins the allowance to exactly one call.
   const FRANC = /\d[\d.,\u00a0\u202f ]*[\u00a0\u202f ](?:FCFA|CFA|F)\b|\bfrancs?\b/i;
+  const CONSOLE_SHELL = join(repoRoot, 'apps/dispatch-console/src/main.ts');
+  const liftFormatter = (src: string) => {
+    expect(src.match(/^\s*francs,$/gm) ?? []).toHaveLength(1);
+    expect(src.match(/\bfrancs\(/g) ?? []).toHaveLength(1);
+    return src.replace(/^\s*francs,$/m, '').replace(/\bfrancs\(/, 'formatter(');
+  };
   // strip TS/JS comments so a note may mention money without tripping the scan
   const stripComments = (p: string, src: string) =>
     p.endsWith('.json') ? src : src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 
   it('no user-facing surface renders a franc amount', () => {
     for (const p of surfaces) {
-      const src = stripComments(p, read(p));
+      const stripped = stripComments(p, read(p));
+      const src = p === CONSOLE_SHELL ? liftFormatter(stripped) : stripped;
       const m = FRANC.exec(src);
       expect(m, `${p} carries a franc amount: ${m?.[0]}`).toBeNull();
     }
+  });
+
+  it('FLOTTE-1 — the franc formatter is called on the console shell EXACTLY once (the §7.1 cost table) and on no rider surface', () => {
+    const shell = stripComments('main.ts', read(join(repoRoot, 'apps/dispatch-console/src/main.ts')));
+    expect(shell.match(/\bfrancs\(/g) ?? []).toHaveLength(1);
+    // The one call sits in the cost table's cell, under the founder's scenarios.
+    expect(shell).toMatch(/td\.textContent = francs\(couts\[s\]\[l\]\);/);
+    for (const p of surfaces.filter((s) => !s.includes('dispatch-console'))) {
+      expect(read(p), `${p} calls the franc formatter`).not.toMatch(/\bfrancs\(/);
+    }
+    // And the formatter itself is the only place a « F » suffix is composed.
+    const formatter = read(join(repoRoot, 'apps/dispatch-console/src/flotte.ts'));
+    expect(formatter).toContain("${sign}${digits.replace(/\\B(?=(\\d{3})+(?!\\d))/g, ' ')} F`");
+    expect(formatter.match(/\} F`/g) ?? []).toHaveLength(1);
+    expect(shell).not.toMatch(/\} F`/);
   });
 
   it('the visual layer references no money-amount token (no amount hero, no currency suffix)', () => {

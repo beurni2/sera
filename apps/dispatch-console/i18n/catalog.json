@@ -1255,8 +1255,596 @@
   },
   {
     "key": "fin_service.echec",
-    "fr": "L'autorisation n'a pas abouti. Réessayez.",
+    "fr": "L'accord n'a pas été donné. Réessayez.",
     "register": "neutral",
     "screenClass": "status"
+  },
+  {
+    "key": "flotte.titre",
+    "fr": "Flotte",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.intro",
+    "fr": "Vos motos, leurs papiers, ce qu'elles coûtent et ce qu'elles livrent. Les chiffres viennent du registre de Séra.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "flotte.pas_relie_aide",
+    "fr": "Le tableau de flotte lit le service de logistique. Sans base configurée, il reste fermé.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "flotte.vide",
+    "fr": "Aucune moto déclarée. La première se déclare ici.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.lecture",
+    "fr": "Lecture du registre de flotte…",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.echec_lecture",
+    "fr": "Le registre de flotte n'a pas répondu.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.declarer_titre",
+    "fr": "Déclarer une moto",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.label_placeholder",
+    "fr": "Nom de la moto (ex. Moto A)",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.tranche_placeholder",
+    "fr": "Tranche (1 pour les premières)",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.declarer",
+    "fr": "Déclarer",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.statut_active",
+    "fr": "en service",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.statut_maintenance",
+    "fr": "en réparation",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.statut_retiree",
+    "fr": "retirée",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.tranche",
+    "fr": "tranche",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.km",
+    "fr": "km",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.jours",
+    "fr": "jours",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.papiers",
+    "fr": "Papiers",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.papier_a_renouveler",
+    "fr": "à renouveler",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.papier_expire",
+    "fr": "expiré",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.confiee_a",
+    "fr": "Confiée à",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.libre",
+    "fr": "Libre",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.confier",
+    "fr": "Confier",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.personne",
+    "fr": "Personne",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.noter",
+    "fr": "Noter",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.entree_maintenance",
+    "fr": "Réparation ou entretien",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.entree_energie",
+    "fr": "Recharge ou carburant",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.entree_compteur",
+    "fr": "Relevé du compteur",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.entree_document",
+    "fr": "Papier (assurance, carte grise…)",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.note_placeholder",
+    "fr": "Note",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.km_placeholder",
+    "fr": "Compteur (km)",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.cout_placeholder",
+    "fr": "Coût (F)",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.kwh_placeholder",
+    "fr": "kWh",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.doc_kind_placeholder",
+    "fr": "Quel papier ?",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.doc_date",
+    "fr": "Expire le",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.envoyer",
+    "fr": "Envoyer",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.notee",
+    "fr": "Noté.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.declaree",
+    "fr": "Moto déclarée.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.confiee",
+    "fr": "Moto confiée.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.reprise",
+    "fr": "Moto reprise.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.services_titre",
+    "fr": "Services des coursiers",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.services_vide",
+    "fr": "Aucun service enregistré.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.service_en_cours",
+    "fr": "en cours",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.sans_moto",
+    "fr": "sans moto",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.util_titre",
+    "fr": "Utilisation",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.util_livrees",
+    "fr": "livraisons",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.util_retournees",
+    "fr": "retours",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.util_motos",
+    "fr": "motos en service",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.util_par_moto_jour",
+    "fr": "livraisons par moto et par jour",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.util_sans_moto",
+    "fr": "Déclarez une moto pour lire ce chiffre.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.util_taux_echec",
+    "fr": "de courses non abouties",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.util_aucune_course",
+    "fr": "Aucune course sur la période.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.docs_titre",
+    "fr": "Papiers à renouveler",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.docs_vide",
+    "fr": "Aucun papier à renouveler dans les 30 jours.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.cout_titre",
+    "fr": "Coût d'une livraison",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.hyp_intro",
+    "fr": "Vos chiffres, en trois cas : bas, moyen, haut. Le tableau ne devine rien tant qu'ils ne sont pas renseignés.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "flotte.hyp_absentes",
+    "fr": "Hypothèses à renseigner.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.hyp_enregistrer",
+    "fr": "Enregistrer les hypothèses",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.hyp_enregistrees",
+    "fr": "Hypothèses enregistrées.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.hyp_champ_invalide",
+    "fr": "Un chiffre n'est pas bon :",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.scenario_low",
+    "fr": "Bas",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.scenario_base",
+    "fr": "Moyen",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.scenario_high",
+    "fr": "Haut",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.h_riderCostPerShiftFcfa",
+    "fr": "Coût d'un service coursier (F)",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.h_deliveriesPerShift",
+    "fr": "Livraisons par service",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.h_electricityPerDeliveryFcfa",
+    "fr": "Électricité par livraison (F)",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.h_failedAttemptRate",
+    "fr": "Part des tentatives ratées (0 à 0,99)",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.h_monthlyDispatchOverheadFcfa",
+    "fr": "Dispatch par mois (F)",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.h_monthlyDeliveries",
+    "fr": "Livraisons par mois",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.h_depreciation",
+    "fr": "Usure des motos (F par mois)",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.h_batteryReserve",
+    "fr": "Réserve batteries (F par mois)",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.h_maintenance",
+    "fr": "Entretien (F par mois)",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.h_tyresBrakes",
+    "fr": "Pneus et freins (F par mois)",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.h_insurance",
+    "fr": "Assurance (F par mois)",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.h_registration",
+    "fr": "Carte grise et plaques (F par mois)",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.h_theftAccidentReserve",
+    "fr": "Réserve vol et accident (F par mois)",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.h_riderPhoneData",
+    "fr": "Téléphone et données coursier (F par mois)",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.h_chargingInfra",
+    "fr": "Recharge (F par mois)",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.h_downtime",
+    "fr": "Temps d'arrêt (F par mois)",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.h_supervision",
+    "fr": "Supervision (F par mois)",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.h_supportReconciliation",
+    "fr": "Support et rapprochement (F par mois)",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.cout_order_placeholder",
+    "fr": "Numéro de commande",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.cout_d_placeholder",
+    "fr": "Frais de livraison de la commande (F)",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.calculer",
+    "fr": "Calculer",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "flotte.cout_directDeliveryCost",
+    "fr": "Coût direct",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.cout_returnDeliveryCost",
+    "fr": "Coût d'un retour",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.cout_allocatedFleetOverhead",
+    "fr": "Part de la flotte",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.cout_allocatedDispatchOverhead",
+    "fr": "Part du dispatch",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.cout_fullyLoadedDeliveryCost",
+    "fr": "Coût complet",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.cout_deliveryFunding",
+    "fr": "Frais de livraison",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.cout_deliveryContributionMargin",
+    "fr": "Marge",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.refus_compteur",
+    "fr": "Le compteur ne peut pas reculer.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.refus_moto_inconnue",
+    "fr": "Cette moto n'existe pas. Relisez.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.refus_coursier_inconnu",
+    "fr": "Ce coursier n'existe pas.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.refus_hypotheses",
+    "fr": "Les hypothèses n'ont pas été acceptées. Vérifiez chaque chiffre.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.hypotheses_absentes",
+    "fr": "Tapez d'abord vos hypothèses.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.refus_saisie",
+    "fr": "La saisie n'est pas complète.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.echec",
+    "fr": "L'acte n'a pas abouti. Réessayez.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "flotte.relire",
+    "fr": "Relire",
+    "register": "neutral",
+    "screenClass": "general"
   }
 ]
