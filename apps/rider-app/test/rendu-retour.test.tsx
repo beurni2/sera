@@ -374,7 +374,7 @@ describe('⚠ RETOUR-VIVANT — the buyer-fault ladder, whole, then the road hom
     expect(s.shows('Colis rendu au vendeur.')).toBe(false);
     expect(s.shows('Rendre le colis au vendeur')).toBe(false);
     expect(w.calls.filter((c) => c.path === '/rider/moi').length).toBeGreaterThan(1);
-  });
+  }, 20_000); // the whole ladder in one walk — 1.3 s here, over 5 s on the shared CI runner (ci #196/#197 timed out)
 
   it('a second reason inside the window is refused as the window it already has — never a second window', async () => {
     const state = courseInMode('FULL_PREPAY');
