@@ -21,6 +21,8 @@ import { logisticsBase, type OpsAnswer } from './rider-codes-port';
 type FetchFn = (input: string, init?: RequestInit) => Promise<Response>;
 
 /** What the retire door answered, for the ONE order it was asked about. */
+import { manifesteRows, type ManifesteRow, type NextOwner } from './manifeste';
+
 export type RetraitStatus = 'retire' | 'inconnu';
 
 /** REPROGRAMMATION-1 — the next passage, two ISO instants. */
@@ -51,6 +53,17 @@ export interface CoursesPort {
    *  A 200 that names no instant is reported as a refusal — the rider's phone
    *  would not have turned, and the desk must not say it did. */
   renvoyer(orderId: string, commandId: string): Promise<OpsAnswer<{ readonly decideAt: string }>>;
+  /**
+   * MANIFESTE-1 — the riders' manifests off the board (SE3.1) and the
+   * pending end-shift exceptions (SE3.2), one read.
+   */
+  manifestes(): Promise<OpsAnswer<readonly ManifesteRow[]>>;
+  /**
+   * SE3.2 — authorize a carrying rider's end of shift, naming the package's
+   * next owner. A 200 that names no status is reported as a refusal
+   * (`reponse_sans_statut`), the desk's own law.
+   */
+  autoriserFinDeService(riderId: string, nextOwner: NextOwner, commandId: string): Promise<OpsAnswer<{ readonly status: string; readonly packageIds: readonly string[] }>>;
 }
 
 const TIMEOUT_MS = 15_000;
@@ -96,6 +109,12 @@ function taskIdOf(body: unknown): { taskId: string } | null {
  *  the relayed command by this id if logistics' own write was lost. */
 export function renvoiCommandId(orderId: string): string {
   return `cmd-console-renvoi-${orderId}-${crypto.randomUUID()}`;
+}
+
+/** SE3.2 — the end-of-service authorization's id, minted ONCE per request
+ *  on the desk and reused on a retry (the door replays by id). */
+export function finServiceCommandId(riderId: string): string {
+  return `cmd-console-fin-service-${riderId}-${crypto.randomUUID()}`;
 }
 
 function decideAtOf(body: unknown): { decideAt: string } | null {
@@ -178,14 +197,33 @@ export function httpCourses(
       if (answer.value === null) return { kind: 'refused', reason: 'reponse_sans_decision' };
       return { kind: 'ok', value: answer.value };
     },
+    manifestes: () => call('/ops/board', { method: 'GET' }, manifesteRows),
+    async autoriserFinDeService(riderId: string, nextOwner: NextOwner, commandId: string): Promise<OpsAnswer<{ readonly status: string; readonly packageIds: readonly string[] }>> {
+      const answer = await call(
+        '/ops/shift/exception',
+        { method: 'POST', body: JSON.stringify({ command_id: commandId, riderId, nextOwner }) },
+        finDeServiceOf,
+      );
+      if (answer.kind !== 'ok') return answer;
+      if (answer.value === null) return { kind: 'refused', reason: 'reponse_sans_statut' };
+      return { kind: 'ok', value: answer.value };
+    },
   };
+}
+
+function finDeServiceOf(body: unknown): { readonly status: string; readonly packageIds: readonly string[] } | null {
+  if (body === null || typeof body !== 'object') return null;
+  const status = (body as Record<string, unknown>)['status'];
+  const packageIds = (body as Record<string, unknown>)['packageIds'];
+  if (typeof status !== 'string' || status === '') return null;
+  return { status, packageIds: Array.isArray(packageIds) ? packageIds.filter((p): p is string => typeof p === 'string') : [] };
 }
 
 /** No base configured: the desk says so rather than showing an empty board
  *  that reads as « nothing to retire ». */
 export function unwiredCourses(): CoursesPort {
   const no = async (): Promise<OpsAnswer<never>> => ({ kind: 'unreachable' });
-  return { board: no, retirer: no, reprogrammations: no, reprogrammer: no, deuxiemesPassages: no, renvoyer: no };
+  return { board: no, retirer: no, reprogrammations: no, reprogrammer: no, deuxiemesPassages: no, renvoyer: no, manifestes: no, autoriserFinDeService: no };
 }
 
 export function resolveCourses(opsKey: string, base: string = logisticsBase()): CoursesPort {

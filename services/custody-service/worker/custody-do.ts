@@ -1782,6 +1782,28 @@ export class CustodyDO {
       });
     }
 
+    /**
+     * MANIFESTE-1 (SE3.1 / SE3.2 on the live road) — WHO HOLDS THE PACKAGE,
+     * asked by LOGISTICS over the produce door: before a shift may end
+     * (SE3.2, « package never unowned ») and for the rider's manifest
+     * (SE-I03). The ledger's OWN word, one field — never a task status
+     * (SE-I04). A chain not yet opened answers `open: false` with no
+     * custodian: no custody exists, said honestly, never a 409 the caller
+     * would have to read as « unknown ». Answered BEFORE the « order not
+     * open » guard for that reason.
+     */
+    if (request.method === 'GET' && pathname === '/custodian') {
+      if (this.chain === null || this.spine === null) {
+        return Response.json({ ok: true, open: false, packageId: null, currentCustodian: null });
+      }
+      return Response.json({
+        ok: true,
+        open: true,
+        packageId: this.chain.package_id,
+        currentCustodian: this.spine.ledger.currentCustodian(this.chain.package_id) ?? null,
+      });
+    }
+
     if (this.chain === null || this.spine === null) {
       return Response.json({ ok: false, reason: 'order_not_open' }, { status: 409 });
     }

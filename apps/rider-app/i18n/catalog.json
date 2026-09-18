@@ -1900,5 +1900,35 @@
     "fr": "Pas de scellé de retour pour cette course. Appelez Séra avant de repartir.",
     "register": "neutral",
     "screenClass": "status"
+  },
+  {
+    "key": "manifeste.etape_prefixe",
+    "fr": "Étape en cours :",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "manifeste.etape_ramassage",
+    "fr": "ramassage chez le vendeur",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "manifeste.etape_livraison",
+    "fr": "livraison chez le client",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "manifeste.etape_retour",
+    "fr": "retour chez le vendeur",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "manifeste.fin_autorisee",
+    "fr": "Séra vous autorise à passer hors ligne avec ce colis. Le colis reste sous votre garde jusqu'à la remise.",
+    "register": "neutral",
+    "screenClass": "status"
   }
 ]

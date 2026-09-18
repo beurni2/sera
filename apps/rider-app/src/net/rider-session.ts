@@ -243,6 +243,57 @@ export interface RiderSession {
   readonly noticeVersion: string;
   readonly shift: unknown;
   readonly assignment: RiderAssignment | null;
+  /**
+   * MANIFESTE-1 (SE3.1, SE-I03) — the rider's ONE manifest as logistics
+   * derives it: the one current stop (or none), how many packages the ledger
+   * places with him, and whether the desk authorized ending his service
+   * while carrying (SE3.2). Bounded to the three stop kinds; anything else
+   * reads as no current stop — never a raw token on screen.
+   */
+  readonly manifest: RiderManifest;
+}
+
+export type EtapeKind = 'ramassage' | 'livraison' | 'retour';
+
+export interface RiderManifest {
+  readonly currentStop: { readonly kind: EtapeKind; readonly orderId: string } | null;
+  readonly stopsCount: number;
+  readonly custodyCount: number;
+  readonly finDeServiceAutorisee: boolean;
+}
+
+const ETAPE_KINDS: readonly EtapeKind[] = ['ramassage', 'livraison', 'retour'];
+
+export function riderManifestFromBody(rider: Record<string, unknown>): RiderManifest {
+  const raw = rider['manifest'];
+  const m = raw !== null && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const stop = m['currentStop'];
+  const s = stop !== null && typeof stop === 'object' ? (stop as Record<string, unknown>) : null;
+  const kind = s?.['kind'];
+  const orderId = s?.['orderId'];
+  const stops = m['stops'];
+  const inventory = m['custodyInventory'];
+  return {
+    currentStop:
+      s !== null && typeof kind === 'string' && (ETAPE_KINDS as readonly string[]).includes(kind) && typeof orderId === 'string' && orderId !== ''
+        ? { kind: kind as EtapeKind, orderId }
+        : null,
+    stopsCount: Array.isArray(stops) ? stops.length : 0,
+    custodyCount: Array.isArray(inventory) ? inventory.length : 0,
+    finDeServiceAutorisee: rider['finDeServiceAutorisee'] === true,
+  };
+}
+
+/** The catalog key for the ONE current stop — the rider reads words. */
+export function etapeKey(kind: EtapeKind): string {
+  switch (kind) {
+    case 'ramassage':
+      return 'manifeste.etape_ramassage';
+    case 'livraison':
+      return 'manifeste.etape_livraison';
+    case 'retour':
+      return 'manifeste.etape_retour';
+  }
 }
 
 /**
@@ -340,6 +391,7 @@ export function riderSessionFromBody(body: unknown): RiderSession | null {
     noticeVersion: typeof rider['noticeVersion'] === 'string' ? rider['noticeVersion'] : '',
     shift: rider['shift'] ?? null,
     assignment,
+    manifest: riderManifestFromBody(rider),
   };
 }
 

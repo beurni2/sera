@@ -165,7 +165,7 @@ describe('the session shape is built field by field, never spread', () => {
     // app must carry only what it asked for — a rider's phone number is not
     // something this screen should hold by accident.
     expect(Object.keys(session ?? {}).sort()).toEqual(
-      ['assignment', 'certified', 'displayName', 'noticeVersion', 'privacyAckOk', 'riderId', 'shift'].sort(),
+      ['assignment', 'certified', 'displayName', 'manifest', 'noticeVersion', 'privacyAckOk', 'riderId', 'shift'].sort(),
     );
   });
 

@@ -32,6 +32,28 @@ import {
   type ShiftOutcome,
 } from '../src/rider-registry.js';
 import {
+  courierActor,
+  deriveManifest,
+  type CustodianFact,
+  type ManifestCourse,
+  type RiderManifestView,
+} from '../src/route-manifest.js';
+import { deliveryCostRange, parseHypotheses } from '../src/delivery-cost.js';
+import {
+  FLOTTE_VIDE,
+  addEntry,
+  closeShift,
+  confierMoto,
+  declareMoto,
+  documentsDus,
+  logCourse,
+  openShift,
+  utilisation,
+  type EntryKind,
+  type FlotteSnapshot,
+  type MotoStatus,
+} from '../src/flotte.js';
+import {
   acknowledge as sosAcknowledge,
   SOS_EVENT_ACKNOWLEDGED,
   SOS_EVENT_CREATED,
@@ -164,6 +186,41 @@ const SNAP_REPROGRAMMATIONS = 'snap:reprogrammations:v1';
  * the return road. Custody still moves only on the two-key handover.
  */
 const SNAP_RETOUR_DECIDE = 'snap:retour-decide:v1';
+/**
+ * MANIFESTE-1 (SE3.1 / SE3.2 live) — custody's OWN answers on who holds each
+ * order's package, as last heard over the produce door (`GET /custodian`),
+ * dated. The rider's manifest and the end-shift declaration are derived from
+ * these, never from a task status (SE-I04). A fact is refreshed on every
+ * rider read and every end-shift; an unreachable custody keeps the last
+ * dated answer and says so.
+ */
+const SNAP_CUSTODY_FACTS = 'snap:custody-facts:v1';
+/**
+ * SE3.2 — the dispatcher's end-shift-with-custody exception, ONE pending per
+ * rider: his acknowledgment and the package's named next owner, consumed by
+ * the rider's next lawful end-shift and logged on the registry (the audit).
+ */
+const SNAP_FIN_DE_SERVICE = 'snap:fin-de-service:v1';
+/** How long a custody answer is trusted for the end-shift check without a
+ *  fresh read: the check re-asks; this bounds the fallback only. */
+const CUSTODY_READ_TIMEOUT_MS = 4_000;
+/**
+ * FLOTTE-1 (SE7.2) — the fleet book: motos, their papers and readings, the
+ * shifts the registry opened and closed, the courses custody's wires closed
+ * (on the moto the rider had), and the founder's cost hypotheses (⏳ his
+ * numbers, null until typed). See `src/flotte.ts` and `src/delivery-cost.ts`.
+ */
+const SNAP_FLOTTE = 'snap:flotte:v1';
+
+interface FinDeServiceRow {
+  dispatcherAckId: string;
+  dispatcherId: string;
+  nextOwner: { kind: 'return_to_hub_task' | 'reassignment'; ref: string };
+  /** The packages the ledger placed with the rider when he acknowledged —
+   *  the exception covers these and nothing picked up after. */
+  packageIds: string[];
+  at: string;
+}
 const CODEHASH_PREFIX = 'codehash:';
 const RIDERCODE_PREFIX = 'ridercode:';
 
@@ -393,6 +450,12 @@ export class LogisticsDO {
   private reprogrammations: Record<string, { orderId: string; taskId: string }> = {};
   /** REPROGRAMMATION-2 — the dispatcher's return decisions, by assignmentId. */
   private retourDecide: Record<string, { orderId: string; decideAt: string }> = {};
+  /** MANIFESTE-1 — orderId → custody's last dated answer on its custodian. */
+  private custodyFacts: Record<string, CustodianFact> = {};
+  /** SE3.2 — riderId → the dispatcher's pending end-shift exception. */
+  private finDeService: Record<string, FinDeServiceRow> = {};
+  /** FLOTTE-1 — the fleet book. */
+  private flotte: FlotteSnapshot = FLOTTE_VIDE;
   /** REPROGRAMMATION-2 — when each live course's custody wires were last
    *  asked to revive (in memory: a throttle, never a fact). */
   private wiresRevivedAt: Record<string, number> = {};
@@ -434,7 +497,7 @@ export class LogisticsDO {
 
   private async ensureLoaded(): Promise<void> {
     if (this.loaded) return;
-    const keys = [SNAP_QUEUE, SNAP_REGISTRY, SNAP_BOOK, SNAP_LEASE, SNAP_WITNESS, SNAP_PROJECTIONS, SNAP_BRIEFS, SNAP_RAMASSAGE, SNAP_CODE_VERIFICATION, SNAP_CUSTODY_OUTBOX, SNAP_RETOURS, SNAP_RESCHEDULES, SNAP_REPROGRAMMATIONS, SNAP_RETOUR_DECIDE];
+    const keys = [SNAP_QUEUE, SNAP_REGISTRY, SNAP_BOOK, SNAP_LEASE, SNAP_WITNESS, SNAP_PROJECTIONS, SNAP_BRIEFS, SNAP_RAMASSAGE, SNAP_CODE_VERIFICATION, SNAP_CUSTODY_OUTBOX, SNAP_RETOURS, SNAP_RESCHEDULES, SNAP_REPROGRAMMATIONS, SNAP_RETOUR_DECIDE, SNAP_CUSTODY_FACTS, SNAP_FIN_DE_SERVICE, SNAP_FLOTTE];
     const stored = await this.state.storage.get<unknown>(keys);
     const lease = stored.get(SNAP_LEASE) as LeaseAuthorityState | undefined;
     this.leaseState = lease ?? emptyLeaseState();
@@ -448,6 +511,9 @@ export class LogisticsDO {
     this.retours = (stored.get(SNAP_RETOURS) as Record<string, RetourRow> | undefined) ?? {};
     this.reprogrammations = (stored.get(SNAP_REPROGRAMMATIONS) as Record<string, { orderId: string; taskId: string }> | undefined) ?? {};
     this.retourDecide = (stored.get(SNAP_RETOUR_DECIDE) as Record<string, { orderId: string; decideAt: string }> | undefined) ?? {};
+    this.custodyFacts = (stored.get(SNAP_CUSTODY_FACTS) as Record<string, CustodianFact> | undefined) ?? {};
+    this.finDeService = (stored.get(SNAP_FIN_DE_SERVICE) as Record<string, FinDeServiceRow> | undefined) ?? {};
+    this.flotte = (stored.get(SNAP_FLOTTE) as FlotteSnapshot | undefined) ?? FLOTTE_VIDE;
     this.queue = new ReadyQueue(this.projections());
     const queueSnap = stored.get(SNAP_QUEUE) as ReadyQueueSnapshot | undefined;
     if (queueSnap !== undefined) this.queue.restore(queueSnap);
@@ -490,7 +556,87 @@ export class LogisticsDO {
       [SNAP_RESCHEDULES]: this.reschedules.snapshot(),
       [SNAP_REPROGRAMMATIONS]: this.reprogrammations,
       [SNAP_RETOUR_DECIDE]: this.retourDecide,
+      [SNAP_CUSTODY_FACTS]: this.custodyFacts,
+      [SNAP_FIN_DE_SERVICE]: this.finDeService,
+      [SNAP_FLOTTE]: this.flotte,
     });
+  }
+
+  /**
+   * ═══ MANIFESTE-1 — ASK THE LEDGER WHO HOLDS THE PACKAGE (SE-I04) ═══
+   *
+   * Custody's `GET /produce/custodian` over the service binding, bounded. A
+   * known answer replaces the dated fact for the order; silence (unbound,
+   * timeout, non-2xx, unreadable) changes nothing and is reported as such —
+   * the caller decides what silence means (the end-shift fails CLOSED, the
+   * manifest keeps the last dated answer).
+   */
+  private async readCustodian(orderId: string, now: string): Promise<'known' | 'unknown'> {
+    const custody = this.env.CUSTODY;
+    const key = this.env.SERA_PRODUCE_SECRET ?? '';
+    if (custody === undefined || key === '') return 'unknown';
+    try {
+      const res = await custody.fetch(
+        new Request(`https://custody/produce/custodian?orderId=${encodeURIComponent(orderId)}`, {
+          method: 'GET',
+          headers: { Authorization: `Bearer ${key}` },
+          signal: AbortSignal.timeout(CUSTODY_READ_TIMEOUT_MS),
+        }),
+      );
+      const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+      if (!res.ok || body === null || body['ok'] !== true) return 'unknown';
+      const custodian = body['currentCustodian'];
+      const packageId = body['packageId'];
+      this.custodyFacts[orderId] = {
+        custodian: typeof custodian === 'string' ? custodian : null,
+        packageId: typeof packageId === 'string' ? packageId : null,
+        asOf: now,
+      };
+      return 'known';
+    } catch {
+      return 'unknown';
+    }
+  }
+
+  /** The courses the manifest reads for one rider: every LIVE course, plus
+   *  any closed-by-the-desk course whose package the ledger still places with
+   *  him (« cancelled task can't leave custody inventory »). */
+  private manifestCourses(riderId: string): ManifestCourse[] {
+    const mine = courierActor(riderId);
+    return this.book
+      .snapshot()
+      .assignments.map(([, r]) => r)
+      .filter((r) => r.riderId === riderId)
+      .filter((r) => ACTIVE_ASSIGNMENT_STATUSES.includes(r.status) || this.custodyFacts[r.orderId]?.custodian === mine)
+      .map((r) => ({
+        assignmentId: r.assignmentId,
+        taskId: r.taskId,
+        orderId: r.orderId,
+        active: ACTIVE_ASSIGNMENT_STATUSES.includes(r.status),
+        retourOuvert: this.retours[r.assignmentId] !== undefined,
+        retourDecide: this.retourDecide[r.assignmentId] !== undefined,
+      }));
+  }
+
+  /** Refresh custody's word for every course the rider's manifest reads.
+   *  Answers whether EVERY course got a fresh answer — the end-shift's
+   *  fail-closed condition. */
+  private async refreshCustody(riderId: string, now: string): Promise<boolean> {
+    const results = await Promise.all(this.manifestCourses(riderId).map((c) => this.readCustodian(c.orderId, now)));
+    return results.every((r) => r === 'known');
+  }
+
+  private manifestFor(riderId: string): RiderManifestView {
+    return deriveManifest(riderId, this.manifestCourses(riderId), (orderId) => this.custodyFacts[orderId]);
+  }
+
+  /** Whether the pending exception (if any) covers every package the ledger
+   *  places with the rider right now. A package picked up AFTER the
+   *  acknowledgment is not covered — the desk must look again. */
+  private finDeServiceCouvre(riderId: string, held: readonly string[]): FinDeServiceRow | undefined {
+    const row = this.finDeService[riderId];
+    if (row === undefined) return undefined;
+    return held.every((id) => row.packageIds.includes(id)) ? row : undefined;
   }
 
   /**
@@ -934,6 +1080,174 @@ export class LogisticsDO {
       // one act.
       return Response.json({ ok: true, status: 'removed', codeRevoked: code !== undefined });
     }
+    /**
+     * ═══ SE3.2 — THE DISPATCHER'S END-SHIFT-WITH-CUSTODY EXCEPTION ═══
+     *
+     * Building-Plan SE3.2: « Mandatory transfer/hub exception. » The founder
+     * acknowledges, BY NAME, that a rider still carrying a package may end
+     * her shift, and names the package's next owner (the registry's two
+     * kinds: back to the hub, or another courier). Recorded against the
+     * packages the LEDGER places with her at this instant — asked fresh, and
+     * refused `rider_not_carrying` when she holds nothing (an exception for
+     * nothing would be a standing permission). Replayed by command id.
+     * The ledger itself does not move here: custody stays hers until the
+     * real road (a return, a re-assignment) closes it — stated, never hidden.
+     */
+    if (request.method === 'POST' && pathname === '/ops/shift/exception') {
+      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      const owner = body?.['nextOwner'] as Record<string, unknown> | undefined;
+      if (
+        body === null ||
+        !isStr(body['command_id']) ||
+        !isStr(body['riderId']) ||
+        owner == null ||
+        (owner['kind'] !== 'return_to_hub_task' && owner['kind'] !== 'reassignment') ||
+        !isStr(owner['ref']) ||
+        (body['dispatcherId'] !== undefined && !isStr(body['dispatcherId']))
+      ) {
+        return malformed();
+      }
+      const riderId = (body['riderId'] as string).trim();
+      const commandId = (body['command_id'] as string).trim();
+      if (this.registry.rider(riderId) === undefined) {
+        return Response.json({ ok: false, reason: 'unknown_rider' }, { status: 404 });
+      }
+      const existing = this.finDeService[riderId];
+      if (existing !== undefined && existing.dispatcherAckId === commandId) {
+        return Response.json({ ok: true, status: 'deja_autorisee', packageIds: existing.packageIds, nextOwner: existing.nextOwner, at: existing.at });
+      }
+      const allKnown = await this.refreshCustody(riderId, now);
+      const held = this.manifestFor(riderId).custodyInventory;
+      if (!allKnown) {
+        await this.state.storage.put(SNAP_CUSTODY_FACTS, this.custodyFacts);
+        return Response.json({ ok: false, reason: 'custody_unverifiable' }, { status: 503 });
+      }
+      if (held.length === 0) {
+        await this.state.storage.put(SNAP_CUSTODY_FACTS, this.custodyFacts);
+        return Response.json({ ok: false, reason: 'rider_not_carrying' }, { status: 409 });
+      }
+      this.finDeService[riderId] = {
+        dispatcherAckId: commandId,
+        dispatcherId: ((body['dispatcherId'] as string | undefined) ?? 'fondateur').trim(),
+        nextOwner: { kind: owner['kind'] as 'return_to_hub_task' | 'reassignment', ref: (owner['ref'] as string).trim() },
+        packageIds: held.slice(),
+        at: now,
+      };
+      await this.persist();
+      return Response.json({ ok: true, status: 'autorisee', packageIds: held, nextOwner: this.finDeService[riderId]!.nextOwner, at: now });
+    }
+    /**
+     * ═══ FLOTTE-1 (SE7.2) — the fleet desk's doors, on the founder's key ═══
+     *
+     * Records he types (a moto, a paper, a reading, a charge, a repair, who
+     * holds which moto, his cost hypotheses) and the derived figures the desk
+     * shows (utilization over a window, papers due, the §7.1 decomposition
+     * for one order under his three scenarios). Nothing here is a fee, a
+     * payroll line or a release gate — those are SE-I09's bound and SE7.3.
+     */
+    if (request.method === 'GET' && pathname === '/ops/flotte') {
+      const f = this.flotte;
+      return Response.json({
+        ok: true,
+        motos: Object.values(f.motos).sort((a, b) => (a.label < b.label ? -1 : 1)),
+        entries: f.entries.slice(-200).reverse(),
+        shifts: f.shifts.slice(-50).reverse(),
+        coursesCount: f.courses.length,
+        hypotheses: f.hypotheses,
+        utilisation: utilisation(f, now),
+        documentsDus: documentsDus(f, now),
+      });
+    }
+    if (request.method === 'POST' && pathname === '/ops/flotte/moto') {
+      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      if (
+        body === null || !isStr(body['command_id']) ||
+        (body['vehicleId'] !== undefined && !isStr(body['vehicleId'])) ||
+        typeof body['label'] !== 'string' || typeof body['fleetTranche'] !== 'number' ||
+        (body['status'] !== undefined && typeof body['status'] !== 'string') ||
+        (body['odometerKm'] !== undefined && typeof body['odometerKm'] !== 'number')
+      ) {
+        return malformed();
+      }
+      const r = declareMoto(
+        this.flotte,
+        {
+          commandId: (body['command_id'] as string).trim(),
+          ...(body['vehicleId'] !== undefined ? { vehicleId: (body['vehicleId'] as string).trim() } : {}),
+          label: body['label'] as string,
+          fleetTranche: body['fleetTranche'] as number,
+          ...(body['status'] !== undefined ? { status: body['status'] as MotoStatus } : {}),
+          ...(body['odometerKm'] !== undefined ? { odometerKm: body['odometerKm'] as number } : {}),
+        },
+        now,
+        () => `moto-${crypto.randomUUID()}`,
+      );
+      if (!r.ok) return Response.json({ ok: false, reason: r.reason }, { status: r.reason === 'unknown_vehicle' ? 404 : 400 });
+      this.flotte = r.snap;
+      await this.state.storage.put(SNAP_FLOTTE, this.flotte);
+      return Response.json({ ok: true, status: r.replayed ? 'deja_declaree' : 'declaree', moto: r.moto });
+    }
+    if (request.method === 'POST' && pathname === '/ops/flotte/moto/entree') {
+      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      if (body === null || !isStr(body['command_id']) || !isStr(body['vehicleId']) || !isStr(body['kind'])) return malformed();
+      const doc = body['doc'] as Record<string, unknown> | undefined;
+      const r = addEntry(
+        this.flotte,
+        {
+          commandId: (body['command_id'] as string).trim(),
+          vehicleId: (body['vehicleId'] as string).trim(),
+          kind: body['kind'] as EntryKind,
+          ...(body['at'] !== undefined ? { at: body['at'] as string } : {}),
+          ...(body['note'] !== undefined ? { note: body['note'] as string } : {}),
+          ...(body['odometerKm'] !== undefined ? { odometerKm: body['odometerKm'] as number } : {}),
+          ...(body['costFcfa'] !== undefined ? { costFcfa: body['costFcfa'] as number } : {}),
+          ...(body['kwh'] !== undefined ? { kwh: body['kwh'] as number } : {}),
+          ...(doc !== undefined && doc !== null && typeof doc === 'object' ? { doc: { kind: doc['kind'] as string, expiresAt: doc['expiresAt'] as string } } : {}),
+        },
+        now,
+        () => `entree-${crypto.randomUUID()}`,
+      );
+      if (!r.ok) {
+        const status = r.reason === 'unknown_vehicle' ? 404 : r.reason === 'odometer_goes_backwards' ? 409 : 400;
+        return Response.json({ ok: false, reason: r.reason }, { status });
+      }
+      this.flotte = r.snap;
+      await this.state.storage.put(SNAP_FLOTTE, this.flotte);
+      return Response.json({ ok: true, status: r.replayed ? 'deja_notee' : 'notee', entry: r.entry, moto: this.flotte.motos[r.entry.vehicleId] });
+    }
+    if (request.method === 'POST' && pathname === '/ops/flotte/moto/confier') {
+      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      if (body === null || !isStr(body['command_id']) || !isStr(body['vehicleId']) || (body['riderId'] !== null && !isStr(body['riderId']))) return malformed();
+      const riderId = body['riderId'] === null ? null : (body['riderId'] as string).trim();
+      if (riderId !== null && this.registry.rider(riderId) === undefined) return Response.json({ ok: false, reason: 'unknown_rider' }, { status: 404 });
+      const r = confierMoto(this.flotte, (body['vehicleId'] as string).trim(), riderId);
+      if (!r.ok) return Response.json({ ok: false, reason: r.reason }, { status: 404 });
+      this.flotte = r.snap;
+      await this.state.storage.put(SNAP_FLOTTE, this.flotte);
+      return Response.json({ ok: true, status: riderId === null ? 'reprise' : 'confiee', moto: this.flotte.motos[(body['vehicleId'] as string).trim()] });
+    }
+    if (request.method === 'POST' && pathname === '/ops/flotte/hypotheses') {
+      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      if (body === null || !isStr(body['command_id'])) return malformed();
+      const parsed = parseHypotheses(body['hypotheses']);
+      if (parsed === null) return Response.json({ ok: false, reason: 'hypotheses_malformees' }, { status: 400 });
+      this.flotte = { ...this.flotte, hypotheses: parsed };
+      await this.state.storage.put(SNAP_FLOTTE, this.flotte);
+      return Response.json({ ok: true, status: 'enregistrees', hypotheses: parsed });
+    }
+    if (request.method === 'GET' && pathname === '/ops/flotte/cout') {
+      const q = new URL(request.url).searchParams;
+      const orderId = (q.get('orderId') ?? '').trim();
+      const funding = Number(q.get('deliveryFunding'));
+      if (orderId === '' || !Number.isInteger(funding) || funding < 0) return malformed();
+      if (this.flotte.hypotheses === null) return Response.json({ ok: false, reason: 'hypotheses_absentes' }, { status: 409 });
+      return Response.json({ ok: true, orderId, deliveryFunding: funding, couts: deliveryCostRange(orderId, funding, this.flotte.hypotheses) });
+    }
+    /** The registry's exception log — every custody-holding end-shift that
+     *  actually happened, with the dispatcher's ack and the next owner. */
+    if (request.method === 'GET' && pathname === '/ops/shift/exceptions') {
+      return Response.json({ ok: true, exceptions: this.registry.custodyExceptionLog(), enAttente: this.finDeService });
+    }
     if (request.method === 'GET' && pathname === '/ops/riders') {
       // Same `assignable` semantics as the board — one meaning, both doors.
       const carrying = this.ridersCarrying();
@@ -1186,6 +1500,12 @@ export class LogisticsDO {
           { status: outcome.reason === 'unknown_assignment' ? 404 : 409 },
         );
       }
+      // MANIFESTE-1 — « cancelled task can't leave custody inventory »: the
+      // course is off the book, so the LEDGER is asked now, and its fresh
+      // word is what keeps a sealed package on the rider's manifest (and
+      // blocking his end of service) if the assertion above was false.
+      await this.readCustodian(outcome.assignment.orderId, now);
+      await this.state.storage.put(SNAP_CUSTODY_FACTS, this.custodyFacts);
       return Response.json({
         ok: true,
         duplicate: outcome.duplicate,
@@ -1266,6 +1586,10 @@ export class LogisticsDO {
       // Book + queue + lease + witness move together — the orchestrator owns
       // that trio, never this route reaching behind a core's back.
       const swept = await this.dispatch.forgetOrder(orderId);
+      // MANIFESTE-1 — the same law as the take-back: the ledger's fresh word
+      // keeps a carried package on its rider's manifest after the board forgot
+      // the course (« BOARD YES, CUSTODY NO »).
+      await this.readCustodian(orderId, now);
       let briefs = 0;
       for (const taskId of swept.taskIds) {
         if (this.briefs[taskId] === undefined) continue;
@@ -1704,6 +2028,12 @@ export class LogisticsDO {
       if (!outcome.ok) {
         return Response.json({ ok: true, status: 'aucune_course' });
       }
+      // FLOTTE-1 — the delivery is counted the instant custody's wire closes
+      // the course, on the moto the rider had; the redelivery counts nothing.
+      if (!outcome.duplicate) {
+        this.flotte = logCourse(this.flotte, { orderId: outcome.assignment.orderId, riderId: outcome.assignment.riderId, kind: 'livree', at: body['at'] as string });
+        await this.state.storage.put(SNAP_FLOTTE, this.flotte);
+      }
       return Response.json({
         ok: true,
         status: outcome.duplicate ? 'deja_livree' : 'livree',
@@ -1770,6 +2100,11 @@ export class LogisticsDO {
       const outcome = await this.dispatch.returnToSupplier((body['orderId'] as string).trim(), body['at'] as string);
       if (!outcome.ok) {
         return Response.json({ ok: true, status: 'aucune_course' });
+      }
+      // FLOTTE-1 — a return is a closed course too, counted once against the
+      // failed-delivery rate the §7.2 gate will read (SE7.3).
+      if (!outcome.duplicate) {
+        this.flotte = logCourse(this.flotte, { orderId: outcome.assignment.orderId, riderId: outcome.assignment.riderId, kind: 'retournee', at: body['at'] as string });
       }
       await this.persist();
       return Response.json({
@@ -2008,6 +2343,10 @@ export class LogisticsDO {
         // The lazy sweep (see /ops/board): a rider polling their session must
         // never be shown a course whose lease already died.
         await this.dispatch.expireDue(now);
+        // MANIFESTE-1 — custody's word on his package, fresh for this read
+        // (one bounded call per live course; the pilot has one).
+        await this.refreshCustody(riderId, now);
+        await this.state.storage.put(SNAP_CUSTODY_FACTS, this.custodyFacts);
         return Response.json({ ok: true, rider: this.riderView(riderId) });
       }
       /**
@@ -2048,15 +2387,45 @@ export class LogisticsDO {
       if (request.method === 'POST' && pathname === '/rider/shift/start') {
         // A command that REACHED this object is server-confirmed by
         // definition; the offline outbox queues on the phone, never here.
-        return this.shiftResponse(this.registry.startShift(riderId, now, 'server_confirmed'));
+        const outcome = this.registry.startShift(riderId, now, 'server_confirmed');
+        if (outcome.ok) {
+          // FLOTTE-1 — the shift record opens on the moto he holds.
+          this.flotte = openShift(this.flotte, riderId, now, () => `shift-${crypto.randomUUID()}`);
+          await this.persist();
+        }
+        return this.shiftResponse(outcome);
       }
       if (request.method === 'POST' && pathname === '/rider/shift/end') {
-        // Custody-service is not live yet (SE-LIVE-3): no custody can exist,
-        // so the declaration is honestly empty. When the custody ledger goes
-        // live, THIS is the seam that must ask it — never a caller's claim.
-        return this.shiftResponse(
-          this.registry.endShift(riderId, now, 'server_confirmed', { heldPackageIds: [] }),
-        );
+        /**
+         * ═══ SE3.2 ON THE LIVE ROAD (MANIFESTE-1) — THE SEAM ASKS THE LEDGER ═══
+         *
+         * Until this build the declaration was honestly empty (« custody is
+         * not live yet »); custody has been live since SE-LIVE-4b and the door
+         * kept passing `[]`, so a carrying rider could end her shift. Now the
+         * held packages are custody's OWN word, read fresh for every course
+         * the manifest lists — never a caller's claim, never a task status.
+         * Silence FAILS CLOSED: a shift does not end on a guess about a
+         * package (« package never unowned »). The registry's law then rules:
+         * holding ⇒ refused `custody_would_be_orphaned` unless the dispatcher's
+         * exception covers every held package; the exception is consumed by
+         * the end it authorized and logged on the registry as audit evidence.
+         */
+        const allKnown = await this.refreshCustody(riderId, now);
+        const held = this.manifestFor(riderId).custodyInventory;
+        if (!allKnown) {
+          await this.state.storage.put(SNAP_CUSTODY_FACTS, this.custodyFacts);
+          return Response.json({ ok: false, reason: 'custody_unverifiable' }, { status: 503 });
+        }
+        const exception = this.finDeServiceCouvre(riderId, held);
+        const outcome = this.registry.endShift(riderId, now, 'server_confirmed', {
+          heldPackageIds: held,
+          ...(exception === undefined ? {} : { exception: { dispatcherAckId: exception.dispatcherAckId, nextOwner: exception.nextOwner } }),
+        });
+        if (outcome.ok && held.length > 0) delete this.finDeService[riderId];
+        // FLOTTE-1 — the shift record closes with the registry's word.
+        if (outcome.ok) this.flotte = closeShift(this.flotte, riderId, now);
+        await this.persist();
+        return this.shiftResponse(outcome);
       }
       if (request.method === 'POST' && (pathname === '/rider/assignment/ack' || pathname === '/rider/assignment/decline')) {
         const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
@@ -2142,6 +2511,10 @@ export class LogisticsDO {
     assignments: AssignmentRecord[];
     aReprogrammer: { orderId: string; taskId: string; assignmentId: string; riderId: string; reasonCode: string; recordedAt: string }[];
     enDeuxiemePassage: { orderId: string; taskId: string; assignmentId: string; riderId: string; passage: number; window: unknown }[];
+    /** MANIFESTE-1 — one manifest per rider who has a course or a package (SE-I03). */
+    manifestes: Record<string, RiderManifestView>;
+    /** SE3.2 — the pending end-shift exceptions, by rider. */
+    finDeService: Record<string, FinDeServiceRow>;
   } {
     const queued = this.queue.queuedTasks().map((q) => ({
       taskId: q.task.id,
@@ -2204,12 +2577,23 @@ export class LogisticsDO {
         window: this.queue.get(record.taskId)?.task.window ?? null,
       }))
       .sort((a, b) => (a.orderId < b.orderId ? -1 : 1));
+    // MANIFESTE-1 — every rider with a live course, or a package the ledger
+    // still places with him, has ONE manifest on the board (derived; the
+    // custody facts are those last heard — the rider's own reads and every
+    // end-shift refresh them).
+    const manifestes: Record<string, RiderManifestView> = {};
+    for (const [, record] of this.registry.snapshot().riders) {
+      const m = this.manifestFor(record.riderId);
+      if (m.status === 'active') manifestes[record.riderId] = m;
+    }
     return {
       queued,
       riders,
       assignments,
       aReprogrammer: aReprogrammer.filter((row) => !enRetour(row.assignmentId)),
       enDeuxiemePassage,
+      manifestes,
+      finDeService: this.finDeService,
     };
   }
 
@@ -2227,6 +2611,13 @@ export class LogisticsDO {
       privacyAckOk: record?.privacyAck?.noticeVersion === PRIVACY_NOTICE_VERSION,
       noticeVersion: PRIVACY_NOTICE_VERSION,
       shift: this.registry.shift(riderId),
+      /**
+       * MANIFESTE-1 (SE3.1) — the rider's ONE manifest: ordered stops, the
+       * one current stop, what the ledger places with him (as last heard),
+       * and whether the desk authorized ending his service with it (SE3.2).
+       */
+      manifest: this.manifestFor(riderId),
+      finDeServiceAutorisee: this.finDeServiceCouvre(riderId, this.manifestFor(riderId).custodyInventory) !== undefined,
       assignment:
         assignment === undefined
           ? null

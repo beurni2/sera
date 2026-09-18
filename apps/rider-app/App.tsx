@@ -66,7 +66,7 @@ import { SosButton, SosSheet, type SosState } from './src/ui/faso-sos';
 import { FasoSignIn } from './src/ui/faso-signin';
 import { IDLE, refusalKeys, submit as submitSignIn, type SignInState } from './src/net/signin-model';
 import { isWired, resolveRiderSession } from './src/net/resolveRiderSession';
-import { assignmentStateKey, fenetreLisible, landmarkLines, onShiftFromSession, pinItineraire } from './src/net/rider-session';
+import { assignmentStateKey, etapeKey, fenetreLisible, landmarkLines, onShiftFromSession, pinItineraire } from './src/net/rider-session';
 import { refusServiceKey, resolveShiftActs } from './src/net/shift-acts';
 
 /** How often a signed-in wired build re-asks `/rider/moi`. The ack window is
@@ -2308,6 +2308,27 @@ export default function App() {
                       door. */}
                   {RepereVoix()}
                   <FasoStatusChip tone="info" label={t(assignmentStateKey(liveAssignment.status))} />
+                  {/* MANIFESTE-1 (SE3.1, SE-I03) — the ONE current stop, as
+                      logistics derives it from the book and the LEDGER (never
+                      this phone's guess): pickup at the seller until custody
+                      is his, then the delivery, or the return. */}
+                  {liveSession?.manifest.currentStop !== null && liveSession?.manifest.currentStop !== undefined ? (
+                    <FasoStatusChip tone="accent" label={`${t('manifeste.etape_prefixe')} ${t(etapeKey(liveSession.manifest.currentStop.kind))}`} />
+                  ) : null}
+                  {/* SE3.2 — the desk authorized ending the day with this
+                      package (its next owner named there): the end act comes
+                      back on screen, with the truth that custody stays his. */}
+                  {liveSession?.manifest.finDeServiceAutorisee === true && onShiftFromSession(liveSession.shift) === true ? (
+                    <>
+                      <FasoCard>
+                        <FasoBody>{t('manifeste.fin_autorisee')}</FasoBody>
+                      </FasoCard>
+                      <FasoSecondaryButton
+                        label={t(serviceBusy ? 'acts.sending' : 'shift.end_action')}
+                        onPress={() => acteService('end')}
+                      />
+                    </>
+                  ) : null}
                   {/* REPROGRAMMATION-1 — the 2e passage the founder fixed: said
                       first, with its window in the rider's own words, above
                       everything the door road shows again below. */}

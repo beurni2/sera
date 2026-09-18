@@ -206,7 +206,9 @@ const RIDER_ROUTES: ReadonlySet<string> = new Set([
 // on a rescheduled course (`/return/apply`: the founder's console act, relayed
 // on his ops key) and the wire reviver it calls on his board read. Neither
 // arms a secret, reads a record, or moves custody.
-const PRODUCE_ROUTES: ReadonlySet<string> = new Set(['POST /order/open', 'POST /secrets/arm', 'POST /return/apply', 'POST /wires/reviver']);
+// MANIFESTE-1 — `GET /custodian` is logistics' read of the ledger's current
+// custodian (SE3.2 end-shift, SE3.1 manifest): a read, on the same key.
+const PRODUCE_ROUTES: ReadonlySet<string> = new Set(['POST /order/open', 'POST /secrets/arm', 'POST /return/apply', 'POST /wires/reviver', 'GET /custodian']);
 const PRODUCE_SHOP_ROUTES: ReadonlySet<string> = new Set(['POST /secrets/arm', 'POST /door-signal']);
 
 async function timingSafeEqual(a: string, b: string): Promise<boolean> {

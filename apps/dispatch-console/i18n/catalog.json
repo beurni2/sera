@@ -1120,5 +1120,143 @@
     "fr": "Le colis est déjà en route vers le vendeur. Relisez le tableau.",
     "register": "neutral",
     "screenClass": "status"
+  },
+  {
+    "key": "manifeste.titre",
+    "fr": "Coursiers en course",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "manifeste.intro",
+    "fr": "Chaque coursier a une seule feuille de route et une seule étape en cours. Le colis qu'il porte est celui que le registre de garde lui donne.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "manifeste.vide",
+    "fr": "Aucun coursier en course pour le moment.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "manifeste.lecture",
+    "fr": "Lecture du tableau…",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "manifeste.echec",
+    "fr": "Le tableau n'a pas répondu.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "manifeste.etape",
+    "fr": "Étape en cours",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "manifeste.etape_ramassage",
+    "fr": "ramassage chez le vendeur",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "manifeste.etape_livraison",
+    "fr": "livraison chez le client",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "manifeste.etape_retour",
+    "fr": "retour chez le vendeur",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "manifeste.colis_garde",
+    "fr": "colis sous sa garde",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "manifeste.sans_course",
+    "fr": "Colis sous sa garde, sans course. Donnez-lui une suite : un retour au vendeur ou un autre coursier.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "manifeste.lecture_inconnue",
+    "fr": "La garde n'a pas pu être lue pour ce coursier. Relisez dans un instant.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "fin_service.autoriser",
+    "fr": "Autoriser la fin de service avec le colis",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "fin_service.question",
+    "fr": "Autoriser ce coursier à finir son service avec le colis ?",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "fin_service.aide",
+    "fr": "Le colis reste sous sa garde jusqu'à la remise. Dites où il va ensuite.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "fin_service.base",
+    "fr": "Le colis revient à la base Séra",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "fin_service.autre_coursier",
+    "fr": "Un autre coursier reprend le colis",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "fin_service.annuler",
+    "fr": "Annuler",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "fin_service.fait",
+    "fr": "Fin de service autorisée. Le coursier peut passer hors ligne avec le colis.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "fin_service.en_attente",
+    "fr": "Autorisation donnée, en attente du coursier.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "fin_service.refus_pas_de_colis",
+    "fr": "Ce coursier ne porte aucun colis.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "fin_service.refus_garde_illisible",
+    "fr": "La garde n'a pas pu être vérifiée. Réessayez dans un instant.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "fin_service.echec",
+    "fr": "L'autorisation n'a pas abouti. Réessayez.",
+    "register": "neutral",
+    "screenClass": "status"
   }
 ]

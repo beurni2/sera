@@ -52,7 +52,21 @@ import {
   type CoursesRead,
   type RetraitUi,
 } from './courses';
-import { renvoiCommandId, reprogCommandId, resolveCourses } from './courses-port';
+import { finServiceCommandId, renvoiCommandId, reprogCommandId, resolveCourses } from './courses-port';
+import {
+  FIN_SERVICE_IDLE,
+  annulerFin,
+  commencerFin,
+  demanderFin,
+  etapeKey as etapeManifesteKey,
+  finEchouee,
+  finFaite,
+  finRefusKey,
+  nextOwnerKey,
+  type FinServiceUi,
+  type ManifesteRow,
+  type NextOwner,
+} from './manifeste';
 import {
   FIXATION_IDLE,
   RENVOI_IDLE,
@@ -475,6 +489,7 @@ style.textContent = `
      ink of a primary action — the assign button's own grammar — and each row
      is one course, one window, one act. */
   .reprog-desk { display: grid; gap: var(--space-sm); }
+  .manifeste-desk, .flotte-desk { display: grid; gap: var(--space-sm); }
   .reprog-state { margin: 0; font-size: var(--type-body); color: var(--ink); }
   .reprog-hint { margin: 0; font-size: var(--type-label); color: var(--muted); }
   .reprog-notice { margin: 0; font-size: var(--type-body); color: var(--danger); }
@@ -1188,6 +1203,8 @@ if (app) {
         void refreshCourses();
         // REPROGRAMMATION-1 — and the next-passage desk, on the same key.
         void refreshReprog();
+        // MANIFESTE-1 — and the riders' manifests.
+        void refreshManifestes();
       };
       open.addEventListener('click', enter);
       input.addEventListener('keydown', (e) => {
@@ -1218,6 +1235,8 @@ if (app) {
         renderCourses();
         reprogRead = { kind: 'loading' };
         renderReprog();
+        manifesteRead = { kind: 'loading' };
+        renderManifestes();
       });
       codesSection.appendChild(again);
       return;
@@ -1554,6 +1573,173 @@ if (app) {
    * report of what was fixed stays on screen — as the retire desk keeps its
    * failures — until he reloads.
    */
+  /**
+   * ═══ MANIFESTE-1 — THE RIDERS' MANIFESTS AND THE END-OF-SERVICE EXCEPTION ═══
+   *
+   * SE-I03 (« at most one active RouteManifest and one current stop ») made
+   * visible: one row per rider with a course or a package, the ONE current
+   * stop as logistics derives it from its book and custody's own word, and
+   * the packages the ledger places with him. SE3.2's lever: a rider carrying
+   * a package cannot end his service until the founder authorizes it here,
+   * naming where the package goes next — one confirmation card at a time,
+   * nothing leaves the desk before « Le colis revient à la base Séra » or
+   * « Un autre coursier reprend le colis ».
+   */
+  const manifesteHeading = document.createElement('h2');
+  manifesteHeading.textContent = t('manifeste.titre');
+  const manifesteSection = document.createElement('section');
+  manifesteSection.className = 'manifeste-desk';
+
+  type ManifesteRead = { kind: 'loading' } | { kind: 'ok'; rows: readonly ManifesteRow[] } | { kind: 'bad_key' } | { kind: 'failed' };
+  let manifesteRead: ManifesteRead = { kind: 'loading' };
+  let finService: FinServiceUi = FIN_SERVICE_IDLE;
+
+  async function refreshManifestes(): Promise<void> {
+    if (opsKey === null) {
+      renderManifestes();
+      return;
+    }
+    manifesteRead = { kind: 'loading' };
+    renderManifestes();
+    const answer = await coursesPort().manifestes();
+    manifesteRead =
+      answer.kind === 'ok' ? { kind: 'ok', rows: answer.value } : answer.kind === 'bad_key' ? { kind: 'bad_key' } : { kind: 'failed' };
+    renderManifestes();
+  }
+
+  /** ONE call on the founder's confirmed word, then the board's own re-read. */
+  async function autoriserFin(riderId: string, nextOwner: NextOwner): Promise<void> {
+    const started = commencerFin(finService, riderId);
+    if (started === null) return;
+    finService = started.ui;
+    renderManifestes();
+    const answer = await coursesPort().autoriserFinDeService(riderId, nextOwner, started.commandId);
+    if (answer.kind === 'bad_key') {
+      finService = finEchouee(finService, riderId, 'codes.cle_refusee');
+      manifesteRead = { kind: 'bad_key' };
+      renderManifestes();
+      return;
+    }
+    if (answer.kind !== 'ok') {
+      finService = finEchouee(finService, riderId, answer.kind === 'refused' ? finRefusKey(answer.reason) : 'fin_service.echec');
+      renderManifestes();
+      return;
+    }
+    finService = finFaite(finService, riderId);
+    await refreshManifestes();
+  }
+
+  function leverFin(row: HTMLDivElement, m: ManifesteRow): void {
+    const occupe = finService.encours !== null;
+    if (finService.demande?.riderId === m.riderId) {
+      const card = document.createElement('div');
+      card.className = 'reprog-renvoi-card fin-service-card';
+      card.append(
+        line('reprog-renvoi-titre', t('fin_service.question')),
+        line('reprog-renvoi-ligne', m.riderName),
+        line('reprog-renvoi-ligne', t('fin_service.aide')),
+      );
+      const ref = m.packageIds.join(',');
+      const base = document.createElement('button');
+      base.className = 'reprog-renvoi-confirmer fin-service-base';
+      base.textContent = t('fin_service.base');
+      base.disabled = occupe;
+      base.addEventListener('click', () => {
+        void autoriserFin(m.riderId, { kind: 'return_to_hub_task', ref });
+      });
+      const autre = document.createElement('button');
+      autre.className = 'reprog-renvoi-confirmer fin-service-autre';
+      autre.textContent = t('fin_service.autre_coursier');
+      autre.disabled = occupe;
+      autre.addEventListener('click', () => {
+        void autoriserFin(m.riderId, { kind: 'reassignment', ref });
+      });
+      const non = document.createElement('button');
+      non.className = 'reprog-renvoi-annuler fin-service-annuler';
+      non.textContent = t('fin_service.annuler');
+      non.addEventListener('click', () => {
+        finService = annulerFin(finService);
+        renderManifestes();
+      });
+      card.append(base, autre, non);
+      row.appendChild(card);
+      const echec = finService.echecs[m.riderId];
+      if (echec !== undefined) row.appendChild(line('reprog-notice', t(echec)));
+      return;
+    }
+    const lever = document.createElement('button');
+    lever.className = 'reprog-renvoyer fin-service-lever';
+    lever.textContent = t(finService.encours === m.riderId ? 'reprog.en_cours' : 'fin_service.autoriser');
+    lever.disabled = occupe;
+    lever.addEventListener('click', () => {
+      finService = demanderFin(finService, m.riderId, finServiceCommandId(m.riderId));
+      renderManifestes();
+    });
+    row.appendChild(lever);
+    const echec = finService.echecs[m.riderId];
+    if (echec !== undefined) row.appendChild(line('reprog-notice', t(echec)));
+  }
+
+  function renderManifestes(): void {
+    manifesteSection.replaceChildren();
+    if (logisticsBase() === '') {
+      manifesteSection.append(line('reprog-state', t('codes.pas_relie')), line('reprog-hint', t('reprog.pas_relie_aide')));
+      return;
+    }
+    if (opsKey === null) {
+      manifesteSection.appendChild(line('reprog-state', t('reprog.cle_dabord')));
+      return;
+    }
+    if (manifesteRead.kind === 'bad_key') {
+      manifesteSection.append(line('reprog-state', t('codes.cle_refusee')), line('reprog-hint', t('codes.cle_refusee_aide')));
+      return;
+    }
+    manifesteSection.appendChild(line('reprog-hint', t('manifeste.intro')));
+    const names = new Map<string, string>();
+    if (manifesteRead.kind === 'ok') for (const r of manifesteRead.rows) names.set(r.riderId, r.riderName);
+    for (const riderId of finService.faits) {
+      manifesteSection.appendChild(line('reprog-fait', `${names.get(riderId) ?? riderId} — ${t('fin_service.fait')}`));
+    }
+    if (manifesteRead.kind === 'loading') {
+      manifesteSection.appendChild(line('reprog-state', t('manifeste.lecture')));
+      return;
+    }
+    if (manifesteRead.kind === 'failed') {
+      manifesteSection.append(line('reprog-state', t('manifeste.echec')), line('reprog-hint', t('reprog.echec_aide')));
+    } else if (manifesteRead.rows.length === 0) {
+      manifesteSection.appendChild(line('reprog-state', t('manifeste.vide')));
+    } else {
+      for (const m of manifesteRead.rows) {
+        const row = document.createElement('div');
+        row.className = 'reprog-row manifeste-row';
+        row.appendChild(line('reprog-row-order', m.riderName));
+        if (m.currentStop !== null) {
+          row.appendChild(line('reprog-row-etat', `${t('manifeste.etape')} : ${t(etapeManifesteKey(m.currentStop.kind))} · ${m.currentStop.orderId}`));
+        } else if (m.packageIds.length > 0) {
+          row.appendChild(line('reprog-notice', t('manifeste.sans_course')));
+        }
+        if (m.packageIds.length > 0) row.appendChild(line('reprog-row-depuis', `${m.packageIds.length} ${t('manifeste.colis_garde')}`));
+        if (m.lectureInconnue) row.appendChild(line('reprog-notice', t('manifeste.lecture_inconnue')));
+        if (m.finDeService !== null) {
+          row.appendChild(line('reprog-fait', `${t('fin_service.en_attente')} · ${t(nextOwnerKey(m.finDeService.nextOwner))}`));
+        } else if (m.packageIds.length > 0) {
+          leverFin(row, m);
+        }
+        manifesteSection.appendChild(row);
+      }
+    }
+    const relire = document.createElement('button');
+    relire.className = 'reprog-relire manifeste-relire';
+    relire.textContent = t('reprog.relire');
+    relire.disabled = finService.encours !== null;
+    relire.addEventListener('click', () => {
+      void refreshManifestes();
+    });
+    manifesteSection.appendChild(relire);
+  }
+
+  renderManifestes();
+
   const reprogHeading = document.createElement('h2');
   reprogHeading.textContent = t('reprog.section');
   const reprogSection = document.createElement('section');
@@ -1808,7 +1994,8 @@ if (app) {
    * desk just above it — the two administrative sections together, under
    * everything operational.
    */
-  main.append(reprogHeading, reprogSection, coursesHeading, coursesSection, codesHeading, codesSection);
+  // MANIFESTE-1 — the riders' live state sits above the next-passage desk.
+  main.append(manifesteHeading, manifesteSection, reprogHeading, reprogSection, coursesHeading, coursesSection, codesHeading, codesSection);
 
   // The REAL service-side deadline, ONE sweep for BOTH stores (WO-4.3).
   setInterval(() => {
