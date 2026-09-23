@@ -42,9 +42,9 @@ function doorSignal(commandId = 'cmd-door-1', orderId = CHAIN.order_id) {
 /** A prepaid article of a package, validated at the door like `optionBSpine`. */
 function prepaidColisSpine(): CustodySpine {
   const spine = new CustodySpine({ ...CHAIN, order_id: CHAIN.order_id }, 'sup-1', 'FULL_PREPAY', true);
-  spine.secrets.register('pickup_verification_code', CHAIN.order_id, 'pvc-1');
-  spine.secrets.register('custody_seal', CHAIN.order_id, 'seal-b-1');
-  spine.secrets.register('buyer_drop_code', CHAIN.order_id, 'drop-1');
+  expect(spine.secrets.register('pickup_verification_code', CHAIN.order_id, 'pvc-1')).toEqual({ ok: true });
+  expect(spine.secrets.register('custody_seal', CHAIN.order_id, 'seal-b-1')).toEqual({ ok: true });
+  expect(spine.secrets.register('buyer_drop_code', CHAIN.order_id, 'drop-1')).toEqual({ ok: true });
   spine.establishSellerCustody(T);
   const v = spine.verifyPickup({ orderId: CHAIN.order_id, riderId: 'r-1', checkResults: allPass, dwellSec: 150, evidenceBundleId: 'eb-1', custodySealId: 'seal-b-1' }, 'pvc-1', T);
   if (v.kind !== 'accepted') throw new Error('setup verify');
