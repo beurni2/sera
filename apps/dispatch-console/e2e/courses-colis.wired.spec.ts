@@ -196,3 +196,27 @@ test('one article of a bag on the road, refused by the door (a rider took it bet
   await expect(ligne(page, 'ord-p2').locator('button.courses-retirer')).toBeEnabled();
   await expect(ligne(page, 'ord-p1')).toHaveCount(1);
 });
+
+test('« Tout retirer » with a bag on the road: ONE whole-bag call for the bag, each waiting course alone — every row leaves, none is refused', async ({ page }) => {
+  const m = monde();
+  await brancher(page, m);
+  const desk = page.locator('.courses-desk');
+  await expect(desk.locator('.courses-row')).toHaveCount(5);
+
+  await desk.locator('button.courses-tout').click();
+  const card = desk.locator('.courses-confirme');
+  await expect(card.locator('.courses-confirme-titre')).toHaveText('Retirer toutes les courses du tableau ?');
+  // Every row is named, the bag's two articles included.
+  await expect(card).toContainText('ord-a1 · ord-a2 · ord-p1 · ord-p2 · ord-s');
+  expect(m.appels).toHaveLength(0);
+  await desk.locator('button.courses-confirmer').click();
+
+  await expect(desk.locator('.courses-state')).toHaveText('Aucune course sur le tableau.');
+  await expect(desk.locator('.courses-notice')).toHaveCount(0);
+  expect(m.appels.map((a) => [a['orderId'], a['colisEntier']])).toEqual([
+    ['ord-a1', undefined],
+    ['ord-a2', undefined],
+    ['ord-p1', true],
+    ['ord-s', undefined],
+  ]);
+});
