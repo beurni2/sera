@@ -3,6 +3,77 @@ Continuity ledger per CTO charter §6/§6bis. Every entry is evidence-grounded.
 
 Format per entry:
 
+## 2026-09-23 · RETOUR-CHANGEMENT-AVIS (founder « 1 ») — a change of mind on ONE article of a package, at its door, is final at once: the buyer-fault return, its delivery-fee share kept, no 15-minute window · canon 3.21.0 (docs only) · ON THE BRANCH, awaiting the founder's word
+
+**Founder order (2026-09-23).** « when she gives an article back because she changed her mind i keep the delivery fee » — then, asked whether the canon's one retry window should hold such an article at the door (her phone meanwhile charging it, refunding it after), « 1 »: « a change of mind on one article of a package is final at once. It goes straight into the return bag and you keep its delivery fee. The 15 minutes stay for a buyer who can't pay. »
+
+**Spec authority (canon 3.21.0, `8f2c32c`, amended by this build).** Sera-Build-Spec §6.4 now reads, after the window: « **A change of mind on ONE article of a package, at its door, is final at once** … no retry window — the article is re-sealed in the return bag straight away as a buyer-fault refusal (`change_of_mind`), its share of the delivery fee retained, so she pays at once for what she keeps. Only an article custody knows to travel in a package may be refused so; the one retry window stays for a buyer who cannot pay, for a whole package, and for a single order. » Shop-Plus-Build-Spec §7 SP6 says the same from her side. No shape, event or waterfall change: `change_of_mind`, a `return` outcome and `delivery.refused.v1` with `fee_retained` are already canon.
+
+**What was happening before.** At a package's door the rider could record only « the article has a problem » (a valid refusal: her delivery-fee share refunded in full, the seller's or Séra's fault). A change of mind had no road of its own there: recorded as a problem, it refunded the fee he now keeps; through the refusal ladder, it waited the one ~15-minute window, during which her phone still charged that article.
+
+**What changed (`a41ca68`, the verifier's findings `269016a`, `9c368af`; canon `8f2c32c` → `595ed0a`).**
+- **Logistics tells custody the article travels in a package.** `/produce/order/open` carries `colis: true` when the article's package holds several orders. Custody keeps it on the file's chain — present only when true, so a file opened before keeps its chain and its hash; first-wins and outside the id comparison on a re-open — and hands it to the spine on every replay.
+- **Custody takes her change of mind as final — only there.** `/door/inspection` accepts `definitive: true` only with a buyer-risk refusal (else 400). The spine then records the buyer-fault `return` at once (`change_of_mind`, attempt 1, no `windowExpiresAt`, `changeOfMindAtPackageDoor`), refuses it by name on a single order (`change_of_mind_not_in_package`) and over a window already open (`ladder_already_open`). The rider's `/return/open` then opens the buyer-fault return it already knew: `delivery.refused.v1` `{family: 'return', reason_code: 'change_of_mind', fault_class: 'buyer', fee_retained: true}`.
+- **The rider is asked why.** At a package's door « La cliente le refuse » now shows the return seal and asks « Pourquoi elle le rend ? »: « L'article a un problème » → the seal question → the valid refusal, as before; « Elle a changé d'avis » → the final change of mind, straight into the return bag, no seal question. Three catalog strings, neutral register, no blame (Contract §10.5).
+- **Shop+ unchanged.** Its refund rule already keeps an order's own delivery fee — a package article's is its share — on exactly that fact, and with pay-at-the-door nothing is due back unless the door leg was paid (Shop+ `livraison-boutik.e2e` « a buyer refusal whose fee Séra KEPT », `porte-custody.e2e` « her refusal with the fee kept, door not paid »). Her door payment leaves the article out as soon as its refusal reaches Shop+ — now at once.
+- **Repinned** to canon 3.21.0 (every manifest, the workspace overrides, the lockfile and its labels, the two amended docs copies).
+
+**Evidence.**
+- **Seam on the REAL logistics + custody Workers (their shipped bundles), `colis.e2e` +2:** a package of two, composed, assigned, sealed, evidenced; A accepted; a `definitive` on a valid refusal refused 400; HER change of mind on B taken as the buyer-fault `return` at once, attempt 1, no window — which custody can only do because logistics told it at open; B's return opens; custody's own event log holds exactly one `delivery.refused.v1` for B with `family 'return' · change_of_mind · buyer · fee_retained: true`; logistics hears B en_retour; A is handed over on her code. And the negative, through the same wire: a package whose other article was cancelled before dispatch sends D alone — no flag — and custody refuses her change of mind as final (`change_of_mind_not_in_package`) while her refusal still opens the one window.
+- **Custody unit `door-flow` +5:** final on a package's article, then home with the fee retained (event asserted); a single order refused by name with nothing recorded, its refusal still opening the window; never over an open window; without `definitive` the window as before; `definitive` on an accept or a valid refusal changes nothing; and, in both payment modes, once final: « kept » and « a problem » refused `change_of_mind_recorded`, the same choice again `inspection_already_recorded`, a drop `return_in_progress`, no seller claim, the refusal buyer-fault with the fee retained.
+- **Screen walks (real screens, real ports, only `fetch` faked), `rendu-colis` +4, 1 updated:** the change of mind — the reason asked first with nothing sent, her choice on the sandals' own ledger (`buyer_risk`, `definitive`), no seal question, no window anywhere, the return opened under the return seal, then ONE code for the pagne; custody refusing it (a file opened before the rule) — the refusal shown, nothing moved, both roads still there, the other reason then works. The phone relaunched after her choice landed — the same choice again is « already recorded » and the sandals are re-sealed; « she keeps it » after her final choice — refused, nothing handed over, her choice then finished. The older refusal walk now passes through the reason step. The custody stand-in plays the real spine's bounds on every path this build touches (written at its top).
+- **Gate board** (`bash scripts/run-gates.sh`): ALL GATES GREEN on `a41ca68`, then red on `269016a` for one reason — the source scan (WO-2.2 NB③) caught three unchecked `secrets.register()` calls in the new prepaid test helper; `9c368af` checks each (test-only) and the final board on `9c368af` is ALL GATES GREEN — rider app 492/492 (488 + 4 walks), custody 249/249 (244 + 5), logistics 273/273 (271 + 2), dispatch console 89/89, Playwright 39/39; every negative fixture refused as required.
+- **Canon board** (install frozen · build · typecheck · test · gates) ALL GREEN on `8f2c32c` and on `595ed0a`.
+- **Mutations** (anchor exactly once before and zero after, every rebuild checked, byte-checked restore; final run on `9c368af`): **17/17 killed** — a change of mind never final · a single order taking it as final · final over an open window · the final return carrying a window · the package flag not kept at open · the replay forgetting it · `definitive` never reaching the spine · `definitive` accepted on any refusal · custody never told · « changé d'avis » sent as a valid refusal · « changé d'avis » opening the seal question · `definitive` never leaving the phone · her change of mind never reaching the return bag · the reason step skipped · her final choice overwritable · a hand-over after it · the flag by package membership instead of what travels.
+
+**Verifier (ONE pass, fresh context, given only the spec quotes, the diffs and the DoD):** **BLOCKER ×1 · MAJOR ×2 · MINOR ×5.**
+
+**What it was given and what it ran.** The brief, the two diffs, and the DoD. It ran door-flow 29/29, the logistics seam 1/1, and the rider walks 6/6. It also ran a scratch script against the real custody spine, outside the repos. The canon manifest hashes match the docs; Séra's copies match canon; every tree was left clean.
+
+**Fixed (`269016a`, test `9c368af`, canon wording `595ed0a`):**
+
+- **BLOCKER — her final change of mind could be overwritten on the ledger before the return opened.**
+  - *How:* the definitive branch set the ladder but neither of the one-inspection fields. Three things followed:
+    - a later « garde » was `accepted`, and a drop could hand her the article after all;
+    - a later « problème → intact » was recorded as a valid refusal, and `openReturn` preferred it: a claim against the seller, the fee NOT retained;
+    - a re-tap after a relaunch got `ladder_already_open`, which the app did not take as held, so nothing could re-seal.
+  - *Now:* once recorded (`changementAvisFinal`), it is the article's one inspection:
+    - any other choice is `change_of_mind_recorded`;
+    - the same choice again is `inspection_already_recorded`, which the app takes as held and re-seals;
+    - a drop is `return_in_progress`.
+  - *Proven both ways:* a spine test in both payment modes (no claim opened, the refusal buyer-fault with the fee retained), and two walks (the relaunched phone; « kept » after her final choice).
+- **MAJOR — the walks' custody stand-in was healthier than the real custody.** It was healthier on exactly the paths this build adds, which is what hid the blocker.
+  - *Now:* it plays the real spine on each:
+    - a second inspection;
+    - a drop before the return;
+    - « Un souci ? » after the choice;
+    - a buyer-risk refusal without `definitive`, which opens the window.
+  - The header states these bounds.
+- **MAJOR — a whole package could skip the window article by article, against my canon line « the window stays … for a whole package ».**
+  - That clause was mine; the founder's option 1 reads « The 15 minutes stay for a buyer who can't pay ».
+  - The canon now says his rule: the window stays for a buyer who cannot pay, for a package refused whole before its articles are shown (« Un souci ? »), and for a single order.
+  - Same unreleased 3.21.0; Séra repinned to `595ed0a`.
+- **m1 — the flag counted package members, not what travels.** An article whose package-mate was cancelled before dispatch travelled alone but was still flagged.
+  - *Now:* logistics flags only when the article's COURSE carries several (frozen at assign).
+  - *Proven by* a seam test that sends such a lone article through the real wire: custody refuses the change of mind as final (`change_of_mind_not_in_package`) and her refusal still opens the window. This is also the negative the positive seam lacked.
+
+**Journalled, not changed:**
+
+- **m2 — packages already on the road at the deploy.** Their custody files carry no flag, so « Elle a changé d'avis » is refused by name. « Un souci ? » has left the screen once an article was shown. The only road home for that article is « a problem » (the seller's fault, the fee refunded).
+  - The walk now asserts only that the rider is not stranded, not that this road is right.
+  - Bounded to courses assigned before the deploy.
+- **m3 — no « elle ne peut pas payer » on the per-article screen.** A buyer who cannot pay for one article is served by keeping it and « Un souci ? » under the code card, which puts every kept article in the window.
+  - Kept to his scope.
+- **m4 — the seal value on a change of mind.** The act carries `custodySealIntact: true` although the seal question is skipped (the field is required).
+  - The spine does not read it on this path.
+- **m5 — Shop+'s docs copy still reads canon 3.20.0.** Its code already keeps the fee share on this fact.
+  - Its repin is due at its next slice, as Boutik+'s is.
+
+**Still open.** - **Deploy order.** Canon 3.21.0 merges first (docs only). Then Séra: logistics and custody deploy together; a custody deployed alone takes no flag until logistics sends it (her change of mind refused by name, never wrongly final), a logistics deployed alone sends a field an older custody ignores. The rider app's new screen needs the new custody (expo-preview).
+- **Packages already on the road at the deploy** have no flag on their files: « Elle a changé d'avis » is refused by name there, and the road home for that one article is « a problem » (the seller's fault, fee refunded). Bounded to courses assigned before the deploy (verifier m2).
+- **« Elle ne peut pas payer » for one article** has no per-article road: keep it, then « Un souci ? » under the code card (every kept article in the window). Kept to his ruling's scope (verifier m3).
+- **Shop+ and Boutik+ still pin canon 3.20.0** — nothing in them changes; they repin at their next slice (verifier m5).
+
 ## 2026-09-23 · COLIS-2 (Séra half) — a package's door payment is recognised by the reference Shop+ declares to each article's file (no article list asked of any provider), and the founder's « Retirer » takes one article of a waiting package, not the whole bag · no canon change · MERGED AND DEPLOYED 2026-09-23 on the founder's « go »
 
 **MERGED AND DEPLOYED (founder: « go , A, when she gives an article back because she changed her mind i keep the delivery fee », 2026-09-23).** `main` fast-forwarded `6bf279c → 314843d` (ancestry verified with `merge-base --is-ancestor` before the push) — COLIS-FOURNISSEUR-1 and COLIS-2 together. **custody-deploy 23 (id 35912904093) · logistics-deploy 33 (id 35913098938), both `success` on `314843d`, both provenance lines read back from the job logs: « PROVENANCE OK — live custody Worker is 314843d… speaking canon 3.20.0 » / « live logistics Worker is 314843d… speaking canon 3.20.0 »**, their keys re-armed by the workflows as on every deploy. **ci 199 · expo-preview 144 green on `314843d`** (the rider app republished with the package course). Canon half: platform-contracts `main` `e344080 → 914be2a`, ci 143 green. Boutik+ half: `main` `b0e3b03 → 30fb0c5`, offer-deploy 39 (provenance: live Worker is `30fb0c5` speaking canon 3.20.0) · web-deploy 75 · fournisseur-web-deploy 18 · ci 358 · expo-preview 236 green. Shop+ half: `main` `9888110 → ff0d059`, storefront-deploy 108 (provenance: live Worker is `ff0d059` speaking canon 3.20.0) · pwa-preview 487 · expo-preview 520 · ci 699 green; service-canon-drift 385 green on attempt 2.
