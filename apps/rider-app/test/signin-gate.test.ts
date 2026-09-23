@@ -145,8 +145,12 @@ describe('⚠ a WIRED build shows only what a server said (blocker A3)', () => {
      * this fails.
      */
     // COLIS-FOURNISSEUR-1: the call site now ends where the one-gesture
-    // fan-out names its held predicate — every article gets this same payload.
-    const verifySite = app.slice(app.indexOf('custodyActs.verifyPickup'), app.indexOf('TENU.verification', app.indexOf('custodyActs.verifyPickup')));
+    // fan-out names its held predicate — every article gets this same payload
+    // (PICKUP-REFUS: `tenuVerification`, which reads the answers too).
+    const verifyStart = app.indexOf('custodyActs.verifyPickup');
+    const verifyEnd = app.indexOf('tenuVerification(', verifyStart);
+    expect(verifyEnd, 'the verify call site ends at its held predicate').toBeGreaterThan(verifyStart);
+    const verifySite = app.slice(verifyStart, verifyEnd);
     const keyExpr = (/attemptFor\(\s*`verify\|([^`]*)`/.exec(app) ?? [])[1];
     expect(keyExpr, 'the verify attempt key').toBeTypeOf('string');
     const sent = [...verifySite.matchAll(/^\s{12}(\w+):\s*(.+?),\s*$/gm)].map(([, field, expr]) => ({

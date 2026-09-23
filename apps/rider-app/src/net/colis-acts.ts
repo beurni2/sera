@@ -71,20 +71,26 @@ export async function surChaqueArticle(
   return (premierRefus ?? premier) as CustodyAnswer;
 }
 
+/**
+ * The pickup check's « held » — PICKUP-REFUS (founder « 1 », 2026-09-23). One
+ * check at the stall covers the whole bag, so a refusal recorded on one
+ * article is every article's: each order's own file must hear it, because
+ * each buyer is refunded on her own order. So when the rider's answers REFUSE,
+ * the ledger's word either way carries the gesture on (custody answers a
+ * refused order's every later check with its recorded refusal, so a retry
+ * under new ids still reaches the rest). When his answers say « all good »,
+ * only an acceptance does: answers that no longer refuse must never be taken,
+ * on the next article, over a bag already refused (verifier MAJOR 1). The
+ * screen reads the first article's word; a dead link still stops the walk.
+ */
+export const tenuVerification =
+  (refusDemande: boolean) =>
+  (a: CustodyAnswer): boolean =>
+    verificationAccepted(a) || (refusDemande && a.kind === 'recorded' && a.body['kind'] === 'refused');
+
 /** Each act's « held », by its own ledger word — the same predicates the
  *  single road's screens already read. */
 export const TENU = {
-  /**
-   * PICKUP-REFUS (founder « 1 », 2026-09-23) — the ledger's word on the
-   * check, EITHER way. One check at the stall covers the whole bag, so a
-   * refusal recorded on one article is every article's: each order's own file
-   * must hear it, because each buyer is refunded on her own order. The screen
-   * reads the first article's word — the same answers, judged under the same
-   * policy, give every article the same one. A dead link or a spent code still
-   * stops the walk, as before.
-   */
-  verification: (a: CustodyAnswer): boolean =>
-    verificationAccepted(a) || (a.kind === 'recorded' && a.body['kind'] === 'refused'),
   scelle: custodyBegan,
   depart: transitDeparted,
   arrivee: transitArrived,

@@ -88,11 +88,14 @@ export class CustodySpine {
   private readonly events: PlatformEvent[] = [];
   private aggregateVersion = 0;
   private verificationAccepted = false;
-  /** WO-2.7 item 3 — the verification CYCLE the attempt-keyed emissions ride.
-   * PICKUP-REFUS (founder, 2026-09-23) closed the corrective round-trip that
-   * could open a cycle 2: a refused pickup refunds the buyer, so there is ONE
-   * cycle and the keys stay the `-a1` ones already emitted live. */
-  private readonly verificationCycle = 1;
+  /**
+   * PICKUP-REFUS (founder « 1 », 2026-09-23) — a refused pickup is FINAL. Its
+   * recorded refusal is the answer to every later check on this order, with
+   * any code and any answers: nothing can overturn it, and a package's retry
+   * under new command ids still walks on to its other articles. Nothing is
+   * consumed or emitted a second time.
+   */
+  private pickupRefusal: Extract<ReturnType<typeof runPickupVerification>, { kind: 'refused' }> | null = null;
   private custodyWithCourier = false;
   /** The ONE seal consumed at beginCustody — evidence must bind to it by
    * equality (WO-2.1 finding ①). */
@@ -172,11 +175,10 @@ export class CustodySpine {
 
   /** Step 11a — bounded verification (SE4.2). The rider's pickup code is a
    * single-use hashed secret consumed HERE — replay refused. A refusal emits
-   * the fault signal; custody never begins. WO-2.7 item 3: emissions are
-   * keyed per ATTEMPT (order + verification cycle) so a genuine second
-   * refusal after the corrective round-trip is a NEW event downstream can
-   * count — while a replay of the SAME attempt still carries the same
-   * command_id and dedupes. */
+   * the fault signal and the refused-course fact; custody never begins.
+   * WO-2.7 item 3 keyed the emissions per ATTEMPT; since PICKUP-REFUS closed
+   * the corrective round-trip there is one attempt, so the ids are the `-a1`
+   * ones already emitted live and a replay carries the same command_id. */
   verifyPickup(input: VerificationInput, presentedPickupCode: string, at: string) {
     /**
      * ⚠ THE SHAPE IS JUDGED BEFORE THE CODE IS SPENT (2026-08-09).
@@ -184,9 +186,8 @@ export class CustodySpine {
      * The single-use `pickupVerificationCode` used to be consumed FIRST, and
      * an unjudgeable check list then returned `invalid` — after the code was
      * already burned. `SecretRegistry.register` refuses to re-arm a spent
-     * secret, and `openNewVerificationCycle` only re-arms after a *refused*
-     * verification, never an *invalid* one. So the order became permanently
-     * unverifiable, with no route to recover it.
+     * secret, so the order became permanently unverifiable, with no route to
+     * recover it.
      *
      * That was survivable while one build talked to one policy. Policy v2
      * (founder ruling, three photo-referenced questions) makes it REACHABLE
@@ -201,13 +202,14 @@ export class CustodySpine {
      * app ships the same list. What it buys is that a mismatched build costs
      * a refusal the rider can retry, not a package nobody can ever take.
      */
+    if (this.pickupRefusal !== null) return this.pickupRefusal;
     const outcome = runPickupVerification(input);
     if (outcome.kind === 'invalid') return outcome;
-    const code = this.secrets.consume('pickup_verification_code', input.orderId, presentedPickupCode, at, this.verificationCycle);
+    const code = this.secrets.consume('pickup_verification_code', input.orderId, presentedPickupCode, at);
     if (!code.ok) {
       return { kind: 'invalid' as const, reason: 'pickup_code_refused' as const, detail: code.reason };
     }
-    const attempt = this.verificationCycle;
+    const attempt = 1;
     this.ledger.append({
       packageId: this.chain.package_id,
       kind: 'pickup_verification',
@@ -243,6 +245,7 @@ export class CustodySpine {
         fault_class: outcome.faultSignal.faultClass,
         failed_checks: [...outcome.failedChecks],
       }, at);
+      this.pickupRefusal = outcome;
       return outcome; // custody never begins
     }
     this.verificationAccepted = true;

@@ -139,12 +139,13 @@ describe('WO-2.7 item 3 — fault emission keys per ATTEMPT (order + verificatio
   it('PICKUP-REFUS: a refused pickup is FINAL — no second verification, no custody, one attempt only', () => {
     const spine = refusedOnce();
     expect(spine.secrets.register('custody_seal', CHAIN.order_id, 'seal-1')).toEqual({ ok: true });
+    // Every later check answers the recorded refusal, all-pass answers included.
     expect(spine.verifyPickup({ orderId: CHAIN.order_id, riderId: 'r-1', checkResults: allPass, dwellSec: 150, evidenceBundleId: 'eb-2' }, 'pvc-1', T))
-      .toMatchObject({ kind: 'invalid', reason: 'pickup_code_refused', detail: 'secret_already_used' });
+      .toMatchObject({ kind: 'refused', failedChecks: ['colour'] });
     // No NEW code can be armed either: the one cycle's slot is spent.
     expect(spine.secrets.register('pickup_verification_code', CHAIN.order_id, 'pvc-2')).toEqual({ ok: false, reason: 'secret_already_used' });
     expect(spine.verifyPickup({ orderId: CHAIN.order_id, riderId: 'r-1', checkResults: allPass, dwellSec: 150, evidenceBundleId: 'eb-3' }, 'pvc-2', T))
-      .toMatchObject({ kind: 'invalid', reason: 'pickup_code_refused', detail: 'secret_already_used' });
+      .toMatchObject({ kind: 'refused', failedChecks: ['colour'] });
     expect(spine.beginCustody({ riderId: 'r-1', verificationOrderId: CHAIN.order_id, custodySealId: 'seal-1', sealPhotoRefs: [], at: T }))
       .toEqual({ ok: false, reason: 'verification_not_accepted' });
     expect(spine.ledger.currentCustodian(CHAIN.package_id)).toBe('seller:sup-1');

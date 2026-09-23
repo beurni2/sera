@@ -475,6 +475,17 @@ describe('STOCK-VENDU-1b — the refusal reaches Shop+, verbatim, at-least-once'
       failed_checks: ['emballage_intact'],
     });
 
+    // Final (verifier MAJOR 1): a later check under a NEW id, with a wrong
+    // code and all-pass answers, answers the recorded refusal — nothing new
+    // goes on the wire.
+    const encore = await call(mf, 'POST', '/rider/verification', RIDER_CODE, {
+      orderId: O, command_id: `v2-${O}`, presentedPickupCode: 'PAS-LE-CODE',
+      checkResults: ALL_PASS, dwellSec: 150, evidenceBundleId: `ev2-${O}`,
+    });
+    expect(encore).toMatchObject({ status: 200, json: { ok: true, kind: 'refused' } });
+    await new Promise((r) => setTimeout(r, 1_000));
+    expect(inbox.filter((b) => b['name'] === 'delivery.refused.v1')).toHaveLength(1);
+
     // Final: the seal cannot begin custody on a refused pickup.
     const begin = await call(mf, 'POST', '/rider/custody/begin', RIDER_CODE, {
       orderId: O, command_id: `b-${O}`, custodySealId: 'SEAL-RE-1', sealPhotoRefs: [],
@@ -482,6 +493,43 @@ describe('STOCK-VENDU-1b — the refusal reaches Shop+, verbatim, at-least-once'
     expect(begin.json).toMatchObject({ ok: false, reason: 'verification_not_accepted' });
     const custodian = await call(mf, 'GET', `/produce/custodian?orderId=${O}`, PRODUCE_KEY);
     expect(custodian.json).toMatchObject({ ok: true, open: true, currentCustodian: 'seller:supplier-porte-1' });
+    await mf.dispose();
+  }, 60_000);
+
+  /**
+   * Verifier MAJOR 2 — a pickup refusal has no later act on its file, so a
+   * refusal that could not be sent (here: the Shop+ key was not set yet) used
+   * to rest for ever. The file now repairs the wire whenever anything touches
+   * it: the Worker restarts WITH the key, logistics reads the custodian (what
+   * the founder's « Retirer » does), and the refusal reaches Shop+.
+   */
+  it('PICKUP-REFUS: a refusal that could not be sent reaches Shop+ the next time anything touches the file', async () => {
+    const dir = freshDir('refus-repare');
+    const O = 'ord-porte-refus-repare';
+    const sansShop = boot(dir);
+    await doorModeArmed(sansShop, O, 'PICKUP-RR-1', 'DROP-RR-1');
+    expect(await call(sansShop, 'POST', '/rider/verification', RIDER_CODE, {
+      orderId: O, command_id: `v-${O}`, presentedPickupCode: 'PICKUP-RR-1',
+      checkResults: { ...ALL_PASS, produit_conforme: false }, dwellSec: 150, evidenceBundleId: `ev-${O}`,
+    })).toMatchObject({ status: 200, json: { ok: true, kind: 'refused' } });
+    await new Promise((r) => setTimeout(r, 500));
+    await sansShop.dispose();
+
+    const inbox: Json[] = [];
+    const mf = bootAvecShop(dir, inbox);
+    await new Promise((r) => setTimeout(r, 1_000));
+    expect(inbox, 'nothing moves until the file is touched').toEqual([]);
+    expect((await call(mf, 'GET', `/produce/custodian?orderId=${O}`, PRODUCE_KEY)).status).toBe(200);
+    for (let i = 0; i < 80 && inbox.length < 1; i += 1) {
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    const refus = inbox.filter((b) => b['name'] === 'delivery.refused.v1');
+    expect(refus, `inbox: ${JSON.stringify(inbox)}`).toHaveLength(1);
+    expect(refus[0]!['payload']).toMatchObject({ order_id: O, rejection: 'pickup_refusal', fault_class: 'seller', failed_checks: ['produit_conforme'] });
+    // Touched again: delivered once, never twice.
+    await call(mf, 'GET', `/produce/custodian?orderId=${O}`, PRODUCE_KEY);
+    await new Promise((r) => setTimeout(r, 1_000));
+    expect(inbox.filter((b) => b['name'] === 'delivery.refused.v1')).toHaveLength(1);
     await mf.dispose();
   }, 60_000);
 

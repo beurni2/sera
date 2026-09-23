@@ -172,16 +172,16 @@ const ELIGIBILITY_OUTBOX_KEY = 'custody:eligibility-outbox:v1';
 
 /**
  * STOCK-VENDU-1b (founder order 2026-08-23) — the REFUSED-course wire, the
- * eligibility wire's sibling: the spine already emits the canon
- * `delivery.refused.v1` at its three refusal sites (evidence rejected · valid
- * door rejection · the §6.4 ladder terminal) and until now the event went
- * nowhere. It now rides to Shop+'s same progress door, VERBATIM, so Shop+ can
- * relay it to Boutik+ and the sealed unit goes home to the supplier's stock
- * counter (Boutik+ decides restock by the event's own `fault_class`). Armed
- * in `commit()` — the ONE site every command shares, so all three emit sites
- * are covered by construction — and revived from `unsendable_no_config` by
- * any later command on the same file (the return-flow acts that follow a
- * refusal make that revival the ordinary case, not a hope).
+ * eligibility wire's sibling: the spine emits the canon `delivery.refused.v1`
+ * at its refusal sites (evidence rejected · valid door rejection · the §6.4
+ * ladder terminal · and, since PICKUP-REFUS, a pickup the rider refused) and
+ * it rides to Shop+'s same progress door, VERBATIM: Shop+ refunds her and
+ * relays it to Boutik+, which decides restock by the event's own
+ * `fault_class`. Armed in `commit()` — the ONE site every command shares, so
+ * every emit site is covered by construction — and revived from
+ * `unsendable_no_config` by any later command on the same file. A pickup
+ * refusal has no later act, so PICKUP-REFUS adds `healRefusWire()`: the file
+ * repairs the row whenever anything touches it.
  */
 interface RefusOutbox {
   status: 'pending' | 'delivered' | 'unsendable_no_config';
@@ -1009,6 +1009,42 @@ export class CustodyDO {
     return 'armed';
   }
 
+  /**
+   * PICKUP-REFUS (verifier MAJOR 2) — the refusal wire, healed on wake like
+   * the reprogrammation wire above. A pickup refusal has no later act on its
+   * file (the rider's re-tap is a duplicate, and duplicates never commit), so
+   * `commit()` alone left three roads with no send: a file refused before the
+   * spine stated the fact (its row never armed), a row resting
+   * `unsendable_no_config`, and a pending row whose alarm was lost. Any
+   * request to the file now repairs all three. A row that is absent is armed
+   * only for a PICKUP refusal: an older door refusal with no row predates the
+   * wire itself, and sending it now would restock and refund on facts months
+   * old — outside this order.
+   */
+  private async healRefusWire(): Promise<'armed' | 'revived' | 'present' | 'not_due'> {
+    if (this.spine === null) return 'not_due';
+    const refused = this.spine.allEvents().find((e) => e.name === 'delivery.refused.v1');
+    if (refused === undefined) return 'not_due';
+    const row = await this.state.storage.get<RefusOutbox>(REFUS_OUTBOX_KEY);
+    let heal: 'armed' | 'revived' | 'present';
+    if (row === undefined) {
+      if (refused.payload['rejection'] !== 'pickup_refusal') return 'not_due';
+      await this.state.storage.put(REFUS_OUTBOX_KEY, { status: 'pending', attempts: 0, event: refused } satisfies RefusOutbox);
+      heal = 'armed';
+    } else if (row.status === 'unsendable_no_config') {
+      await this.state.storage.put(REFUS_OUTBOX_KEY, { ...row, status: 'pending' } satisfies RefusOutbox);
+      heal = 'revived';
+    } else if (row.status === 'pending') {
+      heal = 'present';
+    } else {
+      return 'present';
+    }
+    if ((await this.state.storage.getAlarm()) === null) {
+      await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
+    }
+    return heal;
+  }
+
   async fetch(request: Request): Promise<Response> {
     await this.ensureLoaded();
     let response: Response;
@@ -1639,6 +1675,7 @@ export class CustodyDO {
     // REPROGRAMMATION-2 (verifier MINOR, closed): the wire heals only on a
     // record this object agrees to serve — never on a tampered or misfiled one.
     await this.healReprogrammationWire();
+    await this.healRefusWire();
 
     if (objectName !== null && request.method !== 'GET') {
       const peek = (await request.clone().json().catch(() => null)) as Record<string, unknown> | null;

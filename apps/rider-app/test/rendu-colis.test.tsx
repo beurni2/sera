@@ -46,7 +46,9 @@ import { __modeChargement } from './doubles/expo-audio';
  * 2026-09-23): a check answered « Non » is custody-spine `verifyPickup`'s
  * RECORDED refusal — `200 {ok:true, kind:'refused'}`, the code spent, custody
  * never begins on it (`verification_not_accepted`), and the refused-course
- * fact armed for Shop+ (`refusEnlevement`) on THAT order's ledger. What it
+ * fact armed for Shop+ (`refusEnlevement`) on THAT order's ledger; every
+ * later check on that order, any code, any answers, answers the same recorded
+ * refusal and changes nothing. What it
  * does NOT model: the wires between the two Workers — the logistics seam test
  * owns those, and custody's Worker test owns the refusal wire to Shop+.
  */
@@ -178,6 +180,8 @@ function custody(world: World, paymentMode: string): Route {
       return answer;
     };
     if (path === '/rider/verification') {
+      // custody-spine `verifyPickup`: a refused order answers every later check with its recorded refusal.
+      if (l.refusEnlevement) return commit({ status: 200, json: { ok: true, kind: 'refused', ledgerSeq: 1, chainValid: true } });
       if (l.pickupUsed || body?.['presentedPickupCode'] !== PICKUP) return commit({ status: 409, json: { ok: false, reason: 'pickup_code_refused' } });
       l.pickupUsed = true;
       const checks = body?.['checkResults'] as Record<string, unknown> | undefined;
@@ -578,5 +582,48 @@ describe('PICKUP-REFUS — the rider refuses the bag at the stall', () => {
     state.closed = true;
     await s.poll();
     expect(s.shows('Pas de course pour vous'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+  });
+
+  /** Verifier MAJOR 1 — the dead link on the second article, then a retry that is NOT the same attempt. */
+  async function refusedWithBDown() {
+    const state = course(PORTE);
+    const world = freshWorld();
+    const w = wire([logistics(state), custody(world, state.paymentMode)]);
+    const s = await mountRider();
+    await s.type(CODE);
+    await s.press('Entrer');
+    await s.press('Accepter la course');
+    await s.press('Oui', 2);
+    await s.press('Oui', 1);
+    await s.press('Non', 0);
+    world.ledgers[B]!.panne = '/rider/verification';
+    await s.press('Envoyer la vérification');
+    expect(world.ledgers[A]!.refusEnlevement, 'the pagne holds the refusal').toBe(true);
+    expect(world.ledgers[B]!.pickupUsed, 'the sandals were never reached').toBe(false);
+    return { s, w, world };
+  }
+
+  it('verifier MAJOR 1 — the second article’s link drops, the rider changes an answer (still refusing): the new attempt reaches it and it records the refusal too', async () => {
+    const { s, w, world } = await refusedWithBDown();
+    await s.press('Non', 1);
+    await s.press('Envoyer la vérification');
+    expect(world.ledgers[B]!.refusEnlevement, 'the sandals now hold the refusal: her refund can open').toBe(true);
+    const ids = actes(w.calls, '/rider/verification').map((f) => f.id);
+    expect(new Set(ids).size, 'a changed answer is a new attempt — new ids').toBeGreaterThan(2);
+    expect(actes(w.calls, '/rider/custody/begin')).toEqual([]);
+    expect(s.shows('Colis refusé. Le vendeur garde le colis.'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+  });
+
+  it('verifier MAJOR 1 — answers flipped to « all good » after the refusal are never taken over the refused bag: the sandals stay untouched, the screen says refused, and a « Non » again finishes the job', async () => {
+    const { s, world } = await refusedWithBDown();
+    await s.press('Oui', 0);
+    await s.press('Envoyer la vérification');
+    expect(world.ledgers[B]!.pickupUsed, 'never verified on answers that contradict the bag’s refusal').toBe(false);
+    expect(world.ledgers[A]!.sealed || world.ledgers[B]!.sealed).toBe(false);
+    expect(s.shows('Colis refusé. Le vendeur garde le colis.'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    await s.press('Non', 0);
+    await s.press('Envoyer la vérification');
+    expect(world.ledgers[B]!.refusEnlevement).toBe(true);
+    expect(world.ledgers[A]!.sealed || world.ledgers[B]!.sealed).toBe(false);
   });
 });

@@ -212,9 +212,9 @@ describe('pickup verification — the code is consumed, the ledger records, the 
    * path below, and asserts the burn explicitly.
    *
    * The operational consequence is REAL and is flagged in JOURNAL.md rather
-   * than patched here: `openNewVerificationCycle` re-arms only after a
-   * `refused` verification, and this outcome is `invalid`, so a rider whose
-   * app sends a malformed check list burns the code with no re-arm path.
+   * than patched here: a spent code is never re-armed (and since PICKUP-REFUS
+   * there is no second verification cycle at all), so a rider whose app sends
+   * a malformed check list burns the code with no re-arm path.
    * Changing that is a custody-core change and belongs to its own slice with
    * the founder's ruling — not to a test fixing itself.
    *
@@ -258,8 +258,7 @@ describe('pickup verification — the code is consumed, the ledger records, the 
      * hazard: the service stamps the ACTIVE policy while the rider's app owns
      * the question list, and a rider on a build that still asks v1's nine
      * questions would have burned a code and stranded the order for ever
-     * (`register` refuses to re-arm; `openNewVerificationCycle` only re-arms
-     * after a *refused* verification, never an *invalid* one).
+     * (`register` refuses to re-arm a spent code).
      *
      * The shape is now judged BEFORE the code is consumed, so a mismatched
      * build costs a refusal the rider can retry — not a package nobody can

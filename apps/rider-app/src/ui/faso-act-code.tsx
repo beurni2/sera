@@ -253,9 +253,9 @@ const styles = StyleSheet.create({
  *   · A4 — an unfinished list SENDS. `verifyPickup` CONSUMES the single-use
  *     pickup code before the policy runs, so a partial submit answers
  *     `policy_checks_missing` having already BURNED the code; the correct
- *     submit then answers `secret_already_used`, and `openNewVerificationCycle`
- *     only re-arms after a *refused* verification — this outcome is `invalid`.
- *     The order becomes unverifiable, permanently, with no route to recover it.
+ *     submit then answers `secret_already_used`, and a spent code is never
+ *     re-armed. The order becomes unverifiable, permanently, with no route to
+ *     recover it.
  *   · A8 — a forgotten tick becomes a REFUSAL, and a refusal emits
  *     `protection.claim_opened.v1` with `faultClass: 'seller'`. A supplier is
  *     recorded at fault, for ever, because a rider's thumb missed a box.

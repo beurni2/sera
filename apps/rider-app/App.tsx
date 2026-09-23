@@ -133,7 +133,7 @@ import {
   windowExpiresAtOf,
   type CustodyAnswer,
 } from './src/net/custody-acts';
-import { surChaqueArticle, TENU } from './src/net/colis-acts';
+import { surChaqueArticle, TENU, tenuVerification } from './src/net/colis-acts';
 import type { ArticleColis } from './src/net/rider-session';
 import {
   ACT_IDLE,
@@ -1136,7 +1136,7 @@ export default function App() {
             checkResults: checks,
           },
           riderCode,
-        ), TENU.verification),
+        ), tenuVerification(Object.values(checks).some((v) => v === false))),
       );
     },
     [custodyActs, riderCode, liveAssignment, checks, runAct, attemptFor, verifyBundleId, surColis, ordresEnCours],

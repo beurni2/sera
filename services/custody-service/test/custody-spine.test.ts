@@ -83,9 +83,16 @@ describe('custody spine — SE4.3 seal-after-verification, refuse closed everywh
       fault_class: 'seller',
       failed_checks: ['qty', 'damage'],
     });
-    // The spent code cannot try again: no second refusal, no second fact.
-    expect(spine.verifyPickup({ orderId: CHAIN.order_id, riderId: 'r-1', checkResults: { ...allPass, qty: false }, dwellSec: 150, evidenceBundleId: 'eb-2' }, 'pvc-4711', T))
-      .toMatchObject({ kind: 'invalid', reason: 'pickup_code_refused', detail: 'secret_already_used' });
+    // FINAL (verifier MAJOR 1): every later check — any code, any answers,
+    // even all-pass — answers the recorded refusal, and changes nothing.
+    const eventsBefore = spine.allEvents().length;
+    const ledgerBefore = spine.ledger.all().length;
+    for (const [checks, code] of [[allPass, 'pvc-4711'], [{ ...allPass, qty: false }, 'not-the-code']] as const) {
+      expect(spine.verifyPickup({ orderId: CHAIN.order_id, riderId: 'r-1', checkResults: checks, dwellSec: 150, evidenceBundleId: 'eb-2' }, code, T))
+        .toMatchObject({ kind: 'refused', failedChecks: ['qty', 'damage'], faultSignal: { faultClass: 'seller' } });
+    }
+    expect(spine.allEvents()).toHaveLength(eventsBefore);
+    expect(spine.ledger.all()).toHaveLength(ledgerBefore);
     expect(spine.allEvents().filter((e) => e.name === 'delivery.refused.v1')).toHaveLength(1);
   });
 
