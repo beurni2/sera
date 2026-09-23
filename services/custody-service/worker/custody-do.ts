@@ -435,6 +435,18 @@ export type CustodyCommand =
     }
   | {
       /**
+       * COLIS-FOURNISSEUR-1 — Shop+ declares, before a package's one door
+       * charge, the collection reference that pays this order's door leg.
+       * No money, no state move: only the provider's confirmation naming it
+       * pays (see `armDoorReference`).
+       */
+      kind: 'door_reference';
+      command_id: string;
+      reference: string;
+      at: string;
+    }
+  | {
+      /**
        * STOCK-VENDU-1b — the §6.5 valid-rejection RETURN OPEN, the half of
        * the door road PORTE-CUSTODY left spine-complete and wire-dead: the
        * inspection could record a valid rejection, and no route could send
@@ -938,6 +950,8 @@ export class CustodyDO {
         return spine.recordDoorInspection(cmd.input, cmd.at);
       case 'door_signal':
         return spine.consumeDoorPaidSignal(cmd.event, cmd.at);
+      case 'door_reference':
+        return spine.armDoorReference(cmd.reference);
       // STOCK-VENDU-1b — pure spine call on values stored ON the command,
       // like both door arms above: replay re-applies byte-identically.
       case 'open_return':
@@ -2585,6 +2599,34 @@ export class CustodyDO {
      * route, and the event is readable at `/events` where every emission
      * lives.
      */
+    /**
+     * COLIS-FOURNISSEUR-1 — a package's collection reference, declared by
+     * Shop+ to this order's file before the charge (`/produce-shop/door-reference`).
+     */
+    if (request.method === 'POST' && pathname === '/door-reference') {
+      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      if (body === null || !isBoundedStr(body['command_id'], MAX_ID) || !isBoundedStr(body['reference'], MAX_ID)) {
+        return malformed();
+      }
+      const cmd: CustodyCommand = {
+        kind: 'door_reference',
+        command_id: (body['command_id'] as string).trim(),
+        reference: (body['reference'] as string).trim(),
+        at: new Date().toISOString(),
+      };
+      const prior = this.priorFor(cmd);
+      if (prior.kind === 'duplicate') return this.replayOutcome(prior.outcome, cmd);
+      if (prior.kind === 'conflict') {
+        return Response.json({ ok: false, reason: 'command_id_reused_with_other_content' }, { status: 409 });
+      }
+      const applied = this.apply(this.spine, cmd) as { ok: true; duplicate: boolean } | { ok: false; reason?: string };
+      const recorded: RecordedOutcome = applied.ok
+        ? { httpStatus: 200, body: { ok: true, duplicate: applied.duplicate } }
+        : { httpStatus: 409, body: { ok: false, reason: applied.reason ?? 'refused' } };
+      await this.commit(cmd, recorded);
+      return Response.json(recorded.body, { status: recorded.httpStatus });
+    }
+
     if (request.method === 'POST' && pathname === '/door-signal') {
       const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
       const event = body?.['event'];

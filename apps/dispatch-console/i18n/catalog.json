@@ -858,6 +858,36 @@
     "screenClass": "label"
   },
   {
+    "key": "courses.meme_colis",
+    "fr": "Même colis :",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "courses.retirer_colis",
+    "fr": "Retirer le colis",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "courses.confirmer_colis",
+    "fr": "Retirer tout ce colis du tableau ?",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "courses.confirmer_colis_detail",
+    "fr": "Le coursier a déjà ce colis : tous ses articles quittent le tableau ensemble.",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "courses.confirmer_article_seul",
+    "fr": "Seul cet article part. Les autres articles du colis restent sur le tableau.",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
     "key": "reprog.section",
     "fr": "Prochain passage à fixer",
     "register": "neutral",

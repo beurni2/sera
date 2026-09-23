@@ -34,8 +34,10 @@ export interface FenetrePassage {
 export interface CoursesPort {
   board(): Promise<OpsAnswer<readonly CourseRow[]>>;
   /** `inconnu` is a SUCCESS: the board no longer holds that order, which is
-   *  what the founder asked for. A re-run of the sweep converges. */
-  retirer(orderId: string): Promise<OpsAnswer<RetraitStatus>>;
+   *  what the founder asked for. A re-run of the sweep converges.
+   *  COLIS-2 — `colisEntier` asks for the whole package a rider carries; the
+   *  door takes ONE article otherwise. */
+  retirer(orderId: string, colisEntier?: boolean): Promise<OpsAnswer<RetraitStatus>>;
   /** REPROGRAMMATION-1 — the courses custody sent back for a next passage,
    *  off the SAME board read the courses desk uses. */
   reprogrammations(): Promise<OpsAnswer<readonly ReprogRow[]>>;
@@ -158,10 +160,13 @@ export function httpCourses(
 
   return {
     board: () => call('/ops/board', { method: 'GET' }, boardCourses),
-    async retirer(orderId: string): Promise<OpsAnswer<RetraitStatus>> {
+    async retirer(orderId: string, colisEntier = false): Promise<OpsAnswer<RetraitStatus>> {
       const answer = await call(
         '/ops/order/retirer',
-        { method: 'POST', body: JSON.stringify({ command_id: commandId(orderId), orderId }) },
+        {
+          method: 'POST',
+          body: JSON.stringify({ command_id: commandId(orderId), orderId, ...(colisEntier ? { colisEntier: true } : {}) }),
+        },
         statusOf,
       );
       if (answer.kind !== 'ok') return answer;

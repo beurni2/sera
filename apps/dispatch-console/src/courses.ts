@@ -30,6 +30,9 @@ export interface CourseRow {
   /** Who carries it, for `confiee`. The rider's display name when the board
    *  gives one, else their id — never a blank where a person should be. */
   readonly riderName?: string | undefined;
+  /** COLIS-2 — every article of the package this order travels in, in the
+   *  package's own order, when it travels with others. */
+  readonly colis?: readonly string[] | undefined;
 }
 
 /**
@@ -41,6 +44,12 @@ export interface CourseRow {
  * both queued and assigned (a re-composed order mid-swap) is still one thing
  * to remove, and showing it twice would ask him to confirm the same removal
  * twice.
+ *
+ * COLIS-2 — a package is one row PER ARTICLE (the founder: « « Retirer » on
+ * your console removes the whole package »). The board names a queued
+ * package's travelling articles on its row, and a live one's in
+ * `colisEnCourse`; each article's row carries the whole list, so the screen
+ * can say which articles go together and what a removal will take.
  */
 export function boardCourses(body: unknown): readonly CourseRow[] {
   const board = pick(pick(body, 'board'), null);
@@ -56,19 +65,27 @@ export function boardCourses(body: unknown): readonly CourseRow[] {
   for (const entry of array(pick(board, 'queued'))) {
     const orderId = str(pick(entry, 'orderId'));
     if (orderId === '') continue;
-    if (!rows.has(orderId)) rows.set(orderId, { orderId, etat: 'attente' });
+    const colis = articles(pick(pick(entry, 'colis'), 'orderIds'), orderId);
+    for (const id of colis ?? [orderId]) {
+      if (!rows.has(id)) rows.set(id, { orderId: id, etat: 'attente', ...(colis === undefined ? {} : { colis }) });
+    }
   }
+  const enCourse = pick(board, 'colisEnCourse');
   // Assignments win the state: « confiée à Boss » is what he needs to read
   // before retiring, and it is the stronger fact about the same order.
   for (const entry of array(pick(board, 'assignments'))) {
     const orderId = str(pick(entry, 'orderId'));
     if (orderId === '') continue;
     const riderId = str(pick(entry, 'riderId'));
-    rows.set(orderId, {
-      orderId,
-      etat: 'confiee',
-      ...(riderId === '' ? {} : { riderName: riders.get(riderId) ?? riderId }),
-    });
+    const colis = articles(pick(pick(enCourse, str(pick(entry, 'assignmentId'))), 'orderIds'), orderId);
+    for (const id of colis ?? [orderId]) {
+      rows.set(id, {
+        orderId: id,
+        etat: 'confiee',
+        ...(riderId === '' ? {} : { riderName: riders.get(riderId) ?? riderId }),
+        ...(colis === undefined ? {} : { colis }),
+      });
+    }
   }
   return [...rows.values()].sort((a, b) => (a.orderId < b.orderId ? -1 : 1));
 }
@@ -84,6 +101,15 @@ function array(value: unknown): readonly unknown[] {
 
 function str(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+/** A package's articles as the board lists them — only a real package: two
+ *  or more distinct ids, the row's own among them. Anything else is read as
+ *  no package, so the row stays a plain course. */
+function articles(value: unknown, orderId: string): readonly string[] | undefined {
+  const ids = array(value).map(str);
+  if (ids.length < 2 || ids.includes('') || new Set(ids).size !== ids.length || !ids.includes(orderId)) return undefined;
+  return ids;
 }
 
 export type CoursesRead =
@@ -115,10 +141,62 @@ export function etatKey(row: CourseRow): string {
   return row.etat === 'confiee' ? 'courses.etat_confiee' : 'courses.etat_attente';
 }
 
-/** What is being asked for — one course, or every row currently on screen. */
-export type RetraitDemande =
-  | { readonly kind: 'une'; readonly orderIds: readonly [string] }
-  | { readonly kind: 'toutes'; readonly orderIds: readonly string[] };
+/** COLIS-2 — one call to the retire door. */
+export interface Appel {
+  readonly orderId: string;
+  /** True only for a package a rider already carries: the door takes the
+   *  whole bag, and says no to one article of it (`colis_en_course`). */
+  readonly colisEntier: boolean;
+  /** Every row this call removes — named on screen if it fails. */
+  readonly articles: readonly string[];
+}
+
+/** What is being asked for — one article, a package a rider carries (whole),
+ *  or every row currently on screen. `orderIds` is what the confirmation
+ *  NAMES; `appels` is what the door is called for, one after the other. */
+export interface RetraitDemande {
+  readonly kind: 'une' | 'colis' | 'toutes';
+  readonly orderIds: readonly string[];
+  readonly appels: readonly Appel[];
+  /** One article of a package no rider carries yet: the others stay. */
+  readonly articleSeul: boolean;
+}
+
+function colisEnMains(row: CourseRow): row is CourseRow & { colis: readonly string[] } {
+  return row.colis !== undefined && row.etat === 'confiee';
+}
+
+/** The row's own lever. A package in a rider's hands leaves whole — every
+ *  article named; anything else leaves alone. */
+export function demandeLigne(row: CourseRow): RetraitDemande {
+  if (colisEnMains(row)) {
+    return { kind: 'colis', orderIds: row.colis, appels: [{ orderId: row.orderId, colisEntier: true, articles: row.colis }], articleSeul: false };
+  }
+  return {
+    kind: 'une',
+    orderIds: [row.orderId],
+    appels: [{ orderId: row.orderId, colisEntier: false, articles: [row.orderId] }],
+    articleSeul: row.colis !== undefined,
+  };
+}
+
+/** « Tout retirer »: every row on screen, one call each — except a package in
+ *  a rider's hands, which is ONE whole-bag call for all its rows. */
+export function demandeToutes(rows: readonly CourseRow[]): RetraitDemande {
+  const appels: Appel[] = [];
+  const couverts = new Set<string>();
+  for (const row of rows) {
+    if (couverts.has(row.orderId)) continue;
+    if (colisEnMains(row)) {
+      for (const id of row.colis) couverts.add(id);
+      appels.push({ orderId: row.orderId, colisEntier: true, articles: row.colis });
+    } else {
+      couverts.add(row.orderId);
+      appels.push({ orderId: row.orderId, colisEntier: false, articles: [row.orderId] });
+    }
+  }
+  return { kind: 'toutes', orderIds: rows.map((row) => row.orderId), appels, articleSeul: false };
+}
 
 export interface RetraitUi {
   /** The confirmation currently on screen. Null = nothing is being asked. */
@@ -135,7 +213,7 @@ export const RETRAIT_IDLE: RetraitUi = { demande: null, encours: null, echecs: [
  *  first is still removing would double-count its own progress. */
 export function demander(ui: RetraitUi, demande: RetraitDemande): RetraitUi {
   if (ui.encours !== null) return ui;
-  if (demande.orderIds.length === 0) return ui;
+  if (demande.appels.length === 0) return ui;
   return { demande, encours: null, echecs: [] };
 }
 
@@ -143,25 +221,26 @@ export function annuler(ui: RetraitUi): RetraitUi {
   return { ...ui, demande: null };
 }
 
-/** Confirm. Returns the orders to call the door for, and the in-flight state —
- *  or null when there is nothing being asked (a stray tap changes nothing). */
-export function commencer(ui: RetraitUi): { ui: RetraitUi; orderIds: readonly string[] } | null {
+/** Confirm. Returns the door calls to make, and the in-flight state — or
+ *  null when there is nothing being asked (a stray tap changes nothing). */
+export function commencer(ui: RetraitUi): { ui: RetraitUi; appels: readonly Appel[] } | null {
   if (ui.demande === null || ui.encours !== null) return null;
-  const orderIds = ui.demande.orderIds;
+  const appels = ui.demande.appels;
   return {
-    ui: { demande: null, encours: { total: orderIds.length, faits: 0 }, echecs: [] },
-    orderIds,
+    ui: { demande: null, encours: { total: appels.length, faits: 0 }, echecs: [] },
+    appels,
   };
 }
 
-/** One course answered. A refusal is RECORDED, and the sweep carries on: the
- *  founder must see which ones survived, not lose the whole run to one. */
-export function avancer(ui: RetraitUi, orderId: string, ok: boolean): RetraitUi {
+/** One call answered. A refusal is RECORDED against every row it was for, and
+ *  the sweep carries on: the founder must see which ones survived, not lose
+ *  the whole run to one. */
+export function avancer(ui: RetraitUi, appel: Appel, ok: boolean): RetraitUi {
   if (ui.encours === null) return ui;
   return {
     demande: null,
     encours: { total: ui.encours.total, faits: ui.encours.faits + 1 },
-    echecs: ok ? ui.echecs : [...ui.echecs, orderId],
+    echecs: ok ? ui.echecs : [...ui.echecs, ...appel.articles],
   };
 }
 
@@ -182,5 +261,11 @@ export function enVol(ui: RetraitUi): boolean {
 /** The catalog key of the confirmation question. The count and the order id
  *  are composed by the screen; the sentence itself never lives in code. */
 export function demandeKey(demande: RetraitDemande): string {
+  if (demande.kind === 'colis') return 'courses.confirmer_colis';
   return demande.kind === 'toutes' ? 'courses.confirmer_toutes' : 'courses.confirmer_une';
+}
+
+/** The row's lever label: a package in a rider's hands says it goes whole. */
+export function retirerKey(row: CourseRow): string {
+  return colisEnMains(row) ? 'courses.retirer_colis' : 'courses.retirer';
 }

@@ -45,9 +45,12 @@ import {
   commencer,
   coursesView,
   demandeKey,
+  demandeLigne,
+  demandeToutes,
   demander,
   enVol,
   etatKey,
+  retirerKey,
   terminer,
   type CoursesRead,
   type RetraitUi,
@@ -1434,9 +1437,9 @@ if (app) {
     if (started === null) return;
     retrait = started.ui;
     renderCourses();
-    for (const orderId of started.orderIds) {
-      const answer = await coursesPort().retirer(orderId);
-      retrait = avancer(retrait, orderId, answer.kind === 'ok');
+    for (const appel of started.appels) {
+      const answer = await coursesPort().retirer(appel.orderId, appel.colisEntier);
+      retrait = avancer(retrait, appel, answer.kind === 'ok');
       renderCourses();
       // A refused key ends the run: every remaining call would refuse too, and
       // marking them all « échoué » would blame the courses for the door.
@@ -1488,6 +1491,9 @@ if (app) {
         // ( « 3 courses » ) would ask him to confirm a number; he confirms
         // commandes, and he must be able to recognise them.
         line('courses-confirme-ligne', demande.orderIds.join(' · ')),
+        // COLIS-2 — what happens to the rest of the bag, said before the tap.
+        ...(demande.kind === 'colis' ? [line('courses-confirme-ligne', t('courses.confirmer_colis_detail'))] : []),
+        ...(demande.articleSeul ? [line('courses-confirme-ligne', t('courses.confirmer_article_seul'))] : []),
         line('courses-confirme-ligne', t('courses.confirmer_detail')),
         // The custody sentence is not decoration: « board yes, custody no » is
         // the founder's own ruling, and he reads it before every removal.
@@ -1535,6 +1541,9 @@ if (app) {
             ? t(etatKey(course))
             : `${t(etatKey(course))} ${course.riderName}`;
         row.append(line('courses-row-order', course.orderId), line('courses-row-etat', etat));
+        if (course.colis !== undefined) {
+          row.appendChild(line('courses-row-colis', `${t('courses.meme_colis')} ${course.colis.join(' · ')}`));
+        }
         // A course that did NOT leave says so on its own row — never a silent
         // skip, and never a whole-desk error that hides which one survived.
         if (aEchoue(retrait, course.orderId)) {
@@ -1542,10 +1551,10 @@ if (app) {
         }
         const retirer = document.createElement('button');
         retirer.className = 'courses-retirer';
-        retirer.textContent = t('courses.retirer');
+        retirer.textContent = t(retirerKey(course));
         retirer.disabled = bloque;
         retirer.addEventListener('click', () => {
-          retrait = demander(retrait, { kind: 'une', orderIds: [course.orderId] });
+          retrait = demander(retrait, demandeLigne(course));
           renderCourses();
         });
         row.appendChild(retirer);
@@ -1558,7 +1567,7 @@ if (app) {
       tout.textContent = t('courses.tout_retirer');
       tout.disabled = bloque;
       tout.addEventListener('click', () => {
-        retrait = demander(retrait, { kind: 'toutes', orderIds: view.courses.map((c) => c.orderId) });
+        retrait = demander(retrait, demandeToutes(view.courses));
         renderCourses();
       });
       actions.appendChild(tout);

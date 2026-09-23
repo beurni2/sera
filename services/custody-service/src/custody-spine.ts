@@ -65,7 +65,13 @@ export type SpineRefusal =
   | 'inspection_already_recorded'
   | 'return_in_progress'
   | 'no_reschedule_to_return'
-  | 'producer_actor_mismatch';
+  | 'producer_actor_mismatch'
+  | 'door_leg_not_expected'
+  | 'door_references_full';
+
+/** A package's door is retried under its collection's one reference; a new
+ *  collection is rare (a changed set). 25 is the door's attempt ceiling. */
+const MAX_DOOR_REFERENCES = 25;
 
 export interface ChainIds {
   order_id: string;
@@ -110,6 +116,8 @@ export class CustodySpine {
    * custody — enforced in code, not documented. */
   private doorInspection: import('@platform/contracts').InspectionSession | null = null;
   private doorPaymentConfirmed = false;
+  /** COLIS-FOURNISSEUR-1 — the collection references Shop+ declared as paying this order's door leg. */
+  private readonly doorReferences = new Set<string>();
   private readonly doorSignalCommandIds = new Set<string>();
   private readonly alertedSignalCommandIds = new Set<string>();
   /** E2 gap: settled-course answers get their OWN once-per-signal alert —
@@ -692,14 +700,12 @@ export class CustodySpine {
     }
     const payloadOrder = (event.payload as Record<string, unknown>)['order_id'];
     // COLIS-FOURNISSEUR-1 (decision d) — a package's ONE door payment is
-    // charged under its collection's reference, and the provider's own
-    // confirmation lists what it paid for (`parts`, echoed from the charge).
-    // It names this order there, or it is not this order's payment.
-    const parts = (event.payload as Record<string, unknown>)['parts'];
+    // charged under its collection's reference, which Shop+ declared to this
+    // order's file BEFORE the charge (`armDoorReference`). The provider's
+    // confirmation names this order, or a reference declared for it — the
+    // money is still only the provider's word.
     const pourCetteCommande =
-      payloadOrder === this.chain.order_id ||
-      (Array.isArray(parts) &&
-        parts.some((p) => p !== null && typeof p === 'object' && (p as Record<string, unknown>)['order_id'] === this.chain.order_id));
+      payloadOrder === this.chain.order_id || (typeof payloadOrder === 'string' && this.doorReferences.has(payloadOrder));
     const awaiting =
       this.paymentMode === 'DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR' &&
       pourCetteCommande &&
@@ -763,6 +769,25 @@ export class CustodySpine {
 
   isDoorPaymentConfirmed(): boolean {
     return this.doorPaymentConfirmed;
+  }
+
+  /**
+   * COLIS-FOURNISSEUR-1 (decision d) — a package's articles are paid at the
+   * door in ONE provider collection, charged under the collection's own
+   * reference. Shop+ declares that reference to each article's file before
+   * the charge, so the provider's confirmation — which names the reference,
+   * as every provider does — can be recognised as this order's. It carries
+   * no money and moves no state: only a provider-actored confirmation naming
+   * a declared reference pays the door leg. Door-mode files only; bounded.
+   */
+  armDoorReference(reference: string):
+    | { ok: true; duplicate: boolean }
+    | { ok: false; reason: SpineRefusal } {
+    if (this.paymentMode !== 'DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR') return { ok: false, reason: 'door_leg_not_expected' };
+    if (this.doorReferences.has(reference)) return { ok: true, duplicate: true };
+    if (this.doorReferences.size >= MAX_DOOR_REFERENCES) return { ok: false, reason: 'door_references_full' };
+    this.doorReferences.add(reference);
+    return { ok: true, duplicate: false };
   }
 
   // ── WO-2.2 — E2 failure flows (SE6.1/§6.4/§6.5) ──────────────────────────

@@ -186,9 +186,12 @@ const RIDER_ROUTES: ReadonlySet<string> = new Set([
  *     `pickup_verification_code` it mints at assign. It can NEVER arm the
  *     buyer's drop code: logistics is the carrier's book, and the carrier
  *     must never hold the buyer's secret.
- *   · `/produce-shop/*` — SHOP+'S key (`SHOP_ARM_SECRET`). TWO acts, and
+ *   · `/produce-shop/*` — SHOP+'S key (`SHOP_ARM_SECRET`). THREE acts, and
  *     honestly named: it arms the `buyer_drop_code` minted at payment
- *     confirmation, and — PORTE-CUSTODY part A (2026-08-14) — it forwards
+ *     confirmation, — COLIS-FOURNISSEUR-1 — it declares a package's door
+ *     collection reference to each article's file before the charge
+ *     (`/door-reference`, no money: it only lets that reference be heard),
+ *     and — PORTE-CUSTODY part A (2026-08-14) — it forwards
  *     the provider-actored `payment.door_leg_confirmed.v1` to
  *     `/door-signal`, the Option-B door-payment truth. The key is
  *     TRANSPORT on that second act: the SPINE checks the event's actor
@@ -209,7 +212,10 @@ const RIDER_ROUTES: ReadonlySet<string> = new Set([
 // MANIFESTE-1 — `GET /custodian` is logistics' read of the ledger's current
 // custodian (SE3.2 end-shift, SE3.1 manifest): a read, on the same key.
 const PRODUCE_ROUTES: ReadonlySet<string> = new Set(['POST /order/open', 'POST /secrets/arm', 'POST /return/apply', 'POST /wires/reviver', 'GET /custodian']);
-const PRODUCE_SHOP_ROUTES: ReadonlySet<string> = new Set(['POST /secrets/arm', 'POST /door-signal']);
+// COLIS-FOURNISSEUR-1 — a third act: Shop+ declares a package's door
+// collection reference to each article's file before the charge. It carries
+// no money and pays nothing; the provider's confirmation still must name it.
+const PRODUCE_SHOP_ROUTES: ReadonlySet<string> = new Set(['POST /secrets/arm', 'POST /door-signal', 'POST /door-reference']);
 
 async function timingSafeEqual(a: string, b: string): Promise<boolean> {
   const enc = new TextEncoder();

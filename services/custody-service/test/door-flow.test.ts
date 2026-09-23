@@ -174,19 +174,24 @@ describe('WO-2.4 items 2+3 — the door-payment custody gate (SE-I11), no rider 
     expect(spine.isDoorPaymentConfirmed()).toBe(false);
   });
 
-  it('COLIS-FOURNISSEUR-1: a package collection pays this order only when the provider’s own confirmation lists it', () => {
-    const collecte = (commandId: string, orderIds: string[]) => {
-      const e = doorSignal(commandId, 'grp-colis-porte-1');
-      return { ...e, payload: { ...e.payload, parts: orderIds.map((order_id) => ({ order_id, amount: 5_000 })) } };
-    };
-    const autre = optionBSpine();
-    autre.recordDoorInspection(inspectionInput(), T);
-    expect(autre.consumeDoorPaidSignal(collecte('cmd-c1', ['order-OTHER-1', 'order-OTHER-2']), T)).toMatchObject({ ok: false, reason: 'door_signal_not_awaited' });
-    expect(autre.isDoorPaymentConfirmed()).toBe(false);
+  it('COLIS-FOURNISSEUR-1: a package collection pays this order only under a reference declared to it before — never on a prepaid file', () => {
+    const collecte = (commandId: string, reference: string) => doorSignal(commandId, reference);
     const spine = optionBSpine();
     spine.recordDoorInspection(inspectionInput(), T);
-    expect(spine.consumeDoorPaidSignal(collecte('cmd-c2', ['order-OTHER-1', CHAIN.order_id]), T)).toEqual({ ok: true, duplicate: false });
+    // Undeclared: the collection's reference is not this order's.
+    expect(spine.consumeDoorPaidSignal(collecte('cmd-c1', 'grp-colis-porte-1'), T)).toMatchObject({ ok: false, reason: 'door_signal_not_awaited' });
+    expect(spine.isDoorPaymentConfirmed()).toBe(false);
+    // Another reference declared: still not this one.
+    expect(spine.armDoorReference('grp-colis-porte-2')).toEqual({ ok: true, duplicate: false });
+    expect(spine.consumeDoorPaidSignal(collecte('cmd-c2', 'grp-colis-porte-1'), T)).toMatchObject({ ok: false, reason: 'door_signal_not_awaited' });
+    // Declared, and the provider names it: the door leg is paid.
+    expect(spine.armDoorReference('grp-colis-porte-1')).toEqual({ ok: true, duplicate: false });
+    expect(spine.armDoorReference('grp-colis-porte-1')).toEqual({ ok: true, duplicate: true });
+    expect(spine.consumeDoorPaidSignal(collecte('cmd-c3', 'grp-colis-porte-1'), T)).toEqual({ ok: true, duplicate: false });
     expect(spine.isDoorPaymentConfirmed()).toBe(true);
+    // A prepaid file owes nothing at the door: no reference is declared on it.
+    const prepay = new CustodySpine({ ...CHAIN, order_id: 'order-pp-2' }, 'sup-1');
+    expect(prepay.armDoorReference('grp-colis-porte-1')).toEqual({ ok: false, reason: 'door_leg_not_expected' });
   });
 
   it('NO RIDER ASSERTION: a malformed/renamed signal refuses; nothing but the canonical provider event advances the door state', () => {

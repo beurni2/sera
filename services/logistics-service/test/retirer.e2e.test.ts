@@ -40,12 +40,12 @@ afterEach(async () => {
   live = [];
 });
 
-function spawn(): Miniflare {
+function spawn(dir: string = mkdtempSync(join(tmpdir(), 'retirer-'))): Miniflare {
   const mf = new Miniflare({
     modules: true,
     scriptPath: 'dist-worker/worker.mjs',
     durableObjects: { LOGISTICS: 'LogisticsDO' },
-    durableObjectsPersist: mkdtempSync(join(tmpdir(), 'retirer-')),
+    durableObjectsPersist: dir,
     bindings: { SERA_OPS_SECRET: OPS, SERA_INTAKE_SECRET: INTAKE, SERA_RIDER_VERIFY_SECRET: VERIFY },
   });
   live.push(mf);
@@ -319,5 +319,167 @@ describe('the founder retires a test course from the board — console port, rea
         readiness: 1,
       },
     });
+  }, 60_000);
+});
+
+/**
+ * ═══ COLIS-2 — « Retirer » takes ONE article, not the whole package ═══
+ *
+ * The founder (2026-09-23): « « Retirer » on your console removes the whole
+ * package. » Driven with the CONSOLE'S OWN PORT against the REAL Worker, and
+ * the outcome asked of the board, the « à préparer » list and the rider's own
+ * screen — never of the retire response.
+ */
+describe('COLIS-2 — one article of a package leaves the board alone; a bag on the road leaves whole, only when asked so', () => {
+  /** Shop+ names the package on each article's funding fact; Boutik+ vouches
+   *  for each, from ONE supplier. */
+  async function colis(mf: Miniflare, ids: readonly string[], packageId: string): Promise<void> {
+    for (const orderId of ids) {
+      await intake(mf, '/intake/funding', { orderId, status: 'funded', paymentMode: 'FULL_PREPAY', asOf: T, package: { packageId, orderIds: ids } });
+      await intake(mf, '/intake/readiness', { orderId, ready: true, asOf: T, supplierRef: 'supplier-colis' });
+    }
+  }
+  const NOMS: Record<string, string> = { 'ord-c-a': 'Pagne wax', 'ord-c-b': 'Sandales', 'ord-c-c': 'Sac en cuir' };
+  /** The compose Boutik+'s console sends: every article of ITS package named. */
+  async function composerColis(mf: Miniflare, orderId: string, ids: readonly string[], prefix: string): Promise<Json> {
+    return ops(mf, '/ops/task', {
+      command_id: `${prefix}-t`,
+      orderId,
+      location: LOC,
+      window: WIN,
+      articles: ids.map((id) => ({ orderId: id, libelle: NOMS[id] ?? id })),
+    });
+  }
+  const A = 'ord-c-a';
+  const B = 'ord-c-b';
+  const C = 'ord-c-c';
+
+  it('a waiting package of three: « Retirer » on the middle article takes it alone — the other two stay one bag, survive a restart, and ride together to the rider, briefed with their own names only', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'retirer-colis-'));
+    let mf = spawn(dir);
+    await colis(mf, [A, B, C], 'col-3');
+    const composed = await composerColis(mf, A, [A, B, C], 'c3');
+    expect(composed['ok'], JSON.stringify(composed)).toBe(true);
+
+    // What the console SEES: one row per article, each naming its bag.
+    const avant = await desk(mf).board();
+    expect(avant).toEqual({
+      kind: 'ok',
+      value: [A, B, C].map((orderId) => ({ orderId, etat: 'attente', colis: [A, B, C] })),
+    });
+
+    // ═══ THE ACT — the row's own lever, per article ═══
+    expect(await desk(mf).retirer(B)).toEqual({ kind: 'ok', value: 'retire' });
+
+    // The board: the SAME course, one article fewer.
+    const apres = board(await ops(mf, '/ops/board'));
+    expect(apres.queued.map((q) => [q['taskId'], q['orderId'], q['colis']])).toEqual([[composed['taskId'], A, { orderIds: [A, C] }]]);
+    expect(await desk(mf).board()).toEqual({
+      kind: 'ok',
+      value: [A, C].map((orderId) => ({ orderId, etat: 'attente', colis: [A, C] })),
+    });
+    // B is gone for good, and nothing else surfaces on « à préparer ».
+    expect(await ops(mf, '/ops/a-preparer')).toEqual({ ok: true, attente: [] });
+
+    // The retire is DURABLE: a fresh object over the same storage still
+    // carries A and C as one bag without B.
+    await mf.dispose();
+    live = live.filter((m) => m !== mf);
+    mf = spawn(dir);
+    expect(board(await ops(mf, '/ops/board')).queued.map((q) => q['colis'])).toEqual([{ orderIds: [A, C] }]);
+
+    // The course still leaves, and the rider is briefed with A and C only.
+    const code = await coursier(mf, 'rider-boss');
+    const granted = await ops(mf, '/ops/assign', { command_id: 'c3-assign', taskId: composed['taskId'], riderId: 'rider-boss' });
+    expect(granted['ok'], JSON.stringify(granted)).toBe(true);
+    const moi = await appPorts(mf).session.signIn(code);
+    if (!moi.ok) throw new Error('sign-in refused');
+    expect(moi.session.assignment?.colis?.articles.map((x) => [x.orderId, x.libelle])).toEqual([
+      [A, 'Pagne wax'],
+      [C, 'Sac en cuir'],
+    ]);
+    // And a second tap on the retired article converges.
+    expect(await desk(mf).retirer(B)).toEqual({ kind: 'ok', value: 'inconnu' });
+  }, 60_000);
+
+  it('retiring the FIRST article of a waiting package: its course goes, the rest come back to « à préparer » as one bag — and Boutik+’s compose, still naming all three, is taken without the retired one', async () => {
+    const mf = spawn();
+    await colis(mf, [A, B, C], 'col-3');
+    expect((await composerColis(mf, A, [A, B, C], 'c3'))['ok']).toBe(true);
+
+    expect(await desk(mf).retirer(A)).toEqual({ kind: 'ok', value: 'retire' });
+
+    expect(board(await ops(mf, '/ops/board')).queued).toEqual([]);
+    const attente = (await ops(mf, '/ops/a-preparer'))['attente'] as Json[];
+    expect(attente.map((l) => [l['orderId'], l['colis']])).toEqual([[B, { packageId: 'col-3', orderIds: [B, C] }]]);
+
+    // A name that is not in the package at all is still refused by name.
+    const etranger = await ops(mf, '/ops/task', {
+      command_id: 'bc-x',
+      orderId: B,
+      location: LOC,
+      window: WIN,
+      articles: [{ orderId: 'ord-etranger', libelle: 'Autre chose' }],
+    });
+    expect(etranger).toEqual({ ok: false, reason: 'articles_malformed' });
+
+    // Boutik+ never heard of the retire: it names all three. Séra takes it,
+    // and composes the two that travel.
+    const recompose = await composerColis(mf, B, [A, B, C], 'bc');
+    expect(recompose, JSON.stringify(recompose)).toMatchObject({ ok: true, admitted: true, colis: { orderIds: [B, C] } });
+    const code = await coursier(mf, 'rider-boss');
+    expect((await ops(mf, '/ops/assign', { command_id: 'bc-assign', taskId: recompose['taskId'], riderId: 'rider-boss' }))['ok']).toBe(true);
+    const moi = await appPorts(mf).session.signIn(code);
+    if (!moi.ok) throw new Error('sign-in refused');
+    expect(moi.session.assignment?.colis?.articles.map((x) => [x.orderId, x.libelle])).toEqual([
+      [B, 'Sandales'],
+      [C, 'Sac en cuir'],
+    ]);
+  }, 60_000);
+
+  it('a package a rider CARRIES: one article is refused by name and nothing moves; « Retirer le colis » takes the whole bag, frees the rider, and a re-run converges', async () => {
+    const mf = spawn();
+    await colis(mf, [A, B], 'col-2');
+    const composed = await composerColis(mf, A, [A, B], 'c2');
+    const code = await coursier(mf, 'rider-boss');
+    const granted = await ops(mf, '/ops/assign', { command_id: 'c2-assign', taskId: composed['taskId'], riderId: 'rider-boss' });
+    const assignmentId = (granted['assignment'] as Json)['assignmentId'] as string;
+    expect((await appPorts(mf).acts.accepterCourse(code, assignmentId)).ok).toBe(true);
+
+    expect(await desk(mf).board()).toEqual({
+      kind: 'ok',
+      value: [A, B].map((orderId) => ({ orderId, etat: 'confiee', riderName: 'rider-boss', colis: [A, B] })),
+    });
+
+    // One article of a bag in his hands: refused by name, and nothing moved.
+    expect(await desk(mf).retirer(B)).toEqual({ kind: 'refused', reason: 'colis_en_course' });
+    const tenu = board(await ops(mf, '/ops/board'));
+    expect(tenu.assignments.map((a) => a['assignmentId'])).toEqual([assignmentId]);
+    expect(tenu.riders.find((r) => r['riderId'] === 'rider-boss')).toMatchObject({ assignable: false });
+    const moi = await appPorts(mf).session.signIn(code);
+    if (!moi.ok) throw new Error('sign-in refused');
+    expect(moi.session.assignment?.colis?.articles.map((x) => x.orderId)).toEqual([A, B]);
+
+    // A malformed ask for the whole bag is refused by name, not guessed at.
+    const malforme = await mf.dispatchFetch('http://logistics/ops/order/retirer', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${OPS}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command_id: 'x', orderId: B, colisEntier: 'oui' }),
+    });
+    expect(malforme.status).toBe(400);
+
+    // ═══ THE ACT — « Retirer le colis », from either article ═══
+    expect(await desk(mf).retirer(B, true)).toEqual({ kind: 'ok', value: 'retire' });
+    const apres = board(await ops(mf, '/ops/board'));
+    expect(apres.assignments).toEqual([]);
+    expect(apres.queued).toEqual([]);
+    expect(apres.riders.find((r) => r['riderId'] === 'rider-boss')).toMatchObject({ assignable: true });
+    const libre = await appPorts(mf).session.signIn(code);
+    if (!libre.ok) throw new Error('sign-in refused');
+    expect(libre.session.assignment).toBeNull();
+    const aPreparer = JSON.stringify(await ops(mf, '/ops/a-preparer'));
+    expect(aPreparer).not.toContain(A);
+    expect(aPreparer).not.toContain(B);
+    expect(await desk(mf).retirer(A, true)).toEqual({ kind: 'ok', value: 'inconnu' });
   }, 60_000);
 });

@@ -300,6 +300,8 @@ interface ProjectionsSnapshot {
   readiness: Record<string, ReadinessFact>;
   /** COLIS-FOURNISSEUR-1 — orderId → the package its funding fact named. Write-once. */
   colis?: Record<string, ColisMembership>;
+  /** COLIS-2 — the package articles the founder retired one by one. */
+  retires?: Record<string, true>;
 }
 
 /** COLIS-FOURNISSEUR-1 — one course carrying a package (see SNAP_COLIS_COURSES). */
@@ -525,6 +527,9 @@ export class LogisticsDO {
   private colisDe: Record<string, ColisMembership> = {};
   /** COLIS-FOURNISSEUR-1 — assignmentId → the package that course carries. */
   private colisCourses: Record<string, ColisCourse> = {};
+  /** COLIS-2 — package articles retired alone: they stay behind like a
+   *  cancelled one, and their package-mates still travel. */
+  private retires: Record<string, true> = {};
   /** REPROGRAMMATION-2 — when each live course's custody wires were last
    *  asked to revive (in memory: a throttle, never a fact). */
   private wiresRevivedAt: Record<string, number> = {};
@@ -569,7 +574,9 @@ export class LogisticsDO {
 
   /** COLIS-FOURNISSEUR-1 — the orders this order's package still carries. */
   private voyageursDe(orderId: string): string[] | 'incomplet' {
-    return voyageurs(orderId, this.colisDe, (id) => this.fundingFacts[id]?.status);
+    // COLIS-2 — an article the founder retired alone reads as cancelled: its
+    // funding fact is gone, and « unheard » would hold the rest of the bag.
+    return voyageurs(orderId, this.colisDe, (id) => (this.retires[id] === true ? 'cancelled' : this.fundingFacts[id]?.status));
   }
 
   /** COLIS-FOURNISSEUR-1 — every order a course carries (the first names it). */
@@ -659,6 +666,7 @@ export class LogisticsDO {
     this.fundingFacts = projections?.funding ?? {};
     this.readinessFacts = projections?.readiness ?? {};
     this.colisDe = projections?.colis ?? {};
+    this.retires = projections?.retires ?? {};
     this.colisCourses = (stored.get(SNAP_COLIS_COURSES) as Record<string, ColisCourse> | undefined) ?? {};
     this.briefs = (stored.get(SNAP_BRIEFS) as Record<string, CourseBrief> | undefined) ?? {};
     this.ramassage = (stored.get(SNAP_RAMASSAGE) as Record<string, { code: string; confirmeAt?: string }> | undefined) ?? {};
@@ -703,7 +711,7 @@ export class LogisticsDO {
       [SNAP_BOOK]: this.book.snapshot(),
       [SNAP_LEASE]: this.leaseState,
       [SNAP_WITNESS]: this.witness.snapshot(),
-      [SNAP_PROJECTIONS]: { funding: this.fundingFacts, readiness: this.readinessFacts, colis: this.colisDe },
+      [SNAP_PROJECTIONS]: { funding: this.fundingFacts, readiness: this.readinessFacts, colis: this.colisDe, retires: this.retires },
       [SNAP_BRIEFS]: this.briefs,
       [SNAP_RAMASSAGE]: this.ramassage,
       [SNAP_CODE_VERIFICATION]: this.codesVerification,
@@ -1832,16 +1840,38 @@ export class LogisticsDO {
     if (request.method === 'POST' && pathname === '/ops/order/retirer') {
       const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
       if (body === null || !isStr(body['command_id']) || !isStr(body['orderId'])) return malformed();
+      if (body['colisEntier'] !== undefined && typeof body['colisEntier'] !== 'boolean') return malformed();
       /**
-       * COLIS-FOURNISSEUR-1 — A PACKAGE LEAVES THE BOARD WHOLE. Its orders
-       * travel together, so retiring one of them retires the bag: leaving
-       * the others would strand them for ever (a package is composable only
-       * when every member's word is on file, and this door erases one).
-       * Still one founder act per call — the package is the unit, never
-       * « everything ».
+       * COLIS-2 — ONE ARTICLE LEAVES, ITS PACKAGE-MATES STAY (founder,
+       * 2026-09-23: « « Retirer » on your console removes the whole
+       * package »). An article of a package no rider carries yet is retired
+       * alone and then reads as cancelled — so the rest of the bag stays
+       * composable, and a queued course keeps going with one article fewer
+       * (its first article retired → the task goes, and the rest come back
+       * to « à préparer » under their new first article).
+       *
+       * A package a rider ALREADY CARRIES is one bag in one pair of hands:
+       * taking one article off the board would leave a course that can never
+       * close (it closes when every article it carries is settled). So one
+       * article of a live package is refused by name, `colis_en_course`, and
+       * the whole bag leaves only on `colisEntier: true` — the console asks
+       * for that in its own words, naming every article.
        */
       const demande = (body['orderId'] as string).trim();
-      const aRetirer = this.colisDe[demande]?.orderIds ?? [demande];
+      const colisEntier = body['colisEntier'] === true;
+      const membre = this.colisDe[demande];
+      let aRetirer: readonly string[] = colisEntier ? membre?.orderIds ?? [demande] : [demande];
+      const articleSeul = membre !== undefined && !colisEntier;
+      if (articleSeul) {
+        const course = this.courseDe(demande);
+        if (course !== undefined && this.ordresDeCourse(course).length > 1) {
+          return Response.json(
+            { ok: false, reason: 'colis_en_course', orderIds: this.ordresDeCourse(course) },
+            { status: 409 },
+          );
+        }
+        aRetirer = [demande];
+      }
       const removed = { tasks: 0, assignments: 0, leases: 0, briefs: 0, ramassage: 0, codesVerification: 0, custodyOutbox: 0, funding: 0, readiness: 0 };
       let quelqueChose = false;
       for (const orderId of aRetirer) {
@@ -1885,7 +1915,16 @@ export class LogisticsDO {
         removed.funding += hasFunding ? 1 : 0;
         removed.readiness += hasReadiness ? 1 : 0;
       }
-      for (const orderId of aRetirer) delete this.colisDe[orderId];
+      if (articleSeul) {
+        // Its package-mates still name it: the membership stays, and the
+        // marker says it no longer travels.
+        if (quelqueChose) this.retires[demande] = true;
+      } else {
+        for (const orderId of aRetirer) {
+          delete this.colisDe[orderId];
+          delete this.retires[orderId];
+        }
+      }
       if (!quelqueChose) return Response.json({ ok: true, status: 'inconnu' });
       return Response.json({ ok: true, status: 'retire', removed });
     }
@@ -2013,12 +2052,19 @@ export class LogisticsDO {
        * composed without them still travels, its articles then numbered on
        * the rider's screen. REFUSED, NOT IGNORED when malformed: an order not
        * in this package, a name twice, or a name that is not a short line.
+       *
+       * COLIS-2 — a package-mate that no longer travels (retired alone on
+       * this console, or cancelled) is still IN the package: Boutik+'s
+       * console, which never heard of the retire, may still name it. Its name
+       * is checked against the whole package and then left out of the brief —
+       * the rider is never briefed with an article he will not carry.
        */
       const articlesRaw = body['articles'];
-      const articles = lireArticles(articlesRaw, duColis);
-      if (articles === 'malformed') {
+      const articlesLus = lireArticles(articlesRaw, this.colisDe[orderId]?.orderIds ?? duColis);
+      if (articlesLus === 'malformed') {
         return Response.json({ ok: false, reason: 'articles_malformed' }, { status: 400 });
       }
+      const articles = articlesLus?.filter((a) => duColis.includes(a.orderId));
       /**
        * VERIFIER MAJOR 3 — ONE OPEN TASK PER ORDER, at this door. A second
        * compose for an order that already has a live task is an accident (the

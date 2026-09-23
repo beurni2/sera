@@ -333,7 +333,7 @@ describe('COLIS-FOURNISSEUR-1 — one course, one package, several orders, acros
     expect((await ledger(custody, B)).json['currentCustodian']).toBe(`seller:${SUPPLIER}`);
   }, 120_000);
 
-  it('PAY AT THE DOOR (decision d): she keeps both, ONE door payment for both, charged under its collection — each article crosses only when the provider’s own confirmation lists it', async () => {
+  it('PAY AT THE DOOR (decision d): she keeps both, ONE door payment for both, charged under its collection — each article crosses only when that reference was declared to its own file first', async () => {
     const hold: Hold = {};
     spawnLogistics(hold);
     spawnCustody(hold);
@@ -386,30 +386,41 @@ describe('COLIS-FOURNISSEUR-1 — one course, one package, several orders, acros
     }
 
     // The provider's confirmation of the package's ONE collection, as Shop+
-    // forwards it verbatim to each article: the collection's reference, and
-    // the articles it paid for, echoed from the charge.
-    const confirmation = (commandId: string, parts: string[]) => ({
+    // forwards it verbatim to each article: it names the collection's
+    // reference and nothing else — what every provider echoes.
+    const COLLECTE = 'grp-porte-1-porte-1';
+    const confirmation = (commandId: string, reference: string) => ({
       name: 'payment.door_leg_confirmed.v1',
-      envelope: { command_id: commandId, correlation_id: 'corr-grp-porte-1', aggregateVersion: 1, actor: 'payment-provider:sandbox', serverTime: T, version: '1' },
+      envelope: { command_id: commandId, correlation_id: `corr-${reference}`, aggregateVersion: 1, actor: 'payment-provider:sandbox', serverTime: T, version: '1' },
       payload: {
         provider: 'sandbox-provider', payment_attempt_id: 'payatt-porte-1', collectRef: 'collect-porte-1', amount: 10_000, fee: 0,
-        status: 'held', order_id: 'grp-porte-1-porte-1', redelivery: 0, parts: parts.map((order_id) => ({ order_id, amount: 5_000 })),
+        status: 'held', order_id: reference, redelivery: 0,
       },
     });
-    const signal = (o: string, commandId: string, parts: string[]) =>
-      custody.dispatchFetch('http://custody/produce-shop/door-signal', {
+    const shopPost = (path: string, body: Json) =>
+      custody.dispatchFetch(`http://custody/produce-shop${path}`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${SHOP_ARM_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: o, command_id: `door-signal-${commandId}-${o}`, event: confirmation(commandId, parts) }),
+        body: JSON.stringify(body),
       }).then(async (r) => ({ status: r.status, json: (await r.json()) as Json }));
+    // Shop+'s flusher: the provider's event verbatim, under a fresh outer id per attempt.
+    const signal = (o: string, commandId: string, reference: string, essai = 0) =>
+      shopPost('/door-signal', { orderId: o, command_id: `door-signal-${commandId}-${o}-a${essai}`, event: confirmation(commandId, reference) });
 
-    // A collection that paid for OTHER articles is not B's payment: B waits.
-    expect(await signal(B, 'whk-autre', [A, 'ord-ailleurs'])).toMatchObject({ status: 409, json: { ok: false, reason: 'door_signal_not_awaited' } });
+    // Shop+ declares the collection to A's file only.
+    expect(await shopPost('/door-reference', { orderId: A, command_id: `door-ref-${A}`, reference: COLLECTE })).toMatchObject({ status: 200, json: { ok: true } });
+    // The collection's confirmation is not B's payment until it is declared to B: B waits.
+    expect(await signal(B, 'whk-colis', COLLECTE)).toMatchObject({ status: 409, json: { ok: false, reason: 'door_signal_not_awaited' } });
     expect((await riderCustody(custody, '/rider/delivery/drop', code, { orderId: B, command_id: 'd-b-tot', dropCode: 'DROP-PORTE-1' })).json)
       .toMatchObject({ ok: false, reason: 'door_payment_not_confirmed' });
+    // Another collection's confirmation pays neither.
+    expect(await signal(A, 'whk-autre', 'grp-autre-porte-1')).toMatchObject({ status: 409, json: { ok: false, reason: 'door_signal_not_awaited' } });
 
-    // The collection that paid for both: each article crosses on its own drop.
-    for (const o of [A, B]) expect(await signal(o, 'whk-colis', [A, B])).toMatchObject({ status: 200, json: { ok: true } });
+    // Declared to B too: the one confirmation pays each on its own file (a
+    // retried signal is Shop+'s at-least-once road), and each crosses on its own drop.
+    expect(await shopPost('/door-reference', { orderId: B, command_id: `door-ref-${B}`, reference: COLLECTE })).toMatchObject({ status: 200, json: { ok: true } });
+    // The SAME provider event, retried under the next attempt's outer id.
+    for (const o of [A, B]) expect(await signal(o, 'whk-colis', COLLECTE, 1)).toMatchObject({ status: 200, json: { ok: true } });
     for (const o of [A, B]) {
       expect((await riderCustody(custody, '/rider/delivery/drop', code, { orderId: o, command_id: `d-${o}`, dropCode: 'DROP-PORTE-1' })).json, `drop ${o}`)
         .toMatchObject({ ok: true, status: 'custody_with_customer' });
