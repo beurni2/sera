@@ -129,6 +129,7 @@ import {
   returnOpened,
   validRejectionFault,
   validRejectionRecorded,
+  changementAvisRecorded,
   windowExpiresAtOf,
   type CustodyAnswer,
 } from './src/net/custody-acts';
@@ -516,6 +517,8 @@ export default function App() {
   const [porteColis, setPorteColis] = useState<Record<string, { choix: 'garde' | 'refuse'; etape: 'inspection' | 'retour'; phase: ActPhase }>>({});
   /** The article whose « refused » seal question is open. */
   const [refusArticle, setRefusArticle] = useState<string | null>(null);
+  /** RETOUR-CHANGEMENT-AVIS — why she gives it back: asked first, then (a problem) the seal question. */
+  const [refusProbleme, setRefusProbleme] = useState(false);
   /** Articles this session handed over (the drop answered) before the session says so. */
   const [livresLocal, setLivresLocal] = useState<string[]>([]);
   /** Articles this session put in the return bag (the return answered) before the session says so. */
@@ -973,6 +976,7 @@ export default function App() {
     // COLIS-FOURNISSEUR-1 — the door of one package never leaks onto the next.
     setPorteColis({});
     setRefusArticle(null);
+    setRefusProbleme(false);
     setLivresLocal([]);
     setRetourLocal([]);
   }, [dwellOrderId]);
@@ -1602,11 +1606,21 @@ export default function App() {
     [custodyActs, riderCode, attemptFor],
   );
 
+  /**
+   * RETOUR-CHANGEMENT-AVIS (founder ruling 2026-09-23, « 1 ») — « Elle a
+   * changé d'avis »: the same road home, but the inspection records HER
+   * choice (`buyer_risk`, `definitive`): final at once on a package's
+   * article, its delivery-fee share kept — the service says so, never the
+   * rider. The seal question is not asked: nothing is wrong with the article.
+   */
   const refuserArticle = useCallback(
-    (orderId: string, custodySealIntact: boolean) => {
+    (orderId: string, motif: 'intact' | 'abime' | 'avis') => {
       if (riderCode === null || scelleRetour === null) return;
       setRefusArticle(null);
-      const attempt = attemptFor(`door-inspection|${orderId}|refus-valide|${custodySealIntact ? 'intact' : 'abime'}`);
+      setRefusProbleme(false);
+      const avis = motif === 'avis';
+      const custodySealIntact = motif !== 'abime';
+      const attempt = attemptFor(`door-inspection|${orderId}|${avis ? 'changement-avis' : `refus-valide|${motif}`}`);
       const held = capturedAtFor.current.get(attempt.id) ?? new Date().toISOString();
       capturedAtFor.current.set(attempt.id, held);
       const noter = (etape: 'inspection' | 'retour', phase: ActPhase): void =>
@@ -1622,7 +1636,7 @@ export default function App() {
             manufacturerSealOpened: false,
             custodySealIntact,
             buyerAccepts: false,
-            refusalColumn: 'valid',
+            ...(avis ? { refusalColumn: 'buyer_risk' as const, definitive: true as const } : { refusalColumn: 'valid' as const }),
             startedAt: held,
             completedAt: held,
             evidenceBundleId: `${SANS_PHOTO}-porte-${orderId}`,
@@ -1632,7 +1646,7 @@ export default function App() {
         // Her refusal is on the ledger (or already was, on a relaunch): the
         // article goes into the return bag now. Anything else is shown as it is.
         const refusTenu =
-          validRejectionRecorded(inspection) ||
+          (avis ? changementAvisRecorded(inspection) : validRejectionRecorded(inspection)) ||
           (inspection.kind === 'refused' && inspection.reason === 'inspection_already_recorded');
         if (!refusTenu) {
           noter('inspection', { kind: 'answered', answer: inspection });
@@ -1896,13 +1910,23 @@ export default function App() {
               <FasoCard>
                 <FasoBody>{t('retour.scelle_absent')}</FasoBody>
               </FasoCard>
-            ) : (
+            ) : refusProbleme ? (
               <FasoCard>
                 <FasoSealMark code={scelleRetour} label={t('retour.scelle_titre')} />
                 <FasoBody>{t('colis.refus_sac')}</FasoBody>
                 <FasoBody>{t('reject.seal_question')}</FasoBody>
-                <FasoSecondaryButton label={t('reject.seal_intact')} onPress={() => refuserArticle(courant.orderId, true)} />
-                <FasoDangerButton label={t('reject.seal_broken')} onPress={() => refuserArticle(courant.orderId, false)} />
+                <FasoSecondaryButton label={t('reject.seal_intact')} onPress={() => refuserArticle(courant.orderId, 'intact')} />
+                <FasoDangerButton label={t('reject.seal_broken')} onPress={() => refuserArticle(courant.orderId, 'abime')} />
+                <FasoGhostButton label={t('nav.retour')} onPress={() => setRefusProbleme(false)} />
+              </FasoCard>
+            ) : (
+              /* RETOUR-CHANGEMENT-AVIS — why she gives it back, before anything is sent. */
+              <FasoCard>
+                <FasoSealMark code={scelleRetour} label={t('retour.scelle_titre')} />
+                <FasoBody>{t('colis.refus_sac')}</FasoBody>
+                <FasoBody>{t('colis.refus_pourquoi')}</FasoBody>
+                <FasoSecondaryButton label={t('colis.refus_probleme')} onPress={() => setRefusProbleme(true)} />
+                <FasoSecondaryButton label={t('colis.refus_avis')} onPress={() => refuserArticle(courant.orderId, 'avis')} />
                 <FasoGhostButton label={t('nav.retour')} onPress={() => setRefusArticle(null)} />
               </FasoCard>
             )
@@ -1913,7 +1937,14 @@ export default function App() {
                 disabled={travail}
                 onPress={() => garderArticle(courant.orderId)}
               />
-              <FasoGhostButton label={t('colis.refuse')} disabled={travail} onPress={() => setRefusArticle(courant.orderId)} />
+              <FasoGhostButton
+                label={t('colis.refuse')}
+                disabled={travail}
+                onPress={() => {
+                  setRefusProbleme(false);
+                  setRefusArticle(courant.orderId);
+                }}
+              />
             </>
           )}
           {issue !== null && issue.tone !== 'ok' ? (

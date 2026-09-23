@@ -564,6 +564,12 @@ interface LoggedCommand {
 export interface OrderChain extends ChainIds {
   supplierId: string;
   paymentMode: 'FULL_PREPAY' | 'DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR';
+  /**
+   * RETOUR-CHANGEMENT-AVIS — logistics' word at open: this article travels
+   * in a package of several. Present only when true, so a file opened before
+   * it keeps the chain (and its hash) it had.
+   */
+  colis?: true;
 }
 
 /**
@@ -886,6 +892,7 @@ export class CustodyDO {
       { order_id: chain.order_id, task_id: chain.task_id, package_id: chain.package_id, correlation_id: chain.correlation_id },
       chain.supplierId,
       chain.paymentMode,
+      chain.colis === true,
     );
     for (const row of log) this.apply(spine, row.cmd);
     return spine;
@@ -1671,6 +1678,7 @@ export class CustodyDO {
       if (hasControlChar(body['packageId'] as string)) return malformed('package_id_not_usable');
       const mode = body['paymentMode'] ?? 'FULL_PREPAY';
       if (mode !== 'FULL_PREPAY' && mode !== 'DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR') return malformed('unknown_payment_mode');
+      if (body['colis'] !== undefined && typeof body['colis'] !== 'boolean') return malformed();
       const chain: OrderChain = {
         order_id: (body['orderId'] as string).trim(),
         task_id: (body['taskId'] as string).trim(),
@@ -1678,6 +1686,7 @@ export class CustodyDO {
         correlation_id: (body['correlationId'] as string).trim(),
         supplierId: (body['supplierId'] as string).trim(),
         paymentMode: mode,
+        ...(body['colis'] === true ? { colis: true as const } : {}),
       };
       /**
        * ⚠ VERIFIER MAJOR (round 2) — THE SAME RACE, ONE LEVEL UP. Everything
@@ -1709,6 +1718,8 @@ export class CustodyDO {
             this.chain.correlation_id === chain.correlation_id &&
             this.chain.supplierId === chain.supplierId &&
             this.chain.paymentMode === chain.paymentMode;
+          // The package flag is first-wins and not an id: a re-open that
+          // differs on it alone is absorbed, the file keeps what it was told.
           // An identical re-open is absorbed; a DIFFERENT one refuses — the
           // chain ids under a custody file are not re-writable.
           if (!same) {
@@ -2528,6 +2539,8 @@ export class CustodyDO {
         typeof body['custodySealIntact'] !== 'boolean' ||
         typeof body['buyerAccepts'] !== 'boolean' ||
         (refusalColumn !== undefined && refusalColumn !== 'valid' && refusalColumn !== 'buyer_risk') ||
+        // RETOUR-CHANGEMENT-AVIS — `definitive` names a change of mind, so it rides only a buyer-risk refusal.
+        (body['definitive'] !== undefined && (body['definitive'] !== true || body['buyerAccepts'] !== false || refusalColumn !== 'buyer_risk')) ||
         !isIso(body['startedAt']) ||
         !isIso(body['completedAt']) ||
         !isBoundedStr(body['evidenceBundleId'], MAX_ID) ||
@@ -2549,6 +2562,7 @@ export class CustodyDO {
           custodySealIntact: body['custodySealIntact'] as boolean,
           buyerAccepts: body['buyerAccepts'] as boolean,
           ...(refusalColumn !== undefined ? { refusalColumn: refusalColumn as 'valid' | 'buyer_risk' } : {}),
+          ...(body['definitive'] === true ? { definitive: true } : {}),
           startedAt: body['startedAt'] as string,
           completedAt: body['completedAt'] as string,
           evidenceBundleId: (body['evidenceBundleId'] as string).trim(),

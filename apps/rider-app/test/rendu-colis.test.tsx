@@ -32,7 +32,13 @@ import { __modeChargement } from './doubles/expo-audio';
  * the pair logistics armed, and « Un souci ? » opens THAT order's one window
  * on the bounds custody-spine `recordDoorRefusal` states (not delivered, with
  * the courier, no refusal or return under way, no window already open —
- * an accepted inspection does not close it). What it does NOT model: the wires between the two
+ * an accepted inspection does not close it). RETOUR-CHANGEMENT-AVIS (canon
+ * 3.21.0): « Elle a changé d'avis » on one article is custody-spine
+ * `recordDoorInspection` with `buyer_risk` + `definitive` — final at once
+ * (the buyer-fault `return`, attempt 1) only on an article custody was told
+ * travels in a package (`change_of_mind_not_in_package` otherwise), never over
+ * an open window (`ladder_already_open`); the return then opens as the
+ * buyer-fault one. What it does NOT model: the wires between the two
  * Workers — the logistics seam test owns those.
  */
 
@@ -114,7 +120,9 @@ interface Ledger {
   pickupUsed: boolean;
   sealed: boolean;
   evidence: boolean;
-  inspection: 'accepted' | 'valid_rejection' | null;
+  inspection: 'accepted' | 'valid_rejection' | 'changement_avis' | null;
+  /** RETOUR-CHANGEMENT-AVIS — custody was told at open that this article travels in a package. */
+  colis: boolean;
   doorPaid: boolean;
   returnOpen: boolean;
   returned: boolean;
@@ -132,7 +140,7 @@ interface World {
 }
 
 const ledger = (): Ledger => ({
-  pickupUsed: false, sealed: false, evidence: false, inspection: null, doorPaid: false,
+  pickupUsed: false, sealed: false, evidence: false, inspection: null, colis: true, doorPaid: false,
   returnOpen: false, returned: false, delivered: false, ladder: null, panne: null,
 });
 const freshWorld = (): World => ({ ledgers: { [A]: ledger(), [B]: ledger() }, recorded: new Map() });
@@ -184,18 +192,28 @@ function custody(world: World, paymentMode: string): Route {
         l.inspection = 'accepted';
         return commit({ status: 200, json: { ok: true, kind: 'accepted' } });
       }
+      if (body?.['refusalColumn'] === 'buyer_risk' && body?.['definitive'] === true) {
+        if (!l.colis) return commit({ status: 409, json: { ok: false, reason: 'change_of_mind_not_in_package' } });
+        if (l.ladder !== null) return commit({ status: 409, json: { ok: false, reason: 'ladder_already_open' } });
+        l.inspection = 'changement_avis';
+        l.ladder = 'change_of_mind';
+        return commit({
+          status: 200,
+          json: { ok: true, kind: 'invalid_rejection', ladder: { ok: true, outcome: { family: 'return', reasonCode: 'change_of_mind', faultClass: 'buyer', attempt: { number: 1, at: '2026-09-23T11:00:00.000Z' } } } },
+        });
+      }
       if (body?.['refusalColumn'] !== 'valid') return commit({ status: 409, json: { ok: false, reason: 'refusal_column_missing' } });
       l.inspection = 'valid_rejection';
       return commit({ status: 200, json: { ok: true, kind: 'valid_rejection', faultClass: body?.['custodySealIntact'] === true ? 'seller' : 'sera' } });
     }
     if (path === '/rider/return/open') {
-      if (l.inspection !== 'valid_rejection') return commit({ status: 409, json: { ok: false, reason: 'no_valid_rejection' } });
+      if (l.inspection !== 'valid_rejection' && l.inspection !== 'changement_avis') return commit({ status: 409, json: { ok: false, reason: 'no_valid_rejection' } });
       if (body?.['returnSealId'] !== RETSEAL) return commit({ status: 409, json: { ok: false, reason: 'return_seal_refused' } });
       l.returnOpen = true;
       return commit({ status: 200, json: { ok: true, kind: 'return_opened' } });
     }
     if (path === '/rider/delivery/drop') {
-      if (l.inspection === 'valid_rejection' || l.returnOpen) return commit({ status: 409, json: { ok: false, reason: 'return_in_progress' } });
+      if (l.inspection === 'valid_rejection' || l.inspection === 'changement_avis' || l.returnOpen) return commit({ status: 409, json: { ok: false, reason: 'return_in_progress' } });
       if (paymentMode === PORTE && l.inspection !== 'accepted') return commit({ status: 409, json: { ok: false, reason: 'inspection_not_accepted' } });
       if (paymentMode === PORTE && !l.doorPaid) return commit({ status: 409, json: { ok: false, reason: 'door_payment_not_confirmed' } });
       if (body?.['dropCode'] !== DROP) return commit({ status: 409, json: { ok: false, reason: 'drop_code_refused' } });
@@ -205,7 +223,7 @@ function custody(world: World, paymentMode: string): Route {
     if (path === '/rider/door/refusal') {
       if (l.delivered) return commit({ status: 409, json: { ok: false, reason: 'order_already_delivered' } });
       if (!l.sealed) return commit({ status: 409, json: { ok: false, reason: 'refusal_before_custody' } });
-      if (l.inspection === 'valid_rejection' || l.returnOpen) return commit({ status: 409, json: { ok: false, reason: 'return_in_progress' } });
+      if (l.inspection === 'valid_rejection' || l.inspection === 'changement_avis' || l.returnOpen) return commit({ status: 409, json: { ok: false, reason: 'return_in_progress' } });
       if (l.ladder !== null) return commit({ status: 409, json: { ok: false, reason: 'ladder_already_open' } });
       l.ladder = String(body?.['reasonCode']);
       return commit({
@@ -292,8 +310,13 @@ describe('COLIS-FOURNISSEUR-1 — the rider carries one package of several order
     expect(s.shows('Les sandales')).toBe(true);
     expect(s.shows('Un souci ?'), 'one article chosen — the ladder is no longer the whole bag’s').toBe(false);
     await s.press('La cliente le refuse');
-    // The seal question, with the return seal to write on the bag.
+    // Why she gives it back comes first — with the return seal to write on the bag.
+    expect(s.shows('Pourquoi elle le rend ?'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
     expect(s.shows(RETSEAL)).toBe(true);
+    expect(actes(w.calls, '/rider/door/inspection').filter((f) => f.orderId === B), 'nothing sent before a reason').toEqual([]);
+    await s.press('L’article a un problème');
+    // Then the seal question.
+    expect(s.shows('Le scellé Séra est-il intact ?')).toBe(true);
     await s.press('Oui, intact');
     expect(world.ledgers[B]!.inspection, 'her refusal is on the SANDALS’ ledger').toBe('valid_rejection');
     expect(world.ledgers[B]!.returnOpen, 'and they are re-sealed for home at once').toBe(true);
@@ -336,6 +359,58 @@ describe('COLIS-FOURNISSEUR-1 — the rider carries one package of several order
     state.closed = true;
     await s.press('Revenir en service');
     expect(s.shows('Commencer le service') || s.texts().length > 0, 'the tree survived to the waiting state').toBe(true);
+  });
+
+  it('RETOUR-CHANGEMENT-AVIS — pay at the door: she keeps the pagne and CHANGES HER MIND on the sandals: final at once, no seal question, no window — into the return bag, and ONE code for the pagne', async () => {
+    const state = course(PORTE);
+    const world = freshWorld();
+    const { s, w } = await toTheDoor(state, world);
+    await s.press('La cliente le garde');
+    await s.press('La cliente le refuse');
+    expect(s.shows('Pourquoi elle le rend ?'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    await s.press('Elle a changé d’avis');
+    // HER choice on the sandals' own ledger: a buyer-risk refusal, final — the seal is not asked about.
+    const avis = actes(w.calls, '/rider/door/inspection').filter((f) => f.orderId === B);
+    expect(avis).toHaveLength(1);
+    expect(avis[0]!.body).toMatchObject({ buyerAccepts: false, refusalColumn: 'buyer_risk', definitive: true });
+    expect(s.shows('Le scellé Séra est-il intact ?')).toBe(false);
+    expect(world.ledgers[B]!.inspection).toBe('changement_avis');
+    // Home at once, under the return seal; no window was opened anywhere.
+    expect(world.ledgers[B]!.returnOpen, 're-sealed for home at once').toBe(true);
+    expect(actes(w.calls, '/rider/return/open').map((f) => [f.orderId, f.body?.['returnSealId']])).toEqual([[B, RETSEAL]]);
+    expect(actes(w.calls, '/rider/door/refusal'), 'no window: her decision is final').toEqual([]);
+    expect(world.ledgers[A]!.returnOpen).toBe(false);
+    // She pays for the pagne alone, and her code hands it over.
+    expect(s.shows('1 article à remettre.'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    world.ledgers[A]!.doorPaid = true;
+    await s.type(DROP);
+    await s.press('Confirmer la remise');
+    expect(world.ledgers[A]!.delivered).toBe(true);
+    expect(actes(w.calls, '/rider/delivery/drop').map((f) => f.orderId)).toEqual([A]);
+    expect(s.shows('Les articles gardés sont remis. Il reste le retour chez le vendeur.'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+  });
+
+  it('RETOUR-CHANGEMENT-AVIS — custody cannot take it as final (a file opened before the rule): the refusal is shown, nothing moved, and the rider still has a way: the other reason, or keeping it', async () => {
+    const state = course(PORTE);
+    const world = freshWorld();
+    world.ledgers[B]!.colis = false;
+    const { s, w } = await toTheDoor(state, world);
+    await s.press('La cliente le garde');
+    await s.press('La cliente le refuse');
+    await s.press('Elle a changé d’avis');
+    expect(world.ledgers[B]!.inspection).toBeNull();
+    expect(world.ledgers[B]!.returnOpen).toBe(false);
+    expect(actes(w.calls, '/rider/return/open')).toEqual([]);
+    // Still the sandals' turn, the refusal said, both roads open.
+    expect(s.shows('Article 2 sur 2'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    expect(s.canPress('La cliente le garde')).toBe(true);
+    expect(s.canPress('La cliente le refuse')).toBe(true);
+    await s.press('La cliente le refuse');
+    await s.press('L’article a un problème');
+    await s.press('Oui, intact');
+    expect(world.ledgers[B]!.inspection).toBe('valid_rejection');
+    expect(world.ledgers[B]!.returnOpen).toBe(true);
+    expect(s.shows('1 article à remettre.'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
   });
 
   it('⚠ verifier M4 — pay at the door, she keeps both but only the sandals are paid: her code hands over the sandals, the pagne waits, and « Un souci ? » is the way out for it alone', async () => {

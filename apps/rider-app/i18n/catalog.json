@@ -1986,6 +1986,24 @@
     "screenClass": "general"
   },
   {
+    "key": "colis.refus_pourquoi",
+    "fr": "Pourquoi elle le rend ?",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "colis.refus_probleme",
+    "fr": "L’article a un problème",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "colis.refus_avis",
+    "fr": "Elle a changé d’avis",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
     "key": "colis.refus_sac",
     "fr": "Mettez cet article seul dans le sac de retour et écrivez ce code dessus.",
     "register": "neutral",

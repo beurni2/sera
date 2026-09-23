@@ -39,8 +39,8 @@ function doorSignal(commandId = 'cmd-door-1', orderId = CHAIN.order_id) {
   });
 }
 
-function optionBSpine(): CustodySpine {
-  const spine = new CustodySpine(CHAIN, 'sup-1', 'DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR');
+function optionBSpine(enColis = false): CustodySpine {
+  const spine = new CustodySpine(CHAIN, 'sup-1', 'DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR', enColis);
   expect(spine.secrets.register('pickup_verification_code', CHAIN.order_id, 'pvc-1')).toEqual({ ok: true });
   expect(spine.secrets.register('custody_seal', CHAIN.order_id, 'seal-b-1')).toEqual({ ok: true });
   expect(spine.secrets.register('buyer_drop_code', CHAIN.order_id, 'drop-1')).toEqual({ ok: true });
@@ -357,5 +357,59 @@ describe('E2 gap — a SETTLED course answers the door signal BY NAME, so the at
     const prepay = new CustodySpine({ ...CHAIN, order_id: 'order-pp-2' }, 'sup-1'); // FULL_PREPAY — no door leg exists
     const onPrepay = prepay.consumeDoorPaidSignal(doorSignal('cmd-nf-2', 'order-pp-2'), T);
     expect(onPrepay).toMatchObject({ ok: false, reason: 'door_signal_not_awaited' });
+  });
+});
+
+/**
+ * RETOUR-CHANGEMENT-AVIS (founder ruling 2026-09-23, « 1 »; canon 3.21.0
+ * Séra §6.4) — a change of mind on ONE article of a package, at its door, is
+ * final at once: the buyer-fault return, no window, the fee retained when the
+ * return opens. Only on an article custody was told travels in a package.
+ */
+describe('RETOUR-CHANGEMENT-AVIS — a change of mind on a package\'s article is final at once', () => {
+  const avis = inspectionInput({ buyerAccepts: false, refusalColumn: 'buyer_risk', definitive: true });
+
+  it('an article of a package: the buyer-fault return straight away (attempt 1, no window), then home with the fee retained', () => {
+    const spine = optionBSpine(true);
+    const r = spine.recordDoorInspection(avis, T);
+    expect(r).toMatchObject({ ok: true, kind: 'invalid_rejection', ladder: { ok: true, outcome: { family: 'return', reasonCode: 'change_of_mind', faultClass: 'buyer', attempt: { number: 1, at: T } } } });
+    const outcome = (r as { ladder: { outcome: { attempt: Record<string, unknown> } } }).ladder.outcome;
+    expect(outcome.attempt['windowExpiresAt']).toBeUndefined();
+    expect(spine.currentLadderOutcome()?.family).toBe('return');
+    const opened = spine.openReturn({ returnSealId: 'rs-avis-1', at: T2 });
+    expect(opened.ok).toBe(true);
+    expect(spine.isFeeRetainedRecorded(CHAIN.order_id)).toBe(true);
+    const refused = spine.allEvents().filter((e) => e.name === 'delivery.refused.v1');
+    expect(refused.map((e) => e.payload)).toEqual([
+      expect.objectContaining({ order_id: CHAIN.order_id, family: 'return', reason_code: 'change_of_mind', fault_class: 'buyer', fee_retained: true }),
+    ]);
+    expect(spine.returnFlowState()).toBe('opened');
+  });
+
+  it('a single order is refused by name, nothing recorded — its refusal keeps the one window', () => {
+    const spine = optionBSpine(false);
+    expect(spine.recordDoorInspection(avis, T)).toEqual({ ok: false, reason: 'change_of_mind_not_in_package' });
+    expect(spine.currentLadderOutcome()).toBeNull();
+    const fenetre = spine.recordDoorInspection(inspectionInput({ buyerAccepts: false, refusalColumn: 'buyer_risk' }), T);
+    expect(fenetre).toMatchObject({ ok: true, kind: 'invalid_rejection', ladder: { ok: true, outcome: { family: 'retry' } } });
+  });
+
+  it('never over a window already open, and without `definitive` a package\'s article keeps the window', () => {
+    const ouvert = optionBSpine(true);
+    expect(ouvert.recordDoorRefusal('insufficient_balance', T)).toMatchObject({ ok: true });
+    expect(ouvert.recordDoorInspection(avis, T)).toEqual({ ok: false, reason: 'ladder_already_open' });
+    expect(ouvert.currentLadderOutcome()?.family).toBe('retry');
+    const sansDefinitif = optionBSpine(true);
+    expect(sansDefinitif.recordDoorInspection(inspectionInput({ buyerAccepts: false, refusalColumn: 'buyer_risk' }), T)).toMatchObject({
+      ok: true, kind: 'invalid_rejection', ladder: { ok: true, outcome: { family: 'retry' } },
+    });
+  });
+
+  it('`definitive` on an accept or a valid refusal changes nothing', () => {
+    const accepte = optionBSpine(true);
+    expect(accepte.recordDoorInspection(inspectionInput({ definitive: true }), T)).toEqual({ ok: true, kind: 'accepted' });
+    const valide = optionBSpine(true);
+    expect(valide.recordDoorInspection(inspectionInput({ buyerAccepts: false, refusalColumn: 'valid', definitive: true }), T)).toMatchObject({ ok: true, kind: 'valid_rejection' });
+    expect(valide.currentLadderOutcome()).toBeNull();
   });
 });

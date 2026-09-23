@@ -1003,6 +1003,9 @@ export class LogisticsDO {
           correlationId: `corr-${orderId}`,
           supplierId: next.supplierRef,
           paymentMode: next.paymentMode,
+          // RETOUR-CHANGEMENT-AVIS — custody may take her change of mind on this
+          // article as final only if it travels in a package of several.
+          ...((this.colisDe[orderId]?.orderIds.length ?? 1) > 1 ? { colis: true } : {}),
         });
         if (opened) next.phase = 'arm';
       }

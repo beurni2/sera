@@ -333,6 +333,86 @@ describe('COLIS-FOURNISSEUR-1 — one course, one package, several orders, acros
     expect((await ledger(custody, B)).json['currentCustodian']).toBe(`seller:${SUPPLIER}`);
   }, 120_000);
 
+  it('RETOUR-CHANGEMENT-AVIS (canon 3.21.0) — she keeps A and CHANGES HER MIND on B: custody takes it as final only because logistics said at open that B travels in the package — the buyer-fault return at once, fee retained, no window — and B goes home on its own', async () => {
+    const hold: Hold = {};
+    spawnLogistics(hold);
+    spawnCustody(hold);
+    const logistics = hold.logistics!;
+    const custody = hold.custody!;
+    const A = 'ord-avis-seam-a';
+    const B = 'ord-avis-seam-b';
+    const COLIS = { packageId: 'col-avis-1', orderIds: [A, B] };
+    const RIDER = 'rider-avis-1';
+    for (const o of [A, B]) {
+      expect((await intake(logistics, '/intake/funding', { orderId: o, status: 'funded', paymentMode: 'FULL_PREPAY', asOf: T, package: COLIS })).status).toBe(200);
+      expect((await intake(logistics, '/intake/readiness', { orderId: o, ready: true, asOf: T, supplierRef: SUPPLIER })).status).toBe(200);
+    }
+    const composed = await ops(logistics, '/ops/task', {
+      command_id: 'avis-t1', orderId: A, location: LOC, window: WIN,
+      articles: [{ orderId: A, libelle: 'Le pagne wax' }, { orderId: B, libelle: 'Les sandales' }],
+    });
+    expect(composed.status, JSON.stringify(composed.json)).toBe(200);
+    await ops(logistics, '/ops/riders', { riderId: RIDER, displayName: RIDER, phoneAlias: 'avis' });
+    await ops(logistics, '/ops/riders/certify', { riderId: RIDER, certified: true });
+    const code = (await ops(logistics, '/ops/rider-code/mint', { riderId: RIDER })).json['code'] as string;
+    const { acts, session } = appPorts(logistics);
+    await acts.ackPrivacy(code);
+    expect((await acts.startShift(code)).ok).toBe(true);
+    const granted = await ops(logistics, '/ops/assign', { command_id: 'avis-a', taskId: composed.json['taskId'], riderId: RIDER });
+    const assignmentId = (granted.json['assignment'] as Json)['assignmentId'] as string;
+    expect((await acts.accepterCourse(code, assignmentId)).ok).toBe(true);
+    for (const o of [A, B]) await attendre(() => ledger(custody, o), (r) => r.status === 200, `chain ${o} never opened`);
+    const signed = await session.signIn(code);
+    if (!signed.ok) throw new Error('sign-in refused');
+    const a = signed.session.assignment!;
+    for (const o of [A, B]) {
+      expect((await riderCustody(custody, '/rider/verification', code, { orderId: o, command_id: `v-${o}`, presentedPickupCode: a.codeVerification, checkResults: ALL_PASS, dwellSec: 150, evidenceBundleId: `ev-${o}` })).json).toMatchObject({ ok: true });
+      const b = await riderCustody(custody, '/rider/custody/begin', code, { orderId: o, command_id: `b-${o}`, custodySealId: a.codeScelle, sealPhotoRefs: [] });
+      const chaine = b.json['chain'] as Json;
+      expect((await riderCustody(custody, '/rider/delivery/evidence', code, {
+        orderId: o, command_id: `e-${o}`,
+        bundle: { taskId: chaine['task_id'], packageId: chaine['package_id'], custodySealId: a.codeScelle, artifacts: [], capturedAt: T },
+      })).json).toMatchObject({ ok: true, status: 'evidence_recorded' });
+    }
+    const porte = (o: string, extra: Json) => riderCustody(custody, '/rider/door/inspection', code, {
+      orderId: o, command_id: `i-${o}`, inspectionCategory: 'uncategorised_conservative', packageOpened: false, manufacturerSealOpened: false,
+      custodySealIntact: true, startedAt: T, completedAt: T, evidenceBundleId: `sans-photo-porte-${o}`, ...extra,
+    });
+    expect((await porte(A, { buyerAccepts: true })).json).toMatchObject({ ok: true, kind: 'accepted' });
+    // `definitive` rides only a buyer-risk refusal — anything else is malformed, and nothing is recorded.
+    const mal = await riderCustody(custody, '/rider/door/inspection', code, {
+      orderId: B, command_id: 'i-b-mal', inspectionCategory: 'uncategorised_conservative', packageOpened: false, manufacturerSealOpened: false,
+      custodySealIntact: true, buyerAccepts: false, refusalColumn: 'valid', definitive: true, startedAt: T, completedAt: T, evidenceBundleId: `sans-photo-porte-${B}`,
+    });
+    expect(mal.status).toBe(400);
+    // HER change of mind on B: final at once — the buyer-fault return, attempt 1, no window.
+    const avis = await porte(B, { buyerAccepts: false, refusalColumn: 'buyer_risk', definitive: true });
+    expect(avis.json, JSON.stringify(avis.json)).toMatchObject({
+      ok: true, kind: 'invalid_rejection',
+      ladder: { ok: true, outcome: { family: 'return', reasonCode: 'change_of_mind', faultClass: 'buyer', attempt: { number: 1 } } },
+    });
+    expect(((avis.json['ladder'] as Json)['outcome'] as { attempt: Json }).attempt['windowExpiresAt']).toBeUndefined();
+    const retourB = await riderCustody(custody, '/rider/return/open', code, { orderId: B, command_id: 'r-b', returnSealId: a.codeScelleRetour });
+    expect(retourB.json).toMatchObject({ ok: true, kind: 'return_opened' });
+    // The ledger's word: the refusal Shop+ will hear keeps the fee, and it is the buyer's.
+    const evts = await custody.dispatchFetch(`http://custody/ops/events?orderId=${B}`, { headers: { Authorization: `Bearer ${CUSTODY_OPS}` } });
+    const events = ((await evts.json()) as { events: { name: string; payload: Json }[] }).events;
+    const refus = events.filter((e) => e.name === 'delivery.refused.v1');
+    expect(refus.map((e) => e.payload)).toEqual([
+      expect.objectContaining({ order_id: B, family: 'return', reason_code: 'change_of_mind', fault_class: 'buyer', fee_retained: true }),
+    ]);
+    // Logistics heard it: B rides home in the return bag, A still to hand over.
+    const enRetour = await attendre(() => moi(logistics, code), (x) => typeof x?.['codeRetour'] === 'string', 'retour-ouvert never reached logistics');
+    expect((enRetour!['colis'] as { articles: Json[] }).articles.map((x) => x['etat'])).toEqual(['en_cours', 'en_retour']);
+    // A's own ledger never saw B's refusal: her code still hands A over.
+    await custody.dispatchFetch('http://custody/produce-shop/secrets/arm', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${SHOP_ARM_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderId: A, command_id: `arm-remise-${A}`, kind: 'buyer_drop_code', secret: 'DROP-AVIS-1' }),
+    }).then((r) => r.text());
+    expect((await riderCustody(custody, '/rider/delivery/drop', code, { orderId: A, command_id: 'd-a', dropCode: 'DROP-AVIS-1' })).json).toMatchObject({ ok: true, status: 'custody_with_customer' });
+  }, 120_000);
+
   it('PAY AT THE DOOR (decision d): she keeps both, ONE door payment for both, charged under its collection — each article crosses only when that reference was declared to its own file first', async () => {
     const hold: Hold = {};
     spawnLogistics(hold);

@@ -14,7 +14,7 @@ import {
 import { CustodyLedger } from './custody-ledger.js';
 import { SecretRegistry } from './secret-registry.js';
 import { runPickupVerification, type VerificationInput } from './pickup-verification-policy.js';
-import { openRetryWindow, resolveExpiredWindow, type LadderRefusal } from './refusal-ladder.js';
+import { changeOfMindAtPackageDoor, openRetryWindow, resolveExpiredWindow, type LadderRefusal } from './refusal-ladder.js';
 import { runDoorInspection, type DoorInspectionInput } from './door-flow.js';
 import { checkProducerActor } from './actor-provenance.js';
 
@@ -67,7 +67,8 @@ export type SpineRefusal =
   | 'no_reschedule_to_return'
   | 'producer_actor_mismatch'
   | 'door_leg_not_expected'
-  | 'door_references_full';
+  | 'door_references_full'
+  | 'change_of_mind_not_in_package';
 
 /** A package's door is retried under its collection's one reference; a new
  *  collection is rare (a changed set). 25 is the door's attempt ceiling. */
@@ -132,6 +133,12 @@ export class CustodySpine {
     /** FULL_PREPAY by default — the E1 paths are untouched; the Option-B
      * door gate binds only when the task's mode says so. */
     private readonly paymentMode: PaymentMode = 'FULL_PREPAY',
+    /**
+     * RETOUR-CHANGEMENT-AVIS — this article travels in a package of several
+     * (logistics said so when it opened the file). Only then may a change of
+     * mind at the door be final at once.
+     */
+    private readonly enColis = false,
   ) {}
 
   private emit(name: PlatformEvent['name'], command_id: string, payload: Record<string, unknown>, at: string): PlatformEvent {
@@ -598,6 +605,11 @@ export class CustodySpine {
     // Verifier NB②: the inspection binds to THIS order, like every other
     // piece of evidence in the spine.
     if (input.orderId !== this.chain.order_id) return { ok: false, reason: 'evidence_chain_mismatch' };
+    // RETOUR-CHANGEMENT-AVIS — final at once only for an article of a package,
+    // and never over a window already open (the ladder's own rule).
+    const definitif = input.definitive === true && !input.buyerAccepts && input.refusalColumn === 'buyer_risk';
+    if (definitif && !this.enColis) return { ok: false, reason: 'change_of_mind_not_in_package' };
+    if (definitif && this.ladderOutcome !== null) return { ok: false, reason: 'ladder_already_open' };
     const outcome = runDoorInspection(input);
     if (outcome.kind === 'invalid') return { ok: false, reason: outcome.reason };
     this.ledger.append({
@@ -611,6 +623,19 @@ export class CustodySpine {
       return { ok: true, kind: 'accepted' };
     }
     if (outcome.kind === 'invalid_rejection') {
+      if (definitif) {
+        // Her change of mind on this article is final: the buyer-fault return
+        // now, fee retained when the return opens (`applyBuyerFaultRefusal`).
+        const ladder = changeOfMindAtPackageDoor({ taskId: this.chain.task_id, orderId: this.chain.order_id, at });
+        this.ladderOutcome = ladder.outcome;
+        this.ledger.append({
+          packageId: this.chain.package_id,
+          kind: 'validation_decision',
+          payload: { result: 'door_refusal_recorded', family: ladder.outcome.family, reasonCode: ladder.outcome.reasonCode },
+          at,
+        });
+        return { ok: true, kind: 'invalid_rejection', ladder };
+      }
       // Buyer-risk refusal → the ordinary-buyer-fault ladder class (derived).
       const ladder = this.recordDoorRefusal(outcome.ladderReasonCode, at);
       return { ok: true, kind: 'invalid_rejection', ladder };

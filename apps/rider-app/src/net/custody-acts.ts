@@ -185,10 +185,13 @@ export interface DoorInspectionAct {
    * category's valid-rejection list, judged by the SERVICE from
    * `custodySealIntact` (seal broken → Séra's fault, intact → the seller's).
    * The accept road keeps omitting it (the fixed contract, pinned by
-   * rendu-porte); `buyer_risk` is the ladder's road (« Un souci ? »), never
-   * this act's.
+   * rendu-porte); `buyer_risk` is the ladder's road (« Un souci ? »), save
+   * one case: RETOUR-CHANGEMENT-AVIS — at a package's door she changed her
+   * mind on ONE article (`buyer_risk` + `definitive`), final at once, its
+   * delivery-fee share kept (canon 3.21.0 Séra §6.4).
    */
-  readonly refusalColumn?: 'valid';
+  readonly refusalColumn?: 'valid' | 'buyer_risk';
+  readonly definitive?: true;
   /** Frozen with the attempt (custody fingerprints the content — a moving
    *  clock would turn every retry into `command_id_reused_with_other_content`). */
   readonly startedAt: string;
@@ -409,6 +412,7 @@ export function httpCustodyActs(
         // fixed contract rendu-porte pins). And no `at`: custody stamps its
         // own clock, as always.
         ...(act.refusalColumn === undefined ? {} : { refusalColumn: act.refusalColumn }),
+        ...(act.definitive === true ? { definitive: true } : {}),
         startedAt: act.startedAt,
         completedAt: act.completedAt,
         evidenceBundleId: act.evidenceBundleId,
@@ -497,6 +501,15 @@ export function windowExpiredInto(answer: CustodyAnswer): 'return' | 'reschedule
  *  inspection act's third answer, beside `accepted` and `invalid_rejection`. */
 export function validRejectionRecorded(answer: CustodyAnswer): boolean {
   return answer.kind === 'recorded' && answer.body['kind'] === 'valid_rejection';
+}
+
+/** RETOUR-CHANGEMENT-AVIS — her change of mind on a package's article is on
+ *  the ledger as final: the buyer-fault `return`, straight away. */
+export function changementAvisRecorded(answer: CustodyAnswer): boolean {
+  if (answer.kind !== 'recorded' || answer.body['kind'] !== 'invalid_rejection') return false;
+  const ladder = answer.body['ladder'];
+  const outcome = ladder !== null && typeof ladder === 'object' ? (ladder as Record<string, unknown>)['outcome'] : undefined;
+  return outcome !== null && typeof outcome === 'object' && (outcome as Record<string, unknown>)['family'] === 'return';
 }
 
 /** Whose fault the SERVICE derived for a valid refusal (`faultClass` on the

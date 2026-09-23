@@ -87,6 +87,12 @@ export interface DoorInspectionInput {
    * sits in. `valid` = the category's valid-rejection list; `buyer_risk` =
    * the not-valid column (fit, try-on, inner seal, opened-then-refused). */
   refusalColumn?: 'valid' | 'buyer_risk';
+  /**
+   * RETOUR-CHANGEMENT-AVIS — with `buyer_risk` only: she changed her mind on
+   * ONE article of a package, final at once (canon 3.21.0 Séra §6.4). The
+   * spine honours it only on an article it knows travels in a package.
+   */
+  definitive?: boolean;
   startedAt: string;
   completedAt: string;
   evidenceBundleId: string;

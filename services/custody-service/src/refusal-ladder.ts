@@ -97,6 +97,27 @@ export function openRetryWindow(args: {
 }
 
 /**
+ * RETOUR-CHANGEMENT-AVIS (founder ruling 2026-09-23, « 1 »; canon 3.21.0
+ * Séra §6.4) — a change of mind on ONE article of a package, at its door, is
+ * final at once: no window, the buyer-fault `return` straight away (attempt 1,
+ * no `windowExpiresAt`), so the article goes home and she pays for the rest.
+ * The caller proves the article travels in a package; everything else keeps
+ * the one window.
+ */
+export function changeOfMindAtPackageDoor(args: { taskId: string; orderId: string; at: string }): LadderStep {
+  const outcome = DeliveryOutcomeSchema.parse({
+    taskId: args.taskId,
+    orderId: args.orderId,
+    family: 'return',
+    reasonCode: 'change_of_mind',
+    humanReasonRef: 'reason.change_of_mind',
+    faultClass: REFUSAL_LADDER_POLICY_V1.faultByReason.change_of_mind,
+    attempt: { number: 1, at: args.at },
+  });
+  return { ok: true, outcome };
+}
+
+/**
  * The window expired unresolved → the ladder proceeds. Escalating reasons
  * (SE §6.4 "then buyer-fault refusal") become family `return`; honest
  * absence / provider failure / unusable location do NOT escalate — family
