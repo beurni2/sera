@@ -3,7 +3,9 @@ Continuity ledger per CTO charter §6/§6bis. Every entry is evidence-grounded.
 
 Format per entry:
 
-## 2026-09-23 · RETOUR-CHANGEMENT-AVIS (founder « 1 ») — a change of mind on ONE article of a package, at its door, is final at once: the buyer-fault return, its delivery-fee share kept, no 15-minute window · canon 3.21.0 (docs only) · ON THE BRANCH, awaiting the founder's word
+## 2026-09-23 · RETOUR-CHANGEMENT-AVIS (founder « 1 ») — a change of mind on ONE article of a package, at its door, is final at once: the buyer-fault return, its delivery-fee share kept, no 15-minute window · canon 3.21.0 (docs only) · MERGED AND DEPLOYED 2026-09-23 on the founder's « Go »
+
+**MERGED AND DEPLOYED (founder: « Go », 2026-09-23).** Canon first: platform-contracts `main` `436a4f8 → b473834`, ci 145 green. Then Séra: `main` fast-forwarded `99291dd → 1fc3c9e` (ancestry verified with `merge-base --is-ancestor` before the push); **custody-deploy 24 (id 35927942603) · logistics-deploy 34 (id 35927945261), dispatched together, both `success` on `1fc3c9e`, both provenance lines read back from the job logs: « PROVENANCE OK — live custody Worker is 1fc3c9e… speaking canon 3.21.0 » / « live logistics Worker is 1fc3c9e… speaking canon 3.21.0 »**; on `1fc3c9e`: **ci 201 · expo-preview 146 green** (the rider app republished with « Pourquoi elle le rend ? »). Shop+ and Boutik+ unchanged.
 
 **Founder order (2026-09-23).** « when she gives an article back because she changed her mind i keep the delivery fee » — then, asked whether the canon's one retry window should hold such an article at the door (her phone meanwhile charging it, refunding it after), « 1 »: « a change of mind on one article of a package is final at once. It goes straight into the return bag and you keep its delivery fee. The 15 minutes stay for a buyer who can't pay. »
 
