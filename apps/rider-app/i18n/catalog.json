@@ -1936,5 +1936,113 @@
     "fr": "Séra vous autorise à passer hors ligne avec ce colis. Le colis reste sous votre garde jusqu'à la remise.",
     "register": "neutral",
     "screenClass": "status"
+  },
+  {
+    "key": "colis.un_colis",
+    "fr": "Un colis de",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "colis.articles",
+    "fr": "articles",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "colis.porte_titre",
+    "fr": "La cliente regarde chaque article.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "colis.porte_aide",
+    "fr": "Montrez-lui un article à la fois. Elle le garde ou elle le refuse.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "colis.article",
+    "fr": "Article",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "colis.sur",
+    "fr": "sur",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "colis.garde",
+    "fr": "La cliente le garde",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "colis.refuse",
+    "fr": "La cliente le refuse",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "colis.refus_sac",
+    "fr": "Mettez cet article seul dans le sac de retour et écrivez ce code dessus.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "colis.retour_reessayer",
+    "fr": "Remettre dans le sac de retour",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "colis.a_remettre_un",
+    "fr": "article à remettre.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "colis.a_remettre_plusieurs",
+    "fr": "articles à remettre.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "colis.refuses_retour",
+    "fr": "Les articles refusés repartent chez le vendeur, dans le sac de retour.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "colis.livre_suite",
+    "fr": "Les articles gardés sont remis. Il reste le retour chez le vendeur.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "colis.vers_retour",
+    "fr": "Aller au retour",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "colis.vers_retour_note",
+    "fr": "Le vendeur vous attend avec le sac de retour.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "colis.fin_titre",
+    "fr": "Tout est remis.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "colis.fin_note",
+    "fr": "La course se ferme dans un instant.",
+    "register": "neutral",
+    "screenClass": "status"
   }
 ]

@@ -124,8 +124,11 @@ describe('VRAI-ROUTE — the held-package arm runs seal -> En route -> arrivé -
     // A port that exists is not a port that is called (6bis) — call sites.
     expect(app).toMatch(/onPress=\{sendDepart\}/);
     expect(app).toMatch(/onPress=\{sendArrive\}/);
-    expect(app).toMatch(/custodyActs\.depart\(riderCode, liveAssignment\.orderId, attempt\.id\)/);
-    expect(app).toMatch(/custodyActs\.arrive\(riderCode, liveAssignment\.orderId, attempt\.id\)/);
+    // COLIS-FOURNISSEUR-1: the call sits inside the one-gesture fan-out — the
+    // gesture's own attempt first, every other article of a package on its
+    // own ledger (an order alone is a list of one: the same act, the same id).
+    expect(app).toMatch(/surColis\(ordresEnCours, attempt, \(orderId, commandId\) => custodyActs\.depart\(riderCode, orderId, commandId\), TENU\.depart\)/);
+    expect(app).toMatch(/surColis\(ordresEnCours, attempt, \(orderId, commandId\) => custodyActs\.arrive\(riderCode, orderId, commandId\), TENU\.arrivee\)/);
     // One command id per order and act for the session: minted at the first
     // gesture, reused by every retry, so a double tap replays.
     expect(app).toContain('attemptFor(`depart|${liveAssignment.orderId}`)');

@@ -28,7 +28,12 @@ onlyBuiltDependencies:
 # on the canon side; zero shape change since 3.13.0 apart from 3.14.0's additive
 # @platform/taxonomy package (not consumed here). contracts, kernel-types and
 # certification move together, as always; ui-tokens and i18n keep their own pins.
+# COLIS-FOURNISSEUR-1 (founder ruling 2026-09-23, « build option 1 ») — re-pinned
+# to canon 3.20.0 (sha ac64d43): one package may carry several orders of ONE
+# supplier for ONE buyer; the paid-order wire may name the package, and its one
+# delivery fee splits evenly to the franc. Additive shapes only. contracts,
+# kernel-types and certification move together; ui-tokens and i18n keep theirs.
 overrides:
-  "@platform/kernel-types": "git+https://github.com/beurni2/platform-contracts.git#289db98af8a9ac4db6950847bc730fd4a13b7fb7&path:packages/kernel-types"
-  "@platform/contracts": "git+https://github.com/beurni2/platform-contracts.git#289db98af8a9ac4db6950847bc730fd4a13b7fb7&path:packages/contracts"
+  "@platform/kernel-types": "git+https://github.com/beurni2/platform-contracts.git#ac64d43e1b8496af2dfcf134bab622462892f79d&path:packages/kernel-types"
+  "@platform/contracts": "git+https://github.com/beurni2/platform-contracts.git#ac64d43e1b8496af2dfcf134bab622462892f79d&path:packages/contracts"
   "@platform/ui-tokens": "git+https://github.com/beurni2/platform-contracts.git#a832df0a8ed9e9fc83083826bc11c2a2e57e615a&path:packages/ui-tokens"

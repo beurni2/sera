@@ -435,6 +435,8 @@ Riders are **employees**: wages and fuel are a **workforce cost, never a slice o
 **SE-I04:** every package has **exactly one current custodian** — and **task status is never custody truth**. (A task can say "delivered" while custody says otherwise; custody wins, and the discrepancy is an incident.)
 *(Operational batching is deliberately deferred to a later era — dispatch stays single-job until density justifies it.)*
 
+*One package, several orders (founder ruling 2026-09-23):* a package may hold the orders of ONE supplier, for ONE buyer, to ONE address, paid together; it is still one job — one pickup, one drop, one current stop — and each order keeps its own custody file, its own inspection at the door and its own drop. Carrying several packages at once stays off until E6. Its one delivery fee is split evenly across its orders, to the franc.
+
 ## SE4 — Landmark-first navigation & masked relay
 Navigation is built for a city without addresses: pin + zone + **landmark** + voice directions. Contact with the buyer runs through a **masked relay** — the rider never sees a raw number, the buyer never sees his.
 
@@ -542,6 +544,7 @@ The queue for facts, media, and categories. **Specific, actionable reasons** —
 **Auto-void** (no human needed): same verified identity · same phone · same wallet · a reseller buying through her own customer identity.
 **Manual review** (a human must look): shared device · shared household · shared landmark · shared network.
 **The principle:** a low-confidence signal **may not** auto-void a legitimate reward or order. Suspicion is not proof.
+**Where a voided commission goes (founder ruling 2026-09-17):** it stays with the platform, held on an account the founder controls — **never returned to the seller, who is never told**; his only concern is getting the product sold. On « clear » it is paid to the reseller as usual. The held amount is a settlement-ledger line, never a wallet.
 
 ### Desk 5 — Provider reconciliation
 The ledger's obligations vs. the **provider's truth** (the webhooks). On divergence: **open a case · alert · protect existing customer promises · pause what is safe to pause.** *(Gated Cercle: divergence pauses **new** campaign reservations — never the promises already made to customers.)*
@@ -613,7 +616,7 @@ A place where a human can: pay someone early · forgive a fee · fabricate a del
 | **Rider goes offline mid-task** | Evidence queues. **Custody validation and money release stay pending** until server ack. Never auto-completed. | — | SE-I06 |
 | **Provider/webhook failure** | Reconciliation case opened. **Buyer refunds are never gated on the fund.** | Provider arrangement | B+I-13 |
 | **Attribution token tampered** | **Fails closed** — pays nobody, raises an alert. Never pays a random reseller. | — | SP-I09 |
-| **Self-dealing / fake referral** (gated Cercle) | Related-party tiers: same identity/phone/wallet → **auto-void**; shared device/household → **manual review**. | — | SP-I17 |
+| **Self-dealing / fake referral** (gated Cercle) | Related-party tiers: same identity/phone/wallet → **auto-void**; shared device/household → **manual review**. On a confirmed violation the commission **stays with the platform** — never returned to the seller, who is never told (founder 2026-09-17). | — | SP-I17 |
 | **Stock runs out mid-campaign** (gated) | Offers and campaigns **auto-pause**. Advertised benefits stop being advertised. | — | B+I-03 |
 
 ---

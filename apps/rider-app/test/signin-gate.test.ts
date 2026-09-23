@@ -144,7 +144,9 @@ describe('⚠ a WIRED build shows only what a server said (blocker A3)', () => {
      * vary for a given key. Add a field to the payload and forget the key, and
      * this fails.
      */
-    const verifySite = app.slice(app.indexOf('custodyActs.verifyPickup'), app.indexOf('riderCode,\n        ),\n      );', app.indexOf('custodyActs.verifyPickup')));
+    // COLIS-FOURNISSEUR-1: the call site now ends where the one-gesture
+    // fan-out names its held predicate — every article gets this same payload.
+    const verifySite = app.slice(app.indexOf('custodyActs.verifyPickup'), app.indexOf('TENU.verification', app.indexOf('custodyActs.verifyPickup')));
     const keyExpr = (/attemptFor\(\s*`verify\|([^`]*)`/.exec(app) ?? [])[1];
     expect(keyExpr, 'the verify attempt key').toBeTypeOf('string');
     const sent = [...verifySite.matchAll(/^\s{12}(\w+):\s*(.+?),\s*$/gm)].map(([, field, expr]) => ({

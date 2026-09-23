@@ -53,6 +53,15 @@ export interface ManifestCourse {
   readonly active: boolean;
   readonly retourOuvert: boolean;
   readonly retourDecide: boolean;
+  /**
+   * COLIS-FOURNISSEUR-1 — the OTHER orders this course carries (a package):
+   * each article has its own custody file, so each is read on its own and
+   * each held one rides the inventory. Absent on a course carrying one order.
+   */
+  readonly autres?: readonly string[];
+  /** COLIS-FOURNISSEUR-1 — which orders are in the return bag, when one is
+   *  open. Absent: an open return carries every order of the course. */
+  readonly enRetour?: readonly string[];
 }
 
 /** Custody's own answer for one order, as last heard, with when. */
@@ -83,19 +92,32 @@ export function deriveManifest(
   const readings: { orderId: string; reading: 'coursier' | 'ailleurs' | 'inconnue'; asOf: string | null }[] = [];
   let heldCount = 0;
   for (const course of courses) {
-    const fact = custody(course.orderId);
-    const held = fact !== undefined && fact.custodian === courierActor(riderId);
-    readings.push({
-      orderId: course.orderId,
-      reading: fact === undefined ? 'inconnue' : held ? 'coursier' : 'ailleurs',
-      asOf: fact?.asOf ?? null,
-    });
-    if (held) {
+    const ordres = [course.orderId, ...(course.autres ?? [])];
+    const tenus: string[] = [];
+    for (const orderId of ordres) {
+      const fact = custody(orderId);
+      const held = fact !== undefined && fact.custodian === courierActor(riderId);
+      readings.push({
+        orderId,
+        reading: fact === undefined ? 'inconnue' : held ? 'coursier' : 'ailleurs',
+        asOf: fact?.asOf ?? null,
+      });
+      if (!held) continue;
       heldCount += 1;
+      tenus.push(orderId);
       if (fact.packageId !== null && !inventory.includes(fact.packageId)) inventory.push(fact.packageId);
+    }
+    if (tenus.length > 0) {
       if (course.active) {
-        const kind: StopKind = course.retourOuvert || course.retourDecide ? 'retour' : 'livraison';
-        stops.push({ stopId: `${kind}-${course.assignmentId}`, kind, assignmentId: course.assignmentId, taskId: course.taskId, orderId: course.orderId });
+        // Still ONE current stop at a time: the buyer's door while any held
+        // article is still hers to receive, then the road home for what is
+        // in the return bag (a package split at the door has both, in order).
+        const enRetour = (orderId: string): boolean =>
+          course.retourDecide || (course.enRetour ?? (course.retourOuvert ? ordres : [])).includes(orderId);
+        for (const kind of ['livraison', 'retour'] as const) {
+          if (!tenus.some((id) => enRetour(id) === (kind === 'retour'))) continue;
+          stops.push({ stopId: `${kind}-${course.assignmentId}`, kind, assignmentId: course.assignmentId, taskId: course.taskId, orderId: course.orderId });
+        }
       }
       // Not active and still held: the package rides the inventory with no
       // stop — the desk must give it a road. Never dropped.

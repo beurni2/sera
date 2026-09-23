@@ -45,11 +45,19 @@ export interface ReadinessCheck {
   ready: boolean;
   asOf: string;
   stale: boolean;
+  /** Who the package comes from, as Boutik+ said it on the readiness fact. */
+  supplierRef?: string;
 }
 
 export interface IntakeProjections {
   funding: { check: (orderId: string) => FundingCheck };
   readiness: { check: (orderId: string) => ReadinessCheck };
+  /**
+   * COLIS-FOURNISSEUR-1 — the orders this order's package still carries (the
+   * first names the course), or `'incomplet'` while a member's word is
+   * missing. Absent: every order travels alone, exactly as before.
+   */
+  colis?: { voyageurs: (orderId: string) => readonly string[] | 'incomplet' };
 }
 
 export type IntakeRefusalReason =
@@ -62,7 +70,15 @@ export type IntakeRefusalReason =
   | 'not_readiness_confirmed'
   | 'readiness_projection_stale'
   | 'order_cancelled'
-  | 'payment_mode_not_available_e1';
+  | 'payment_mode_not_available_e1'
+  /** COLIS-FOURNISSEUR-1 — a member of the package has not been heard yet. */
+  | 'colis_incomplet'
+  /** COLIS-FOURNISSEUR-1 — a package's course is named by its first order. */
+  | 'colis_tete_attendue'
+  /** COLIS-FOURNISSEUR-1 — one package, ONE supplier: the readiness facts disagree. */
+  | 'colis_fournisseurs_differents'
+  /** COLIS-FOURNISSEUR-1 — one package is paid together, so in ONE mode. */
+  | 'colis_modes_differents';
 
 export type IntakeOutcome =
   | { admitted: true; duplicate: boolean; task: DeliveryTask }
@@ -172,8 +188,39 @@ export class ReadyQueue {
     return { assignable: true };
   }
 
-  /** Shared admission rule: funded-per-mode + readiness-confirmed + non-cancelled + NOT STALE. */
+  /**
+   * Shared admission rule: funded-per-mode + readiness-confirmed +
+   * non-cancelled + NOT STALE — for EVERY order the course carries.
+   *
+   * COLIS-FOURNISSEUR-1: a package leaves only when each of its travelling
+   * orders passes the same gate an order alone passes, all in one mode and
+   * from one supplier (the ruling's « ONE supplier » checked here on
+   * Boutik+'s own readiness word, never assumed). A cancelled member stays
+   * behind — the rest of the bag still goes.
+   */
   private admissionGate(orderId: string): IntakeRefusalReason | null {
+    const voyage = this.projections.colis?.voyageurs(orderId) ?? [orderId];
+    if (voyage === 'incomplet') return 'colis_incomplet';
+    if (voyage.length === 0) return 'order_cancelled';
+    if (voyage[0] !== orderId) return 'colis_tete_attendue';
+    let mode: string | undefined;
+    let fournisseur: string | undefined;
+    for (const id of voyage) {
+      const gate = this.orderGate(id);
+      if (gate !== null) return gate;
+      const m = this.projections.funding.check(id).paymentMode;
+      if (mode !== undefined && m !== mode) return 'colis_modes_differents';
+      mode = m;
+      const f = this.projections.readiness.check(id).supplierRef;
+      if (f !== undefined) {
+        if (fournisseur !== undefined && f !== fournisseur) return 'colis_fournisseurs_differents';
+        fournisseur = f;
+      }
+    }
+    return null;
+  }
+
+  private orderGate(orderId: string): IntakeRefusalReason | null {
     const funding = this.projections.funding.check(orderId);
     if (funding.status === 'cancelled') return 'order_cancelled';
     if (funding.stale) return 'funding_projection_stale';

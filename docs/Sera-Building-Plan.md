@@ -24,6 +24,7 @@ Per-app pnpm + Turborepo workspace in the **`sera`** repo (its own deployable). 
 - **E4:** SOS/fleet/payroll + **live drills** + hub reconciliation + **Protection-Fund solvency/claims by fault-class**. **Still single-job (no batching).**
 - **E5/E6:** real-money gate; then **batching**, staffing SLA, DR drill.
 > **Batching deferred:** RouteManifest data model stays batch-capable (M3); operational batching **off until E6**.
+> **One package, several orders (COLIS-FOURNISSEUR-1, founder ruling 2026-09-23 — an explicit override of « one rider, one package » for this case only):** a package may hold the orders of ONE supplier, for ONE buyer, to ONE address, paid together; it is still one job — one pickup, one drop, one current stop — and each order keeps its own custody file, its own inspection at the door and its own drop. Carrying several packages at once stays off until E6.
 Every mock (Boutik+ handoff, Shop-Plus checkout/drop-code, eligibility consumer, provider) passes the **mock-certification suite** before the live sibling replaces it.
 
 ---

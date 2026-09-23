@@ -81,7 +81,7 @@ Every mock (Séra handoff, Shop-Plus projection, provider) passes the **mock-cer
 | Slice | Size | DoD |
 |---|---|---|
 | **B6.1 Fulfillment lifecycle** | M | Accept/reject; prepare in **inspectable outer packaging**; locked variant/qty/`sellerNet`/deadline; timeout → refund saga. |
-| **B6.2 Package-readiness gate** ⚠ | M | **« Produit prêt »** with photo + **`sellerReadinessChallenge`** (short-TTL) + qty/variant/availability → **only then enters dispatch queue**. **CI: no pickup task before readiness; readiness challenge distinct from all other secrets.** |
+| **B6.2 Package-readiness gate** ⚠ | M | **« Produit prêt »** with photo + **`sellerReadinessChallenge`** (short-TTL) + qty/variant/availability → **only then enters dispatch queue**. **CI: no pickup task before readiness; readiness challenge distinct from all other secrets.** A package of several orders (COLIS-FOURNISSEUR-1, founder ruling 2026-09-23) is made ready in ONE act — one photo, one confirmation per order under it, each with its own challenge — and dispatched only when every order in it is ready. |
 | **B6.3 Séra pickup verification + custody seal** ⚠ | L | Rider verifies **objective conformity** vs locked order → mismatch → **refuse custody, buyer refunded, no round-trip**; pass → **custody seal registered → custody begins**. **Invariant B+I-14** (provisional). *(Séra mocked, contract-honouring.)* **CI: custody only after verification + custody-seal; buyerDropCode never in readiness evidence.** |
 
 ### M7 — Settlement (Protection-Fund-aware; seller never debited)

@@ -24,6 +24,7 @@ import {
   type ReadyQueueSnapshot,
 } from '../src/ready-queue.js';
 import { RescheduleBook, type RescheduleBookSnapshot } from '../src/reschedule.js';
+import { colisRegle, lireColis, memeColis, voyageurs, type ColisMembership, type Reglement } from '../src/colis.js';
 import {
   PRIVACY_NOTICE_VERSION,
   RiderRegistry,
@@ -211,6 +212,16 @@ const CUSTODY_READ_TIMEOUT_MS = 4_000;
  * numbers, null until typed). See `src/flotte.ts` and `src/delivery-cost.ts`.
  */
 const SNAP_FLOTTE = 'snap:flotte:v1';
+/**
+ * COLIS-FOURNISSEUR-1 — the courses that carry a package of several orders,
+ * keyed by assignmentId: the orders frozen at the moment the rider was given
+ * the course (the first names the task), and how each one ended on custody's
+ * own wires. The course closes when every order in it is delivered or home.
+ */
+const SNAP_COLIS_COURSES = 'snap:colis-courses:v1';
+/** A package names at most ten orders (canon `PACKAGE_ORDERS_MAX`); an
+ *  article's label is a product name, bounded like one. */
+const MAX_LIBELLE = 80;
 
 interface FinDeServiceRow {
   dispatcherAckId: string;
@@ -265,6 +276,14 @@ interface CustodyProduceRow {
 
 interface RetourRow {
   orderId: string;
+  /**
+   * COLIS-FOURNISSEUR-1 — every order going home in this return bag, in the
+   * order custody opened them (the first is `orderId`). Absent on a row
+   * written before packages existed: that return carries `orderId` alone.
+   */
+  orderIds?: string[];
+  /** The orders whose two keys custody has accepted (the arm is per order). */
+  armes?: string[];
   codeRetour: string;
   codeFournisseur: string;
   ouvertAt: string;
@@ -279,6 +298,15 @@ interface RetourRow {
 interface ProjectionsSnapshot {
   funding: Record<string, FundingFact>;
   readiness: Record<string, ReadinessFact>;
+  /** COLIS-FOURNISSEUR-1 — orderId → the package its funding fact named. Write-once. */
+  colis?: Record<string, ColisMembership>;
+}
+
+/** COLIS-FOURNISSEUR-1 — one course carrying a package (see SNAP_COLIS_COURSES). */
+interface ColisCourse {
+  packageId: string;
+  orderIds: string[];
+  reglement: Record<string, Reglement>;
 }
 
 interface RiderCodeRecord {
@@ -402,6 +430,13 @@ const ACTIVE_ASSIGNMENT_STATUSES = ['active_unacknowledged', 'ack_pending_offlin
 interface CourseBrief {
   readonly repereAudioRef?: string;
   readonly preuvePhotoRefs: readonly string[];
+  /**
+   * COLIS-FOURNISSEUR-1 — what each article of a package IS, in words the
+   * rider can say at the door (« le pagne », « les sandales »): the only way
+   * to refuse ONE article and keep the rest is to know which is which. A
+   * product name, never a price (riders never see money).
+   */
+  readonly articles?: readonly { orderId: string; libelle: string }[];
 }
 
 /** A media pointer, and nothing else: no scheme, no host, no traversal. The
@@ -415,6 +450,36 @@ const MEDIA_REF = /^media\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3
 const MAX_BRIEF_PHOTOS = 4;
 function isMediaRef(v: unknown): v is string {
   return typeof v === 'string' && MEDIA_REF.test(v) && !v.includes('..');
+}
+
+/** A short printable line: a product name, never a paragraph or a control byte. */
+function isLibelle(v: unknown): v is string {
+  if (typeof v !== 'string') return false;
+  const t = v.trim();
+  if (t === '' || t.length > MAX_LIBELLE) return false;
+  for (let i = 0; i < t.length; i += 1) {
+    const c = t.charCodeAt(i);
+    if (c < 0x20 || c === 0x7f) return false;
+  }
+  return true;
+}
+
+/** COLIS-FOURNISSEUR-1 — the article names of a package's brief, each naming
+ *  one of its orders once. `undefined` when none were sent. */
+function lireArticles(raw: unknown, duColis: readonly string[]): { orderId: string; libelle: string }[] | 'malformed' | undefined {
+  if (raw === undefined) return undefined;
+  if (!Array.isArray(raw) || raw.length > duColis.length) return 'malformed';
+  const vus = new Set<string>();
+  const out: { orderId: string; libelle: string }[] = [];
+  for (const a of raw) {
+    if (a === null || typeof a !== 'object') return 'malformed';
+    const orderId = (a as Record<string, unknown>)['orderId'];
+    const libelle = (a as Record<string, unknown>)['libelle'];
+    if (typeof orderId !== 'string' || !duColis.includes(orderId) || vus.has(orderId) || !isLibelle(libelle)) return 'malformed';
+    vus.add(orderId);
+    out.push({ orderId, libelle: libelle.trim() });
+  }
+  return out;
 }
 
 /** What this object reaches outward for — the custody Worker's producer door.
@@ -456,6 +521,10 @@ export class LogisticsDO {
   private finDeService: Record<string, FinDeServiceRow> = {};
   /** FLOTTE-1 — the fleet book. */
   private flotte: FlotteSnapshot = FLOTTE_VIDE;
+  /** COLIS-FOURNISSEUR-1 — orderId → its package, as its funding fact said. */
+  private colisDe: Record<string, ColisMembership> = {};
+  /** COLIS-FOURNISSEUR-1 — assignmentId → the package that course carries. */
+  private colisCourses: Record<string, ColisCourse> = {};
   /** REPROGRAMMATION-2 — when each live course's custody wires were last
    *  asked to revive (in memory: a throttle, never a fact). */
   private wiresRevivedAt: Record<string, number> = {};
@@ -492,18 +561,105 @@ export class LogisticsDO {
         check: (orderId: string): ReadinessCheck =>
           this.readinessFacts[orderId] ?? { ready: false, asOf: ABSENT_AS_OF, stale: true },
       },
+      colis: {
+        voyageurs: (orderId: string) => this.voyageursDe(orderId),
+      },
     };
+  }
+
+  /** COLIS-FOURNISSEUR-1 — the orders this order's package still carries. */
+  private voyageursDe(orderId: string): string[] | 'incomplet' {
+    return voyageurs(orderId, this.colisDe, (id) => this.fundingFacts[id]?.status);
+  }
+
+  /** COLIS-FOURNISSEUR-1 — every order a course carries (the first names it). */
+  private ordresDeCourse(assignment: { assignmentId: string; orderId: string }): string[] {
+    return this.colisCourses[assignment.assignmentId]?.orderIds ?? [assignment.orderId];
+  }
+
+  /** The LIVE course carrying this order — its own, or the package it rides in. */
+  private courseDe(orderId: string): AssignmentRecord | undefined {
+    return this.book
+      .snapshot()
+      .assignments.map(([, r]) => r)
+      .find((r) => ACTIVE_ASSIGNMENT_STATUSES.includes(r.status) && this.ordresDeCourse(r).includes(orderId));
+  }
+
+  /**
+   * ═══ COLIS-FOURNISSEUR-1 — A PACKAGE'S COURSE ENDS WHEN EVERY ARTICLE HAS ═══
+   *
+   * Custody's two closing wires (`course-livree` on each article's drop,
+   * `course-retournee` on each article's two-key handover) arrive once PER
+   * ORDER. For an order carried alone this answers `null` and the wire
+   * closes the course exactly as before. For an article of a package it
+   * records how that article ended, counts it on the fleet book (a delivery
+   * or a return is per order, as it always was), and closes the ONE course
+   * only when the last article is settled — `returned` if any article went
+   * home, `delivered` otherwise. Until then the rider keeps his course: the
+   * refused article is still in his bag.
+   *
+   * Every settled condition answers 200 by name, the at-least-once sender's
+   * law: a replay of an article already settled answers `deja_…`.
+   */
+  private async reglerColis(orderId: string, kind: Reglement, at: string): Promise<Response | null> {
+    const entree = Object.entries(this.colisCourses)
+      .filter(([, c]) => c.orderIds.includes(orderId))
+      .sort(([a], [b]) => {
+        // The LIVE course first, if one carries this order.
+        const vivant = (id: string): number => (ACTIVE_ASSIGNMENT_STATUSES.includes(this.book.get(id)?.status ?? '') ? 0 : 1);
+        return vivant(a) - vivant(b);
+      })[0];
+    if (entree === undefined) return null;
+    const [assignmentId, colis] = entree;
+    const deja = colis.reglement[orderId];
+    if (deja !== undefined) {
+      return Response.json({ ok: true, status: deja === 'livree' ? 'deja_livree' : 'deja_retournee' });
+    }
+    const record = this.book.get(assignmentId);
+    if (record === undefined || !ACTIVE_ASSIGNMENT_STATUSES.includes(record.status)) {
+      return Response.json({ ok: true, status: 'aucune_course' });
+    }
+    colis.reglement[orderId] = kind;
+    this.flotte = logCourse(this.flotte, { orderId, riderId: record.riderId, kind, at });
+    if (!colisRegle(colis.orderIds, colis.reglement)) {
+      await this.persist();
+      return Response.json({
+        ok: true,
+        status: 'colis_en_cours',
+        reste: colis.orderIds.filter((id) => colis.reglement[id] === undefined).length,
+      });
+    }
+    const renvoye = colis.orderIds.some((id) => colis.reglement[id] === 'retournee');
+    const outcome = renvoye
+      ? await this.dispatch.returnToSupplier(record.orderId, at)
+      : await this.dispatch.deliver(record.orderId, at);
+    await this.persist();
+    if (!outcome.ok) return Response.json({ ok: true, status: 'aucune_course' });
+    return Response.json({
+      ok: true,
+      status: renvoye ? 'retournee' : 'livree',
+      leaseReleased: outcome.leaseReleased,
+      assignment: {
+        assignmentId: outcome.assignment.assignmentId,
+        taskId: outcome.assignment.taskId,
+        orderId: outcome.assignment.orderId,
+        riderId: outcome.assignment.riderId,
+        status: outcome.assignment.status,
+      },
+    });
   }
 
   private async ensureLoaded(): Promise<void> {
     if (this.loaded) return;
-    const keys = [SNAP_QUEUE, SNAP_REGISTRY, SNAP_BOOK, SNAP_LEASE, SNAP_WITNESS, SNAP_PROJECTIONS, SNAP_BRIEFS, SNAP_RAMASSAGE, SNAP_CODE_VERIFICATION, SNAP_CUSTODY_OUTBOX, SNAP_RETOURS, SNAP_RESCHEDULES, SNAP_REPROGRAMMATIONS, SNAP_RETOUR_DECIDE, SNAP_CUSTODY_FACTS, SNAP_FIN_DE_SERVICE, SNAP_FLOTTE];
+    const keys = [SNAP_QUEUE, SNAP_REGISTRY, SNAP_BOOK, SNAP_LEASE, SNAP_WITNESS, SNAP_PROJECTIONS, SNAP_BRIEFS, SNAP_RAMASSAGE, SNAP_CODE_VERIFICATION, SNAP_CUSTODY_OUTBOX, SNAP_RETOURS, SNAP_RESCHEDULES, SNAP_REPROGRAMMATIONS, SNAP_RETOUR_DECIDE, SNAP_CUSTODY_FACTS, SNAP_FIN_DE_SERVICE, SNAP_FLOTTE, SNAP_COLIS_COURSES];
     const stored = await this.state.storage.get<unknown>(keys);
     const lease = stored.get(SNAP_LEASE) as LeaseAuthorityState | undefined;
     this.leaseState = lease ?? emptyLeaseState();
     const projections = stored.get(SNAP_PROJECTIONS) as ProjectionsSnapshot | undefined;
     this.fundingFacts = projections?.funding ?? {};
     this.readinessFacts = projections?.readiness ?? {};
+    this.colisDe = projections?.colis ?? {};
+    this.colisCourses = (stored.get(SNAP_COLIS_COURSES) as Record<string, ColisCourse> | undefined) ?? {};
     this.briefs = (stored.get(SNAP_BRIEFS) as Record<string, CourseBrief> | undefined) ?? {};
     this.ramassage = (stored.get(SNAP_RAMASSAGE) as Record<string, { code: string; confirmeAt?: string }> | undefined) ?? {};
     this.codesVerification = (stored.get(SNAP_CODE_VERIFICATION) as Record<string, { code: string; scelle?: string; scelleRetour?: string }> | undefined) ?? {};
@@ -547,7 +703,7 @@ export class LogisticsDO {
       [SNAP_BOOK]: this.book.snapshot(),
       [SNAP_LEASE]: this.leaseState,
       [SNAP_WITNESS]: this.witness.snapshot(),
-      [SNAP_PROJECTIONS]: { funding: this.fundingFacts, readiness: this.readinessFacts },
+      [SNAP_PROJECTIONS]: { funding: this.fundingFacts, readiness: this.readinessFacts, colis: this.colisDe },
       [SNAP_BRIEFS]: this.briefs,
       [SNAP_RAMASSAGE]: this.ramassage,
       [SNAP_CODE_VERIFICATION]: this.codesVerification,
@@ -559,6 +715,7 @@ export class LogisticsDO {
       [SNAP_CUSTODY_FACTS]: this.custodyFacts,
       [SNAP_FIN_DE_SERVICE]: this.finDeService,
       [SNAP_FLOTTE]: this.flotte,
+      [SNAP_COLIS_COURSES]: this.colisCourses,
     });
   }
 
@@ -607,22 +764,28 @@ export class LogisticsDO {
       .snapshot()
       .assignments.map(([, r]) => r)
       .filter((r) => r.riderId === riderId)
-      .filter((r) => ACTIVE_ASSIGNMENT_STATUSES.includes(r.status) || this.custodyFacts[r.orderId]?.custodian === mine)
-      .map((r) => ({
-        assignmentId: r.assignmentId,
-        taskId: r.taskId,
-        orderId: r.orderId,
-        active: ACTIVE_ASSIGNMENT_STATUSES.includes(r.status),
-        retourOuvert: this.retours[r.assignmentId] !== undefined,
-        retourDecide: this.retourDecide[r.assignmentId] !== undefined,
-      }));
+      .filter((r) => ACTIVE_ASSIGNMENT_STATUSES.includes(r.status) || this.ordresDeCourse(r).some((id) => this.custodyFacts[id]?.custodian === mine))
+      .map((r) => {
+        const autres = this.ordresDeCourse(r).slice(1);
+        const retour = this.retours[r.assignmentId];
+        return {
+          assignmentId: r.assignmentId,
+          taskId: r.taskId,
+          orderId: r.orderId,
+          active: ACTIVE_ASSIGNMENT_STATUSES.includes(r.status),
+          retourOuvert: retour !== undefined,
+          retourDecide: this.retourDecide[r.assignmentId] !== undefined,
+          // COLIS-FOURNISSEUR-1 — each article of a package on its own word.
+          ...(autres.length > 0 ? { autres, ...(retour?.orderIds !== undefined ? { enRetour: retour.orderIds } : {}) } : {}),
+        };
+      });
     // A course the desk RETIRED has no book row left (the orchestrator sweeps
     // book, queue, lease and witness together), yet the ledger may still place
     // its package with this rider: the fact read after the sweep is the only
     // trace, and it rides the inventory with no stop until a real road moves
     // it. « Cancelled task can't leave custody inventory » is the LEDGER's
     // word — the book's silence is a task-status fact and decides nothing.
-    const listed = new Set(rows.map((r) => r.orderId));
+    const listed = new Set(rows.flatMap((r) => [r.orderId, ...(r.autres ?? [])]));
     for (const [orderId, fact] of Object.entries(this.custodyFacts)) {
       if (fact.custodian !== mine || listed.has(orderId)) continue;
       rows.push({ assignmentId: `sans-course-${orderId}`, taskId: '', orderId, active: false, retourOuvert: false, retourDecide: false });
@@ -634,7 +797,11 @@ export class LogisticsDO {
    *  Answers whether EVERY course got a fresh answer — the end-shift's
    *  fail-closed condition. */
   private async refreshCustody(riderId: string, now: string): Promise<boolean> {
-    const results = await Promise.all(this.manifestCourses(riderId).map((c) => this.readCustodian(c.orderId, now)));
+    const results = await Promise.all(
+      this.manifestCourses(riderId)
+        .flatMap((c) => [c.orderId, ...(c.autres ?? [])])
+        .map((orderId) => this.readCustodian(orderId, now)),
+    );
     return results.every((r) => r === 'known');
   }
 
@@ -693,7 +860,7 @@ export class LogisticsDO {
       .snapshot()
       .assignments.map(([, r]) => r)
       .filter((r) => ACTIVE_ASSIGNMENT_STATUSES.includes(r.status))
-      .map((r) => r.orderId)
+      .flatMap((r) => this.ordresDeCourse(r))
       .filter((orderId) => this.custodyOutbox[orderId]?.phase === 'done' && (this.wiresRevivedAt[orderId] ?? 0) + 60_000 < nowMs)
       .slice(0, 20);
     for (const orderId of due) this.wiresRevivedAt[orderId] = nowMs;
@@ -732,27 +899,38 @@ export class LogisticsDO {
         }
         continue;
       }
-      const arm = async (kind: string, secret: string, suffix: string): Promise<boolean> => {
+      const arm = async (orderId: string, kind: string, secret: string, suffix: string): Promise<boolean> => {
         try {
           const res = await custody.fetch(new Request('https://custody/produce/secrets/arm', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-            body: JSON.stringify({ orderId: row.orderId, command_id: `arm-retour-${suffix}-${assignmentId}`, kind, secret }),
+            body: JSON.stringify({ orderId, command_id: `arm-retour-${suffix}-${assignmentId}`, kind, secret }),
           }));
           return res.ok;
         } catch {
           return false;
         }
       };
-      const rider = await arm('rider_return_confirmation', row.codeRetour, 'rider');
-      const seller = rider && (await arm('seller_return_acceptance', row.codeFournisseur, 'seller'));
+      // COLIS-FOURNISSEUR-1 — the two keys go on EVERY article's own file in
+      // the bag (each ledger consumes them for itself at the handover); an
+      // article already armed is not asked again.
+      const armes = new Set(row.armes ?? []);
+      for (const orderId of row.orderIds ?? [row.orderId]) {
+        if (armes.has(orderId)) continue;
+        const rider = await arm(orderId, 'rider_return_confirmation', row.codeRetour, 'rider');
+        const seller = rider && (await arm(orderId, 'seller_return_acceptance', row.codeFournisseur, 'seller'));
+        if (!seller) break;
+        armes.add(orderId);
+      }
       // ⚠ MERGE ONTO THE CURRENT ROW, NOT THE ONE CAPTURED BEFORE THE AWAITS.
       // The supplier's `/intake/retour/verify` can land while this flush is
       // waiting on custody (outbound fetches do not hold the input gate), and
       // writing `...row` back would silently ERASE his `confirmeAt` — seen once
       // as a null confirmation in the cross-Worker seam under parallel load.
+      // (And an article joining the bag meanwhile keeps the row pending.)
       const current = this.retours[assignmentId] ?? row;
-      const next: RetourRow = { ...current, armRest: 'none', armAttempts: current.armAttempts + 1, armPhase: seller ? 'done' : 'pending' };
+      const tousArmes = (current.orderIds ?? [current.orderId]).every((id) => armes.has(id));
+      const next: RetourRow = { ...current, armes: [...armes], armRest: 'none', armAttempts: current.armAttempts + 1, armPhase: tousArmes ? 'done' : 'pending' };
       this.retours[assignmentId] = next;
       changed = true;
       if (next.armPhase !== 'done') worst = Math.max(worst, next.armAttempts);
@@ -921,6 +1099,22 @@ export class LogisticsDO {
         return malformed();
       }
       const orderId = body['orderId'] as string;
+      /**
+       * COLIS-FOURNISSEUR-1 — the package this order travels in, as Shop+
+       * says it (canon `OrderPackageSchema`). REFUSED, NOT IGNORED when it is
+       * not a package this order is in. WRITE-ONCE: an order's package is
+       * decided when she pays and never moves, so a later fact that names
+       * another one is a producer bug said by name (409) — never a silent
+       * regroup of a bag a rider may already carry. A later fact that names
+       * none keeps the one already heard.
+       */
+      const colis = lireColis(body['package'], orderId);
+      if (colis === 'malformed') return Response.json({ ok: false, reason: 'package_malformed' }, { status: 400 });
+      const colisConnu = this.colisDe[orderId];
+      if (colis !== undefined && colisConnu !== undefined && !memeColis(colis, colisConnu)) {
+        return Response.json({ ok: false, reason: 'package_contradicts_stored' }, { status: 409 });
+      }
+      if (colis !== undefined && colisConnu === undefined) this.colisDe[orderId] = colis;
       const incoming: FundingFact = {
         status,
         paymentMode: body['paymentMode'] as string,
@@ -1409,9 +1603,20 @@ export class LogisticsDO {
        * such race; the live read stays as second chance, the default as the
        * final (unreachable on the admitted road) guard.
        */
-      const modeAvantHop = this.fundingFacts[
-        this.queue.get((body['taskId'] as string).trim())?.orderId ?? ''
-      ]?.paymentMode;
+      const teteAvantHop = this.queue.get((body['taskId'] as string).trim())?.orderId ?? '';
+      /**
+       * COLIS-FOURNISSEUR-1 — the orders this course will carry, and each
+       * one's mode, snapshotted on the same side of the hop as the mode
+       * above (the same purge race, the same answer).
+       */
+      const voyageAvantHop = this.voyageursDe(teteAvantHop);
+      const ordresAvantHop =
+        Array.isArray(voyageAvantHop) && voyageAvantHop.length > 1 && voyageAvantHop[0] === teteAvantHop
+          ? voyageAvantHop
+          : [teteAvantHop];
+      const modesAvantHop: Record<string, string | undefined> = Object.fromEntries(
+        ordresAvantHop.map((id) => [id, this.fundingFacts[id]?.paymentMode]),
+      );
       const outcome = await this.dispatch.assign({
         command_id: (body['command_id'] as string).trim(),
         taskId: (body['taskId'] as string).trim(),
@@ -1451,18 +1656,36 @@ export class LogisticsDO {
             scelleRetour: mintCodeScelleRetour(),
           };
         }
-        this.custodyOutbox[outcome.assignment.orderId] = {
-          phase: 'open',
-          rest: 'none',
-          attempts: 0,
-          taskId: outcome.assignment.taskId,
-          assignmentId: outcome.assignment.assignmentId,
-          paymentMode: modeAvantHop ?? this.fundingFacts[outcome.assignment.orderId]?.paymentMode ?? 'FULL_PREPAY',
-          code: this.codesVerification[outcome.assignment.assignmentId]!.code,
-          ...(this.readinessFacts[outcome.assignment.orderId]?.supplierRef !== undefined
-            ? { supplierRef: this.readinessFacts[outcome.assignment.orderId]!.supplierRef as string }
-            : {}),
-        };
+        /**
+         * COLIS-FOURNISSEUR-1 — every order of the package gets ITS OWN road
+         * into custody (its own chain, its own `pkg-<orderId>`), all under
+         * this one course: the same task, the same assignment, the same
+         * machine pickup code armed on each file — one code at the stall,
+         * checked by every article's own ledger. The package's orders are
+         * frozen HERE, with the assignment, in the same persist batch.
+         */
+        const ordres = ordresAvantHop[0] === outcome.assignment.orderId ? ordresAvantHop : [outcome.assignment.orderId];
+        if (ordres.length > 1) {
+          this.colisCourses[outcome.assignment.assignmentId] = {
+            packageId: this.colisDe[outcome.assignment.orderId]?.packageId ?? outcome.assignment.orderId,
+            orderIds: ordres,
+            reglement: {},
+          };
+        }
+        for (const id of ordres) {
+          this.custodyOutbox[id] = {
+            phase: 'open',
+            rest: 'none',
+            attempts: 0,
+            taskId: outcome.assignment.taskId,
+            assignmentId: outcome.assignment.assignmentId,
+            paymentMode: modesAvantHop[id] ?? this.fundingFacts[id]?.paymentMode ?? 'FULL_PREPAY',
+            code: this.codesVerification[outcome.assignment.assignmentId]!.code,
+            ...(this.readinessFacts[id]?.supplierRef !== undefined
+              ? { supplierRef: this.readinessFacts[id]!.supplierRef as string }
+              : {}),
+          };
+        }
         await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
       } else {
         await this.reviveCustodyProduce();
@@ -1538,7 +1761,8 @@ export class LogisticsDO {
       // course is off the book, so the LEDGER is asked now, and its fresh
       // word is what keeps a sealed package on the rider's manifest (and
       // blocking his end of service) if the assertion above was false.
-      await this.readCustodian(outcome.assignment.orderId, now);
+      // COLIS-FOURNISSEUR-1 — every article of a package has its own word.
+      for (const id of this.ordresDeCourse(outcome.assignment)) await this.readCustodian(id, now);
       await this.state.storage.put(SNAP_CUSTODY_FACTS, this.custodyFacts);
       return Response.json({
         ok: true,
@@ -1608,58 +1832,62 @@ export class LogisticsDO {
     if (request.method === 'POST' && pathname === '/ops/order/retirer') {
       const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
       if (body === null || !isStr(body['command_id']) || !isStr(body['orderId'])) return malformed();
-      const orderId = (body['orderId'] as string).trim();
-      const hasTask = this.queue.snapshot().tasks.some(([, queued]) => queued.orderId === orderId);
-      const hasAssignment = this.book.snapshot().assignments.some(([, record]) => record.orderId === orderId);
-      const hasFunding = this.fundingFacts[orderId] !== undefined;
-      const hasReadiness = this.readinessFacts[orderId] !== undefined;
-      const hasOutbox = this.custodyOutbox[orderId] !== undefined;
-      if (!hasTask && !hasAssignment && !hasFunding && !hasReadiness && !hasOutbox) {
-        return Response.json({ ok: true, status: 'inconnu' });
-      }
-      // Book + queue + lease + witness move together — the orchestrator owns
-      // that trio, never this route reaching behind a core's back.
-      const swept = await this.dispatch.forgetOrder(orderId);
-      // MANIFESTE-1 — the same law as the take-back: the ledger's fresh word
-      // keeps a carried package on its rider's manifest after the board forgot
-      // the course (« BOARD YES, CUSTODY NO »).
-      await this.readCustodian(orderId, now);
-      let briefs = 0;
-      for (const taskId of swept.taskIds) {
-        if (this.briefs[taskId] === undefined) continue;
-        delete this.briefs[taskId];
-        briefs += 1;
-      }
-      let ramassage = 0;
-      let codesVerification = 0;
-      for (const assignment of swept.assignments) {
-        if (this.ramassage[assignment.assignmentId] !== undefined) {
-          delete this.ramassage[assignment.assignmentId];
-          ramassage += 1;
+      /**
+       * COLIS-FOURNISSEUR-1 — A PACKAGE LEAVES THE BOARD WHOLE. Its orders
+       * travel together, so retiring one of them retires the bag: leaving
+       * the others would strand them for ever (a package is composable only
+       * when every member's word is on file, and this door erases one).
+       * Still one founder act per call — the package is the unit, never
+       * « everything ».
+       */
+      const demande = (body['orderId'] as string).trim();
+      const aRetirer = this.colisDe[demande]?.orderIds ?? [demande];
+      const removed = { tasks: 0, assignments: 0, leases: 0, briefs: 0, ramassage: 0, codesVerification: 0, custodyOutbox: 0, funding: 0, readiness: 0 };
+      let quelqueChose = false;
+      for (const orderId of aRetirer) {
+        const hasTask = this.queue.snapshot().tasks.some(([, queued]) => queued.orderId === orderId);
+        const hasAssignment = this.book.snapshot().assignments.some(([, record]) => record.orderId === orderId);
+        const hasFunding = this.fundingFacts[orderId] !== undefined;
+        const hasReadiness = this.readinessFacts[orderId] !== undefined;
+        const hasOutbox = this.custodyOutbox[orderId] !== undefined;
+        if (!hasTask && !hasAssignment && !hasFunding && !hasReadiness && !hasOutbox) continue;
+        quelqueChose = true;
+        // Book + queue + lease + witness move together — the orchestrator owns
+        // that trio, never this route reaching behind a core's back.
+        const swept = await this.dispatch.forgetOrder(orderId);
+        // MANIFESTE-1 — the same law as the take-back: the ledger's fresh word
+        // keeps a carried package on its rider's manifest after the board forgot
+        // the course (« BOARD YES, CUSTODY NO »).
+        await this.readCustodian(orderId, now);
+        for (const taskId of swept.taskIds) {
+          if (this.briefs[taskId] === undefined) continue;
+          delete this.briefs[taskId];
+          removed.briefs += 1;
         }
-        if (this.codesVerification[assignment.assignmentId] !== undefined) {
-          delete this.codesVerification[assignment.assignmentId];
-          codesVerification += 1;
+        for (const assignment of swept.assignments) {
+          if (this.ramassage[assignment.assignmentId] !== undefined) {
+            delete this.ramassage[assignment.assignmentId];
+            removed.ramassage += 1;
+          }
+          if (this.codesVerification[assignment.assignmentId] !== undefined) {
+            delete this.codesVerification[assignment.assignmentId];
+            removed.codesVerification += 1;
+          }
+          delete this.colisCourses[assignment.assignmentId];
         }
+        if (hasOutbox) delete this.custodyOutbox[orderId];
+        if (hasFunding) delete this.fundingFacts[orderId];
+        if (hasReadiness) delete this.readinessFacts[orderId];
+        removed.tasks += swept.taskIds.length;
+        removed.assignments += swept.assignments.length;
+        removed.leases += swept.leasesReleased;
+        removed.custodyOutbox += hasOutbox ? 1 : 0;
+        removed.funding += hasFunding ? 1 : 0;
+        removed.readiness += hasReadiness ? 1 : 0;
       }
-      if (hasOutbox) delete this.custodyOutbox[orderId];
-      if (hasFunding) delete this.fundingFacts[orderId];
-      if (hasReadiness) delete this.readinessFacts[orderId];
-      return Response.json({
-        ok: true,
-        status: 'retire',
-        removed: {
-          tasks: swept.taskIds.length,
-          assignments: swept.assignments.length,
-          leases: swept.leasesReleased,
-          briefs,
-          ramassage,
-          codesVerification,
-          custodyOutbox: hasOutbox ? 1 : 0,
-          funding: hasFunding ? 1 : 0,
-          readiness: hasReadiness ? 1 : 0,
-        },
-      });
+      for (const orderId of aRetirer) delete this.colisDe[orderId];
+      if (!quelqueChose) return Response.json({ ok: true, status: 'inconnu' });
+      return Response.json({ ok: true, status: 'retire', removed });
     }
     /**
      * ═══ SE-LIVE-2c — THE FOUNDER COMPOSES THE DELIVERY TASK ═══
@@ -1691,7 +1919,22 @@ export class LogisticsDO {
     if (request.method === 'POST' && pathname === '/ops/task') {
       const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
       if (body === null || !isStr(body['command_id']) || !isStr(body['orderId'])) return malformed();
-      const orderId = (body['orderId'] as string).trim();
+      /**
+       * COLIS-FOURNISSEUR-1 — a package is ONE course, named by its first
+       * travelling order. The founder may compose from any article of the
+       * package; the task is filed under the package's own head, so two
+       * composes from two articles of one bag can never make two courses
+       * (the open-task check below covers every order of the package).
+       */
+      const demande = (body['orderId'] as string).trim();
+      const voyage = this.voyageursDe(demande);
+      // The gate's own refusal, said before anything else is judged: a bag
+      // whose members are not all heard yet is not composable at all.
+      if (voyage === 'incomplet') {
+        return Response.json({ ok: false, admitted: false, reason: 'colis_incomplet' }, { status: 422 });
+      }
+      const orderId = voyage.length > 0 ? voyage[0]! : demande;
+      const duColis = voyage.length > 0 ? voyage : [demande];
       const loc = body['location'] as Record<string, unknown> | undefined;
       const win = body['window'] as Record<string, unknown> | undefined;
       const pin = loc?.['pin'] as Record<string, unknown> | undefined;
@@ -1765,6 +2008,18 @@ export class LogisticsDO {
         return Response.json({ ok: false, reason: 'preuve_photo_refs_malformed' }, { status: 400 });
       }
       /**
+       * COLIS-FOURNISSEUR-1 — the articles' names, for the rider's door
+       * (decision c: refuse ONE article, keep the rest). Optional — a package
+       * composed without them still travels, its articles then numbered on
+       * the rider's screen. REFUSED, NOT IGNORED when malformed: an order not
+       * in this package, a name twice, or a name that is not a short line.
+       */
+      const articlesRaw = body['articles'];
+      const articles = lireArticles(articlesRaw, duColis);
+      if (articles === 'malformed') {
+        return Response.json({ ok: false, reason: 'articles_malformed' }, { status: 400 });
+      }
+      /**
        * VERIFIER MAJOR 3 — ONE OPEN TASK PER ORDER, at this door. A second
        * compose for an order that already has a live task is an accident (the
        * order has already left `/ops/a-preparer`, so nothing shows it to him);
@@ -1788,7 +2043,7 @@ export class LogisticsDO {
         .snapshot()
         .tasks.find(
           ([, queued]) =>
-            queued.orderId === orderId &&
+            (queued.orderId === orderId || duColis.includes(queued.orderId)) &&
             queued.status !== 'closed_rescheduled' &&
             // COURSE-REPRISE: a taken-back course's task blocks nothing — the
             // whole point of taking it back is composing a fresh one.
@@ -1857,8 +2112,16 @@ export class LogisticsDO {
       this.briefs[outcome.task.id] = {
         ...(isMediaRef(audioRaw) ? { repereAudioRef: audioRaw } : {}),
         preuvePhotoRefs: Array.isArray(photosRaw) ? (photosRaw as string[]) : [],
+        ...(articles !== undefined ? { articles } : {}),
       };
-      return Response.json({ ok: true, admitted: true, duplicate: outcome.duplicate, taskId: outcome.task.id });
+      return Response.json({
+        ok: true,
+        admitted: true,
+        duplicate: outcome.duplicate,
+        taskId: outcome.task.id,
+        // COLIS-FOURNISSEUR-1 — which orders this course carries, said back.
+        ...(duColis.length > 1 ? { colis: { orderIds: duColis } } : {}),
+      });
     }
 
     /**
@@ -1891,10 +2154,9 @@ export class LogisticsDO {
         return malformed();
       }
       const orderId = (body['orderId'] as string).trim();
-      const active = this.book
-        .snapshot()
-        .assignments.map(([, r]) => r)
-        .find((r) => r.orderId === orderId && ACTIVE_ASSIGNMENT_STATUSES.includes(r.status));
+      // COLIS-FOURNISSEUR-1 — any article of a package names its one course:
+      // one code at the stall for the whole bag.
+      const active = this.courseDe(orderId);
       const attendu = active === undefined ? undefined : this.ramassage[active.assignmentId]?.code;
       const donne = normaliseCodeRamassage(body['code'] as string);
       const verdict =
@@ -1930,10 +2192,7 @@ export class LogisticsDO {
         return malformed();
       }
       const orderId = (body['orderId'] as string).trim();
-      const active = this.book
-        .snapshot()
-        .assignments.map(([, r]) => r)
-        .find((r) => r.orderId === orderId && ACTIVE_ASSIGNMENT_STATUSES.includes(r.status));
+      const active = this.courseDe(orderId);
       const retour = active === undefined ? undefined : this.retours[active.assignmentId];
       const donne = normaliseCodeRamassage(body['code'] as string);
       const verdict =
@@ -1959,22 +2218,40 @@ export class LogisticsDO {
           .tasks.filter(([, queued]) => queued.status !== 'closed_taken_back')
           .map(([, queued]) => queued.orderId),
       );
+      // COLIS-FOURNISSEUR-1 — a package's course covers every order in it.
+      for (const id of [...withTask]) {
+        const v = this.voyageursDe(id);
+        if (Array.isArray(v)) for (const membre of v) withTask.add(membre);
+      }
+      const pret = (orderId: string): boolean => {
+        const fact = this.fundingFacts[orderId];
+        // PORTE-DISPATCH (2026-08-13): the SAME two-mode admission as the
+        // compose gate (ADMITTED_PAYMENT_MODES) — a funded+ready door order
+        // must appear on the founder's list; an unknown mode stays off it.
+        if (fact === undefined || fact.status !== 'funded' || fact.stale || !ADMITTED_PAYMENT_MODES.includes(fact.paymentMode)) return false;
+        const readiness = this.readinessFacts[orderId];
+        return readiness !== undefined && readiness.ready && !readiness.stale;
+      };
       const attente = Object.entries(this.fundingFacts)
-        .filter(([orderId, fact]) => {
-          if (withTask.has(orderId)) return false;
-          // PORTE-DISPATCH (2026-08-13): the SAME two-mode admission as the
-          // compose gate (ADMITTED_PAYMENT_MODES) — a funded+ready door order
-          // must appear on the founder's list; an unknown mode stays off it.
-          if (fact.status !== 'funded' || fact.stale || !ADMITTED_PAYMENT_MODES.includes(fact.paymentMode)) return false;
-          const readiness = this.readinessFacts[orderId];
-          return readiness !== undefined && readiness.ready && !readiness.stale;
+        .flatMap(([orderId, fact]) => {
+          if (withTask.has(orderId) || !pret(orderId)) return [];
+          /**
+           * COLIS-FOURNISSEUR-1 — a package is ONE line, under its first
+           * travelling order, and only once EVERY order in it is paid and
+           * ready: the founder composes one course for the whole bag, never
+           * half of it.
+           */
+          const voyage = this.voyageursDe(orderId);
+          if (voyage === 'incomplet' || voyage[0] !== orderId || !voyage.every(pret)) return [];
+          const colis = this.colisDe[orderId];
+          return [{
+            orderId,
+            paymentMode: fact.paymentMode,
+            fundedAsOf: fact.asOf,
+            readyAsOf: this.readinessFacts[orderId]?.asOf ?? null,
+            ...(colis !== undefined && voyage.length > 1 ? { colis: { packageId: colis.packageId, orderIds: voyage } } : {}),
+          }];
         })
-        .map(([orderId, fact]) => ({
-          orderId,
-          paymentMode: fact.paymentMode,
-          fundedAsOf: fact.asOf,
-          readyAsOf: this.readinessFacts[orderId]?.asOf ?? null,
-        }))
         .sort((a, b) => (a.orderId < b.orderId ? -1 : 1));
       return Response.json({ ok: true, attente });
     }
@@ -2058,6 +2335,8 @@ export class LogisticsDO {
       if (body === null || !isStr(body['command_id']) || !isStr(body['orderId']) || !isIso(body['at'])) {
         return malformed();
       }
+      const reglement = await this.reglerColis((body['orderId'] as string).trim(), 'livree', body['at'] as string);
+      if (reglement !== null) return reglement;
       const outcome = await this.dispatch.deliver((body['orderId'] as string).trim(), body['at'] as string);
       if (!outcome.ok) {
         return Response.json({ ok: true, status: 'aucune_course' });
@@ -2096,14 +2375,29 @@ export class LogisticsDO {
         return malformed();
       }
       const orderId = (body['orderId'] as string).trim();
-      const active = this.book
-        .snapshot()
-        .assignments.map(([, r]) => r)
-        .find((r) => r.orderId === orderId && ACTIVE_ASSIGNMENT_STATUSES.includes(r.status));
+      const active = this.courseDe(orderId);
       if (active === undefined) return Response.json({ ok: true, status: 'aucune_course' });
-      if (this.retours[active.assignmentId] !== undefined) return Response.json({ ok: true, status: 'deja_ouvert' });
+      const ouvert = this.retours[active.assignmentId];
+      if (ouvert !== undefined) {
+        /**
+         * COLIS-FOURNISSEUR-1 — ONE return bag per course. A second article
+         * of the package refused at the same door joins the bag already
+         * open: the same two keys, armed on its own custody file too (the
+         * alarm arms every order not yet armed), handed over together.
+         */
+        const membres = ouvert.orderIds ?? [ouvert.orderId];
+        if (membres.includes(orderId)) return Response.json({ ok: true, status: 'deja_ouvert' });
+        this.retours[active.assignmentId] = { ...ouvert, orderIds: [...membres, orderId], armPhase: 'pending' };
+        this.reschedules.forgetOrder(orderId);
+        await this.state.storage.put(SNAP_RETOURS, this.retours);
+        if ((await this.state.storage.getAlarm()) === null) {
+          await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
+        }
+        return Response.json({ ok: true, status: 'retour_complete' });
+      }
       this.retours[active.assignmentId] = {
         orderId,
+        orderIds: [orderId],
         codeRetour: mintCodeRamassage(),
         codeFournisseur: mintCodeRamassage(),
         ouvertAt: body['at'] as string,
@@ -2131,6 +2425,8 @@ export class LogisticsDO {
       if (body === null || !isStr(body['command_id']) || !isStr(body['orderId']) || !isIso(body['at'])) {
         return malformed();
       }
+      const reglement = await this.reglerColis((body['orderId'] as string).trim(), 'retournee', body['at'] as string);
+      if (reglement !== null) return reglement;
       const outcome = await this.dispatch.returnToSupplier((body['orderId'] as string).trim(), body['at'] as string);
       if (!outcome.ok) {
         return Response.json({ ok: true, status: 'aucune_course' });
@@ -2175,11 +2471,16 @@ export class LogisticsDO {
       if (outcome === null || typeof outcome !== 'object' || (outcome as Record<string, unknown>)['orderId'] !== orderId) {
         return malformed();
       }
-      const active = this.book
-        .snapshot()
-        .assignments.map(([, r]) => r)
-        .find((r) => r.orderId === orderId && ACTIVE_ASSIGNMENT_STATUSES.includes(r.status));
+      const active = this.courseDe(orderId);
       if (active === undefined) return Response.json({ ok: true, status: 'aucune_course' });
+      /**
+       * COLIS-FOURNISSEUR-1 — a package is rescheduled as ONE course, on its
+       * first order's word: the rider names the absence for every article,
+       * every article's ledger records it, and the desk fixes ONE next
+       * passage. The other articles' wires are settled by name, never
+       * recorded as passages of their own to fix.
+       */
+      if (active.orderId !== orderId) return Response.json({ ok: true, status: 'colis_suit_la_tete' });
       /**
        * VERIFIER MAJOR (closed) — THE OUTCOME MUST NAME THE LIVE COURSE'S
        * TASK. Custody's outcome names the chain's task (the first attempt);
@@ -2257,13 +2558,11 @@ export class LogisticsDO {
       if (Date.parse(end) <= Date.parse(now)) {
         return Response.json({ ok: false, reason: 'fenetre_passee' }, { status: 400 });
       }
-      const active = this.book
-        .snapshot()
-        .assignments.map(([, r]) => r)
-        .find((r) => r.orderId === orderId && ACTIVE_ASSIGNMENT_STATUSES.includes(r.status));
+      const active = this.courseDe(orderId);
       if (active === undefined) return Response.json({ ok: false, reason: 'no_active_course' }, { status: 409 });
       if (active.status !== 'acknowledged') return Response.json({ ok: false, reason: 'course_non_acceptee' }, { status: 409 });
-      const open = this.reschedules.openFor(orderId);
+      // COLIS-FOURNISSEUR-1 — the passage is the package's, kept on its first order.
+      const open = this.reschedules.openFor(active.orderId);
       if (open === undefined) return Response.json({ ok: false, reason: 'order_not_rescheduled' }, { status: 409 });
       const prior = this.queue.get(active.taskId);
       if (prior === undefined) return Response.json({ ok: false, reason: 'prior_task_missing' }, { status: 409 });
@@ -2288,7 +2587,7 @@ export class LogisticsDO {
       }
       const brief = this.briefs[active.taskId];
       if (brief !== undefined) this.briefs[outcome.taskId] = brief;
-      this.reprogrammations[commandId] = { orderId, taskId: outcome.taskId };
+      this.reprogrammations[commandId] = { orderId: active.orderId, taskId: outcome.taskId };
       return Response.json({
         ok: true,
         duplicate: false,
@@ -2323,13 +2622,12 @@ export class LogisticsDO {
       const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
       if (body === null || !isStr(body['command_id']) || !isStr(body['orderId'])) return malformed();
       const commandId = (body['command_id'] as string).trim();
-      const orderId = (body['orderId'] as string).trim();
-      const active = this.book
-        .snapshot()
-        .assignments.map(([, r]) => r)
-        .find((r) => r.orderId === orderId && ACTIVE_ASSIGNMENT_STATUSES.includes(r.status));
+      const active = this.courseDe((body['orderId'] as string).trim());
       if (active === undefined) return Response.json({ ok: false, reason: 'no_active_course' }, { status: 409 });
       if (active.status !== 'acknowledged') return Response.json({ ok: false, reason: 'course_non_acceptee' }, { status: 409 });
+      // COLIS-FOURNISSEUR-1 — the decision is the package's: every article
+      // goes home, each on its own ledger (below), the passage kept on the first.
+      const orderId = active.orderId;
       const decided = this.retourDecide[active.assignmentId];
       if (decided !== undefined) return Response.json({ ok: true, status: 'deja_decide', decideAt: decided.decideAt });
       // The rider already opened the return (a valid refusal at the door):
@@ -2343,20 +2641,29 @@ export class LogisticsDO {
       const custody = this.env.CUSTODY;
       const key = this.env.SERA_PRODUCE_SECRET ?? '';
       if (custody === undefined || key === '') return Response.json({ ok: false, reason: 'custody_non_relie' }, { status: 503 });
-      let res: Response;
-      try {
-        res = await custody.fetch(new Request('https://custody/produce/return/apply', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-          body: JSON.stringify({ orderId, command_id: `retour-decide-${commandId}`, at: now }),
-        }));
-      } catch {
-        return Response.json({ ok: false, reason: 'custody_unreachable' }, { status: 503 });
-      }
-      const answer = (await res.json().catch(() => null)) as Record<string, unknown> | null;
-      if (res.status >= 500) return Response.json({ ok: false, reason: 'custody_unreachable' }, { status: 503 });
-      if (!res.ok) {
-        return Response.json({ ok: false, reason: 'custody_refused', detail: typeof answer?.['reason'] === 'string' ? answer['reason'] : 'refused' }, { status: 409 });
+      /**
+       * COLIS-FOURNISSEUR-1 — relayed to EVERY article's ledger, one after the
+       * other, the first order's last; this book remembers the decision only
+       * once all of them accepted. A retry after a partial answer is safe:
+       * each ledger replays the same command id's recorded answer.
+       */
+      let answer: Record<string, unknown> | null = null;
+      for (const id of [...this.ordresDeCourse(active).slice(1), orderId]) {
+        let res: Response;
+        try {
+          res = await custody.fetch(new Request('https://custody/produce/return/apply', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+            body: JSON.stringify({ orderId: id, command_id: `retour-decide-${commandId}`, at: now }),
+          }));
+        } catch {
+          return Response.json({ ok: false, reason: 'custody_unreachable' }, { status: 503 });
+        }
+        answer = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+        if (res.status >= 500) return Response.json({ ok: false, reason: 'custody_unreachable' }, { status: 503 });
+        if (!res.ok) {
+          return Response.json({ ok: false, reason: 'custody_refused', detail: typeof answer?.['reason'] === 'string' ? answer['reason'] : 'refused' }, { status: 409 });
+        }
       }
       this.retourDecide[active.assignmentId] = { orderId, decideAt: now };
       // The passage the founder might still have fixed is off the desk: the
@@ -2545,7 +2852,7 @@ export class LogisticsDO {
    * a button whose only possible outcome was that refusal. `assignable` now
    * means what the door will actually do: certified + on-shift + NOT carrying. */
   private board(): {
-    queued: { taskId: string; orderId: string; admittedAt: string; window: unknown; location: unknown }[];
+    queued: { taskId: string; orderId: string; admittedAt: string; window: unknown; location: unknown; colis?: { orderIds: string[] } }[];
     riders: (RiderRecord & { shift: unknown; assignable: boolean })[];
     assignments: AssignmentRecord[];
     aReprogrammer: { orderId: string; taskId: string; assignmentId: string; riderId: string; reasonCode: string; recordedAt: string }[];
@@ -2554,14 +2861,21 @@ export class LogisticsDO {
     manifestes: Record<string, RiderManifestView>;
     /** SE3.2 — the pending end-shift exceptions, by rider. */
     finDeService: Record<string, FinDeServiceRow>;
+    /** COLIS-FOURNISSEUR-1 — live courses carrying a package, by assignmentId. */
+    colisEnCourse: Record<string, ColisCourse>;
   } {
-    const queued = this.queue.queuedTasks().map((q) => ({
-      taskId: q.task.id,
-      orderId: q.orderId,
-      admittedAt: q.admittedAt,
-      window: q.task.window,
-      location: q.task.location,
-    }));
+    const queued = this.queue.queuedTasks().map((q) => {
+      // COLIS-FOURNISSEUR-1 — a queued package says what it carries.
+      const voyage = this.voyageursDe(q.orderId);
+      return {
+        taskId: q.task.id,
+        orderId: q.orderId,
+        admittedAt: q.admittedAt,
+        window: q.task.window,
+        location: q.task.location,
+        ...(Array.isArray(voyage) && voyage.length > 1 ? { colis: { orderIds: voyage } } : {}),
+      };
+    });
     const carrying = this.ridersCarrying();
     const riders = this.registry
       .snapshot()
@@ -2633,6 +2947,9 @@ export class LogisticsDO {
       enDeuxiemePassage,
       manifestes,
       finDeService: this.finDeServiceEnAttente(),
+      colisEnCourse: Object.fromEntries(
+        assignments.flatMap((a) => (this.colisCourses[a.assignmentId] === undefined ? [] : [[a.assignmentId, this.colisCourses[a.assignmentId]!]])),
+      ),
     };
   }
 
@@ -2765,7 +3082,47 @@ export class LogisticsDO {
                 this.custodyOutbox[assignment.orderId] === undefined
                   ? null
                   : { taskId: this.custodyOutbox[assignment.orderId]!.taskId, packageId: packageIdOf(assignment.orderId) },
+              /**
+               * COLIS-FOURNISSEUR-1 — the package this ONE course carries:
+               * every article, the first being the course's own, each with
+               * the chain custody opened for it (its acts name ITS order and
+               * ITS package — one ledger per article), its name for the door
+               * (decision c: refuse one, keep the rest), and how it stands on
+               * custody's own wires — `livree` once its drop landed,
+               * `en_retour` once its return opened, `retournee` once handed
+               * back, `en_cours` otherwise. `null` on a course carrying one
+               * order: the road is exactly as it was.
+               */
+              colis: this.colisVue(assignment.assignmentId),
             },
+    };
+  }
+
+  private colisVue(assignmentId: string): Record<string, unknown> | null {
+    const colis = this.colisCourses[assignmentId];
+    if (colis === undefined) return null;
+    const assignment = this.book.get(assignmentId);
+    const brief = assignment === undefined ? undefined : this.briefs[assignment.taskId];
+    const retour = this.retours[assignmentId];
+    const enRetour = retour?.orderIds ?? (retour !== undefined ? [retour.orderId] : []);
+    return {
+      packageId: colis.packageId,
+      articles: colis.orderIds.map((orderId) => ({
+        orderId,
+        libelle: brief?.articles?.find((a) => a.orderId === orderId)?.libelle ?? null,
+        chaine:
+          this.custodyOutbox[orderId] === undefined
+            ? null
+            : { taskId: this.custodyOutbox[orderId]!.taskId, packageId: packageIdOf(orderId) },
+        etat:
+          colis.reglement[orderId] === 'livree'
+            ? 'livree'
+            : colis.reglement[orderId] === 'retournee'
+              ? 'retournee'
+              : enRetour.includes(orderId)
+                ? 'en_retour'
+                : 'en_cours',
+      })),
     };
   }
 }

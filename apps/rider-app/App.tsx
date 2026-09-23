@@ -121,7 +121,19 @@ ensureSha256();
  * Its twin above was wired; this one was not. Both must run before any mint.
  */
 ensureCsprng();
-import { deliveryChainOf, mintActId, validRejectionFault, windowExpiresAtOf, type CustodyAnswer } from './src/net/custody-acts';
+import {
+  custodyWithCustomer,
+  deliveryChainOf,
+  inspectionHeld,
+  mintActId,
+  returnOpened,
+  validRejectionFault,
+  validRejectionRecorded,
+  windowExpiresAtOf,
+  type CustodyAnswer,
+} from './src/net/custody-acts';
+import { surChaqueArticle, TENU } from './src/net/colis-acts';
+import type { ArticleColis } from './src/net/rider-session';
 import {
   ACT_IDLE,
   arriveDone,
@@ -488,6 +500,29 @@ export default function App() {
    *  road. A screen choice, never a custody claim (custody accepts the
    *  ordinary drop right then); a relaunch simply asks again. */
   const [clientRevenu, setClientRevenu] = useState(false);
+  /**
+   * ═══ COLIS-FOURNISSEUR-1 — THE DOOR OF A PACKAGE, ONE ARTICLE AT A TIME ═══
+   *
+   * Decision (c), founder ruling 2026-09-23: at the door she may refuse one
+   * article and keep the rest; the refused one goes back sealed on its own.
+   * Each article's choice is its OWN custody act on its OWN ledger (the §6.3
+   * inspection — accept, or her valid refusal with the seal question), and a
+   * refused article is re-sealed for home at once in the course's return bag.
+   * SCREEN state for this session only — what outlives a kill is the
+   * SESSION's word (`colis.articles[].etat`: delivered, in the return bag,
+   * home), and an article only kept here is simply asked again (custody
+   * answers `inspection_already_recorded`, the same held truth).
+   */
+  const [porteColis, setPorteColis] = useState<Record<string, { choix: 'garde' | 'refuse'; etape: 'inspection' | 'retour'; phase: ActPhase }>>({});
+  /** The article whose « refused » seal question is open. */
+  const [refusArticle, setRefusArticle] = useState<string | null>(null);
+  /** Articles this session handed over (the drop answered) before the session says so. */
+  const [livresLocal, setLivresLocal] = useState<string[]>([]);
+  /** Articles this session put in the return bag (the return answered) before the session says so. */
+  const [retourLocal, setRetourLocal] = useState<string[]>([]);
+  /** Which articles the in-flight drop / return-open carries, read when it answers. */
+  const remiseEnVol = useRef<string[]>([]);
+  const retourEnVol = useRef<string[]>([]);
   /** `capturedAt` is part of the bundle custody FINGERPRINTS, so it is minted
    *  once per attempt and reused on retry — a moving clock would turn every
    *  retry into `command_id_reused_with_other_content`. */
@@ -590,7 +625,7 @@ export default function App() {
     [evidence],
   );
 
-  const attempts = useRef(new Map<string, { id: ReturnType<typeof mintActId>; dwellSec: number }>());
+  const attempts = useRef(new Map<string, { id: ReturnType<typeof mintActId>; cle: string; dwellSec: number }>());
   /**
    * ⚠ VERIFIER BLOCKER A6 — THIS CLOCK STARTED AT THE WRONG MOMENT. It was
    * `useRef(Date.now())`, initialised on FIRST RENDER — app launch, which on a
@@ -612,6 +647,9 @@ export default function App() {
     if (held !== undefined) return held;
     const fresh = {
       id: mintActId(),
+      // COLIS-FOURNISSEUR-1 — the attempt's own key: each other article of a
+      // package gets its id minted under `${cle}|<orderId>`, for this attempt.
+      cle: key,
       // Measured, then FROZEN with this attempt — the policy records whether
       // the real dwell fell in its 120–240 s target, so it must not drift
       // between a send and its retry.
@@ -620,10 +658,77 @@ export default function App() {
     attempts.current.set(key, fresh);
     return fresh;
   }, []);
+  /** Forget an attempt so the next tap is a FRESH act — and, for a package,
+   *  every article's id minted under it (`${key}|<orderId>`) with it. */
+  const oublierTentative = useCallback((key: string) => {
+    for (const k of [...attempts.current.keys()]) {
+      if (k === key || k.startsWith(`${key}|`)) attempts.current.delete(k);
+    }
+  }, []);
 
   const riderCode = signInState.kind === 'signed_in' ? signInState.code : null;
   const liveSession = signInState.kind === 'signed_in' ? signInState.session : null;
   const liveAssignment = signInState.kind === 'signed_in' ? signInState.session.assignment : null;
+  /**
+   * COLIS-FOURNISSEUR-1 — the package this course carries, or null. The
+   * whole-bag gestures (verification, seal, road, door evidence, « Un
+   * souci ? », a return decided for the whole bag) go to every article still
+   * in play; a course carrying one order is a list of one, and walks the road
+   * exactly as before.
+   */
+  const colis = liveAssignment?.colis ?? null;
+  const ordresEnCoursCle =
+    liveAssignment === null
+      ? ''
+      : colis === null
+        ? liveAssignment.orderId
+        : colis.articles.filter((a) => a.etat === 'en_cours').map((a) => a.orderId).join('|');
+  const ordresEnCours = useMemo(() => (ordresEnCoursCle === '' ? [] : ordresEnCoursCle.split('|')), [ordresEnCoursCle]);
+  /** One gesture, each article's own act under its own id (see colis-acts). */
+  const surColis = useCallback(
+    (
+      ordres: readonly string[],
+      premier: { readonly id: ReturnType<typeof mintActId>; readonly cle: string },
+      acte: (orderId: string, commandId: ReturnType<typeof mintActId>) => Promise<CustodyAnswer>,
+      tenu: (answer: CustodyAnswer) => boolean,
+    ) => surChaqueArticle(ordres, (orderId, rang) => (rang === 0 ? premier.id : attemptFor(`${premier.cle}|${orderId}`).id), acte, tenu),
+    [attemptFor],
+  );
+  /**
+   * COLIS-FOURNISSEUR-1 — what she chose for each article at the door, the
+   * SESSION's word first (delivered, in the return bag, home — custody's own
+   * wires, as logistics heard them), then this session's (the drop or the
+   * return answered, an accord the ledger holds). An article with none of
+   * these is still to be shown to her.
+   */
+  const choixArticle = (a: ArticleColis): 'garde' | 'refuse' | null => {
+    if (a.etat === 'livree' || livresLocal.includes(a.orderId)) return 'garde';
+    if (a.etat === 'en_retour' || a.etat === 'retournee' || retourLocal.includes(a.orderId)) return 'refuse';
+    const p = porteColis[a.orderId];
+    if (p !== undefined && p.choix === 'garde' && p.phase.kind === 'answered' && inspectionHeld(p.phase.answer)) return 'garde';
+    return null;
+  };
+  const articlesIndecis = colis === null ? [] : colis.articles.filter((a) => choixArticle(a) === null);
+  /** Kept, and not yet handed over — what the buyer's one code gives her. */
+  const aRemettreIds =
+    colis === null
+      ? []
+      : colis.articles
+          .filter((a) => choixArticle(a) === 'garde' && a.etat !== 'livree' && !livresLocal.includes(a.orderId))
+          .map((a) => a.orderId);
+  /** In the return bag and not yet handed back — what the two keys give back. */
+  const enRetourIds =
+    colis === null
+      ? []
+      : colis.articles
+          .filter((a) => a.etat !== 'retournee' && (a.etat === 'en_retour' || retourLocal.includes(a.orderId)))
+          .map((a) => a.orderId);
+  /** Nothing decided at this door yet — « Un souci ? » is still about the whole bag. */
+  const aucunChoixColis =
+    colis !== null &&
+    colis.articles.every((a) => a.etat === 'en_cours' && !retourLocal.includes(a.orderId) && porteColis[a.orderId] === undefined);
+  /** The package's door is still the rider's screen: an article to show, or kept ones to hand over. */
+  const colisPorteDue = colis !== null && (articlesIndecis.length > 0 || aRemettreIds.length > 0);
   const assignmentLines = liveAssignment === null ? null : landmarkLines(liveAssignment.location);
   /**
    * GEO-SERA-1 (founder, 2026-08-31) — the buyer's confirmed point becomes
@@ -857,6 +962,11 @@ export default function App() {
     setLivraisonIds(null);
     setSealSaisi(null);
     setVerifyBundleId(null);
+    // COLIS-FOURNISSEUR-1 — the door of one package never leaks onto the next.
+    setPorteColis({});
+    setRefusArticle(null);
+    setLivresLocal([]);
+    setRetourLocal([]);
   }, [dwellOrderId]);
 
   /**
@@ -982,11 +1092,14 @@ export default function App() {
       const attempt = attemptFor(
         `verify|${liveAssignment.orderId}|${codeVerification ?? SANS_CODE}|${verifyBundleId ?? SANS_PHOTO}|${JSON.stringify(checks)}`,
       );
+      // COLIS-FOURNISSEUR-1 — one check at the stall, verified on every
+      // article's own ledger with the one machine code logistics armed on
+      // each (the same dwell, frozen with the attempt, for all of them).
       runAct(setVerifyPhase, () =>
-        custodyActs.verifyPickup(
+        surColis(ordresEnCours, attempt, (orderId, commandId) => custodyActs.verifyPickup(
           {
-            commandId: attempt.id,
-            orderId: liveAssignment.orderId,
+            commandId,
+            orderId,
             presentedPickupCode: codeVerification,
             /**
              * The bundle names REAL BYTES when the rider photographed a
@@ -1011,10 +1124,10 @@ export default function App() {
             checkResults: checks,
           },
           riderCode,
-        ),
+        ), TENU.verification),
       );
     },
-    [custodyActs, riderCode, liveAssignment, checks, runAct, attemptFor, verifyBundleId],
+    [custodyActs, riderCode, liveAssignment, checks, runAct, attemptFor, verifyBundleId, surColis, ordresEnCours],
   );
 
   /**
@@ -1051,12 +1164,15 @@ export default function App() {
       // phone killed mid-course gets it back on the next read instead of
       // losing the remise.
       setSealSaisi(sealId);
+      // COLIS-FOURNISSEUR-1 — ONE seal on the bag, registered on every
+      // article's own ledger; the answer the screen keeps is the course's own
+      // order's (its chain is the one the door evidence names first).
       const attempt = attemptFor(`seal|${liveAssignment.orderId}|${sealId}`);
       runAct(setSealPhase, () =>
-        custodyActs.beginCustody(
+        surColis(ordresEnCours, attempt, (orderId, commandId) => custodyActs.beginCustody(
           {
-            commandId: attempt.id,
-            orderId: liveAssignment.orderId,
+            commandId,
+            orderId,
             custodySealId: sealId,
             // FOUNDER OVERRIDE 2026-08-10: no photo at the seal. An EMPTY list
             // is honest — the spine's guard was lifted for it, and nothing here
@@ -1064,10 +1180,10 @@ export default function App() {
             sealPhotoRefs: [],
           },
           riderCode,
-        ),
+        ), TENU.scelle),
       );
     },
-    [custodyActs, riderCode, liveAssignment, runAct, attemptFor],
+    [custodyActs, riderCode, liveAssignment, runAct, attemptFor, surColis, ordresEnCours],
   );
 
   /**
@@ -1107,14 +1223,35 @@ export default function App() {
   const sendDepart = useCallback(() => {
     if (riderCode === null || liveAssignment === null) return;
     const attempt = attemptFor(`depart|${liveAssignment.orderId}`);
-    runAct(setDepartPhase, () => custodyActs.depart(riderCode, liveAssignment.orderId, attempt.id));
-  }, [custodyActs, riderCode, liveAssignment, runAct, attemptFor]);
+    runAct(setDepartPhase, () =>
+      surColis(ordresEnCours, attempt, (orderId, commandId) => custodyActs.depart(riderCode, orderId, commandId), TENU.depart),
+    );
+  }, [custodyActs, riderCode, liveAssignment, runAct, attemptFor, surColis, ordresEnCours]);
 
   const sendArrive = useCallback(() => {
     if (riderCode === null || liveAssignment === null) return;
     const attempt = attemptFor(`arrive|${liveAssignment.orderId}`);
-    runAct(setArrivePhase, () => custodyActs.arrive(riderCode, liveAssignment.orderId, attempt.id));
-  }, [custodyActs, riderCode, liveAssignment, runAct, attemptFor]);
+    runAct(setArrivePhase, () =>
+      surColis(ordresEnCours, attempt, (orderId, commandId) => custodyActs.arrive(riderCode, orderId, commandId), TENU.arrivee),
+    );
+  }, [custodyActs, riderCode, liveAssignment, runAct, attemptFor, surColis, ordresEnCours]);
+
+  /**
+   * COLIS-FOURNISSEUR-1 — the ledgers' answers, remembered for this course
+   * until the session catches up (the 20 s poll): the articles the drop just
+   * handed over, the articles a whole-bag return just re-sealed. Written from
+   * the ANSWER only, never from the tap.
+   */
+  useEffect(() => {
+    if (colis === null || dropPhase.kind !== 'answered' || !custodyWithCustomer(dropPhase.answer)) return;
+    const remis = remiseEnVol.current;
+    setLivresLocal((l) => [...l, ...remis.filter((id) => !l.includes(id))]);
+  }, [dropPhase, colis]);
+  useEffect(() => {
+    if (colis === null || returnOpenPhase.kind !== 'answered' || !returnOpened(returnOpenPhase.answer)) return;
+    const rescelles = retourEnVol.current;
+    setRetourLocal((r) => [...r, ...rescelles.filter((id) => !r.includes(id))]);
+  }, [returnOpenPhase, colis]);
 
   /** RIDER-DELIVERY-SCREEN — the BEGIN answer names the chain this phone now
    *  holds (task + package, identifiers only); keep it for the delivery act.
@@ -1151,28 +1288,44 @@ export default function App() {
    * the honest card.
    */
   const idsRemise = livraisonIds ?? liveAssignment?.chaine ?? null;
+  /**
+   * COLIS-FOURNISSEUR-1 — each article's door evidence names ITS chain: the
+   * course's own order the one above, every other article the chain
+   * logistics opened for it (the same task, its own `pkg-<orderId>`). A
+   * package missing any of them lands on the same honest « il manque des
+   * repères » card — never an article's evidence composed on a guess.
+   */
+  const chaineDe = (orderId: string): { taskId: string; packageId: string } | null =>
+    liveAssignment !== null && orderId === liveAssignment.orderId
+      ? idsRemise
+      : (colis?.articles.find((a) => a.orderId === orderId)?.chaine ?? null);
+  const colisSansChaine = colis !== null && ordresEnCours.some((id) => chaineDe(id) === null);
 
   const sendDeliveryEvidence = useCallback(() => {
     if (riderCode === null || liveAssignment === null) return;
-    if (idsRemise === null || sealPourRemise === null) return;
+    if (idsRemise === null || sealPourRemise === null || colisSansChaine) return;
     const attempt = attemptFor(`delivery-evidence|${liveAssignment.orderId}`);
     const held = capturedAtFor.current.get(attempt.id) ?? new Date().toISOString();
     capturedAtFor.current.set(attempt.id, held);
     runAct(setEvidencePhase, () =>
-      custodyActs.submitDeliveryEvidence(
-        {
-          commandId: attempt.id,
-          orderId: liveAssignment.orderId,
-          custodySealId: sealPourRemise,
-          taskId: idsRemise.taskId,
-          packageId: idsRemise.packageId,
-          artifacts: [],
-          capturedAt: held,
-        },
-        riderCode,
-      ),
+      surColis(ordresEnCours, attempt, (orderId, commandId) => {
+        const chaine = chaineDe(orderId);
+        if (chaine === null) return Promise.resolve<CustodyAnswer>({ kind: 'refused', reason: 'delivery_ids_missing' });
+        return custodyActs.submitDeliveryEvidence(
+          {
+            commandId,
+            orderId,
+            custodySealId: sealPourRemise,
+            taskId: chaine.taskId,
+            packageId: chaine.packageId,
+            artifacts: [],
+            capturedAt: held,
+          },
+          riderCode,
+        );
+      }, TENU.preuve),
     );
-  }, [custodyActs, riderCode, liveAssignment, idsRemise, sealPourRemise, runAct, attemptFor]);
+  }, [custodyActs, riderCode, liveAssignment, idsRemise, sealPourRemise, runAct, attemptFor, surColis, ordresEnCours, colisSansChaine, colis]);
 
   /**
    * The bundle, fired by the ARRIVAL rather than by a tap — the founder's flow
@@ -1188,7 +1341,8 @@ export default function App() {
     && !evidenceIsHeld(evidencePhase)
     && evidencePhase.kind === 'idle'
     && idsRemise !== null
-    && sealPourRemise !== null;
+    && sealPourRemise !== null
+    && !colisSansChaine;
   useEffect(() => {
     if (!WIRED || !preuveAuto) return;
     sendDeliveryEvidence();
@@ -1269,17 +1423,24 @@ export default function App() {
         dropPhase.answer.kind === 'refused' &&
         dropOutcome(dropPhase.answer).tone === 'waiting'
       ) {
-        attempts.current.delete(key);
+        oublierTentative(key);
       }
+      /**
+       * COLIS-FOURNISSEUR-1 — ONE code from the buyer hands over every
+       * article she KEPT, each on its own ledger (Shop+ armed the same code
+       * on each); a refused article is in the return bag and is not offered.
+       * On a pay-at-door package each kept article waits for its own door
+       * payment to be confirmed by the provider — the waiting sentence is the
+       * wait, exactly as for one order.
+       */
+      const remise = colis === null ? [liveAssignment.orderId] : aRemettreIds;
+      remiseEnVol.current = remise;
       const attempt = attemptFor(key);
       runAct(setDropPhase, () =>
-        custodyActs.confirmDrop(
-          { commandId: attempt.id, orderId: liveAssignment.orderId, dropCode },
-          riderCode,
-        ),
+        surColis(remise, attempt, (orderId, commandId) => custodyActs.confirmDrop({ commandId, orderId, dropCode }, riderCode), TENU.remise),
       );
     },
-    [custodyActs, riderCode, liveAssignment, dropPhase, runAct, attemptFor],
+    [custodyActs, riderCode, liveAssignment, dropPhase, runAct, attemptFor, oublierTentative, surColis, colis, aRemettreIds],
   );
 
   /**
@@ -1300,11 +1461,15 @@ export default function App() {
       if (riderCode === null || liveAssignment === null) return;
       const attempt = attemptFor(`door-refusal|${liveAssignment.orderId}|${reasonCode}`);
       setRaisonOuverte(false);
+      // COLIS-FOURNISSEUR-1 — « Un souci ? » is about the whole bag (she is
+      // not there, the place is unusable): every article's ledger opens its
+      // one window on the same reason.
       runAct(setRefusalPhase, () =>
-        custodyActs.refuseAtDoor({ commandId: attempt.id, orderId: liveAssignment.orderId, reasonCode }, riderCode),
+        surColis(ordresEnCours, attempt, (orderId, commandId) =>
+          custodyActs.refuseAtDoor({ commandId, orderId, reasonCode }, riderCode), TENU.souci),
       );
     },
-    [custodyActs, riderCode, liveAssignment, runAct, attemptFor],
+    [custodyActs, riderCode, liveAssignment, runAct, attemptFor, surColis, ordresEnCours],
   );
 
   const sendExpire = useCallback(() => {
@@ -1318,11 +1483,13 @@ export default function App() {
       expirePhase.answer.kind === 'refused' &&
       expirePhase.answer.reason === 'window_not_expired'
     ) {
-      attempts.current.delete(key);
+      oublierTentative(key);
     }
     const attempt = attemptFor(key);
-    runAct(setExpirePhase, () => custodyActs.expireWindow(riderCode, liveAssignment.orderId, attempt.id));
-  }, [custodyActs, riderCode, liveAssignment, expirePhase, runAct, attemptFor]);
+    runAct(setExpirePhase, () =>
+      surColis(ordresEnCours, attempt, (orderId, commandId) => custodyActs.expireWindow(riderCode, orderId, commandId), TENU.expiration),
+    );
+  }, [custodyActs, riderCode, liveAssignment, expirePhase, runAct, attemptFor, oublierTentative, surColis, ordresEnCours]);
 
   /**
    * The refused package is re-sealed for home with the NEW return seal (§6.4)
@@ -1355,16 +1522,140 @@ export default function App() {
   // the expiry answer is gone from memory while the ledger's one window is
   // still spent — the ladder must not be offered over it.
   const ladderSpent = passageCourant >= 2 || windowExpiredTo(expirePhase) !== null || remembered === 'reschedule';
+  /** COLIS-FOURNISSEUR-1 — the whole-bag ladder is not holding the screen (no
+   *  window, no reason list, no reschedule poster, no return to prepare): only
+   *  then is the package's door, article by article, the rider's screen. */
+  const colisEchelleAuRepos =
+    !refusedFinalDue(expirePhase, remembered) &&
+    !retourDecide &&
+    !(rescheduleDue(expirePhase, remembered, passageCourant) && !clientRevenu) &&
+    !(windowIsOpen(refusalPhase) && !reessaiEnCours && passageCourant < 2) &&
+    !raisonOuverte;
   const sendOpenReturn = useCallback(() => {
     if (riderCode === null || liveAssignment === null || scelleRetour === null) return;
+    // COLIS-FOURNISSEUR-1 — a bag going home whole (the ladder ended on
+    // « return », or the dispatcher decided it): every article still in it is
+    // re-sealed in the one return bag, each on its own ledger.
     const attempt = attemptFor(`return-open|${liveAssignment.orderId}|${scelleRetour}`);
+    retourEnVol.current = ordresEnCours;
     runAct(setReturnOpenPhase, () =>
-      custodyActs.openReturn(
-        { commandId: attempt.id, orderId: liveAssignment.orderId, returnSealId: scelleRetour },
-        riderCode,
-      ),
+      surColis(ordresEnCours, attempt, (orderId, commandId) =>
+        custodyActs.openReturn({ commandId, orderId, returnSealId: scelleRetour }, riderCode), TENU.retour),
     );
-  }, [custodyActs, riderCode, liveAssignment, scelleRetour, runAct, attemptFor]);
+  }, [custodyActs, riderCode, liveAssignment, scelleRetour, runAct, attemptFor, surColis, ordresEnCours]);
+
+  /**
+   * ═══ COLIS-FOURNISSEUR-1 — KEEP OR REFUSE ONE ARTICLE (decision c) ═══
+   *
+   * « Il le garde »: the §6.3 accept, on THIS article's ledger — the same act
+   * a single pay-at-door order records, one per article. « Il le refuse »:
+   * her VALID refusal (the seal question decides whose fault — the service
+   * derives it, never the rider), then at once the article is re-sealed in
+   * the course's return bag on its own ledger, so it goes back on its own
+   * and Shop+ hears of the refusal before she pays for what she keeps.
+   * One command id per article and choice (`attemptFor`), a frozen instant,
+   * never queued offline — the standing laws of every act.
+   */
+  const garderArticle = useCallback(
+    (orderId: string) => {
+      if (riderCode === null) return;
+      const attempt = attemptFor(`door-inspection|${orderId}|garde`);
+      const held = capturedAtFor.current.get(attempt.id) ?? new Date().toISOString();
+      capturedAtFor.current.set(attempt.id, held);
+      const noter = (phase: ActPhase): void =>
+        setPorteColis((p) => ({ ...p, [orderId]: { choix: 'garde', etape: 'inspection', phase } }));
+      noter({ kind: 'working' });
+      void custodyActs
+        .recordDoorInspection(
+          {
+            commandId: attempt.id,
+            orderId,
+            inspectionCategory: CATEGORIE_CONSERVATRICE,
+            packageOpened: false,
+            manufacturerSealOpened: false,
+            custodySealIntact: true,
+            buyerAccepts: true,
+            startedAt: held,
+            completedAt: held,
+            evidenceBundleId: `${SANS_PHOTO}-porte-${orderId}`,
+          },
+          riderCode,
+        )
+        .then(
+          (answer) => noter({ kind: 'answered', answer }),
+          () => noter({ kind: 'answered', answer: { kind: 'unreachable', reason: 'transport' } }),
+        );
+    },
+    [custodyActs, riderCode, attemptFor],
+  );
+
+  const refuserArticle = useCallback(
+    (orderId: string, custodySealIntact: boolean) => {
+      if (riderCode === null || scelleRetour === null) return;
+      setRefusArticle(null);
+      const attempt = attemptFor(`door-inspection|${orderId}|refus-valide|${custodySealIntact ? 'intact' : 'abime'}`);
+      const held = capturedAtFor.current.get(attempt.id) ?? new Date().toISOString();
+      capturedAtFor.current.set(attempt.id, held);
+      const noter = (etape: 'inspection' | 'retour', phase: ActPhase): void =>
+        setPorteColis((p) => ({ ...p, [orderId]: { choix: 'refuse', etape, phase } }));
+      noter('inspection', { kind: 'working' });
+      void (async () => {
+        const inspection = await custodyActs.recordDoorInspection(
+          {
+            commandId: attempt.id,
+            orderId,
+            inspectionCategory: CATEGORIE_CONSERVATRICE,
+            packageOpened: false,
+            manufacturerSealOpened: false,
+            custodySealIntact,
+            buyerAccepts: false,
+            refusalColumn: 'valid',
+            startedAt: held,
+            completedAt: held,
+            evidenceBundleId: `${SANS_PHOTO}-porte-${orderId}`,
+          },
+          riderCode,
+        );
+        // Her refusal is on the ledger (or already was, on a relaunch): the
+        // article goes into the return bag now. Anything else is shown as it is.
+        const refusTenu =
+          validRejectionRecorded(inspection) ||
+          (inspection.kind === 'refused' && inspection.reason === 'inspection_already_recorded');
+        if (!refusTenu) {
+          noter('inspection', { kind: 'answered', answer: inspection });
+          return;
+        }
+        const ouverture = await custodyActs.openReturn(
+          { commandId: attemptFor(`return-open|${orderId}|${scelleRetour}`).id, orderId, returnSealId: scelleRetour },
+          riderCode,
+        );
+        if (returnOpened(ouverture)) setRetourLocal((r) => (r.includes(orderId) ? r : [...r, orderId]));
+        noter('retour', { kind: 'answered', answer: ouverture });
+      })().catch(() => noter('inspection', { kind: 'answered', answer: { kind: 'unreachable', reason: 'transport' } }));
+    },
+    [custodyActs, riderCode, attemptFor, scelleRetour],
+  );
+
+  /** Her refusal is on the ledger, the re-seal did not land: ONLY the re-seal
+   *  again (same id — a landed one replays), never the question a second time. */
+  const reessayerRetourArticle = useCallback(
+    (orderId: string) => {
+      if (riderCode === null || scelleRetour === null) return;
+      const noter = (phase: ActPhase): void =>
+        setPorteColis((p) => ({ ...p, [orderId]: { choix: 'refuse', etape: 'retour', phase } }));
+      noter({ kind: 'working' });
+      void custodyActs
+        .openReturn({ commandId: attemptFor(`return-open|${orderId}|${scelleRetour}`).id, orderId, returnSealId: scelleRetour }, riderCode)
+        .then(
+          (answer) => {
+            if (returnOpened(answer)) setRetourLocal((r) => (r.includes(orderId) ? r : [...r, orderId]));
+            noter({ kind: 'answered', answer });
+          },
+          () => noter({ kind: 'answered', answer: { kind: 'unreachable', reason: 'transport' } }),
+        );
+    },
+    [custodyActs, riderCode, attemptFor, scelleRetour],
+  );
 
   /**
    * BOTH keys, from the session, in ONE act (SE6.2). The seller's key is on
@@ -1384,16 +1675,16 @@ export default function App() {
       handoverPhase.answer.kind === 'refused' &&
       handoverPhase.answer.reason === 'return_two_key_refused'
     ) {
-      attempts.current.delete(key);
+      oublierTentative(key);
     }
+    // COLIS-FOURNISSEUR-1 — the two keys hand back every article in the
+    // return bag, each on its own ledger (logistics armed both keys on each).
+    const rendus = colis === null ? [liveAssignment.orderId] : enRetourIds;
     const attempt = attemptFor(key);
     runAct(setHandoverPhase, () =>
-      custodyActs.completeReturn(
-        { commandId: attempt.id, orderId: liveAssignment.orderId, sellerKey, riderKey },
-        riderCode,
-      ),
+      surColis(rendus, attempt, (orderId, commandId) => custodyActs.completeReturn({ commandId, orderId, sellerKey, riderKey }, riderCode), TENU.remiseRetour),
     );
-  }, [custodyActs, riderCode, liveAssignment, handoverPhase, runAct, attemptFor]);
+  }, [custodyActs, riderCode, liveAssignment, handoverPhase, runAct, attemptFor, oublierTentative, surColis, colis, enRetourIds]);
 
   /**
    * The buyer REFUSES on a valid ground at the door (§6.2's valid column):
@@ -1540,6 +1831,117 @@ export default function App() {
       </>
     );
   }, [refusalPhase, expirePhase, fenetreJusqua, refusValideOuvert, sendExpire, sendValidRejection, ladderSpent, clientRevenu]);
+
+  /**
+   * ═══ COLIS-FOURNISSEUR-1 — THE PACKAGE'S DOOR (decision c) ═══
+   *
+   * One article at a time, named in the rider's words (the founder's brief:
+   * « le pagne », « les sandales »), one primary action — she keeps it — and
+   * the whispering other road — she refuses it, the seal question, and the
+   * article goes into the return bag on its own. Then ONE code from her hands
+   * over everything she kept. « Un souci ? » stays the whole bag's (she is not
+   * there) until the first article is shown.
+   *
+   * Called as `{PorteColisVue()}`, never as an element (the RepereVoix law).
+   */
+  const PorteColisVue = (): React.JSX.Element | null => {
+    if (colis === null) return null;
+    const total = colis.articles.length;
+    const courant = articlesIndecis[0];
+    if (courant !== undefined) {
+      const rang = colis.articles.findIndex((a) => a.orderId === courant.orderId) + 1;
+      const noteLa = porteColis[courant.orderId];
+      const travail = noteLa?.phase.kind === 'working';
+      const issue =
+        noteLa?.phase.kind === 'answered'
+          ? noteLa.etape === 'retour'
+            ? returnOpenOutcome(noteLa.phase.answer)
+            : inspectionOutcome(noteLa.phase.answer)
+          : null;
+      const retourEnAttente = noteLa?.choix === 'refuse' && noteLa.etape === 'retour';
+      return (
+        <>
+          <FasoPosterTitle>{t('colis.porte_titre')}</FasoPosterTitle>
+          <FasoBody>{t('colis.porte_aide')}</FasoBody>
+          <FasoStatusChip tone="info" label={`${t('colis.article')} ${rang} ${t('colis.sur')} ${total}`} />
+          <FasoCard>
+            <ProofLine label={courant.libelle ?? `${t('colis.article')} ${rang}`} />
+          </FasoCard>
+          {retourEnAttente && scelleRetour !== null ? (
+            /* Her refusal is recorded; only the re-seal is left to land. */
+            <>
+              <FasoSealMark code={scelleRetour} label={t('retour.scelle_titre')} />
+              <FasoBody>{t('colis.refus_sac')}</FasoBody>
+              <FasoPrimaryButton
+                label={t(travail ? 'acts.sending' : 'colis.retour_reessayer')}
+                disabled={travail}
+                onPress={() => reessayerRetourArticle(courant.orderId)}
+              />
+            </>
+          ) : refusArticle === courant.orderId ? (
+            scelleRetour === null ? (
+              <FasoCard>
+                <FasoBody>{t('retour.scelle_absent')}</FasoBody>
+              </FasoCard>
+            ) : (
+              <FasoCard>
+                <FasoSealMark code={scelleRetour} label={t('retour.scelle_titre')} />
+                <FasoBody>{t('colis.refus_sac')}</FasoBody>
+                <FasoBody>{t('reject.seal_question')}</FasoBody>
+                <FasoSecondaryButton label={t('reject.seal_intact')} onPress={() => refuserArticle(courant.orderId, true)} />
+                <FasoDangerButton label={t('reject.seal_broken')} onPress={() => refuserArticle(courant.orderId, false)} />
+                <FasoGhostButton label={t('nav.retour')} onPress={() => setRefusArticle(null)} />
+              </FasoCard>
+            )
+          ) : (
+            <>
+              <FasoPrimaryButton
+                label={t(travail ? 'acts.sending' : 'colis.garde')}
+                disabled={travail}
+                onPress={() => garderArticle(courant.orderId)}
+              />
+              <FasoGhostButton label={t('colis.refuse')} disabled={travail} onPress={() => setRefusArticle(courant.orderId)} />
+            </>
+          )}
+          {issue !== null && issue.tone !== 'ok' ? (
+            <>
+              <FasoStatusChip tone={issue.tone === 'waiting' ? 'info' : 'bad'} label={t(issue.title)} />
+              {issue.hint === undefined ? null : <FasoBody>{t(issue.hint)}</FasoBody>}
+            </>
+          ) : null}
+          {aucunChoixColis ? PorteSoucis(false) : null}
+        </>
+      );
+    }
+    const refuses = colis.articles.filter((a) => choixArticle(a) === 'refuse').length;
+    return (
+      <>
+        <FasoPosterTitle>{t('delivery.code_title')}</FasoPosterTitle>
+        <FasoBody>{`${aRemettreIds.length} ${t(aRemettreIds.length === 1 ? 'colis.a_remettre_un' : 'colis.a_remettre_plusieurs')}`}</FasoBody>
+        {refuses > 0 ? <FasoBody>{t('colis.refuses_retour')}</FasoBody> : null}
+        <FasoActCode
+          strings={{
+            title: t('delivery.code_overline'),
+            hint: t('delivery.code_hint'),
+            placeholder: t('delivery.code_placeholder'),
+            action: t('delivery.code_send'),
+            working: t('acts.sending'),
+          }}
+          working={dropPhase.kind === 'working'}
+          outcome={
+            dropPhase.kind === 'answered'
+              ? (() => {
+                  const o = dropOutcome(dropPhase.answer);
+                  return { title: t(o.title), hint: o.hint === undefined ? undefined : t(o.hint), tone: o.tone };
+                })()
+              : undefined
+          }
+          onSubmit={sendDrop}
+          onFocus={() => scrollRef.current?.scrollToEnd({ animated: true })}
+        />
+      </>
+    );
+  };
 
   const signIn = useCallback(
     (typed: string) => {
@@ -2241,6 +2643,10 @@ export default function App() {
                  */
                 <>
                   <FasoPosterTitle>{t('course.proposee_titre')}</FasoPosterTitle>
+                  {/* COLIS-FOURNISSEUR-1 — one course, one bag, several articles: said first. */}
+                  {colis !== null ? (
+                    <FasoStatusChip tone="accent" label={`${t('colis.un_colis')} ${colis.articles.length} ${t('colis.articles')}`} />
+                  ) : null}
                   {assignmentLines !== null ? (
                     <FasoLandmarkCard
                       zone={assignmentLines[2]}
@@ -2308,6 +2714,9 @@ export default function App() {
                       door. */}
                   {RepereVoix()}
                   <FasoStatusChip tone="info" label={t(assignmentStateKey(liveAssignment.status))} />
+                  {colis !== null ? (
+                    <FasoStatusChip tone="accent" label={`${t('colis.un_colis')} ${colis.articles.length} ${t('colis.articles')}`} />
+                  ) : null}
                   {/* MANIFESTE-1 (SE3.1, SE-I03) — the ONE current stop, as
                       logistics derives it from the book and the LEDGER (never
                       this phone's guess): pickup at the seller until custody
@@ -2408,13 +2817,26 @@ export default function App() {
                        * failure one step quieter.
                        */
                       <FasoCard>
-                        <FasoCelebration
-                          label={t('delivery.done')}
-                          sublabel={t('delivery.done_next')}
-                          actionNote={t('delivered.retour_service')}
-                          actionLabel={t('delivered.fermer')}
-                          onDone={() => setDropPhase(ACT_IDLE)}
-                        />
+                        {/* COLIS-FOURNISSEUR-1 — a split package is not over at
+                            the buyer's door: what she kept is remis, what she
+                            refused still rides home. The way out says so. */}
+                        {colis !== null && enRetourIds.length > 0 ? (
+                          <FasoCelebration
+                            label={t('delivery.done')}
+                            sublabel={t('colis.livre_suite')}
+                            actionNote={t('colis.vers_retour_note')}
+                            actionLabel={t('colis.vers_retour')}
+                            onDone={() => setDropPhase(ACT_IDLE)}
+                          />
+                        ) : (
+                          <FasoCelebration
+                            label={t('delivery.done')}
+                            sublabel={t('delivery.done_next')}
+                            actionNote={t('delivered.retour_service')}
+                            actionLabel={t('delivered.fermer')}
+                            onDone={() => setDropPhase(ACT_IDLE)}
+                          />
+                        )}
                       </FasoCard>
                     ) : (
                       <>
@@ -2493,6 +2915,10 @@ export default function App() {
                               })()
                             ) : null}
                           </>
+                        ) : colis !== null && colisPorteDue && colisEchelleAuRepos && evidenceIsHeld(evidencePhase) ? (
+                          /* COLIS-FOURNISSEUR-1 — the package's door: each
+                             article kept or refused, then her one code. */
+                          PorteColisVue()
                         ) : returnDone(handoverPhase) ? (
                           /**
                            * ═══ RETOUR-VIVANT-1 — THE ROAD HOME ENDS HERE ═══
@@ -2515,7 +2941,11 @@ export default function App() {
                                 by themselves when the course leaves the session. */}
                             <FasoPrimaryButton label={t('delivered.fermer')} onPress={refreshSession} />
                           </>
-                        ) : returnRoadOpen(returnOpenPhase, liveAssignment.codeRetour, remembered) ? (
+                        ) : (colis === null
+                            ? returnRoadOpen(returnOpenPhase, liveAssignment.codeRetour, remembered)
+                            // A package's return road opens once nothing is left
+                            // for the buyer at her door (what she kept is remis).
+                            : enRetourIds.length > 0 && !colisPorteDue) ? (
                           /**
                            * ═══ RETOUR-VIVANT-1 — R13 « le retour à deux clés »,
                            * on the LIVE road ═══
@@ -2740,7 +3170,7 @@ export default function App() {
                           <>
                             <FasoPosterTitle>{t('delivery.title')}</FasoPosterTitle>
                             <FasoBody>{t('delivery.body')}</FasoBody>
-                            {idsRemise === null || sealPourRemise === null ? (
+                            {idsRemise === null || sealPourRemise === null || colisSansChaine ? (
                               /* The ids the bundle must name are gone (a Worker
                                  that predates the chain answer, and a session
                                  that carries none). Honest, and never guessed. */
@@ -2811,6 +3241,15 @@ export default function App() {
                             ) : (
                               <FasoPendingNotice title={t('delivery.preuve_titre')} lines={[t('delivery.preuve_note')]} />
                             )}
+                          </>
+                        ) : colis !== null ? (
+                          /* COLIS-FOURNISSEUR-1 — every article handed over or
+                             home: the course closes on custody's own wires in a
+                             moment. Never the single-order door below. */
+                          <>
+                            <FasoPosterTitle>{t('colis.fin_titre')}</FasoPosterTitle>
+                            <FasoPendingNotice title={t('colis.fin_note')} lines={[t('delivery.done_next')]} />
+                            <FasoPrimaryButton label={t('delivered.fermer')} onPress={refreshSession} />
                           </>
                         ) : liveAssignment.paymentMode === MODE_PORTE && !inspectionIsHeld(inspectionPhase) ? (
                           /**

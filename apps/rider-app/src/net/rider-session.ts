@@ -153,6 +153,68 @@ export interface RiderAssignment {
    * null, bounded like every date.
    */
   readonly retourDecideAt: string | null;
+  /**
+   * COLIS-FOURNISSEUR-1 — the package this ONE course carries (founder
+   * ruling 2026-09-23): every article, the first being the course's own
+   * order, each with the chain custody opened for IT (every act names its
+   * own order and its own package — one ledger per article), its name for
+   * the door, and how it stands on custody's own wires. `null` on a course
+   * carrying one order — the road is exactly as it was.
+   */
+  readonly colis: RiderColis | null;
+}
+
+/** How one article of a package stands, as logistics heard it from custody. */
+export type EtatArticle = 'en_cours' | 'livree' | 'en_retour' | 'retournee';
+
+export interface ArticleColis {
+  readonly orderId: string;
+  /** What the article IS, in words for the door — or null (then « Article n »). */
+  readonly libelle: string | null;
+  readonly chaine: { readonly taskId: string; readonly packageId: string } | null;
+  readonly etat: EtatArticle;
+}
+
+export interface RiderColis {
+  readonly packageId: string;
+  readonly articles: readonly ArticleColis[];
+}
+
+const ETATS_ARTICLE: readonly EtatArticle[] = ['en_cours', 'livree', 'en_retour', 'retournee'];
+/** Canon's bound on a package (`PACKAGE_ORDERS_MAX`), and a product name's. */
+const MAX_ARTICLES = 10;
+const MAX_LIBELLE = 80;
+
+/**
+ * A package the phone can act on, or null. It must name the course's own
+ * order FIRST and every article once — a bag whose list the phone cannot
+ * trust is never half-walked: the act that needs it refuses by name instead.
+ */
+function colisOrNull(v: unknown, orderId: string): RiderColis | null {
+  if (v === null || typeof v !== 'object') return null;
+  const c = v as Record<string, unknown>;
+  const packageId = c['packageId'];
+  const raw = c['articles'];
+  if (typeof packageId !== 'string' || packageId.trim() === '' || !Array.isArray(raw)) return null;
+  if (raw.length < 2 || raw.length > MAX_ARTICLES) return null;
+  const articles: ArticleColis[] = [];
+  for (const item of raw as unknown[]) {
+    if (item === null || typeof item !== 'object') return null;
+    const a = item as Record<string, unknown>;
+    const id = a['orderId'];
+    const etat = a['etat'];
+    if (typeof id !== 'string' || id.trim() === '' || articles.some((x) => x.orderId === id)) return null;
+    if (typeof etat !== 'string' || !(ETATS_ARTICLE as readonly string[]).includes(etat)) return null;
+    const libelle = a['libelle'];
+    articles.push({
+      orderId: id,
+      libelle: typeof libelle === 'string' && libelle.trim() !== '' && libelle.length <= MAX_LIBELLE ? libelle.trim() : null,
+      chaine: chaineOrNull(a['chaine']),
+      etat: etat as EtatArticle,
+    });
+  }
+  if (articles[0]?.orderId !== orderId) return null;
+  return { packageId, articles };
 }
 
 function passageOrOne(v: unknown): number {
@@ -379,6 +441,7 @@ export function riderSessionFromBody(body: unknown): RiderSession | null {
         fenetre: fenetreOrNull(a['window']),
         chaine: chaineOrNull(a['chaine']),
         retourDecideAt: isoOrNull(a['retourDecideAt']),
+        colis: colisOrNull(a['colis'], a['orderId']),
       };
     }
   }
