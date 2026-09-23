@@ -68,7 +68,8 @@ export type SpineRefusal =
   | 'producer_actor_mismatch'
   | 'door_leg_not_expected'
   | 'door_references_full'
-  | 'change_of_mind_not_in_package';
+  | 'change_of_mind_not_in_package'
+  | 'change_of_mind_recorded';
 
 /** A package's door is retried under its collection's one reference; a new
  *  collection is rare (a changed set). 25 is the door's attempt ceiling. */
@@ -126,6 +127,12 @@ export class CustodySpine {
    * course reports a DIFFERENT fact the second time, once. */
   private readonly settledAlertedSignalCommandIds = new Set<string>();
   private validRejection: { faultClass: string } | null = null;
+  /**
+   * RETOUR-CHANGEMENT-AVIS (verifier BLOCKER) — her change of mind on this
+   * package article is FINAL: no later choice (kept, or a problem) may
+   * overwrite it and nothing is handed over, even before the return opens.
+   */
+  private changementAvisFinal = false;
 
   constructor(
     private readonly chain: ChainIds,
@@ -528,7 +535,7 @@ export class CustodySpine {
     // Verifier blocking finding + NB⑥ (both WOs' analog closed with one
     // guard): a recorded rejection or an in-flight return means the package
     // goes HOME — the drop can never complete against it, any payment mode.
-    if (this.validRejection !== null || this.returnFlow !== null) {
+    if (this.validRejection !== null || this.returnFlow !== null || this.changementAvisFinal) {
       return { ok: false, reason: 'return_in_progress' };
     }
     // SE-I11 (payment-before-handoff), enforced: on Option-B, custody MUST
@@ -608,6 +615,12 @@ export class CustodySpine {
     // RETOUR-CHANGEMENT-AVIS — final at once only for an article of a package,
     // and never over a window already open (the ladder's own rule).
     const definitif = input.definitive === true && !input.buyerAccepts && input.refusalColumn === 'buyer_risk';
+    // Her final change of mind is the one inspection of this article: the same
+    // choice again is already recorded (a relaunched phone re-seals), any other
+    // is refused by name — never « kept » after all, never a seller's fault.
+    if (this.changementAvisFinal) {
+      return { ok: false, reason: definitif ? 'inspection_already_recorded' : 'change_of_mind_recorded' };
+    }
     if (definitif && !this.enColis) return { ok: false, reason: 'change_of_mind_not_in_package' };
     if (definitif && this.ladderOutcome !== null) return { ok: false, reason: 'ladder_already_open' };
     const outcome = runDoorInspection(input);
@@ -628,6 +641,7 @@ export class CustodySpine {
         // now, fee retained when the return opens (`applyBuyerFaultRefusal`).
         const ladder = changeOfMindAtPackageDoor({ taskId: this.chain.task_id, orderId: this.chain.order_id, at });
         this.ladderOutcome = ladder.outcome;
+        this.changementAvisFinal = true;
         this.ledger.append({
           packageId: this.chain.package_id,
           kind: 'validation_decision',

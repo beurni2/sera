@@ -11,7 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@platform/contracts": "git+https://github.com/beurni2/platform-contracts.git#8f2c32cf9f2ec587eb00b18998164e371a225b1b&path:packages/contracts",
+    "@platform/contracts": "git+https://github.com/beurni2/platform-contracts.git#595ed0a96179755a01a81f288e7a49286ee6a8e6&path:packages/contracts",
     "@platform/ui-tokens": "git+https://github.com/beurni2/platform-contracts.git#a832df0a8ed9e9fc83083826bc11c2a2e57e615a&path:packages/ui-tokens",
     "expo": "~57.0.20",
     "expo-audio": "~57.0.4",

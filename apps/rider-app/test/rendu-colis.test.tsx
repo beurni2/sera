@@ -37,8 +37,12 @@ import { __modeChargement } from './doubles/expo-audio';
  * `recordDoorInspection` with `buyer_risk` + `definitive` — final at once
  * (the buyer-fault `return`, attempt 1) only on an article custody was told
  * travels in a package (`change_of_mind_not_in_package` otherwise), never over
- * an open window (`ladder_already_open`); the return then opens as the
- * buyer-fault one. What it does NOT model: the wires between the two
+ * an open window (`ladder_already_open`); once it is, it is the article's one
+ * inspection — the same choice again `inspection_already_recorded`, any other
+ * `change_of_mind_recorded`, a drop `return_in_progress`, « Un souci ? »
+ * `ladder_already_open` — and the return opens as the buyer-fault one. A
+ * buyer-risk refusal WITHOUT `definitive` opens that order's one window (the
+ * app never sends it at a package's door). What it does NOT model: the wires between the two
  * Workers — the logistics seam test owns those.
  */
 
@@ -187,7 +191,12 @@ function custody(world: World, paymentMode: string): Route {
       return commit({ status: 200, json: { ok: true, status: 'evidence_recorded' } });
     }
     if (path === '/rider/door/inspection') {
-      if (l.inspection !== null) return commit({ status: 409, json: { ok: false, reason: 'inspection_already_recorded' } });
+      const definitif = body?.['definitive'] === true && body?.['buyerAccepts'] === false && body?.['refusalColumn'] === 'buyer_risk';
+      if (l.inspection === 'accepted' || l.inspection === 'valid_rejection') return commit({ status: 409, json: { ok: false, reason: 'inspection_already_recorded' } });
+      if (l.returnOpen) return commit({ status: 409, json: { ok: false, reason: 'return_in_progress' } });
+      if (l.inspection === 'changement_avis') {
+        return commit({ status: 409, json: { ok: false, reason: definitif ? 'inspection_already_recorded' : 'change_of_mind_recorded' } });
+      }
       if (body?.['buyerAccepts'] === true) {
         l.inspection = 'accepted';
         return commit({ status: 200, json: { ok: true, kind: 'accepted' } });
@@ -200,6 +209,14 @@ function custody(world: World, paymentMode: string): Route {
         return commit({
           status: 200,
           json: { ok: true, kind: 'invalid_rejection', ladder: { ok: true, outcome: { family: 'return', reasonCode: 'change_of_mind', faultClass: 'buyer', attempt: { number: 1, at: '2026-09-23T11:00:00.000Z' } } } },
+        });
+      }
+      if (body?.['refusalColumn'] === 'buyer_risk') {
+        if (l.ladder !== null) return commit({ status: 200, json: { ok: true, kind: 'invalid_rejection', ladder: { ok: false, reason: 'ladder_already_open' } } });
+        l.ladder = 'change_of_mind';
+        return commit({
+          status: 200,
+          json: { ok: true, kind: 'invalid_rejection', ladder: { ok: true, outcome: { family: 'retry', reasonCode: 'change_of_mind', faultClass: 'buyer', attempt: { number: 1, windowExpiresAt: '2026-09-23T12:00:00.000Z' } } } },
         });
       }
       if (body?.['refusalColumn'] !== 'valid') return commit({ status: 409, json: { ok: false, reason: 'refusal_column_missing' } });
@@ -223,7 +240,7 @@ function custody(world: World, paymentMode: string): Route {
     if (path === '/rider/door/refusal') {
       if (l.delivered) return commit({ status: 409, json: { ok: false, reason: 'order_already_delivered' } });
       if (!l.sealed) return commit({ status: 409, json: { ok: false, reason: 'refusal_before_custody' } });
-      if (l.inspection === 'valid_rejection' || l.inspection === 'changement_avis' || l.returnOpen) return commit({ status: 409, json: { ok: false, reason: 'return_in_progress' } });
+      if (l.inspection === 'valid_rejection' || l.returnOpen) return commit({ status: 409, json: { ok: false, reason: 'return_in_progress' } });
       if (l.ladder !== null) return commit({ status: 409, json: { ok: false, reason: 'ladder_already_open' } });
       l.ladder = String(body?.['reasonCode']);
       return commit({
@@ -390,7 +407,7 @@ describe('COLIS-FOURNISSEUR-1 — the rider carries one package of several order
     expect(s.shows('Les articles gardés sont remis. Il reste le retour chez le vendeur.'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
   });
 
-  it('RETOUR-CHANGEMENT-AVIS — custody cannot take it as final (a file opened before the rule): the refusal is shown, nothing moved, and the rider still has a way: the other reason, or keeping it', async () => {
+  it('RETOUR-CHANGEMENT-AVIS — custody cannot take it as final (a file opened before the rule): the refusal is shown, nothing moved, and the rider is not stranded', async () => {
     const state = course(PORTE);
     const world = freshWorld();
     world.ledgers[B]!.colis = false;
@@ -405,11 +422,39 @@ describe('COLIS-FOURNISSEUR-1 — the rider carries one package of several order
     expect(s.shows('Article 2 sur 2'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
     expect(s.canPress('La cliente le garde')).toBe(true);
     expect(s.canPress('La cliente le refuse')).toBe(true);
+    // Nothing reached the sandals' ledger but the refused act.
+    expect(world.ledgers[B]!.ladder).toBeNull();
+  });
+
+  it('verifier BLOCKER — the phone was relaunched after her change of mind landed: the same choice again is « already recorded », and the sandals go into the return bag', async () => {
+    const state = course(PORTE);
+    const world = freshWorld();
+    // Recorded in the phone's previous life, under a command id this one never saw.
+    world.ledgers[B]!.inspection = 'changement_avis';
+    world.ledgers[B]!.ladder = 'change_of_mind';
+    const { s, w } = await toTheDoor(state, world);
+    await s.press('La cliente le garde');
     await s.press('La cliente le refuse');
-    await s.press('L’article a un problème');
-    await s.press('Oui, intact');
-    expect(world.ledgers[B]!.inspection).toBe('valid_rejection');
+    await s.press('Elle a changé d’avis');
+    expect(world.ledgers[B]!.returnOpen, 're-sealed for home on the ledger’s own word').toBe(true);
+    expect(actes(w.calls, '/rider/return/open').map((f) => f.orderId)).toEqual([B]);
+    expect(s.shows('1 article à remettre.'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+  });
+
+  it('verifier BLOCKER — « she keeps it » after her final change of mind is refused by name: nothing handed over, and her choice can still be finished', async () => {
+    const state = course(PORTE);
+    const world = freshWorld();
+    world.ledgers[B]!.inspection = 'changement_avis';
+    world.ledgers[B]!.ladder = 'change_of_mind';
+    const { s, w } = await toTheDoor(state, world);
+    await s.press('La cliente le garde');
+    await s.press('La cliente le garde');
+    expect(world.ledgers[B]!.inspection, 'her final choice stands').toBe('changement_avis');
+    expect(s.shows('Article 2 sur 2'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    await s.press('La cliente le refuse');
+    await s.press('Elle a changé d’avis');
     expect(world.ledgers[B]!.returnOpen).toBe(true);
+    expect(actes(w.calls, '/rider/delivery/drop'), 'nothing handed over yet').toEqual([]);
     expect(s.shows('1 article à remettre.'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
   });
 

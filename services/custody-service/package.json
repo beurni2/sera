@@ -26,12 +26,12 @@
   },
   "dependencies": {
     "@sera/observability": "workspace:*",
-    "@platform/contracts": "git+https://github.com/beurni2/platform-contracts.git#8f2c32cf9f2ec587eb00b18998164e371a225b1b&path:packages/contracts"
+    "@platform/contracts": "git+https://github.com/beurni2/platform-contracts.git#595ed0a96179755a01a81f288e7a49286ee6a8e6&path:packages/contracts"
   },
   "devDependencies": {
     "typescript": "^5.9.2",
     "vitest": "^3.2.4",
-    "@platform/certification": "git+https://github.com/beurni2/platform-contracts.git#8f2c32cf9f2ec587eb00b18998164e371a225b1b&path:packages/certification",
+    "@platform/certification": "git+https://github.com/beurni2/platform-contracts.git#595ed0a96179755a01a81f288e7a49286ee6a8e6&path:packages/certification",
     "esbuild": "^0.25.5",
     "miniflare": "^4.20250705.0",
     "@cloudflare/workers-types": "^4.20250705.0"

@@ -413,6 +413,54 @@ describe('COLIS-FOURNISSEUR-1 — one course, one package, several orders, acros
     expect((await riderCustody(custody, '/rider/delivery/drop', code, { orderId: A, command_id: 'd-a', dropCode: 'DROP-AVIS-1' })).json).toMatchObject({ ok: true, status: 'custody_with_customer' });
   }, 120_000);
 
+  it('RETOUR-CHANGEMENT-AVIS (verifier m1) — a package member cancelled before dispatch leaves the other to travel ALONE: logistics does not flag it, so custody refuses her change of mind as final and her refusal keeps the one window', async () => {
+    const hold: Hold = {};
+    spawnLogistics(hold);
+    spawnCustody(hold);
+    const logistics = hold.logistics!;
+    const custody = hold.custody!;
+    const C = 'ord-avis-seul-c';
+    const D = 'ord-avis-seul-d';
+    const COLIS = { packageId: 'col-avis-seul', orderIds: [C, D] };
+    const RIDER = 'rider-avis-seul';
+    for (const o of [C, D]) {
+      await intake(logistics, '/intake/funding', { orderId: o, status: 'funded', paymentMode: 'FULL_PREPAY', asOf: T, package: COLIS });
+      await intake(logistics, '/intake/readiness', { orderId: o, ready: true, asOf: T, supplierRef: SUPPLIER });
+    }
+    await intake(logistics, '/intake/funding', { orderId: C, status: 'cancelled', paymentMode: 'FULL_PREPAY', asOf: '2026-09-23T09:06:00.000Z', package: COLIS });
+    const seul = await ops(logistics, '/ops/task', { command_id: 'avis-seul-t', orderId: D, location: LOC, window: WIN });
+    expect(seul.status, JSON.stringify(seul.json)).toBe(200);
+    await ops(logistics, '/ops/riders', { riderId: RIDER, displayName: RIDER, phoneAlias: 'seul' });
+    await ops(logistics, '/ops/riders/certify', { riderId: RIDER, certified: true });
+    const code = (await ops(logistics, '/ops/rider-code/mint', { riderId: RIDER })).json['code'] as string;
+    const { acts, session } = appPorts(logistics);
+    await acts.ackPrivacy(code);
+    expect((await acts.startShift(code)).ok).toBe(true);
+    const granted = await ops(logistics, '/ops/assign', { command_id: 'avis-seul-a', taskId: seul.json['taskId'], riderId: RIDER });
+    expect((await acts.accepterCourse(code, (granted.json['assignment'] as Json)['assignmentId'] as string)).ok).toBe(true);
+    await attendre(() => ledger(custody, D), (r) => r.status === 200, 'chain D never opened');
+    const signed = await session.signIn(code);
+    if (!signed.ok) throw new Error('sign-in refused');
+    const a = signed.session.assignment!;
+    expect(a.colis ?? null, 'D travels as an order alone').toBeNull();
+    expect((await riderCustody(custody, '/rider/verification', code, { orderId: D, command_id: 'v-d', presentedPickupCode: a.codeVerification, checkResults: ALL_PASS, dwellSec: 150, evidenceBundleId: 'ev-d' })).json).toMatchObject({ ok: true });
+    const b = await riderCustody(custody, '/rider/custody/begin', code, { orderId: D, command_id: 'b-d', custodySealId: a.codeScelle, sealPhotoRefs: [] });
+    const chaine = b.json['chain'] as Json;
+    await riderCustody(custody, '/rider/delivery/evidence', code, {
+      orderId: D, command_id: 'e-d', bundle: { taskId: chaine['task_id'], packageId: chaine['package_id'], custodySealId: a.codeScelle, artifacts: [], capturedAt: T },
+    });
+    const porte = (id: string, extra: Json) => riderCustody(custody, '/rider/door/inspection', code, {
+      orderId: D, command_id: id, inspectionCategory: 'uncategorised_conservative', packageOpened: false, manufacturerSealOpened: false,
+      custodySealIntact: true, buyerAccepts: false, refusalColumn: 'buyer_risk', startedAt: T, completedAt: T, evidenceBundleId: 'sans-photo-porte-d', ...extra,
+    });
+    const final = await porte('i-d-avis', { definitive: true });
+    expect(final.status).toBe(409);
+    expect(final.json).toMatchObject({ ok: false, reason: 'change_of_mind_not_in_package' });
+    // Her refusal as a single order: the one window, as ever.
+    const fenetre = await porte('i-d-fenetre', {});
+    expect(fenetre.json).toMatchObject({ ok: true, kind: 'invalid_rejection', ladder: { ok: true, outcome: { family: 'retry', reasonCode: 'change_of_mind' } } });
+  }, 120_000);
+
   it('PAY AT THE DOOR (decision d): she keeps both, ONE door payment for both, charged under its collection — each article crosses only when that reference was declared to its own file first', async () => {
     const hold: Hold = {};
     spawnLogistics(hold);

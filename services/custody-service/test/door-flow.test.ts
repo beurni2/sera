@@ -39,6 +39,22 @@ function doorSignal(commandId = 'cmd-door-1', orderId = CHAIN.order_id) {
   });
 }
 
+/** A prepaid article of a package, validated at the door like `optionBSpine`. */
+function prepaidColisSpine(): CustodySpine {
+  const spine = new CustodySpine({ ...CHAIN, order_id: CHAIN.order_id }, 'sup-1', 'FULL_PREPAY', true);
+  spine.secrets.register('pickup_verification_code', CHAIN.order_id, 'pvc-1');
+  spine.secrets.register('custody_seal', CHAIN.order_id, 'seal-b-1');
+  spine.secrets.register('buyer_drop_code', CHAIN.order_id, 'drop-1');
+  spine.establishSellerCustody(T);
+  const v = spine.verifyPickup({ orderId: CHAIN.order_id, riderId: 'r-1', checkResults: allPass, dwellSec: 150, evidenceBundleId: 'eb-1', custodySealId: 'seal-b-1' }, 'pvc-1', T);
+  if (v.kind !== 'accepted') throw new Error('setup verify');
+  if (!spine.beginCustody({ riderId: 'r-1', verificationOrderId: CHAIN.order_id, custodySealId: 'seal-b-1', sealPhotoRefs: ['media/seal.jpg'], at: T }).ok) throw new Error('setup custody');
+  if (!spine.submitDeliveryEvidence({ taskId: CHAIN.task_id, packageId: CHAIN.package_id, custodySealId: 'seal-b-1', artifacts: [{ ref: 'media/drop.jpg', sha256: SHA, mimeType: 'image/jpeg' }], capturedAt: T }, 'server_confirmed', T).ok) throw new Error('setup evidence');
+  const d = spine.decideValidation(T);
+  if (!d.ok || d.decision.result !== 'validated') throw new Error('setup decision');
+  return spine;
+}
+
 function optionBSpine(enColis = false): CustodySpine {
   const spine = new CustodySpine(CHAIN, 'sup-1', 'DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR', enColis);
   expect(spine.secrets.register('pickup_verification_code', CHAIN.order_id, 'pvc-1')).toEqual({ ok: true });
@@ -403,6 +419,23 @@ describe('RETOUR-CHANGEMENT-AVIS — a change of mind on a package\'s article is
     expect(sansDefinitif.recordDoorInspection(inspectionInput({ buyerAccepts: false, refusalColumn: 'buyer_risk' }), T)).toMatchObject({
       ok: true, kind: 'invalid_rejection', ladder: { ok: true, outcome: { family: 'retry' } },
     });
+  });
+
+  it('verifier BLOCKER — her final choice is the one inspection: « kept » and « a problem » are refused by name, the same choice again is already recorded, nothing is handed over — never a seller\'s fault, never a fee given back', () => {
+    for (const mode of ['DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR', 'FULL_PREPAY'] as const) {
+      const spine = mode === 'FULL_PREPAY' ? prepaidColisSpine() : optionBSpine(true);
+      expect(spine.recordDoorInspection(avis, T)).toMatchObject({ ok: true, kind: 'invalid_rejection' });
+      expect(spine.recordDoorInspection(inspectionInput(), T), mode).toEqual({ ok: false, reason: 'change_of_mind_recorded' });
+      expect(spine.recordDoorInspection(inspectionInput({ buyerAccepts: false, refusalColumn: 'valid' }), T), mode).toEqual({ ok: false, reason: 'change_of_mind_recorded' });
+      expect(spine.recordDoorInspection(avis, T2), mode).toEqual({ ok: false, reason: 'inspection_already_recorded' });
+      expect(spine.confirmDropAndEmitEligibility('drop-1', T2), mode).toEqual({ ok: false, reason: 'return_in_progress' });
+      expect(spine.openReturn({ returnSealId: 'rs-avis-2', at: T2 }).ok, mode).toBe(true);
+      const names = spine.allEvents().map((e) => e.name);
+      expect(names, mode).not.toContain('protection.claim_opened.v1');
+      expect(spine.allEvents().filter((e) => e.name === 'delivery.refused.v1').map((e) => e.payload), mode).toEqual([
+        expect.objectContaining({ fault_class: 'buyer', fee_retained: true, reason_code: 'change_of_mind' }),
+      ]);
+    }
   });
 
   it('`definitive` on an accept or a valid refusal changes nothing', () => {
