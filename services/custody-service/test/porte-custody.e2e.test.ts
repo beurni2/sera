@@ -441,4 +441,59 @@ describe('STOCK-VENDU-1b — the refusal reaches Shop+, verbatim, at-least-once'
     expect(payload['fault_class']).toBe('seller');
     await mf.dispose();
   }, 60_000);
+
+  /**
+   * PICKUP-REFUS (founder, 2026-09-23: « when the rider refuses a parcel at
+   * pickup (wrong item, damage), nobody tells Shop+, so the buyer isn't
+   * refunded ») — the rider's own door, a « Non » on the check-up, and the
+   * inbox asked for the refused-course fact Shop+ refunds on.
+   */
+  it('PICKUP-REFUS: a REFUSED pickup puts delivery.refused.v1 on the wire — pickup refusal, seller fault, the failed checks — and custody can never begin after it', async () => {
+    const inbox: Json[] = [];
+    const mf = bootAvecShop(freshDir('refus-enlevement'), inbox);
+    const O = 'ord-porte-refus-enlevement';
+    await doorModeArmed(mf, O, 'PICKUP-RE-1', 'DROP-RE-1');
+    const refused = await call(mf, 'POST', '/rider/verification', RIDER_CODE, {
+      orderId: O, command_id: `v-${O}`, presentedPickupCode: 'PICKUP-RE-1',
+      checkResults: { ...ALL_PASS, emballage_intact: false }, dwellSec: 150, evidenceBundleId: `ev-${O}`,
+    });
+    expect(refused.status).toBe(200);
+    expect(refused.json).toMatchObject({ ok: true, kind: 'refused' });
+
+    for (let i = 0; i < 80 && inbox.length < 1; i += 1) {
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    const refus = inbox.filter((b) => b['name'] === 'delivery.refused.v1');
+    expect(refus, `the pickup refusal never reached the wire — inbox: ${JSON.stringify(inbox)}`).toHaveLength(1);
+    expect((refus[0]!['envelope'] as Json)['command_id']).toBe(`pickup-refusal-${O}`);
+    expect((refus[0]!['envelope'] as Json)['correlation_id']).toBe(`corr-${O}`);
+    expect(refus[0]!['payload']).toEqual({
+      order_id: O,
+      task_id: `task-${O}`,
+      rejection: 'pickup_refusal',
+      fault_class: 'seller',
+      failed_checks: ['emballage_intact'],
+    });
+
+    // Final: the seal cannot begin custody on a refused pickup.
+    const begin = await call(mf, 'POST', '/rider/custody/begin', RIDER_CODE, {
+      orderId: O, command_id: `b-${O}`, custodySealId: 'SEAL-RE-1', sealPhotoRefs: [],
+    });
+    expect(begin.json).toMatchObject({ ok: false, reason: 'verification_not_accepted' });
+    const custodian = await call(mf, 'GET', `/produce/custodian?orderId=${O}`, PRODUCE_KEY);
+    expect(custodian.json).toMatchObject({ ok: true, open: true, currentCustodian: 'seller:supplier-porte-1' });
+    await mf.dispose();
+  }, 60_000);
+
+  it('PICKUP-REFUS: an ACCEPTED pickup puts no refusal on the wire', async () => {
+    const inbox: Json[] = [];
+    const mf = bootAvecShop(freshDir('enlevement-ok'), inbox);
+    const O = 'ord-porte-enlevement-ok';
+    await doorModeArmed(mf, O, 'PICKUP-OK-1', 'DROP-OK-1');
+    await atTheDoor(mf, O, 'PICKUP-OK-1', 'SEAL-OK-1');
+    // The transit/eligibility wires may speak; the refusal wire must not.
+    await new Promise((r) => setTimeout(r, 1_500));
+    expect(inbox.filter((b) => b['name'] === 'delivery.refused.v1')).toHaveLength(0);
+    await mf.dispose();
+  }, 60_000);
 });

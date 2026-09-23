@@ -74,7 +74,17 @@ export async function surChaqueArticle(
 /** Each act's « held », by its own ledger word — the same predicates the
  *  single road's screens already read. */
 export const TENU = {
-  verification: verificationAccepted,
+  /**
+   * PICKUP-REFUS (founder « 1 », 2026-09-23) — the ledger's word on the
+   * check, EITHER way. One check at the stall covers the whole bag, so a
+   * refusal recorded on one article is every article's: each order's own file
+   * must hear it, because each buyer is refunded on her own order. The screen
+   * reads the first article's word — the same answers, judged under the same
+   * policy, give every article the same one. A dead link or a spent code still
+   * stops the walk, as before.
+   */
+  verification: (a: CustodyAnswer): boolean =>
+    verificationAccepted(a) || (a.kind === 'recorded' && a.body['kind'] === 'refused'),
   scelle: custodyBegan,
   depart: transitDeparted,
   arrivee: transitArrived,

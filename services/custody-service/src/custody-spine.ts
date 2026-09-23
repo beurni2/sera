@@ -88,11 +88,11 @@ export class CustodySpine {
   private readonly events: PlatformEvent[] = [];
   private aggregateVersion = 0;
   private verificationAccepted = false;
-  /** WO-2.7 item 3 — the readiness/verification CYCLE. One pickup code per
-   * cycle; a refused verification may open the NEXT cycle (the corrective
-   * round-trip) with a NEW code. Attempt-keyed emissions ride this number. */
-  private verificationCycle = 1;
-  private lastVerificationRefused = false;
+  /** WO-2.7 item 3 — the verification CYCLE the attempt-keyed emissions ride.
+   * PICKUP-REFUS (founder, 2026-09-23) closed the corrective round-trip that
+   * could open a cycle 2: a refused pickup refunds the buyer, so there is ONE
+   * cycle and the keys stay the `-a1` ones already emitted live. */
+  private readonly verificationCycle = 1;
   private custodyWithCourier = false;
   /** The ONE seal consumed at beginCustody — evidence must bind to it by
    * equality (WO-2.1 finding ①). */
@@ -221,40 +221,32 @@ export class CustodySpine {
       attempt,
     }, at);
     if (outcome.kind === 'refused') {
-      this.lastVerificationRefused = true;
       this.emit('protection.claim_opened.v1', `fault-${input.orderId}-a${attempt}`, {
         order_id: input.orderId,
         faultClass: outcome.faultSignal.faultClass,
         failed_checks: [...outcome.failedChecks],
         attempt,
       }, at);
-      return outcome; // custody never begins; NO refund, NO settlement mutation exists here
+      /**
+       * PICKUP-REFUS (founder, 2026-09-23: « when the rider refuses a parcel
+       * at pickup … nobody tells Shop+, so the buyer isn't refunded ») — Séra
+       * §6.1: « rider refuses custody, buyer refunded (never fund-gated),
+       * order fails pre-round-trip ». The refusal is FINAL, so it is the
+       * canon refused-course fact the refusal wire already carries to Shop+,
+       * which refunds her in full (seller fault). Custody never began; this
+       * spine still moves no money — it states the fact.
+       */
+      this.emit('delivery.refused.v1', `pickup-refusal-${input.orderId}`, {
+        order_id: input.orderId,
+        task_id: this.chain.task_id,
+        rejection: 'pickup_refusal',
+        fault_class: outcome.faultSignal.faultClass,
+        failed_checks: [...outcome.failedChecks],
+      }, at);
+      return outcome; // custody never begins
     }
     this.verificationAccepted = true;
     return outcome;
-  }
-
-  /**
-   * WO-2.7 item 3 — the corrective round-trip re-arms verification: ONLY
-   * after a REFUSED verification (custody never began) may the next cycle
-   * open, with a NEW pickup code. The spent code stays spent (four-secrets
-   * law untouched); the new cycle's emissions carry the next attempt number.
-   */
-  openNewVerificationCycle(newPickupCode: string, _at: string):
-    | { ok: true; cycle: number }
-    | { ok: false; reason: 'no_refused_verification' | 'verification_already_accepted' | 'secret_already_used' } {
-    if (this.verificationAccepted) return { ok: false, reason: 'verification_already_accepted' };
-    if (!this.lastVerificationRefused) return { ok: false, reason: 'no_refused_verification' };
-    const nextCycle = this.verificationCycle + 1;
-    const armed = this.secrets.register('pickup_verification_code', this.chain.order_id, newPickupCode, nextCycle);
-    if (!armed.ok) return { ok: false, reason: 'secret_already_used' };
-    this.verificationCycle = nextCycle;
-    this.lastVerificationRefused = false;
-    return { ok: true, cycle: nextCycle };
-  }
-
-  currentVerificationCycle(): number {
-    return this.verificationCycle;
   }
 
   /** VRAI-ROUTE (founder, 2026-08-10) — does the courier hold custody RIGHT

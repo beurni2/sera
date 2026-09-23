@@ -127,43 +127,31 @@ describe('WO-2.7 item 3 — fault emission keys per ATTEMPT (order + verificatio
     expect(spine.allEvents().filter((e) => e.envelope.command_id === `fault-${CHAIN.order_id}-a1`)).toHaveLength(1);
   });
 
-  it('the corrective round-trip: new cycle ONLY after a refusal, with a NEW code; a second refusal is a NEW countable event (-a2)', () => {
-    const spine = refusedOnce();
-    // The spent cycle-1 code stays spent; the fresh spine has no cycle 2 yet.
-    expect(spine.verifyPickup({ orderId: CHAIN.order_id, riderId: 'r-1', checkResults: allPass, dwellSec: 150, evidenceBundleId: 'eb-1' }, 'pvc-1', T))
-      .toMatchObject({ kind: 'invalid', reason: 'pickup_code_refused', detail: 'secret_already_used' });
-
-    const cycle = spine.openNewVerificationCycle('pvc-2', T);
-    expect(cycle).toEqual({ ok: true, cycle: 2 });
-    // Cycle-1 code cannot verify cycle 2 — codes are per attempt.
-    expect(spine.verifyPickup({ orderId: CHAIN.order_id, riderId: 'r-1', checkResults: { ...allPass, qty: false }, dwellSec: 150, evidenceBundleId: 'eb-2' }, 'pvc-1', T))
-      .toMatchObject({ kind: 'invalid', reason: 'pickup_code_refused' });
-
-    const second = spine.verifyPickup({ orderId: CHAIN.order_id, riderId: 'r-1', checkResults: { ...allPass, qty: false }, dwellSec: 150, evidenceBundleId: 'eb-2' }, 'pvc-2', T);
-    expect(second.kind).toBe('refused');
-    const faults = spine.allEvents().filter((e) => e.name === 'protection.claim_opened.v1');
-    expect(faults.map((e) => e.envelope.command_id)).toEqual([`fault-${CHAIN.order_id}-a1`, `fault-${CHAIN.order_id}-a2`]);
-    expect(faults[1]!.payload).toMatchObject({ failed_checks: ['qty'], attempt: 2 });
-    // Verification records are attempt-keyed too — same duplicate class.
-    const verifies = spine.allEvents().filter((e) => e.name === 'pickup.verification_recorded.v1');
-    expect(verifies.map((e) => e.envelope.command_id)).toEqual([`verify-${CHAIN.order_id}-a1`, `verify-${CHAIN.order_id}-a2`]);
-  });
-
-  it('cycle discipline refuses closed: no cycle without a refusal, none after acceptance — and custody still begins normally on the accepted cycle', () => {
-    const fresh = new CustodySpine(CHAIN, 'sup-1');
-    expect(fresh.secrets.register('pickup_verification_code', CHAIN.order_id, 'pvc-1')).toEqual({ ok: true });
-    fresh.establishSellerCustody(T);
-    expect(fresh.openNewVerificationCycle('pvc-x', T)).toEqual({ ok: false, reason: 'no_refused_verification' });
-
+  /**
+   * PICKUP-REFUS (founder, 2026-09-23) CLOSED the corrective round-trip these
+   * two tests used to prove (a cycle 2 with a new code after a refusal). A
+   * refused pickup now refunds the buyer (Séra §6.1: « buyer refunded … order
+   * fails pre-round-trip »), so a second attempt would begin custody on a
+   * refunded order. What stands is the finality: no code, old or new, can
+   * verify again, custody never begins, and the attempt-1 keys stay the only
+   * ones.
+   */
+  it('PICKUP-REFUS: a refused pickup is FINAL — no second verification, no custody, one attempt only', () => {
     const spine = refusedOnce();
     expect(spine.secrets.register('custody_seal', CHAIN.order_id, 'seal-1')).toEqual({ ok: true });
-    expect(spine.openNewVerificationCycle('pvc-2', T)).toEqual({ ok: true, cycle: 2 });
-    // Two cycles may not stack without a fresh refusal in between.
-    expect(spine.openNewVerificationCycle('pvc-3', T)).toEqual({ ok: false, reason: 'no_refused_verification' });
-    const accepted = spine.verifyPickup({ orderId: CHAIN.order_id, riderId: 'r-1', checkResults: allPass, dwellSec: 150, evidenceBundleId: 'eb-2' }, 'pvc-2', T);
-    expect(accepted.kind).toBe('accepted');
-    expect(spine.openNewVerificationCycle('pvc-3', T)).toEqual({ ok: false, reason: 'verification_already_accepted' });
-    expect(spine.beginCustody({ riderId: 'r-1', verificationOrderId: CHAIN.order_id, custodySealId: 'seal-1', sealPhotoRefs: ['media/seal.jpg'], at: T }).ok).toBe(true);
-    expect(spine.ledger.currentCustodian(CHAIN.package_id)).toBe('courier:r-1');
+    expect(spine.verifyPickup({ orderId: CHAIN.order_id, riderId: 'r-1', checkResults: allPass, dwellSec: 150, evidenceBundleId: 'eb-2' }, 'pvc-1', T))
+      .toMatchObject({ kind: 'invalid', reason: 'pickup_code_refused', detail: 'secret_already_used' });
+    // No NEW code can be armed either: the one cycle's slot is spent.
+    expect(spine.secrets.register('pickup_verification_code', CHAIN.order_id, 'pvc-2')).toEqual({ ok: false, reason: 'secret_already_used' });
+    expect(spine.verifyPickup({ orderId: CHAIN.order_id, riderId: 'r-1', checkResults: allPass, dwellSec: 150, evidenceBundleId: 'eb-3' }, 'pvc-2', T))
+      .toMatchObject({ kind: 'invalid', reason: 'pickup_code_refused', detail: 'secret_already_used' });
+    expect(spine.beginCustody({ riderId: 'r-1', verificationOrderId: CHAIN.order_id, custodySealId: 'seal-1', sealPhotoRefs: [], at: T }))
+      .toEqual({ ok: false, reason: 'verification_not_accepted' });
+    expect(spine.ledger.currentCustodian(CHAIN.package_id)).toBe('seller:sup-1');
+    expect(spine.allEvents().filter((e) => e.name === 'pickup.verification_recorded.v1').map((e) => e.envelope.command_id))
+      .toEqual([`verify-${CHAIN.order_id}-a1`]);
+    expect(spine.allEvents().filter((e) => e.name === 'delivery.refused.v1').map((e) => e.envelope.command_id))
+      .toEqual([`pickup-refusal-${CHAIN.order_id}`]);
+    expect('openNewVerificationCycle' in spine).toBe(false);
   });
 });

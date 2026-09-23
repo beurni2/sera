@@ -42,8 +42,13 @@ import { __modeChargement } from './doubles/expo-audio';
  * `change_of_mind_recorded`, a drop `return_in_progress`, « Un souci ? »
  * `ladder_already_open` — and the return opens as the buyer-fault one. A
  * buyer-risk refusal WITHOUT `definitive` opens that order's one window (the
- * app never sends it at a package's door). What it does NOT model: the wires between the two
- * Workers — the logistics seam test owns those.
+ * app never sends it at a package's door). PICKUP-REFUS (founder « 1 »,
+ * 2026-09-23): a check answered « Non » is custody-spine `verifyPickup`'s
+ * RECORDED refusal — `200 {ok:true, kind:'refused'}`, the code spent, custody
+ * never begins on it (`verification_not_accepted`), and the refused-course
+ * fact armed for Shop+ (`refusEnlevement`) on THAT order's ledger. What it
+ * does NOT model: the wires between the two Workers — the logistics seam test
+ * owns those, and custody's Worker test owns the refusal wire to Shop+.
  */
 
 const CODE = 'SR-ABCD-EFGH-JKMN';
@@ -122,6 +127,10 @@ function logistics(state: CourseState): Route {
 
 interface Ledger {
   pickupUsed: boolean;
+  /** The check was ACCEPTED — the only verification custody can begin on. */
+  verified: boolean;
+  /** PICKUP-REFUS — the check was refused; the refused-course fact is armed for Shop+. */
+  refusEnlevement: boolean;
   sealed: boolean;
   evidence: boolean;
   inspection: 'accepted' | 'valid_rejection' | 'changement_avis' | null;
@@ -144,7 +153,7 @@ interface World {
 }
 
 const ledger = (): Ledger => ({
-  pickupUsed: false, sealed: false, evidence: false, inspection: null, colis: true, doorPaid: false,
+  pickupUsed: false, verified: false, refusEnlevement: false, sealed: false, evidence: false, inspection: null, colis: true, doorPaid: false,
   returnOpen: false, returned: false, delivered: false, ladder: null, panne: null,
 });
 const freshWorld = (): World => ({ ledgers: { [A]: ledger(), [B]: ledger() }, recorded: new Map() });
@@ -171,10 +180,16 @@ function custody(world: World, paymentMode: string): Route {
     if (path === '/rider/verification') {
       if (l.pickupUsed || body?.['presentedPickupCode'] !== PICKUP) return commit({ status: 409, json: { ok: false, reason: 'pickup_code_refused' } });
       l.pickupUsed = true;
+      const checks = body?.['checkResults'] as Record<string, unknown> | undefined;
+      if (checks === undefined || Object.values(checks).some((v) => v !== true)) {
+        l.refusEnlevement = true;
+        return commit({ status: 200, json: { ok: true, kind: 'refused', ledgerSeq: 1, chainValid: true } });
+      }
+      l.verified = true;
       return commit({ status: 200, json: { ok: true, kind: 'accepted', ledgerSeq: 1, chainValid: true } });
     }
     if (path === '/rider/custody/begin') {
-      if (!l.pickupUsed) return commit({ status: 409, json: { ok: false, reason: 'verification_not_accepted' } });
+      if (!l.verified) return commit({ status: 409, json: { ok: false, reason: 'verification_not_accepted' } });
       if (body?.['custodySealId'] !== SEAL) return commit({ status: 409, json: { ok: false, reason: 'seal_refused' } });
       l.sealed = true;
       return commit({ status: 200, json: { ok: true, status: 'custody_with_courier', chain: { task_id: TASK, package_id: `pkg-${orderId}` } } });
@@ -518,5 +533,50 @@ describe('COLIS-FOURNISSEUR-1 — the rider carries one package of several order
     expect(apres.map((f) => f.id)).toEqual(avant.map((f) => f.id));
     expect(world.ledgers[B]!.evidence).toBe(true);
     expect(s.shows('Article 1 sur 2'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+  });
+});
+
+/**
+ * PICKUP-REFUS (founder « 1 », 2026-09-23: « when the rider refuses a parcel
+ * at pickup (wrong item, damage), nobody tells Shop+, so the buyer isn't
+ * refunded ») — one check at the stall covers the whole bag, so a « Non » is
+ * every article's refusal: each order's own ledger must record it, or only
+ * the first buyer is ever refunded. Written FIRST, red, before the fix: the
+ * package loop used to stop at the first article that was not ACCEPTED, and a
+ * recorded refusal is not an acceptance.
+ */
+describe('PICKUP-REFUS — the rider refuses the bag at the stall', () => {
+  it('a « Non » is recorded on EVERY article’s own ledger, nothing is sealed, the screen says the seller keeps it, a second tap moves nothing, and once the course is cleared the rider is free', async () => {
+    const state = course(PORTE);
+    const world = freshWorld();
+    const w = wire([logistics(state), custody(world, state.paymentMode)]);
+    const s = await mountRider();
+    await s.type(CODE);
+    await s.press('Entrer');
+    await s.press('Accepter la course');
+    await s.press('Oui', 2);
+    await s.press('Oui', 1);
+    await s.press('Non', 0);
+    await s.press('Envoyer la vérification');
+
+    const verifs = actes(w.calls, '/rider/verification');
+    expect(verifs.map((f) => f.orderId), 'the refusal reaches every article, each on its own ledger').toEqual([A, B]);
+    expect(new Set(verifs.map((f) => f.id)).size, 'one id per article').toBe(2);
+    expect(world.ledgers[A]!.refusEnlevement && world.ledgers[B]!.refusEnlevement, 'both buyers’ orders hold the refusal').toBe(true);
+    expect(actes(w.calls, '/rider/custody/begin'), 'nothing is sealed over refused goods').toEqual([]);
+    expect(world.ledgers[A]!.sealed || world.ledgers[B]!.sealed).toBe(false);
+    expect(s.shows('Colis refusé. Le vendeur garde le colis.'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    expect(s.canPress('En route'), 'no road over a refused bag').toBe(false);
+
+    // A second tap is the SAME act: each ledger replays its refusal, nothing new.
+    await s.press('Envoyer la vérification');
+    const encore = actes(w.calls, '/rider/verification');
+    expect(encore.slice(2).map((f) => f.id)).toEqual(verifs.map((f) => f.id));
+    expect(s.shows('Colis refusé. Le vendeur garde le colis.')).toBe(true);
+
+    // The founder clears the course from his console: the rider is free.
+    state.closed = true;
+    await s.poll();
+    expect(s.shows('Pas de course pour vous'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
   });
 });

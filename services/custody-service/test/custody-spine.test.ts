@@ -63,6 +63,37 @@ describe('custody spine — SE4.3 seal-after-verification, refuse closed everywh
       .toEqual({ ok: false, reason: 'verification_not_accepted' });
   });
 
+  /**
+   * PICKUP-REFUS (founder, 2026-09-23) — Séra §6.1: « rider refuses custody,
+   * buyer refunded (never fund-gated), order fails pre-round-trip ». The
+   * refusal is the canon refused-course fact Shop+ refunds on — exactly once,
+   * with the seller at fault and the failed checks named.
+   */
+  it('PICKUP-REFUS: a REFUSED pickup states the refused-course fact once — pickup refusal, seller fault, the failed checks', () => {
+    const spine = freshSpine();
+    spine.verifyPickup({ orderId: CHAIN.order_id, riderId: 'r-1', checkResults: { ...allPass, damage: false, qty: false }, dwellSec: 150, evidenceBundleId: 'eb-1' }, 'pvc-4711', T);
+    const refused = spine.allEvents().filter((e) => e.name === 'delivery.refused.v1');
+    expect(refused).toHaveLength(1);
+    expect(refused[0]!.envelope.command_id).toBe(`pickup-refusal-${CHAIN.order_id}`);
+    expect(refused[0]!.envelope.correlation_id).toBe(CHAIN.correlation_id);
+    expect(refused[0]!.payload).toEqual({
+      order_id: CHAIN.order_id,
+      task_id: CHAIN.task_id,
+      rejection: 'pickup_refusal',
+      fault_class: 'seller',
+      failed_checks: ['qty', 'damage'],
+    });
+    // The spent code cannot try again: no second refusal, no second fact.
+    expect(spine.verifyPickup({ orderId: CHAIN.order_id, riderId: 'r-1', checkResults: { ...allPass, qty: false }, dwellSec: 150, evidenceBundleId: 'eb-2' }, 'pvc-4711', T))
+      .toMatchObject({ kind: 'invalid', reason: 'pickup_code_refused', detail: 'secret_already_used' });
+    expect(spine.allEvents().filter((e) => e.name === 'delivery.refused.v1')).toHaveLength(1);
+  });
+
+  it('PICKUP-REFUS: an ACCEPTED pickup states no refusal', () => {
+    const spine = spineWithCourierCustody();
+    expect(spine.allEvents().filter((e) => e.name === 'delivery.refused.v1')).toHaveLength(0);
+  });
+
   it('SINGLE-USE SECRETS, all three: pickup-code replay, seal replay, and drop-code replay each REFUSED', () => {
     const spine = spineWithCourierCustody();
     // pickup code was consumed at verification — replay refused:
