@@ -38,6 +38,11 @@ import {
  * An order carried alone is a list of one: its act, its id, its answer —
  * byte-identical to the road before packages existed.
  *
+ * `jusquauBout` — the buyer's code is each article's OWN drop (SE3): an
+ * article still waiting for its door payment must not keep the ones she has
+ * paid for in the rider's bag. So the handover asks EVERY article, tells
+ * `quandTenu` each one that crossed, and answers the first that did not.
+ *
  * Never queued offline, never in parallel (one request at a time on a 2G
  * phone), and never a success this module invents: every held answer is a
  * ledger's.
@@ -47,16 +52,23 @@ export async function surChaqueArticle(
   idPour: (orderId: string, rang: number) => CommandId,
   acte: (orderId: string, commandId: CommandId) => Promise<CustodyAnswer>,
   tenu: (answer: CustodyAnswer) => boolean,
+  options: { readonly jusquauBout?: boolean; readonly quandTenu?: (orderId: string) => void } = {},
 ): Promise<CustodyAnswer> {
   // Nothing left to act on is a refusal said by name, never a quiet success.
   if (ordres.length === 0) return { kind: 'refused', reason: 'aucun_article' };
   let premier: CustodyAnswer | null = null;
+  let premierRefus: CustodyAnswer | null = null;
   for (const [rang, orderId] of ordres.entries()) {
     const answer = await acte(orderId, idPour(orderId, rang));
-    if (!tenu(answer)) return answer;
-    if (rang === 0) premier = answer;
+    if (!tenu(answer)) {
+      if (options.jusquauBout !== true) return answer;
+      premierRefus ??= answer;
+      continue;
+    }
+    options.quandTenu?.(orderId);
+    premier ??= answer;
   }
-  return premier as CustodyAnswer;
+  return (premierRefus ?? premier) as CustodyAnswer;
 }
 
 /** Each act's « held », by its own ledger word — the same predicates the

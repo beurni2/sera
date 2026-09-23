@@ -29,7 +29,10 @@ import { __modeChargement } from './doubles/expo-audio';
  * (`evidence_chain_mismatch` otherwise), a pay-at-door drop needs THAT
  * order's accepted inspection and provider-confirmed door leg, a refused
  * article's drop answers `return_in_progress`, and the handover opens only on
- * the pair logistics armed. What it does NOT model: the wires between the two
+ * the pair logistics armed, and « Un souci ? » opens THAT order's one window
+ * on the bounds custody-spine `recordDoorRefusal` states (not delivered, with
+ * the courier, no refusal or return under way, no window already open —
+ * an accepted inspection does not close it). What it does NOT model: the wires between the two
  * Workers — the logistics seam test owns those.
  */
 
@@ -116,6 +119,8 @@ interface Ledger {
   returnOpen: boolean;
   returned: boolean;
   delivered: boolean;
+  /** The §6.4 ladder's one window on THIS order (custody-spine recordDoorRefusal). */
+  ladder: string | null;
   /** An answer the TEST forces on this order's next act (a dead network). */
   panne: string | null;
 }
@@ -128,7 +133,7 @@ interface World {
 
 const ledger = (): Ledger => ({
   pickupUsed: false, sealed: false, evidence: false, inspection: null, doorPaid: false,
-  returnOpen: false, returned: false, delivered: false, panne: null,
+  returnOpen: false, returned: false, delivered: false, ladder: null, panne: null,
 });
 const freshWorld = (): World => ({ ledgers: { [A]: ledger(), [B]: ledger() }, recorded: new Map() });
 
@@ -196,6 +201,17 @@ function custody(world: World, paymentMode: string): Route {
       if (body?.['dropCode'] !== DROP) return commit({ status: 409, json: { ok: false, reason: 'drop_code_refused' } });
       l.delivered = true;
       return commit({ status: 200, json: { ok: true, status: 'custody_with_customer' } });
+    }
+    if (path === '/rider/door/refusal') {
+      if (l.delivered) return commit({ status: 409, json: { ok: false, reason: 'order_already_delivered' } });
+      if (!l.sealed) return commit({ status: 409, json: { ok: false, reason: 'refusal_before_custody' } });
+      if (l.inspection === 'valid_rejection' || l.returnOpen) return commit({ status: 409, json: { ok: false, reason: 'return_in_progress' } });
+      if (l.ladder !== null) return commit({ status: 409, json: { ok: false, reason: 'ladder_already_open' } });
+      l.ladder = String(body?.['reasonCode']);
+      return commit({
+        status: 200,
+        json: { ok: true, kind: 'window_opened', outcome: { family: 'retry', reasonCode: l.ladder, faultClass: 'buyer', attempt: { number: 1, windowExpiresAt: '2026-09-23T12:00:00.000Z' } } },
+      });
     }
     if (path === '/rider/return/handover') {
       if (!l.returnOpen) return commit({ status: 409, json: { ok: false, reason: 'return_not_open' } });
@@ -320,6 +336,34 @@ describe('COLIS-FOURNISSEUR-1 — the rider carries one package of several order
     state.closed = true;
     await s.press('Revenir en service');
     expect(s.shows('Commencer le service') || s.texts().length > 0, 'the tree survived to the waiting state').toBe(true);
+  });
+
+  it('⚠ verifier M4 — pay at the door, she keeps both but only the sandals are paid: her code hands over the sandals, the pagne waits, and « Un souci ? » is the way out for it alone', async () => {
+    const state = course(PORTE);
+    const world = freshWorld();
+    const { s, w } = await toTheDoor(state, world);
+    await s.press('La cliente le garde');
+    await s.press('La cliente le garde');
+    expect(s.shows('2 articles à remettre.'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    // The ladder's door under the code card, as on the single road.
+    expect(s.canPress('Un souci ?'), 'what she kept and cannot pay for must have a way out').toBe(true);
+    world.ledgers[B]!.doorPaid = true; // the provider confirmed the sandals only
+    await s.type(DROP);
+    await s.press('Confirmer la remise');
+    // The pagne's wait did not keep the sandals in the bag.
+    expect(actes(w.calls, '/rider/delivery/drop').map((f) => f.orderId)).toEqual([A, B]);
+    expect(world.ledgers[B]!.delivered, 'the paid article crossed on its own drop').toBe(true);
+    expect(world.ledgers[A]!.delivered).toBe(false);
+    expect(s.shows('1 article à remettre.'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    expect(s.canPress('Confirmer la remise') || s.shows('Le code de la cliente'), 'the code card stays for the pagne').toBe(true);
+    // « Un souci ? » → a reason: the pagne's ledger opens its window, and ONLY the pagne's.
+    await s.press('Un souci ?');
+    expect(s.canPress('Argent pas prêt'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    await s.press('Argent pas prêt');
+    expect(actes(w.calls, '/rider/door/refusal').map((f) => f.orderId)).toEqual([A]);
+    expect(world.ledgers[A]!.ladder).toBe('insufficient_balance');
+    expect(world.ledgers[B]!.ladder, 'the delivered sandals are never on the ladder').toBeNull();
+    expect(s.shows('On attend un peu.'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
   });
 
   it('prepaid, she keeps both: one code hands over BOTH articles, each on its own ledger, and the rider is back in service', async () => {

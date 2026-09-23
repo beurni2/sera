@@ -333,6 +333,91 @@ describe('COLIS-FOURNISSEUR-1 — one course, one package, several orders, acros
     expect((await ledger(custody, B)).json['currentCustodian']).toBe(`seller:${SUPPLIER}`);
   }, 120_000);
 
+  it('PAY AT THE DOOR (decision d): she keeps both, ONE door payment for both, charged under its collection — each article crosses only when the provider’s own confirmation lists it', async () => {
+    const hold: Hold = {};
+    spawnLogistics(hold);
+    spawnCustody(hold);
+    const logistics = hold.logistics!;
+    const custody = hold.custody!;
+    const A = 'ord-colis-porte-a';
+    const B = 'ord-colis-porte-b';
+    const COLIS = { packageId: 'col-porte-1', orderIds: [A, B] };
+    const RIDER = 'rider-colis-porte';
+    const MODE = 'DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR';
+    for (const o of [A, B]) {
+      expect((await intake(logistics, '/intake/funding', { orderId: o, status: 'funded', paymentMode: MODE, asOf: T, package: COLIS })).status).toBe(200);
+      expect((await intake(logistics, '/intake/readiness', { orderId: o, ready: true, asOf: T, supplierRef: SUPPLIER })).status).toBe(200);
+    }
+    const composed = await ops(logistics, '/ops/task', { command_id: 'porte-t1', orderId: A, location: LOC, window: WIN });
+    expect(composed.status, JSON.stringify(composed.json)).toBe(200);
+    await ops(logistics, '/ops/riders', { riderId: RIDER, displayName: RIDER, phoneAlias: 'porte' });
+    await ops(logistics, '/ops/riders/certify', { riderId: RIDER, certified: true });
+    const code = (await ops(logistics, '/ops/rider-code/mint', { riderId: RIDER })).json['code'] as string;
+    const { acts, session } = appPorts(logistics);
+    await acts.ackPrivacy(code);
+    expect((await acts.startShift(code)).ok).toBe(true);
+    const granted = await ops(logistics, '/ops/assign', { command_id: 'porte-a', taskId: composed.json['taskId'], riderId: RIDER });
+    expect(granted.json['ok'], JSON.stringify(granted.json)).toBe(true);
+    expect((await acts.accepterCourse(code, (granted.json['assignment'] as Json)['assignmentId'] as string)).ok).toBe(true);
+    for (const o of [A, B]) await attendre(() => ledger(custody, o), (r) => r.status === 200, `chain ${o} never opened`);
+    const signed = await session.signIn(code);
+    if (!signed.ok) throw new Error('sign-in refused');
+    const a = signed.session.assignment!;
+    for (const o of [A, B]) {
+      expect((await riderCustody(custody, '/rider/verification', code, { orderId: o, command_id: `v-${o}`, presentedPickupCode: a.codeVerification, checkResults: ALL_PASS, dwellSec: 150, evidenceBundleId: `ev-${o}` })).json).toMatchObject({ ok: true, kind: 'accepted' });
+      const b = await riderCustody(custody, '/rider/custody/begin', code, { orderId: o, command_id: `b-${o}`, custodySealId: a.codeScelle, sealPhotoRefs: [] });
+      expect(b.json).toMatchObject({ ok: true, status: 'custody_with_courier' });
+      const chaine = b.json['chain'] as Json;
+      const armed = await custody.dispatchFetch('http://custody/produce-shop/secrets/arm', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${SHOP_ARM_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: o, command_id: `arm-remise-${o}`, kind: 'buyer_drop_code', secret: 'DROP-PORTE-1' }),
+      });
+      expect(armed.status).toBe(200);
+      await armed.text();
+      expect((await riderCustody(custody, '/rider/delivery/evidence', code, {
+        orderId: o, command_id: `e-${o}`,
+        bundle: { taskId: chaine['task_id'], packageId: chaine['package_id'], custodySealId: a.codeScelle, artifacts: [], capturedAt: T },
+      })).json).toMatchObject({ ok: true, status: 'evidence_recorded' });
+      expect((await riderCustody(custody, '/rider/door/inspection', code, {
+        orderId: o, command_id: `i-${o}`, inspectionCategory: 'uncategorised_conservative', packageOpened: false, manufacturerSealOpened: false,
+        custodySealIntact: true, buyerAccepts: true, startedAt: T, completedAt: T, evidenceBundleId: `sans-photo-porte-${o}`,
+      })).json).toMatchObject({ ok: true, kind: 'accepted' });
+    }
+
+    // The provider's confirmation of the package's ONE collection, as Shop+
+    // forwards it verbatim to each article: the collection's reference, and
+    // the articles it paid for, echoed from the charge.
+    const confirmation = (commandId: string, parts: string[]) => ({
+      name: 'payment.door_leg_confirmed.v1',
+      envelope: { command_id: commandId, correlation_id: 'corr-grp-porte-1', aggregateVersion: 1, actor: 'payment-provider:sandbox', serverTime: T, version: '1' },
+      payload: {
+        provider: 'sandbox-provider', payment_attempt_id: 'payatt-porte-1', collectRef: 'collect-porte-1', amount: 10_000, fee: 0,
+        status: 'held', order_id: 'grp-porte-1-porte-1', redelivery: 0, parts: parts.map((order_id) => ({ order_id, amount: 5_000 })),
+      },
+    });
+    const signal = (o: string, commandId: string, parts: string[]) =>
+      custody.dispatchFetch('http://custody/produce-shop/door-signal', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${SHOP_ARM_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: o, command_id: `door-signal-${commandId}-${o}`, event: confirmation(commandId, parts) }),
+      }).then(async (r) => ({ status: r.status, json: (await r.json()) as Json }));
+
+    // A collection that paid for OTHER articles is not B's payment: B waits.
+    expect(await signal(B, 'whk-autre', [A, 'ord-ailleurs'])).toMatchObject({ status: 409, json: { ok: false, reason: 'door_signal_not_awaited' } });
+    expect((await riderCustody(custody, '/rider/delivery/drop', code, { orderId: B, command_id: 'd-b-tot', dropCode: 'DROP-PORTE-1' })).json)
+      .toMatchObject({ ok: false, reason: 'door_payment_not_confirmed' });
+
+    // The collection that paid for both: each article crosses on its own drop.
+    for (const o of [A, B]) expect(await signal(o, 'whk-colis', [A, B])).toMatchObject({ status: 200, json: { ok: true } });
+    for (const o of [A, B]) {
+      expect((await riderCustody(custody, '/rider/delivery/drop', code, { orderId: o, command_id: `d-${o}`, dropCode: 'DROP-PORTE-1' })).json, `drop ${o}`)
+        .toMatchObject({ ok: true, status: 'custody_with_customer' });
+      expect((await ledger(custody, o)).json['currentCustodian'], o).toBe('customer');
+    }
+    await attendre(() => moi(logistics, code), (x) => x === null, 'the package course never closed');
+  }, 120_000);
+
   it('ONE supplier, ONE mode: a package whose readiness names two suppliers is refused by name, and nothing is composed', async () => {
     const hold: Hold = {};
     spawnLogistics(hold);

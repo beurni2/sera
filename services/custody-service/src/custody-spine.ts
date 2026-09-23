@@ -691,9 +691,18 @@ export class CustodySpine {
       return { ok: true, duplicate: true }; // absorbed — nothing advances twice
     }
     const payloadOrder = (event.payload as Record<string, unknown>)['order_id'];
+    // COLIS-FOURNISSEUR-1 (decision d) — a package's ONE door payment is
+    // charged under its collection's reference, and the provider's own
+    // confirmation lists what it paid for (`parts`, echoed from the charge).
+    // It names this order there, or it is not this order's payment.
+    const parts = (event.payload as Record<string, unknown>)['parts'];
+    const pourCetteCommande =
+      payloadOrder === this.chain.order_id ||
+      (Array.isArray(parts) &&
+        parts.some((p) => p !== null && typeof p === 'object' && (p as Record<string, unknown>)['order_id'] === this.chain.order_id));
     const awaiting =
       this.paymentMode === 'DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR' &&
-      payloadOrder === this.chain.order_id &&
+      pourCetteCommande &&
       this.doorInspection?.inspectionResult === 'accepted' &&
       this.validRejection === null &&
       this.returnFlow === null &&
@@ -711,7 +720,7 @@ export class CustodySpine {
       // retryable answer below, as it must.
       const settled =
         this.paymentMode === 'DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR' &&
-        payloadOrder === this.chain.order_id &&
+        pourCetteCommande &&
         (this.validRejection !== null || this.returnFlow !== null);
       if (settled) {
         if (this.settledAlertedSignalCommandIds.has(event.envelope.command_id)) {

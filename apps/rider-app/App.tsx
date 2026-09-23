@@ -691,7 +691,8 @@ export default function App() {
       premier: { readonly id: ReturnType<typeof mintActId>; readonly cle: string },
       acte: (orderId: string, commandId: ReturnType<typeof mintActId>) => Promise<CustodyAnswer>,
       tenu: (answer: CustodyAnswer) => boolean,
-    ) => surChaqueArticle(ordres, (orderId, rang) => (rang === 0 ? premier.id : attemptFor(`${premier.cle}|${orderId}`).id), acte, tenu),
+      options?: Parameters<typeof surChaqueArticle>[4],
+    ) => surChaqueArticle(ordres, (orderId, rang) => (rang === 0 ? premier.id : attemptFor(`${premier.cle}|${orderId}`).id), acte, tenu, options),
     [attemptFor],
   );
   /**
@@ -727,6 +728,13 @@ export default function App() {
   const aucunChoixColis =
     colis !== null &&
     colis.articles.every((a) => a.etat === 'en_cours' && !retourLocal.includes(a.orderId) && porteColis[a.orderId] === undefined);
+  /**
+   * What the whole-bag ladder (« Un souci ? », its window, the road home)
+   * acts on: the whole bag before anything is decided at this door; after,
+   * only what she kept and still holds — a refused article is already in the
+   * return bag on its own (verifier M4: she kept it, cannot pay for it).
+   */
+  const ordresEchelle = colis === null || aucunChoixColis ? ordresEnCours : aRemettreIds;
   /** The package's door is still the rider's screen: an article to show, or kept ones to hand over. */
   const colisPorteDue = colis !== null && (articlesIndecis.length > 0 || aRemettreIds.length > 0);
   const assignmentLines = liveAssignment === null ? null : landmarkLines(liveAssignment.location);
@@ -1437,7 +1445,12 @@ export default function App() {
       remiseEnVol.current = remise;
       const attempt = attemptFor(key);
       runAct(setDropPhase, () =>
-        surColis(remise, attempt, (orderId, commandId) => custodyActs.confirmDrop({ commandId, orderId, dropCode }, riderCode), TENU.remise),
+        surColis(remise, attempt, (orderId, commandId) => custodyActs.confirmDrop({ commandId, orderId, dropCode }, riderCode), TENU.remise, {
+          jusquauBout: colis !== null,
+          quandTenu: (orderId) => {
+            if (colis !== null) setLivresLocal((l) => (l.includes(orderId) ? l : [...l, orderId]));
+          },
+        }),
       );
     },
     [custodyActs, riderCode, liveAssignment, dropPhase, runAct, attemptFor, oublierTentative, surColis, colis, aRemettreIds],
@@ -1465,11 +1478,11 @@ export default function App() {
       // not there, the place is unusable): every article's ledger opens its
       // one window on the same reason.
       runAct(setRefusalPhase, () =>
-        surColis(ordresEnCours, attempt, (orderId, commandId) =>
+        surColis(ordresEchelle, attempt, (orderId, commandId) =>
           custodyActs.refuseAtDoor({ commandId, orderId, reasonCode }, riderCode), TENU.souci),
       );
     },
-    [custodyActs, riderCode, liveAssignment, runAct, attemptFor, surColis, ordresEnCours],
+    [custodyActs, riderCode, liveAssignment, runAct, attemptFor, surColis, ordresEchelle],
   );
 
   const sendExpire = useCallback(() => {
@@ -1487,9 +1500,9 @@ export default function App() {
     }
     const attempt = attemptFor(key);
     runAct(setExpirePhase, () =>
-      surColis(ordresEnCours, attempt, (orderId, commandId) => custodyActs.expireWindow(riderCode, orderId, commandId), TENU.expiration),
+      surColis(ordresEchelle, attempt, (orderId, commandId) => custodyActs.expireWindow(riderCode, orderId, commandId), TENU.expiration),
     );
-  }, [custodyActs, riderCode, liveAssignment, expirePhase, runAct, attemptFor, oublierTentative, surColis, ordresEnCours]);
+  }, [custodyActs, riderCode, liveAssignment, expirePhase, runAct, attemptFor, oublierTentative, surColis, ordresEchelle]);
 
   /**
    * The refused package is re-sealed for home with the NEW return seal (§6.4)
@@ -1537,12 +1550,12 @@ export default function App() {
     // « return », or the dispatcher decided it): every article still in it is
     // re-sealed in the one return bag, each on its own ledger.
     const attempt = attemptFor(`return-open|${liveAssignment.orderId}|${scelleRetour}`);
-    retourEnVol.current = ordresEnCours;
+    retourEnVol.current = ordresEchelle;
     runAct(setReturnOpenPhase, () =>
-      surColis(ordresEnCours, attempt, (orderId, commandId) =>
+      surColis(ordresEchelle, attempt, (orderId, commandId) =>
         custodyActs.openReturn({ commandId, orderId, returnSealId: scelleRetour }, riderCode), TENU.retour),
     );
-  }, [custodyActs, riderCode, liveAssignment, scelleRetour, runAct, attemptFor, surColis, ordresEnCours]);
+  }, [custodyActs, riderCode, liveAssignment, scelleRetour, runAct, attemptFor, surColis, ordresEchelle]);
 
   /**
    * ═══ COLIS-FOURNISSEUR-1 — KEEP OR REFUSE ONE ARTICLE (decision c) ═══
@@ -1939,6 +1952,9 @@ export default function App() {
           onSubmit={sendDrop}
           onFocus={() => scrollRef.current?.scrollToEnd({ animated: true })}
         />
+        {/* Verifier M4 — the ladder's door under the code, as on the single
+            road: what she kept and cannot pay for has its way out. */}
+        {PorteSoucis(false)}
       </>
     );
   };

@@ -174,6 +174,21 @@ describe('WO-2.4 items 2+3 — the door-payment custody gate (SE-I11), no rider 
     expect(spine.isDoorPaymentConfirmed()).toBe(false);
   });
 
+  it('COLIS-FOURNISSEUR-1: a package collection pays this order only when the provider’s own confirmation lists it', () => {
+    const collecte = (commandId: string, orderIds: string[]) => {
+      const e = doorSignal(commandId, 'grp-colis-porte-1');
+      return { ...e, payload: { ...e.payload, parts: orderIds.map((order_id) => ({ order_id, amount: 5_000 })) } };
+    };
+    const autre = optionBSpine();
+    autre.recordDoorInspection(inspectionInput(), T);
+    expect(autre.consumeDoorPaidSignal(collecte('cmd-c1', ['order-OTHER-1', 'order-OTHER-2']), T)).toMatchObject({ ok: false, reason: 'door_signal_not_awaited' });
+    expect(autre.isDoorPaymentConfirmed()).toBe(false);
+    const spine = optionBSpine();
+    spine.recordDoorInspection(inspectionInput(), T);
+    expect(spine.consumeDoorPaidSignal(collecte('cmd-c2', ['order-OTHER-1', CHAIN.order_id]), T)).toEqual({ ok: true, duplicate: false });
+    expect(spine.isDoorPaymentConfirmed()).toBe(true);
+  });
+
   it('NO RIDER ASSERTION: a malformed/renamed signal refuses; nothing but the canonical provider event advances the door state', () => {
     const spine = optionBSpine();
     spine.recordDoorInspection(inspectionInput(), T);
