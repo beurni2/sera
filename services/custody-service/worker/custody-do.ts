@@ -2585,21 +2585,6 @@ export class CustodyDO {
     }
 
     /**
-     * The door-payment signal — Shop+ forwards the provider-actored
-     * `payment.door_leg_confirmed.v1` through its own producer door
-     * (PRODUCE_SHOP_ROUTES / SHOP_ARM_SECRET). The SPINE judges the event:
-     * canonical parse, actor class (refuse-closed — no rider assertion
-     * exists anywhere), awaited-state, duplicate absorption. This route
-     * bounds the request envelope and carries the answer.
-     *
-     * ⚠ A refusal may carry an `alert` — a reconciliation.alert.v1 the
-     * spine has ALREADY emitted and this log has already recorded (the
-     * command commits whatever it answered). The alert is NOT put in the
-     * HTTP answer: refusals here answer ok:false+reason like every other
-     * route, and the event is readable at `/events` where every emission
-     * lives.
-     */
-    /**
      * COLIS-FOURNISSEUR-1 — a package's collection reference, declared by
      * Shop+ to this order's file before the charge (`/produce-shop/door-reference`).
      */
@@ -2627,6 +2612,21 @@ export class CustodyDO {
       return Response.json(recorded.body, { status: recorded.httpStatus });
     }
 
+    /**
+     * The door-payment signal — Shop+ forwards the provider-actored
+     * `payment.door_leg_confirmed.v1` through its own producer door
+     * (PRODUCE_SHOP_ROUTES / SHOP_ARM_SECRET). The SPINE judges the event:
+     * canonical parse, actor class (refuse-closed — no rider assertion
+     * exists anywhere), awaited-state, duplicate absorption. This route
+     * bounds the request envelope and carries the answer.
+     *
+     * ⚠ A refusal may carry an `alert` — a reconciliation.alert.v1 the
+     * spine has ALREADY emitted and this log has already recorded (the
+     * command commits whatever it answered). The alert is NOT put in the
+     * HTTP answer: refusals here answer ok:false+reason like every other
+     * route, and the event is readable at `/events` where every emission
+     * lives.
+     */
     if (request.method === 'POST' && pathname === '/door-signal') {
       const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
       const event = body?.['event'];

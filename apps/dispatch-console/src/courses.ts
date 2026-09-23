@@ -160,6 +160,9 @@ export interface RetraitDemande {
   readonly appels: readonly Appel[];
   /** One article of a package no rider carries yet: the others stay. */
   readonly articleSeul: boolean;
+  /** …and it is the article its package's course is filed under: the course
+   *  goes with it, and the others leave the board to wait for a new one. */
+  readonly autresEnAttente: boolean;
 }
 
 function colisEnMains(row: CourseRow): row is CourseRow & { colis: readonly string[] } {
@@ -170,13 +173,15 @@ function colisEnMains(row: CourseRow): row is CourseRow & { colis: readonly stri
  *  article named; anything else leaves alone. */
 export function demandeLigne(row: CourseRow): RetraitDemande {
   if (colisEnMains(row)) {
-    return { kind: 'colis', orderIds: row.colis, appels: [{ orderId: row.orderId, colisEntier: true, articles: row.colis }], articleSeul: false };
+    return { kind: 'colis', orderIds: row.colis, appels: [{ orderId: row.orderId, colisEntier: true, articles: row.colis }], articleSeul: false, autresEnAttente: false };
   }
   return {
     kind: 'une',
     orderIds: [row.orderId],
     appels: [{ orderId: row.orderId, colisEntier: false, articles: [row.orderId] }],
     articleSeul: row.colis !== undefined,
+    // The board lists a waiting package under the article its course is filed under, first.
+    autresEnAttente: row.colis !== undefined && row.colis[0] === row.orderId,
   };
 }
 
@@ -195,7 +200,7 @@ export function demandeToutes(rows: readonly CourseRow[]): RetraitDemande {
       appels.push({ orderId: row.orderId, colisEntier: false, articles: [row.orderId] });
     }
   }
-  return { kind: 'toutes', orderIds: rows.map((row) => row.orderId), appels, articleSeul: false };
+  return { kind: 'toutes', orderIds: rows.map((row) => row.orderId), appels, articleSeul: false, autresEnAttente: false };
 }
 
 export interface RetraitUi {

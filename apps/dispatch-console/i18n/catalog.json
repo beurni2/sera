@@ -877,13 +877,19 @@
   },
   {
     "key": "courses.confirmer_colis_detail",
-    "fr": "Le coursier a déjà ce colis : tous ses articles quittent le tableau ensemble.",
+    "fr": "Ce colis est déjà confié à un coursier : tous ses articles quittent le tableau ensemble.",
     "register": "neutral",
     "screenClass": "general"
   },
   {
     "key": "courses.confirmer_article_seul",
     "fr": "Seul cet article part. Les autres articles du colis restent sur le tableau.",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "courses.confirmer_article_tete",
+    "fr": "La course de ce colis part avec cet article. Les autres articles quittent aussi le tableau : ils attendront une nouvelle course.",
     "register": "neutral",
     "screenClass": "general"
   },

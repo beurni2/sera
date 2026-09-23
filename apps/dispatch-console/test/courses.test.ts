@@ -136,6 +136,7 @@ describe('nothing is retired without being asked for first', () => {
       orderIds: ['ord-a'],
       appels: [{ orderId: 'ord-a', colisEntier: false, articles: ['ord-a'] }],
       articleSeul: false,
+      autresEnAttente: false,
     });
     // Nothing is in flight yet: the screen has not called the door.
     expect(enVol(asked)).toBe(false);
@@ -241,16 +242,24 @@ describe('a package on the desk: one row per article, one article leaves alone',
   });
 
   it('« Retirer » on a waiting article asks for THAT article alone, and says the rest of the bag stays', () => {
-    const [a1] = boardCourses(COLIS_BOARD);
-    const demande = demandeLigne(a1!);
+    const a2 = boardCourses(COLIS_BOARD).find((r) => r.orderId === 'ord-a2')!;
+    const demande = demandeLigne(a2);
     expect(demande).toEqual({
       kind: 'une',
-      orderIds: ['ord-a1'],
-      appels: [{ orderId: 'ord-a1', colisEntier: false, articles: ['ord-a1'] }],
+      orderIds: ['ord-a2'],
+      appels: [{ orderId: 'ord-a2', colisEntier: false, articles: ['ord-a2'] }],
       articleSeul: true,
+      autresEnAttente: false,
     });
-    expect(retirerKey(a1!)).toBe('courses.retirer');
+    expect(retirerKey(a2)).toBe('courses.retirer');
     expect(t('courses.confirmer_article_seul')).toBe('Seul cet article part. Les autres articles du colis restent sur le tableau.');
+  });
+
+  it('« Retirer » on the article a waiting package’s course is filed under says the course goes with it — never that the others stay', () => {
+    const [a1] = boardCourses(COLIS_BOARD);
+    const demande = demandeLigne(a1!);
+    expect(demande).toMatchObject({ kind: 'une', orderIds: ['ord-a1'], articleSeul: true, autresEnAttente: true });
+    expect(t('courses.confirmer_article_tete')).toBe('La course de ce colis part avec cet article. Les autres articles quittent aussi le tableau : ils attendront une nouvelle course.');
   });
 
   it('a bag a rider carries leaves WHOLE: its lever says so, and the confirmation names every article in ONE call', () => {

@@ -58,7 +58,10 @@ function monde() {
       return { status: 200, json: { ok: true, status: 'retire', removed: {} } };
     }
     if (etat.attente.includes(orderId)) {
-      etat.attente = etat.attente.filter((id) => id !== orderId);
+      // As the Worker does (retirer.e2e): the article the course is filed
+      // under takes the course with it — the others leave the board and wait
+      // for a new one; any other article leaves alone.
+      etat.attente = orderId === etat.attente[0] ? [] : etat.attente.filter((id) => id !== orderId);
       return { status: 200, json: { ok: true, status: 'retire', removed: {} } };
     }
     if (orderId === 'ord-s' && etat.seule) {
@@ -156,7 +159,7 @@ test('a package in a rider’s hands says « Retirer le colis » → the confirm
   const card = desk.locator('.courses-confirme');
   await expect(card.locator('.courses-confirme-titre')).toHaveText('Retirer tout ce colis du tableau ?');
   await expect(card).toContainText('ord-p1 · ord-p2');
-  await expect(card).toContainText('Le coursier a déjà ce colis : tous ses articles quittent le tableau ensemble.');
+  await expect(card).toContainText('Ce colis est déjà confié à un coursier : tous ses articles quittent le tableau ensemble.');
   expect(m.appels).toHaveLength(0);
   await desk.locator('button.courses-confirmer').click();
 
@@ -219,4 +222,22 @@ test('« Tout retirer » with a bag on the road: ONE whole-bag call for the bag,
     ['ord-p1', true],
     ['ord-s', undefined],
   ]);
+});
+
+test('« Retirer » on the article a waiting package’s course is filed under: the confirmation says the course goes with it and the others will wait for a new one — never that they stay', async ({ page }) => {
+  const m = monde();
+  await brancher(page, m);
+  const desk = page.locator('.courses-desk');
+  await ligne(page, 'ord-a1').locator('button.courses-retirer').click();
+  const card = desk.locator('.courses-confirme');
+  await expect(card).toContainText('ord-a1');
+  await expect(card).toContainText('La course de ce colis part avec cet article. Les autres articles quittent aussi le tableau : ils attendront une nouvelle course.');
+  await expect(card).not.toContainText('restent sur le tableau');
+  expect(m.appels).toHaveLength(0);
+  await desk.locator('button.courses-confirmer').click();
+  // What the card said is what the board shows.
+  await expect(ligne(page, 'ord-a1')).toHaveCount(0);
+  await expect(ligne(page, 'ord-a2')).toHaveCount(0);
+  await expect(ligne(page, 'ord-s')).toHaveCount(1);
+  expect(m.appels.map((a) => a['orderId'])).toEqual(['ord-a1']);
 });

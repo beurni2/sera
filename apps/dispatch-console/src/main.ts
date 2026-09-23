@@ -1493,7 +1493,9 @@ if (app) {
         line('courses-confirme-ligne', demande.orderIds.join(' · ')),
         // COLIS-2 — what happens to the rest of the bag, said before the tap.
         ...(demande.kind === 'colis' ? [line('courses-confirme-ligne', t('courses.confirmer_colis_detail'))] : []),
-        ...(demande.articleSeul ? [line('courses-confirme-ligne', t('courses.confirmer_article_seul'))] : []),
+        ...(demande.articleSeul
+          ? [line('courses-confirme-ligne', t(demande.autresEnAttente ? 'courses.confirmer_article_tete' : 'courses.confirmer_article_seul'))]
+          : []),
         line('courses-confirme-ligne', t('courses.confirmer_detail')),
         // The custody sentence is not decoration: « board yes, custody no » is
         // the founder's own ruling, and he reads it before every removal.
