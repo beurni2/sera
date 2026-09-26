@@ -48,7 +48,8 @@ export interface Env {
    * (payment truth, Shop+'s domain) and Shop+'s could assert READINESS or ask
    * for handover verdicts (Boutik+'s) — Build-Spec §5.2 « no app writes
    * another domain's truth ». Shop+'s value opens /intake/funding only;
-   * Boutik+'s opens every other intake door. The shared SERA_INTAKE_SECRET
+   * Boutik+'s opens readiness and both handover verdicts; /intake/task-ready
+   * opens to neither (see `intakeAuthorized`). The shared SERA_INTAKE_SECRET
    * above keeps opening every door until the founder deletes it: that is the
    * changeover window, so no fact is refused while he swaps the values on
    * the two producers. `wrangler secret put`, the founder's alone.
@@ -121,7 +122,16 @@ async function authorized(request: Request, secret: string | undefined): Promise
  * missed; each is fail-closed on its own (unset or empty never matches).
  */
 async function intakeAuthorized(request: Request, env: Env, pathname: string): Promise<boolean> {
-  const own = pathname === '/intake/funding' ? env.SERA_INTAKE_SHOP_SECRET : env.SERA_INTAKE_BOUTIK_SECRET;
+  // /intake/task-ready belongs to NO producer: it can still create two open
+  // tasks for one order and must close before any producer is wired to it
+  // (JOURNAL, SE-LIVE-2c's named prerequisite). Only the shared key opens it,
+  // and only until the founder deletes that key.
+  const own =
+    pathname === '/intake/funding'
+      ? env.SERA_INTAKE_SHOP_SECRET
+      : pathname === '/intake/task-ready'
+        ? undefined
+        : env.SERA_INTAKE_BOUTIK_SECRET;
   const [byOwner, byShared] = await Promise.all([
     authorized(request, own),
     authorized(request, env.SERA_INTAKE_SECRET),

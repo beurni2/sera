@@ -28,7 +28,8 @@ name: logistics-deploy
 #     own door.
 #   · SERA_INTAKE_SHOP_SECRET / SERA_INTAKE_BOUTIK_SECRET (secrets) —
 #     CLES-PRODUCTEURS-1 (AUDIT-B+2 F-40): each producer's OWN intake key.
-#     Shop+'s opens /intake/funding only; Boutik+'s every other intake door.
+#     Shop+'s opens /intake/funding only; Boutik+'s readiness and both
+#     handover verdicts; /intake/task-ready opens to neither.
 #     The changeover: set both here (and re-dispatch), put each value into
 #     its producer's SERA_INTAKE_SECRET and redeploy that producer, then
 #     delete SERA_INTAKE_SECRET from this repo AND from the Worker

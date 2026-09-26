@@ -14,8 +14,11 @@ import { afterAll, describe, expect, it } from 'vitest';
  * Build-Spec §5.2 « no app writes another domain's truth ».
  *
  * Now each door belongs to one producer: /intake/funding to Shop+
- * (`SERA_INTAKE_SHOP_SECRET`); readiness, task-ready and both handover
- * verdicts to Boutik+ (`SERA_INTAKE_BOUTIK_SECRET`). The old shared key keeps
+ * (`SERA_INTAKE_SHOP_SECRET`); readiness and both handover verdicts to
+ * Boutik+ (`SERA_INTAKE_BOUTIK_SECRET`); /intake/task-ready to NEITHER — it
+ * can still create two open tasks for one order and must close before any
+ * producer is wired to it (JOURNAL, SE-LIVE-2c's named prerequisite), so no
+ * producer key may reach it (the verifier, slice 4). The old shared key keeps
  * opening every door until the founder deletes it — the changeover window,
  * so neither producer's facts are refused while he swaps the values.
  *
@@ -87,7 +90,7 @@ const verify = (orderId: string) => ({ command_id: `v-${orderId}`, orderId, code
 const DOORS = [
   { path: '/intake/funding', owner: 'shop', body: funding },
   { path: '/intake/readiness', owner: 'boutik', body: readiness },
-  { path: '/intake/task-ready', owner: 'boutik', body: taskReady },
+  { path: '/intake/task-ready', owner: 'aucun', body: taskReady },
   { path: '/intake/ramassage/verify', owner: 'boutik', body: verify },
   { path: '/intake/retour/verify', owner: 'boutik', body: verify },
 ] as const;
@@ -99,13 +102,43 @@ describe('the changeover window — shared key + both producer keys set', () => 
     expect((await post(mf, path, SHARED, body(`o-shared-${path}`))).status).not.toBe(401);
   });
 
-  it.each(DOORS)("$path — only its owner's key opens it; the other producer's key gets the one 401", async ({ path, owner, body }) => {
+  it.each(DOORS.filter((d) => d.owner !== 'aucun'))("$path — only its owner's key opens it; the other producer's key gets the one 401", async ({ path, owner, body }) => {
     const own = owner === 'shop' ? SHOP : BOUTIK;
     const other = owner === 'shop' ? BOUTIK : SHOP;
     expect((await post(mf, path, own, body(`o-own-${path}`))).status).not.toBe(401);
     const crossed = await post(mf, path, other, body(`o-cross-${path}`));
     expect(crossed.status).toBe(401);
     expect(crossed.json).toEqual({ error: 'unauthorized' });
+  });
+
+  it('/intake/task-ready — no producer key reaches it, only the shared key while it lives', async () => {
+    for (const key of [SHOP, BOUTIK]) {
+      const res = await post(mf, '/intake/task-ready', key, taskReady(`o-tr-${key}`));
+      expect(res.status).toBe(401);
+      expect(res.json).toEqual({ error: 'unauthorized' });
+    }
+  });
+
+  it('the ledger: Shop+ funds, Boutik+ readies, the task is admitted', async () => {
+    expect((await post(mf, '/intake/funding', SHOP, funding('order-vrai'))).status).toBe(200);
+    expect((await post(mf, '/intake/readiness', BOUTIK, readiness('order-vrai'))).status).toBe(200);
+    const task = await post(mf, '/intake/task-ready', SHARED, taskReady('order-vrai'));
+    expect(task.status).toBe(200);
+    expect(task.json).toMatchObject({ ok: true, admitted: true });
+  });
+
+  it('the ledger: a funding fact sent with BOUTIK+\'s key is refused and leaves no trace', async () => {
+    expect((await post(mf, '/intake/funding', BOUTIK, funding('order-faux-fonds'))).status).toBe(401);
+    expect((await post(mf, '/intake/readiness', BOUTIK, readiness('order-faux-fonds'))).status).toBe(200);
+    const task = await post(mf, '/intake/task-ready', SHARED, taskReady('order-faux-fonds'));
+    expect(task.json).toMatchObject({ admitted: false, reason: 'funding_projection_stale' });
+  });
+
+  it('the ledger: a readiness fact sent with SHOP+\'s key is refused and leaves no trace', async () => {
+    expect((await post(mf, '/intake/funding', SHOP, funding('order-faux-pret'))).status).toBe(200);
+    expect((await post(mf, '/intake/readiness', SHOP, readiness('order-faux-pret'))).status).toBe(401);
+    const task = await post(mf, '/intake/task-ready', SHARED, taskReady('order-faux-pret'));
+    expect(task.json).toMatchObject({ admitted: false, reason: 'readiness_projection_stale' });
   });
 });
 
@@ -116,26 +149,10 @@ describe('the split — the shared key deleted, each producer on its own key', (
     expect((await post(mf, path, SHARED, body(`o-old-${path}`))).status).toBe(401);
   });
 
-  it('the ledger: Shop+ funds, Boutik+ readies, the task is admitted', async () => {
-    expect((await post(mf, '/intake/funding', SHOP, funding('order-vrai'))).status).toBe(200);
-    expect((await post(mf, '/intake/readiness', BOUTIK, readiness('order-vrai'))).status).toBe(200);
-    const task = await post(mf, '/intake/task-ready', BOUTIK, taskReady('order-vrai'));
-    expect(task.status).toBe(200);
-    expect(task.json).toMatchObject({ ok: true, admitted: true });
-  });
-
-  it('the ledger: a funding fact sent with BOUTIK+\'s key is refused and leaves no trace', async () => {
-    expect((await post(mf, '/intake/funding', BOUTIK, funding('order-faux-fonds'))).status).toBe(401);
-    expect((await post(mf, '/intake/readiness', BOUTIK, readiness('order-faux-fonds'))).status).toBe(200);
-    const task = await post(mf, '/intake/task-ready', BOUTIK, taskReady('order-faux-fonds'));
-    expect(task.json).toMatchObject({ admitted: false, reason: 'funding_projection_stale' });
-  });
-
-  it('the ledger: a readiness fact sent with SHOP+\'s key is refused and leaves no trace', async () => {
-    expect((await post(mf, '/intake/funding', SHOP, funding('order-faux-pret'))).status).toBe(200);
-    expect((await post(mf, '/intake/readiness', SHOP, readiness('order-faux-pret'))).status).toBe(401);
-    const task = await post(mf, '/intake/task-ready', BOUTIK, taskReady('order-faux-pret'));
-    expect(task.json).toMatchObject({ admitted: false, reason: 'readiness_projection_stale' });
+  it('/intake/task-ready — closed to every key once the shared key is gone', async () => {
+    for (const key of [SHARED, SHOP, BOUTIK]) {
+      expect((await post(mf, '/intake/task-ready', key, taskReady(`o-split-tr-${key}`))).status).toBe(401);
+    }
   });
 });
 
