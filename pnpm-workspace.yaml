@@ -37,7 +37,14 @@ onlyBuiltDependencies:
 # 3.21.0 (sha 595ed0a): a change of mind on ONE article of a package, at its
 # door, is final at once, its delivery-fee share retained (Séra §6.4). Docs only,
 # no shape change. contracts, kernel-types and certification move together.
+# PIN-SUR-MAIN-1 (AUDIT-B+2 F-87, 2026-09-26) — @platform/ui-tokens moved from
+# a832df0 to 595ed0a, the commit contracts already rides. a832df0 lived only on
+# three canon FEATURE branches: a branch clean-up plus GitHub's garbage
+# collection would have broken every --frozen-lockfile install here and in
+# Boutik+. 595ed0a is on canon's main. The token CONTENT is byte-identical
+# (`git diff a832df0 595ed0a -- packages/ui-tokens` changes only the version
+# field, 1.0.1 → 3.21.0: canon versions every package in lockstep).
 overrides:
   "@platform/kernel-types": "git+https://github.com/beurni2/platform-contracts.git#595ed0a96179755a01a81f288e7a49286ee6a8e6&path:packages/kernel-types"
   "@platform/contracts": "git+https://github.com/beurni2/platform-contracts.git#595ed0a96179755a01a81f288e7a49286ee6a8e6&path:packages/contracts"
-  "@platform/ui-tokens": "git+https://github.com/beurni2/platform-contracts.git#a832df0a8ed9e9fc83083826bc11c2a2e57e615a&path:packages/ui-tokens"
+  "@platform/ui-tokens": "git+https://github.com/beurni2/platform-contracts.git#595ed0a96179755a01a81f288e7a49286ee6a8e6&path:packages/ui-tokens"

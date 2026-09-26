@@ -12,7 +12,8 @@ export { LogisticsDO };
  *     the expire-due sweep — plus the preserved raw authority command route
  *     POST /authority/dispatch (AssignmentLeaseDO's exact contract, now
  *     gated: SE-I01's singular authority was never meant to answer strangers).
- *   · INTAKE door (`SERA_INTAKE_SECRET`): /intake/* — task_ready events, the
+ *   · INTAKE door (`SERA_INTAKE_SECRET`, split per producer by
+ *     CLES-PRODUCTEURS-1 — see `intakeAuthorized`): /intake/* — task_ready events, the
  *     funding/readiness facts (SE-LIVE-2 wires the real Shop+/Boutik+
  *     producers to it; until then NOTHING admits — fail-closed projections),
  *     and the ramassage VERDICT door (`/intake/ramassage/verify`, asked by
@@ -41,6 +42,19 @@ export interface Env {
   readonly LOGISTICS: DurableObjectNamespace;
   readonly SERA_OPS_SECRET?: string;
   readonly SERA_INTAKE_SECRET?: string;
+  /**
+   * CLES-PRODUCTEURS-1 (AUDIT-B+2 F-40) — each producer's OWN intake key.
+   * One shared key meant Boutik+'s Worker could assert a FUNDING fact
+   * (payment truth, Shop+'s domain) and Shop+'s could assert READINESS or ask
+   * for handover verdicts (Boutik+'s) — Build-Spec §5.2 « no app writes
+   * another domain's truth ». Shop+'s value opens /intake/funding only;
+   * Boutik+'s opens every other intake door. The shared SERA_INTAKE_SECRET
+   * above keeps opening every door until the founder deletes it: that is the
+   * changeover window, so no fact is refused while he swaps the values on
+   * the two producers. `wrangler secret put`, the founder's alone.
+   */
+  readonly SERA_INTAKE_SHOP_SECRET?: string;
+  readonly SERA_INTAKE_BOUTIK_SECRET?: string;
   /** SE-LIVE-4b-ii — the custody Worker's key to `/verify/`. Its own door. */
   readonly SERA_RIDER_VERIFY_SECRET?: string;
   readonly SERA_CONSOLE_ORIGIN?: string;
@@ -98,6 +112,21 @@ async function authorized(request: Request, secret: string | undefined): Promise
   // secret exists; the length guard keeps it fail-closed.
   const match = await timingSafeEqual(provided, configured);
   return configured.length > 0 && match;
+}
+
+/**
+ * CLES-PRODUCTEURS-1 — an intake door opens to the key of the producer that
+ * owns its fact, or to the shared key while it still exists. Both compares
+ * always run, so timing reveals neither which key exists nor which one
+ * missed; each is fail-closed on its own (unset or empty never matches).
+ */
+async function intakeAuthorized(request: Request, env: Env, pathname: string): Promise<boolean> {
+  const own = pathname === '/intake/funding' ? env.SERA_INTAKE_SHOP_SECRET : env.SERA_INTAKE_BOUTIK_SECRET;
+  const [byOwner, byShared] = await Promise.all([
+    authorized(request, own),
+    authorized(request, env.SERA_INTAKE_SECRET),
+  ]);
+  return byOwner || byShared;
 }
 
 function corsHeaders(request: Request, env: Env): Record<string, string> {
@@ -195,8 +224,9 @@ export default {
 
     if (url.pathname.startsWith('/intake/')) {
       // The intake door is ITS OWN key — the ops secret does not open it and
-      // it does not open ops: producers hold exactly the door they need.
-      if (!(await authorized(request, env.SERA_INTAKE_SECRET))) {
+      // it does not open ops: producers hold exactly the door they need, and
+      // since CLES-PRODUCTEURS-1 each producer holds only its own doors.
+      if (!(await intakeAuthorized(request, env, url.pathname))) {
         return withCors(unauthorized(), request, env);
       }
       return withCors(await stub().fetch(request), request, env);

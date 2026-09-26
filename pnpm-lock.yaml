@@ -7,7 +7,7 @@ settings:
 overrides:
   '@platform/kernel-types': git+https://github.com/beurni2/platform-contracts.git#595ed0a96179755a01a81f288e7a49286ee6a8e6&path:packages/kernel-types
   '@platform/contracts': git+https://github.com/beurni2/platform-contracts.git#595ed0a96179755a01a81f288e7a49286ee6a8e6&path:packages/contracts
-  '@platform/ui-tokens': git+https://github.com/beurni2/platform-contracts.git#a832df0a8ed9e9fc83083826bc11c2a2e57e615a&path:packages/ui-tokens
+  '@platform/ui-tokens': git+https://github.com/beurni2/platform-contracts.git#595ed0a96179755a01a81f288e7a49286ee6a8e6&path:packages/ui-tokens
 
 importers:
 
@@ -23,8 +23,8 @@ importers:
         specifier: git+https://github.com/beurni2/platform-contracts.git#595ed0a96179755a01a81f288e7a49286ee6a8e6&path:packages/kernel-types
         version: https://codeload.github.com/beurni2/platform-contracts/tar.gz/595ed0a96179755a01a81f288e7a49286ee6a8e6#path:packages/kernel-types
       '@platform/ui-tokens':
-        specifier: git+https://github.com/beurni2/platform-contracts.git#a832df0a8ed9e9fc83083826bc11c2a2e57e615a&path:packages/ui-tokens
-        version: https://codeload.github.com/beurni2/platform-contracts/tar.gz/a832df0a8ed9e9fc83083826bc11c2a2e57e615a#path:packages/ui-tokens
+        specifier: git+https://github.com/beurni2/platform-contracts.git#595ed0a96179755a01a81f288e7a49286ee6a8e6&path:packages/ui-tokens
+        version: https://codeload.github.com/beurni2/platform-contracts/tar.gz/595ed0a96179755a01a81f288e7a49286ee6a8e6#path:packages/ui-tokens
     devDependencies:
       '@platform/certification':
         specifier: git+https://github.com/beurni2/platform-contracts.git#595ed0a96179755a01a81f288e7a49286ee6a8e6&path:packages/certification
@@ -51,8 +51,8 @@ importers:
         specifier: git+https://github.com/beurni2/platform-contracts.git#199bc2ab172dbbf93b446af35445e17f5a0f3f35&path:packages/i18n
         version: https://codeload.github.com/beurni2/platform-contracts/tar.gz/199bc2ab172dbbf93b446af35445e17f5a0f3f35#path:packages/i18n
       '@platform/ui-tokens':
-        specifier: git+https://github.com/beurni2/platform-contracts.git#a832df0a8ed9e9fc83083826bc11c2a2e57e615a&path:packages/ui-tokens
-        version: https://codeload.github.com/beurni2/platform-contracts/tar.gz/a832df0a8ed9e9fc83083826bc11c2a2e57e615a#path:packages/ui-tokens
+        specifier: git+https://github.com/beurni2/platform-contracts.git#595ed0a96179755a01a81f288e7a49286ee6a8e6&path:packages/ui-tokens
+        version: https://codeload.github.com/beurni2/platform-contracts/tar.gz/595ed0a96179755a01a81f288e7a49286ee6a8e6#path:packages/ui-tokens
       '@sera/custody-service':
         specifier: workspace:*
         version: link:../../services/custody-service
@@ -79,8 +79,8 @@ importers:
         specifier: git+https://github.com/beurni2/platform-contracts.git#595ed0a96179755a01a81f288e7a49286ee6a8e6&path:packages/contracts
         version: https://codeload.github.com/beurni2/platform-contracts/tar.gz/595ed0a96179755a01a81f288e7a49286ee6a8e6#path:packages/contracts
       '@platform/ui-tokens':
-        specifier: git+https://github.com/beurni2/platform-contracts.git#a832df0a8ed9e9fc83083826bc11c2a2e57e615a&path:packages/ui-tokens
-        version: https://codeload.github.com/beurni2/platform-contracts/tar.gz/a832df0a8ed9e9fc83083826bc11c2a2e57e615a#path:packages/ui-tokens
+        specifier: git+https://github.com/beurni2/platform-contracts.git#595ed0a96179755a01a81f288e7a49286ee6a8e6&path:packages/ui-tokens
+        version: https://codeload.github.com/beurni2/platform-contracts/tar.gz/595ed0a96179755a01a81f288e7a49286ee6a8e6#path:packages/ui-tokens
       expo:
         specifier: ~57.0.20
         version: 57.0.20(@babel/core@7.29.7)(@expo/dom-webview@57.0.0)(react-native@0.86.3(@babel/core@7.29.7)(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)(typescript@5.9.3)
@@ -1316,9 +1316,9 @@ packages:
     resolution: {path: packages/kernel-types, tarball: https://codeload.github.com/beurni2/platform-contracts/tar.gz/595ed0a96179755a01a81f288e7a49286ee6a8e6}
     version: 3.21.0
 
-  '@platform/ui-tokens@https://codeload.github.com/beurni2/platform-contracts/tar.gz/a832df0a8ed9e9fc83083826bc11c2a2e57e615a#path:packages/ui-tokens':
-    resolution: {path: packages/ui-tokens, tarball: https://codeload.github.com/beurni2/platform-contracts/tar.gz/a832df0a8ed9e9fc83083826bc11c2a2e57e615a}
-    version: 1.0.1
+  '@platform/ui-tokens@https://codeload.github.com/beurni2/platform-contracts/tar.gz/595ed0a96179755a01a81f288e7a49286ee6a8e6#path:packages/ui-tokens':
+    resolution: {path: packages/ui-tokens, tarball: https://codeload.github.com/beurni2/platform-contracts/tar.gz/595ed0a96179755a01a81f288e7a49286ee6a8e6}
+    version: 3.21.0
 
   '@playwright/test@1.61.1':
     resolution: {integrity: sha512-8nKv6+0RJSL9FE4jYOEGXnPeM/Hg12qZpmqzZjRh3qM0Y7c3z1mrOTfFLids72RDQYVh9WpLEfR5WdpNX4fkig==}
@@ -4594,7 +4594,7 @@ snapshots:
   '@platform/certification@https://codeload.github.com/beurni2/platform-contracts/tar.gz/595ed0a96179755a01a81f288e7a49286ee6a8e6#path:packages/certification':
     dependencies:
       '@platform/contracts': https://codeload.github.com/beurni2/platform-contracts/tar.gz/595ed0a96179755a01a81f288e7a49286ee6a8e6#path:packages/contracts
-      '@platform/ui-tokens': https://codeload.github.com/beurni2/platform-contracts/tar.gz/a832df0a8ed9e9fc83083826bc11c2a2e57e615a#path:packages/ui-tokens
+      '@platform/ui-tokens': https://codeload.github.com/beurni2/platform-contracts/tar.gz/595ed0a96179755a01a81f288e7a49286ee6a8e6#path:packages/ui-tokens
       zod: 4.4.3
 
   '@platform/contracts@https://codeload.github.com/beurni2/platform-contracts/tar.gz/595ed0a96179755a01a81f288e7a49286ee6a8e6#path:packages/contracts':
@@ -4610,7 +4610,7 @@ snapshots:
     dependencies:
       zod: 4.4.3
 
-  '@platform/ui-tokens@https://codeload.github.com/beurni2/platform-contracts/tar.gz/a832df0a8ed9e9fc83083826bc11c2a2e57e615a#path:packages/ui-tokens': {}
+  '@platform/ui-tokens@https://codeload.github.com/beurni2/platform-contracts/tar.gz/595ed0a96179755a01a81f288e7a49286ee6a8e6#path:packages/ui-tokens': {}
 
   '@playwright/test@1.61.1':
     dependencies:

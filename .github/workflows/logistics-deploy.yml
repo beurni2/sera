@@ -26,6 +26,14 @@ name: logistics-deploy
 #     funding/readiness facts; SE-LIVE-2 hands it to the Shop+/Boutik+
 #     emitters). Distinct from the ops key on purpose — either opens ONLY its
 #     own door.
+#   · SERA_INTAKE_SHOP_SECRET / SERA_INTAKE_BOUTIK_SECRET (secrets) —
+#     CLES-PRODUCTEURS-1 (AUDIT-B+2 F-40): each producer's OWN intake key.
+#     Shop+'s opens /intake/funding only; Boutik+'s every other intake door.
+#     The changeover: set both here (and re-dispatch), put each value into
+#     its producer's SERA_INTAKE_SECRET and redeploy that producer, then
+#     delete SERA_INTAKE_SECRET from this repo AND from the Worker
+#     (`wrangler secret delete SERA_INTAKE_SECRET`) — until then the shared
+#     key still opens every intake door, so nothing is refused mid-swap.
 #   · LOGISTICS_BASE (variable, not secret — a public URL) — the deployed
 #     Worker's base URL (e.g. https://logistics-service.<account>.workers.dev),
 #     used by the provenance assertion below. On the FIRST dispatch this may
@@ -139,6 +147,25 @@ jobs:
             exit 0
           fi
           printf '%s' "$INTAKE_SECRET" | npx --yes wrangler@4 secret put SERA_INTAKE_SECRET
+      - name: Arm SERA_INTAKE_SHOP_SECRET and SERA_INTAKE_BOUTIK_SECRET (piped — each skipped while its repo secret is absent)
+        working-directory: services/logistics-service
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          SHOP_KEY: ${{ secrets.SERA_INTAKE_SHOP_SECRET }}
+          BOUTIK_KEY: ${{ secrets.SERA_INTAKE_BOUTIK_SECRET }}
+        run: |
+          # CLES-PRODUCTEURS-1 — absent is the normal state until the founder
+          # mints them: the shared key keeps every intake door working.
+          if [ -z "$SHOP_KEY" ]; then
+            echo "::notice title=Clé intake Shop+ non posée::SERA_INTAKE_SHOP_SECRET absent — /intake/funding still opens to the shared SERA_INTAKE_SECRET only."
+          else
+            printf '%s' "$SHOP_KEY" | npx --yes wrangler@4 secret put SERA_INTAKE_SHOP_SECRET
+          fi
+          if [ -z "$BOUTIK_KEY" ]; then
+            echo "::notice title=Clé intake Boutik+ non posée::SERA_INTAKE_BOUTIK_SECRET absent — Boutik+'s intake doors still open to the shared SERA_INTAKE_SECRET only."
+          else
+            printf '%s' "$BOUTIK_KEY" | npx --yes wrangler@4 secret put SERA_INTAKE_BOUTIK_SECRET
+          fi
 
       - name: Arm SERA_RIDER_VERIFY_SECRET (piped — skipped only if the repo secret is absent)
         working-directory: services/logistics-service

@@ -41,3 +41,11 @@ service = "custody-service"
 #     custody. Same value on both Workers, `wrangler secret put`, piped, the
 #     founder's alone — never [vars]. Unset here ⇒ the door refuses everything
 #     with the one uniform 401 (fail closed).
+
+# CLES-PRODUCTEURS-1 (AUDIT-B+2 F-40) — TWO NEW SECRETS, no new binding:
+#   · SERA_INTAKE_SHOP_SECRET — Shop+'s own key: opens /intake/funding only.
+#   · SERA_INTAKE_BOUTIK_SECRET — Boutik+'s own key: opens readiness,
+#     task-ready and both handover verdicts, never funding.
+#   The shared SERA_INTAKE_SECRET keeps opening every intake door until the
+#   founder deletes it (the changeover window). `wrangler secret put`, piped,
+#   the founder's alone — never [vars].

@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@platform/contracts": "git+https://github.com/beurni2/platform-contracts.git#595ed0a96179755a01a81f288e7a49286ee6a8e6&path:packages/contracts",
-    "@platform/ui-tokens": "git+https://github.com/beurni2/platform-contracts.git#a832df0a8ed9e9fc83083826bc11c2a2e57e615a&path:packages/ui-tokens",
+    "@platform/ui-tokens": "git+https://github.com/beurni2/platform-contracts.git#595ed0a96179755a01a81f288e7a49286ee6a8e6&path:packages/ui-tokens",
     "expo": "~57.0.20",
     "expo-audio": "~57.0.4",
     "expo-crypto": "~57.0.2",
