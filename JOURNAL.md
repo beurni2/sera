@@ -3,7 +3,9 @@ Continuity ledger per CTO charter §6/§6bis. Every entry is evidence-grounded.
 
 Format per entry:
 
-## 2026-09-26 · CLES-PRODUCTEURS-1 + PIN-SUR-MAIN-1 (Boutik+ AUDIT-B+2 slice 4: F-40, F-87) — one intake key per producer; ui-tokens pinned on canon's main · ON THE BRANCH, awaiting the founder's word (not merged, not deployed)
+## 2026-09-26 · CLES-PRODUCTEURS-1 + PIN-SUR-MAIN-1 (Boutik+ AUDIT-B+2 slice 4: F-40, F-87) — one intake key per producer; ui-tokens pinned on canon's main · MERGED AND DEPLOYED 2026-09-27 on the founder's « go »
+
+**Merged and deployed (founder: « go », 2026-09-27).** `main` fast-forwarded `a1c4cc6 → 9a77bba` (ancestry verified first). logistics-deploy 35 green: « PROVENANCE OK — live logistics Worker is 9a77bba… speaking canon 3.21.0 »; the new arming step ran and, with neither producer key set yet, left the shared key opening every intake door exactly as before — the split takes effect only as the founder runs the three changeover steps below. ci 205 and expo-preview 150 green on `9a77bba`.
 
 **Founder order (2026-09-26).** « go » on slice 4 of the Boutik+ AUDIT-B+2 plan, « Safe deploys and clean records ». Two of its findings live here.
 
