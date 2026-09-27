@@ -48,6 +48,15 @@ capture typecheck pass pnpm typecheck
 log "tests (custody/assignment/evidence seeds, delivery view, correlation hello-world, flags, health, catalogs)"
 capture tests pass pnpm test
 
+# REPONSES-ENREGISTREES-1 (Boutik+ AUDIT-B+2 F-82) — Boutik+'s screen walks may
+# copy only the answers @platform/recorded-answers records for this Worker; the
+# real-service suites prove each recorded answer is one it really gives.
+log "gate: recorded answers — every form Boutik+'s walks may copy is one this Séra Worker gives"
+RELEVE_REPONSES="$(mktemp)"
+capture reponses-enregistrees pass node scripts/certifier-reponses.mjs --garder "$RELEVE_REPONSES"
+log "gate: recorded answers — NEGATIVE FIXTURE (a board missing five of its eight keys, must fail)"
+capture reponses-enregistrees-negative fail node scripts/certifier-reponses.mjs --releve "$RELEVE_REPONSES" --portes gates/fixtures/negative/reponses.forme-jamais-donnee.json
+
 log "consumption baseline — pinned computeWaterfall reproduces the §5.4 worked baseline"
 capture baseline-check pass node scripts/baseline-check.mjs
 

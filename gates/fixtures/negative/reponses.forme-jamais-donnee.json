@@ -1,0 +1,26 @@
+[
+  {
+    "producteur": "sera",
+    "methode": "GET",
+    "chemin": "/ops/board",
+    "formes": [
+      {
+        "statut": 200,
+        "corps": {
+          "t": "objet",
+          "cles": {
+            "ok": { "t": "mot", "v": true },
+            "board": {
+              "t": "objet",
+              "cles": {
+                "assignments": { "t": "liste", "de": [] },
+                "queued": { "t": "liste", "de": [] },
+                "riders": { "t": "liste", "de": [] }
+              }
+            }
+          }
+        }
+      }
+    ]
+  }
+]
