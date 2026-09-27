@@ -3,6 +3,18 @@ Continuity ledger per CTO charter §6/§6bis. Every entry is evidence-grounded.
 
 Format per entry:
 
+## 2026-09-27 · REPONSES-ENREGISTREES-1 (Boutik+ AUDIT-B+2 F-82) — Séra proves the answers Boutik+'s walks may copy · ON THE BRANCH, awaiting the founder's word (not merged, not deployed — nothing here deploys)
+
+**Founder order (2026-09-27).** « all three » — item 12: « Recorded stand-ins …: yes, the lighter way. … That proves our copies behave like the real ones. »
+
+**Governing text.** Execution Contract §3: « both the live producer and the mock MUST pass the same conformance suite. A green run against an obedient mock is not evidence the integration works. »
+
+- **What Séra gained (a92c576).** `@platform/recorded-answers` (canon `ced1371`, then `8c02203` — where a new row the real Worker gives is listed, never failed: the verifier's MINOR 3) as a devDependency of the logistics service only, and a `vitest.config.ts` whose one line loads `test/reponses-releve.ts` — inert unless `REPONSES_RELEVE` names a file, then it watches every answer the real logistics Worker gives on the 6 doors Boutik+'s console walks copy (board, task, retire, riders, rider codes, rider removal), observe-only. `scripts/certifier-reponses.mjs` bundles the Worker, runs the workerd suites that way and fails if a recorded form is no longer given. On the gate board with a negative fixture — the board with three of its eight keys, the copy F-82 found — that must fail.
+- **The board's lists keyed by ids** (packages in transit, each rider's round and end of shift, a package's settlement) are recorded by their rows, not their ids.
+- **Proof.** Recording written from a full run (182 e2e tests, 276 answers); a second independent run against the pinned package reproduced it exactly. Negative fixture exits 1. Mutations KILLED: « the check never fails on a missing form », « the watcher sees nothing ». **Board: ALL GATES GREEN** (final run, pinned at 8c02203: logistics 302, custody 253, rider app 495, dispatch console 89).
+- **Nothing else changed:** no Worker code, no route, no shape.
+- **A finding for the record:** two Séra refusals Boutik+'s walks copied are never given by Séra's own suites — `not_funded_for_mode` (real in the code, never exercised) and `colis_tete_attendue` (not a refusal this door can give). The walks were changed, not Séra.
+
 ## 2026-09-26 · CLES-PRODUCTEURS-1 + PIN-SUR-MAIN-1 (Boutik+ AUDIT-B+2 slice 4: F-40, F-87) — one intake key per producer; ui-tokens pinned on canon's main · MERGED AND DEPLOYED 2026-09-27 on the founder's « go »
 
 **Merged and deployed (founder: « go », 2026-09-27).** `main` fast-forwarded `a1c4cc6 → 9a77bba` (ancestry verified first). logistics-deploy 35 green: « PROVENANCE OK — live logistics Worker is 9a77bba… speaking canon 3.21.0 »; the new arming step ran and, with neither producer key set yet, left the shared key opening every intake door exactly as before — the split takes effect only as the founder runs the three changeover steps below. ci 205 and expo-preview 150 green on `9a77bba`.
