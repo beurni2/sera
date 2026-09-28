@@ -166,8 +166,10 @@ function forgeInRow(dir: string, keyMatch: (k: string) => boolean, from: string,
   return forged;
 }
 
+// Every test here boots its own Worker: under 1 s warm, but over the 5 s default when cold or on the
+// shared CI runner (ci #206 timed out), so each carries the budget package-claim-race uses.
 describe('a package belongs to exactly one custody file (SE-I04, Build Spec:79)', () => {
-  it('refuses the second order over the same package — and leaves it NO custody file at all', async () => {
+  it('refuses the second order over the same package — and leaves it NO custody file at all', { timeout: 120_000 }, async () => {
     const dir = freshDir('two-orders');
     const mf = boot(dir);
     const PKG = 'pkg-contested-0001';
@@ -206,7 +208,7 @@ describe('a package belongs to exactly one custody file (SE-I04, Build Spec:79)'
     await mf.dispose();
   });
 
-  it('the loser was not half-opened: it can still open its OWN package afterwards', async () => {
+  it('the loser was not half-opened: it can still open its OWN package afterwards', { timeout: 120_000 }, async () => {
     const dir = freshDir('no-half-open');
     const mf = boot(dir);
 
@@ -236,7 +238,7 @@ describe('a package belongs to exactly one custody file (SE-I04, Build Spec:79)'
    * failed closed, but « a door that can be made to crash is not a door that
    * can be reasoned about » — the round-5 finding, repeated for a new id.
    */
-  it('a packageId carrying control bytes is refused by name, never with a 500', async () => {
+  it('a packageId carrying control bytes is refused by name, never with a 500', { timeout: 120_000 }, async () => {
     const dir = freshDir('control-bytes');
     const mf = boot(dir);
     // NUL and DEL are built rather than typed: a literal control byte in a
@@ -257,7 +259,7 @@ describe('a package belongs to exactly one custody file (SE-I04, Build Spec:79)'
     await mf.dispose();
   });
 
-  it('a DIFFERENT package opens normally — the guard is not just refusing everything', async () => {
+  it('a DIFFERENT package opens normally — the guard is not just refusing everything', { timeout: 120_000 }, async () => {
     const dir = freshDir('anchor');
     const mf = boot(dir);
     for (const n of [1, 2, 3]) {
@@ -268,7 +270,7 @@ describe('a package belongs to exactly one custody file (SE-I04, Build Spec:79)'
     await mf.dispose();
   });
 
-  it('the same order re-opening its own package is absorbed, not refused as a rival', async () => {
+  it('the same order re-opening its own package is absorbed, not refused as a rival', { timeout: 120_000 }, async () => {
     const dir = freshDir('reopen');
     const mf = boot(dir);
     expect((await call(mf, 'POST', '/ops/order/open', chainFor('ord-reopen', 'pkg-reopen-0001'))).status).toBe(200);
@@ -280,7 +282,7 @@ describe('a package belongs to exactly one custody file (SE-I04, Build Spec:79)'
     await mf.dispose();
   });
 
-  it('the claim survives a real process death — the contest is not decided in memory', async () => {
+  it('the claim survives a real process death — the contest is not decided in memory', { timeout: 120_000 }, async () => {
     const dir = freshDir('restart');
     let mf = boot(dir);
     expect((await call(mf, 'POST', '/ops/order/open', chainFor('ord-restart-A', 'pkg-restart-0001'))).status).toBe(200);
@@ -318,7 +320,7 @@ describe('a package belongs to exactly one custody file (SE-I04, Build Spec:79)'
  * with no attacker. Sequential tests could never see it; only this one can.
  */
 describe('the contest is decided ONCE, even when every order arrives at the same instant', () => {
-  it('exactly one of eight simultaneous orders gets a custody file over the package', async () => {
+  it('exactly one of eight simultaneous orders gets a custody file over the package', { timeout: 120_000 }, async () => {
     const dir = freshDir('race');
     const mf = boot(dir);
 
@@ -366,7 +368,7 @@ describe('the contest is decided ONCE, even when every order arrives at the same
 });
 
 describe('a custody file opened before this slice existed claims its package on the next open', () => {
-  it('re-opening an unclaimed file wins the claim, and the rival is refused from then on', async () => {
+  it('re-opening an unclaimed file wins the claim, and the rival is refused from then on', { timeout: 120_000 }, async () => {
     const dir = freshDir('self-heal');
     let mf = boot(dir);
     const PKG = 'pkg-legacy-0001';
@@ -432,7 +434,7 @@ describe('a custody file opened before this slice existed claims its package on 
  * TWO » lesson says to keep, because two writes creep back.
  */
 describe('a claim marker that does not name this file’s package is not a claim', () => {
-  it('the file re-attempts, and loses honestly to the order that really holds the package', async () => {
+  it('the file re-attempts, and loses honestly to the order that really holds the package', { timeout: 120_000 }, async () => {
     const dir = freshDir('marker');
     let mf = boot(dir);
     const PKG = 'pkg-marker-0001';
@@ -472,7 +474,7 @@ describe('a claim marker that does not name this file’s package is not a claim
  * lock-out » — the recovery path itself.
  */
 describe('an order that holds the claim but lost its marker recovers, and only that order does', () => {
-  it('re-opening rewrites the marker through the claim object, and a rival is still refused', async () => {
+  it('re-opening rewrites the marker through the claim object, and a rival is still refused', { timeout: 120_000 }, async () => {
     const dir = freshDir('recover');
     let mf = boot(dir);
     const PKG = 'pkg-recover-0001';
@@ -501,7 +503,7 @@ describe('an order that holds the claim but lost its marker recovers, and only t
 });
 
 describe('the claim object refuses to answer about a package it has not been told it is', () => {
-  it('a caller that omits X-Package-Object is refused, and a body naming another package is refused', async () => {
+  it('a caller that omits X-Package-Object is refused, and a body naming another package is refused', { timeout: 120_000 }, async () => {
     const dir = freshDir('anchor-claim');
     const mf = boot(dir);
     const ns = await mf.getDurableObjectNamespace('PACKAGE_CLAIM');
@@ -541,7 +543,7 @@ describe('the claim object refuses to answer about a package it has not been tol
    * a second custody file may open » — but it is this one that actually decides
    * it, because this is the route `/order/open` calls.
    */
-  it('refuses to DECIDE a claim for a package it is not, not merely to report one', async () => {
+  it('refuses to DECIDE a claim for a package it is not, not merely to report one', { timeout: 120_000 }, async () => {
     const dir = freshDir('misfiled-write');
     const mf = boot(dir);
     const PKG = 'pkg-misfiled-write-0001';
@@ -567,7 +569,7 @@ describe('the claim object refuses to answer about a package it has not been tol
     await mf.dispose();
   });
 
-  it('a stored claim and the object holding it must agree on which package it is', async () => {
+  it('a stored claim and the object holding it must agree on which package it is', { timeout: 120_000 }, async () => {
     const dir = freshDir('misfiled-claim');
     const mf = boot(dir);
     const PKG = 'pkg-misfiled-0001';

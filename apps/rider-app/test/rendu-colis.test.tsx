@@ -395,7 +395,7 @@ describe('COLIS-FOURNISSEUR-1 — the rider carries one package of several order
     state.closed = true;
     await s.press('Revenir en service');
     expect(s.shows('Commencer le service') || s.texts().length > 0, 'the tree survived to the waiting state').toBe(true);
-  });
+  }, 20_000); // the whole course in one walk — 2.4 s here, over 5 s on the shared CI runner (ci #206, attempt 2 timed out)
 
   it('RETOUR-CHANGEMENT-AVIS — pay at the door: she keeps the pagne and CHANGES HER MIND on the sandals: final at once, no seal question, no window — into the return bag, and ONE code for the pagne', async () => {
     const state = course(PORTE);
