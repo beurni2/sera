@@ -3,7 +3,9 @@ Continuity ledger per CTO charter §6/§6bis. Every entry is evidence-grounded.
 
 Format per entry:
 
-## 2026-09-27 · REPONSES-ENREGISTREES-1 (Boutik+ AUDIT-B+2 F-82) — Séra proves the answers Boutik+'s walks may copy · ON THE BRANCH, awaiting the founder's word (not merged, not deployed — nothing here deploys)
+## 2026-09-27 · REPONSES-ENREGISTREES-1 (Boutik+ AUDIT-B+2 F-82) — Séra proves the answers Boutik+'s walks may copy · MERGED 2026-09-28 on the founder's « go » (nothing here deploys)
+
+**Merged (founder: « go, sign 500 KB for the console », 2026-09-28 — the « go » on Boutik+ items 10–12).** `main` fast-forwarded `9a77bba → e6be61c` (ancestry verified first). **ci 206 went red twice, on two different tests, neither touched by this work** (`git diff 9a77bba e6be61c` touches no custody or rider-app file): attempt 1, custody `package-claim.e2e` « exactly one of eight simultaneous orders gets a custody file » timed out at the 5 s default; attempt 2, the rider-app walk `rendu-colis` « pay at the door: every whole-bag act… » timed out at 5 s (2.4 s here alone). Locally the FIRST test of `package-claim.e2e` also hit 5.01 s on a cold start (0.54 s warm) — every test in that file boots its own Worker. **Fixed as RETOUR-VIVANT was (2026-09-18):** each of the 13 tests in `package-claim.e2e` carries the 120 s budget its neighbour `package-claim-race` already uses, and the long rider walk 20 s. Time budgets only — no assertion, fixture or app line changed. Board: **ALL GATES GREEN** (logistics 302, custody 253, rider app 495, dispatch console 89). No verifier pass on a time budget: nothing it could judge changed.
 
 **Founder order (2026-09-27).** « all three » — item 12: « Recorded stand-ins …: yes, the lighter way. … That proves our copies behave like the real ones. »
 
