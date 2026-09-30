@@ -109,6 +109,18 @@ jobs:
       - name: Publish rider-app preview update (EAS, non-interactive)
         if: steps.token.outputs.present == 'true'
         working-directory: apps/rider-app
+        env:
+          # PROFIL-PUBLIÉ (founder ruling 2026-09-30, Boutik+ AUDIT-B+2 F-55:
+          # « No live pages should show any test mode banner ») — THE PUBLISHED
+          # CHANNEL IS NOT AN APERÇU. It is the road to real riders; left unset,
+          # the profile defaults to `preview` in src/preview.ts and the shell wore
+          # « Aperçu — bac à sable » on every screen of every phone this step
+          # publishes to. That banner is for a local Expo Go run only. A literal,
+          # not a secret: a build posture must be readable in review. The EAS
+          # channel keeps its NAME (`preview`): renaming it would orphan every
+          # installed phone's update subscription. Same fix as Shop+'s reseller
+          # app (PROFIL-PUBLIÉ, AUDIT-SHOP-2 F-43).
+          EXPO_PUBLIC_PROFILE: 'production'
         # The documented non-interactive chain: init links/creates the
         # project under the token's account on first run; update:configure
         # writes the runtime/update config into the CI workspace only

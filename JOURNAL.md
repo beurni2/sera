@@ -3,6 +3,22 @@ Continuity ledger per CTO charter §6/§6bis. Every entry is evidence-grounded.
 
 Format per entry:
 
+## 2026-09-30 · PROFIL-PUBLIÉ (Boutik+ AUDIT-B+2 F-55, founder ruling « No live pages should show any test mode banner ») — the published rider app wears no « Aperçu — bac à sable » · on the branch, NOT merged, NOT published
+
+**Founder ruling (2026-09-30), verbatim.** « No live pages should show any test mode banner. Retire them. Keep the rank number »
+
+**Before.** The rider app's publish step (`expo-preview.yml`, the OTA to real riders' phones) set no `EXPO_PUBLIC_PROFILE`; unset means `preview` (`src/preview.ts`), so every screen of every phone wore « Aperçu — bac à sable ». Shop+'s reseller app was fixed the same way on 2026-09 (PROFIL-PUBLIÉ, AUDIT-SHOP-2 F-43).
+
+**Now.** The publish step's `env:` sets `EXPO_PUBLIC_PROFILE: 'production'` (a literal, readable in review; the EAS channel keeps its name `preview` so installed phones keep their subscription). `src/preview.ts`'s comment says so. Local Expo Go runs keep the banner.
+
+**Evidence.** New walk `apps/rider-app/test/rendu-profil-publie.test.tsx`: it reads the profile FROM the publish step's env block, sets it, mounts the real app, and walks door → course → « Accepter la course » → « Vérifier le colis » with no banner; the CONTROL (profile unset) shows the banner at the door and on the course. Red first on the old workflow (« the publish step sets no EXPO_PUBLIC_PROFILE »), green after; `preview-banner` and `custody-wiring` green beside it. Séra board on the final tree: **ALL GATES GREEN** (rider app 497, logistics 302, custody 253). Mutations KILLED: Se1 the publish step sets no profile · Se2 the banner shows whatever the profile (anchors matched once, restored byte-identical).
+
+**Verifier.** The one pass for this build is recorded in Boutik+'s journal. No blocker. Here: `PREVIEW.md` corrected (it said the published app always wears the banner). For his approval: merging to `main` publishes to riders' phones at once.
+
+**Not changed.** Anything the app does besides the banner: `IS_PREVIEW` gates only the banner (App.tsx). The dispatch console has no deploy workflow — not a live page. Publishing waits for his word.
+
+---
+
 ## 2026-09-30 · Boutik+ LISTER-VRAI-1 (F-90 repin) MERGED on the founder's « go » (nothing here deploys)
 
 `main` fast-forwarded `ab12697 → 01724a9` (ancestry verified), after the canon's `main` reached `cfff2c5`; **ci 208 green** and **expo-preview 153 green** on `01724a9`.

@@ -1,9 +1,15 @@
 # Aperçu Séra dans Expo Go (bac à sable)
 
 Cette page explique comment ouvrir l'application livreur **Séra** sur votre
-téléphone, en mode **aperçu**. Un aperçu est un **bac à sable** : rien n'y est réel —
-aucun paiement, aucune commande, aucune donnée de production. Le bandeau
-**« Aperçu — bac à sable »** reste affiché en permanence pour le rappeler.
+téléphone. Deux postures existent, choisies par la variable `EXPO_PUBLIC_PROFILE` :
+
+- **Le canal publié (Chemin 1)** déclare le profil `production` (PROFIL-PUBLIÉ,
+  décision du fondateur du 2026-09-30 : « aucune page en ligne ne montre de
+  bandeau de test ») : aucun bandeau n'y est affiché.
+- **Un lancement local (Chemin 2)** laisse la variable vide : c'est le profil
+  `preview`, un **bac à sable** sur votre propre téléphone — rien n'y est réel,
+  aucun paiement, aucune commande, aucune donnée de production — et le bandeau
+  **« Aperçu — bac à sable »** reste affiché en permanence pour le rappeler.
 
 ## Chemin 1 — automatique, à chaque fusion sur `main`
 
