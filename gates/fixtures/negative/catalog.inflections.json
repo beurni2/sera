@@ -16,5 +16,11 @@
     "fr": "Conformément aux règles.",
     "register": "neutral",
     "screenClass": "status"
+  },
+  {
+    "key": "negative.f90.sequestration",
+    "fr": "La séquestration des sommes.",
+    "register": "neutral",
+    "screenClass": "status"
   }
 ]

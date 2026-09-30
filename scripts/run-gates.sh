@@ -338,7 +338,7 @@ capture copy-lint-administrative fail pnpm exec copy-lint gates/fixtures/negativ
 # AUDIT-B+2 F-90 (LISTER-VRAI-1, 2026-09-30) — the banned words in every form.
 # §10.5 bans « séquestre » / "escrow", but the lint matched one spelling:
 # « séquestrées », « escrowed » and « conformément aux » passed. The canon list
-# gained their inflections (platform-contracts 280485c). This fixture's ONLY
+# gained their inflections (platform-contracts cfff2c5). This fixture's ONLY
 # violations are those inflections — it PASSES under every earlier i18n pin
 # (measured against 199bc2a and a418ca4) — so a pin regression turns the board
 # red, the way the F12 fixture above guards F12.
