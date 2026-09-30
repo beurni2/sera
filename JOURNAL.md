@@ -3,6 +3,16 @@ Continuity ledger per CTO charter §6/§6bis. Every entry is evidence-grounded.
 
 Format per entry:
 
+## 2026-09-30 · Boutik+ LISTER-VRAI-1 (AUDIT-B+2 F-90) — the copy-lint refuses the banned words in every form · i18n repinned · on the branch, NOT merged (nothing here deploys)
+
+**Why here.** §10.5 hard rule 2 bans « séquestre » / "escrow" from every customer string, but the lint matched one spelling: « séquestrées », « escrowed » and « conformément aux » passed. The canon list gained eleven inflections (platform-contracts `280485c`, widened on the Boutik+ verifier pass to « séquestration(s) » and the common verb forms — `cfff2c5`), measured first against all 2 946 strings of the seven catalogs of the three apps — zero hits, so no Séra copy is refused.
+
+**What moved.** `@platform/i18n` `199bc2a → 280485c → cfff2c5` (`524c5c6`, `45ef7ef`) in the root manifest and both app manifests (rider app, dispatch console); lockfile; `gates/fixtures/negative/catalog.inflections.json` + its board line — the fixture's ONLY violations are the new forms, and it PASSES under `199bc2a` (measured), so a pin regression turns this board red. Nothing else in the code changed.
+
+**Evidence.** copy-lint (under `cfff2c5`): rider app 344 · dispatch console 316 entries, 0 violations; the new fixture and the F12 fixture both fail as required; `CI=true pnpm install --frozen-lockfile` exit 0; gate board `bash scripts/run-gates.sh` on `45ef7ef`: **ALL GATES GREEN** (an earlier run on `524c5c6` went red on ONE test, `custody-storage.e2e` « DoD 4 », a 5 s timeout while other heavy suites ran beside it; 23/23 when run alone, and green on the next two boards).
+
+---
+
 ## 2026-09-27 · REPONSES-ENREGISTREES-1 (Boutik+ AUDIT-B+2 F-82) — Séra proves the answers Boutik+'s walks may copy · MERGED 2026-09-28 on the founder's « go » (nothing here deploys)
 
 **Merged (founder: « go, sign 500 KB for the console », 2026-09-28 — the « go » on Boutik+ items 10–12).** `main` fast-forwarded `9a77bba → e6be61c` (ancestry verified first). **ci 206 went red twice, on two different tests, neither touched by this work** (`git diff 9a77bba e6be61c` touches no custody or rider-app file): attempt 1, custody `package-claim.e2e` « exactly one of eight simultaneous orders gets a custody file » timed out at the 5 s default; attempt 2, the rider-app walk `rendu-colis` « pay at the door: every whole-bag act… » timed out at 5 s (2.4 s here alone). Locally the FIRST test of `package-claim.e2e` also hit 5.01 s on a cold start (0.54 s warm) — every test in that file boots its own Worker. **Fixed as RETOUR-VIVANT was (2026-09-18):** each of the 13 tests in `package-claim.e2e` carries the 120 s budget its neighbour `package-claim-race` already uses, and the long rider walk 20 s. Time budgets only — no assertion, fixture or app line changed. Board: **ALL GATES GREEN** (logistics 302, custody 253, rider app 495, dispatch console 89). No verifier pass on a time budget: nothing it could judge changed.
