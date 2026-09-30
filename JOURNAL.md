@@ -3,7 +3,13 @@ Continuity ledger per CTO charter §6/§6bis. Every entry is evidence-grounded.
 
 Format per entry:
 
-## 2026-09-30 · Boutik+ LISTER-VRAI-1 (AUDIT-B+2 F-90) — the copy-lint refuses the banned words in every form · i18n repinned · on the branch, NOT merged (nothing here deploys)
+## 2026-09-30 · Boutik+ LISTER-VRAI-1 (F-90 repin) MERGED on the founder's « go » (nothing here deploys)
+
+`main` fast-forwarded `ab12697 → 01724a9` (ancestry verified), after the canon's `main` reached `cfff2c5`; **ci 208 green** and **expo-preview 153 green** on `01724a9`.
+
+---
+
+## 2026-09-30 · Boutik+ LISTER-VRAI-1 (AUDIT-B+2 F-90) — the copy-lint refuses the banned words in every form · i18n repinned · MERGED 2026-09-30 (entry above)
 
 **Why here.** §10.5 hard rule 2 bans « séquestre » / "escrow" from every customer string, but the lint matched one spelling: « séquestrées », « escrowed » and « conformément aux » passed. The canon list gained eleven inflections (platform-contracts `280485c`, widened on the Boutik+ verifier pass to « séquestration(s) » and the common verb forms — `cfff2c5`), measured first against all 2 946 strings of the seven catalogs of the three apps — zero hits, so no Séra copy is refused.
 
