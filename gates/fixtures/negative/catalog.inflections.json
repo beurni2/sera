@@ -1,0 +1,20 @@
+[
+  {
+    "key": "negative.f90.sequestres",
+    "fr": "Les sommes restent séquestrées.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "negative.f90.escrowed",
+    "fr": "Paiement escrowed.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "negative.f90.conformement_aux",
+    "fr": "Conformément aux règles.",
+    "register": "neutral",
+    "screenClass": "status"
+  }
+]

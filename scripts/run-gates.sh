@@ -335,6 +335,16 @@ capture copy-lint-console-positive pass pnpm exec copy-lint apps/dispatch-consol
 log "gate: French Voice copy-lint — NEGATIVE FIXTURE (administrative register, F12 — must fail)"
 capture copy-lint-administrative fail pnpm exec copy-lint gates/fixtures/negative/catalog.administrative-register.json
 
+# AUDIT-B+2 F-90 (LISTER-VRAI-1, 2026-09-30) — the banned words in every form.
+# §10.5 bans « séquestre » / "escrow", but the lint matched one spelling:
+# « séquestrées », « escrowed » and « conformément aux » passed. The canon list
+# gained their inflections (platform-contracts 280485c). This fixture's ONLY
+# violations are those inflections — it PASSES under every earlier i18n pin
+# (measured against 199bc2a and a418ca4) — so a pin regression turns the board
+# red, the way the F12 fixture above guards F12.
+log "gate: French Voice copy-lint — NEGATIVE FIXTURE (banned words in every form, F-90 — must fail)"
+capture copy-lint-inflections fail pnpm exec copy-lint gates/fixtures/negative/catalog.inflections.json
+
 log "gate: French Voice copy-lint — NEGATIVE FIXTURE (veuillez/séquestre + marketing-in-money + Mooré-in-instruction, must fail)"
 capture copy-lint-negative fail pnpm exec copy-lint gates/fixtures/negative/catalog.negative.json
 
