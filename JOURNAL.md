@@ -3,6 +3,14 @@ Continuity ledger per CTO charter §6/§6bis. Every entry is evidence-grounded.
 
 Format per entry:
 
+## 2026-09-30 · PROFIL-PUBLIÉ MERGED AND PUBLISHED on the founder's « go »
+
+**Founder order (2026-09-30).** « go » — on the report of the entry below (merging publishes to riders at once, as the report said).
+- **Merged** `main` `65f02ff → 071d166` (fast-forward), **ci 210 green**.
+- **Published: expo-preview 155 green** — the publish step's env read back from its log: `EXPO_PUBLIC_PROFILE: production`; EAS « Published! », branch `preview`, message `main@071d166`, update group `d285dd08-7045-4ec1-b7b8-d9c8c5d96e53`. Riders' phones take it on their next launch; the banner is gone from them from then on.
+
+---
+
 ## 2026-09-30 · PROFIL-PUBLIÉ (Boutik+ AUDIT-B+2 F-55, founder ruling « No live pages should show any test mode banner ») — the published rider app wears no « Aperçu — bac à sable » · on the branch, NOT merged, NOT published
 
 **Founder ruling (2026-09-30), verbatim.** « No live pages should show any test mode banner. Retire them. Keep the rank number »
