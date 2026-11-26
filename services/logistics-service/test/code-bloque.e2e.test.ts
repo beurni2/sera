@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Miniflare } from 'miniflare';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createManualConnectivity } from '../../../apps/rider-app/src/offline/connectivity';
 import { httpShiftActs } from '../../../apps/rider-app/src/net/shift-acts';
 import { httpRiderSession } from '../../../apps/rider-app/src/net/httpRiderSession';
@@ -300,19 +300,23 @@ describe('the buyer\'s code locks after five wrong tries, and the founder unlock
     expect(await desk(logistics).codesBloques()).toEqual({ kind: 'ok', value: { rows: [], partiel: false } });
   }, 120_000);
 
-  it('the board reads at most 32 article locks, in board order, and says the list may be partial when the cap is hit or a read fails', async () => {
+  it('one board read makes at most 30 custody calls: the wire revivals first, the code-lock reads with what is left, in board order, and any cut or failed read is said', async () => {
     const hold: Hold = {};
-    const lockReads: string[] = [];
+    // Every call the stand-in custody receives, in order, by path.
+    const calls: { path: string; orderId: string }[] = [];
+    const armed = new Set<string>();
     let failOne: string | null = null;
     // A stand-in for custody's produce door, answering exactly the shapes the
     // real Worker answers (`{ok:true, status}` on acts, `{ok, locked, since}`
-    // on the lock read). It records every lock read so the cap is asked of
-    // the wire, not of the board.
+    // on the lock read). It records EVERY call, revivals included, so the
+    // budget is asked of the wire, not of the board.
     hold.stub = async (request: Request) => {
       const url = new URL(request.url);
+      const body = request.method === 'POST' ? ((await request.clone().json().catch(() => null)) as Json | null) : null;
+      const orderId = url.searchParams.get('orderId') ?? (typeof body?.['orderId'] === 'string' ? body['orderId'] : '');
+      calls.push({ path: url.pathname, orderId });
+      if (url.pathname === '/produce/secrets/arm') armed.add(orderId);
       if (url.pathname === '/produce/drop-code/lock') {
-        const orderId = url.searchParams.get('orderId') ?? '';
-        lockReads.push(orderId);
         if (orderId === failOne) return Response.json({ ok: false, reason: 'unavailable' }, { status: 503 });
         return Response.json({ ok: true, locked: true, since: T });
       }
@@ -321,29 +325,59 @@ describe('the buyer\'s code locks after five wrong tries, and the founder unlock
     };
     spawnLogistics(hold);
     const logistics = hold.logistics!;
-    // Four packages of ten articles: forty articles on live courses.
+    // Four packages of ten articles: forty articles on live courses, each
+    // with its custody file opened, so each one's wires are due a revival.
     for (let p = 0; p < 4; p += 1) {
       const ids = Array.from({ length: 10 }, (_, i) => `ord-cap-${p}-${i}`);
       await colisConfie(logistics, ids, `rider-cap-${p}`, `cap${p}`);
     }
-    lockReads.length = 0;
-    const capped = await desk(logistics).codesBloques();
-    expect(lockReads.length, 'never more than 32 reads per board read').toBe(32);
-    expect(capped.kind === 'ok' && capped.value.partiel, 'the cap is said').toBe(true);
-    if (capped.kind !== 'ok') return;
-    const listedIds = capped.value.rows.flatMap((r) => r.orderIds);
-    expect(listedIds.every((o) => lockReads.includes(o)), 'only what was read is listed').toBe(true);
-    expect(listedIds.length).toBe(32);
+    const allIds = Array.from({ length: 40 }, (_, n) => `ord-cap-${Math.floor(n / 10)}-${n % 10}`);
+    // The producer's own alarm opens and arms each file in ITS invocation,
+    // not the board's: let it finish so only the board read's calls are counted.
+    await vi.waitFor(() => expect(armed.size).toBe(40), { timeout: 30_000, interval: 50 });
+    const oneRead = async () => {
+      calls.length = 0;
+      const answer = await desk(logistics).codesBloques();
+      const revivals = calls.filter((c) => c.path === '/produce/wires/reviver').length;
+      const lockReads = calls.filter((c) => c.path === '/produce/drop-code/lock').map((c) => c.orderId);
+      return { answer, total: calls.length, revivals, lockReads };
+    };
 
-    // One read failing, under the cap: the list is partial too.
+    // Wires due: the revivals (their own cap of 20) and the lock reads compete.
+    const busy = await oneRead();
+    expect(busy.revivals, 'the revivals keep their own cap of 20').toBe(20);
+    expect(busy.total, 'never more than 30 custody calls per board read').toBeLessThanOrEqual(30);
+    expect(busy.lockReads.length, 'the lock reads take what the revivals left').toBe(30 - busy.revivals);
+    expect(busy.lockReads, 'in board order').toEqual(allIds.slice(0, busy.lockReads.length));
+    expect(busy.answer.kind === 'ok' && busy.answer.value.partiel, 'the cut is said').toBe(true);
+    if (busy.answer.kind !== 'ok') return;
+    expect(busy.answer.value.rows.flatMap((r) => r.orderIds), 'only what was read is listed').toEqual(busy.lockReads);
+
+    // The other twenty are revived on the next read, inside the minute.
+    const busyAgain = await oneRead();
+    expect(busyAgain.revivals).toBe(20);
+    expect(busyAgain.total).toBeLessThanOrEqual(30);
+    expect(busyAgain.lockReads.length).toBe(10);
+
+    // No revival due (all were asked within the minute): 30 lock reads, the
+    // cap is still hit on forty articles, and it is said.
+    const quiet = await oneRead();
+    expect(quiet.revivals).toBe(0);
+    expect(quiet.total).toBe(30);
+    expect(quiet.lockReads).toEqual(allIds.slice(0, 30));
+    expect(quiet.answer.kind === 'ok' && quiet.answer.value.partiel, 'the cap is said').toBe(true);
+    if (quiet.answer.kind !== 'ok') return;
+    expect(quiet.answer.value.rows.flatMap((r) => r.orderIds)).toEqual(quiet.lockReads);
+
+    // One read failing, under the budget: the list is partial too.
     await ops(logistics, '/ops/order/retirer', { command_id: 'cap-r3', orderId: 'ord-cap-3-0', colisEntier: true });
     await ops(logistics, '/ops/order/retirer', { command_id: 'cap-r2', orderId: 'ord-cap-2-0', colisEntier: true });
     failOne = 'ord-cap-1-4';
-    lockReads.length = 0;
-    const failed = await desk(logistics).codesBloques();
-    expect(lockReads.length).toBe(20);
-    expect(failed.kind === 'ok' && failed.value.partiel, 'a failed read is said').toBe(true);
-    if (failed.kind !== 'ok') return;
-    expect(failed.value.rows.flatMap((r) => r.orderIds)).not.toContain('ord-cap-1-4');
+    const failed = await oneRead();
+    expect(failed.revivals).toBe(0);
+    expect(failed.lockReads.length).toBe(20);
+    expect(failed.answer.kind === 'ok' && failed.answer.value.partiel, 'a failed read is said').toBe(true);
+    if (failed.answer.kind !== 'ok') return;
+    expect(failed.answer.value.rows.flatMap((r) => r.orderIds)).not.toContain('ord-cap-1-4');
   }, 180_000);
 });

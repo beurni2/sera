@@ -211,12 +211,13 @@ const SNAP_FIN_DE_SERVICE = 'snap:fin-de-service:v1';
  *  fresh read: the check re-asks; this bounds the fallback only. */
 const CUSTODY_READ_TIMEOUT_MS = 4_000;
 /**
- * The buyer's code lock on the founder's board: at most this many article
- * reads per board read, taken in board order (coordinator ruling,
- * 2026-11-26). An unbounded fan-out over every live course could break the
- * whole board on a busy day; hitting the cap is said (`codesBloquesPartiel`).
+ * Custody calls one board read may make, the wire revivals first and the
+ * buyer's code-lock reads with what is left, in board order (coordinator
+ * ruling, 2026-11-26). The platform allows 32 Worker invocations per request
+ * and every service-binding call counts, later ones throw: 32, minus this
+ * Worker's own, minus one spare. A cut is said (`codesBloquesPartiel`).
  */
-const CODE_LOCK_READS_PER_BOARD = 32;
+const CUSTODY_CALLS_PER_BOARD = 30;
 /**
  * FLOTTE-1 (SE7.2) — the fleet book: motos, their papers and readings, the
  * shifts the registry opened and closed, the courses custody's wires closed
@@ -1013,11 +1014,11 @@ export class LogisticsDO {
   /**
    * The live courses whose buyer's code custody says is locked after five
    * wrong tries — custody's word, read fresh, never stored here. One row per
-   * course with its locked articles. Bounded (see CODE_LOCK_READS_PER_BOARD),
+   * course with its locked articles. Bounded (see CUSTODY_CALLS_PER_BOARD),
    * in parallel, each read on the custodian read's own timeout; a read that
    * fails or is cut by the cap makes the list `partiel`, never quietly short.
    */
-  private async codesBloques(): Promise<{
+  private async codesBloques(budget: number): Promise<{
     codesBloques: { assignmentId: string; riderId: string; orderIds: string[]; depuis: string }[];
     codesBloquesPartiel: boolean;
   }> {
@@ -1030,7 +1031,7 @@ export class LogisticsDO {
     const custody = this.env.CUSTODY;
     const key = this.env.SERA_PRODUCE_SECRET ?? '';
     if (custody === undefined || key === '') return { codesBloques: [], codesBloquesPartiel: true };
-    const lus = articles.slice(0, CODE_LOCK_READS_PER_BOARD);
+    const lus = articles.slice(0, Math.max(0, budget));
     let partiel = articles.length > lus.length;
     const answers = await Promise.all(lus.map(async ({ orderId }) => {
       try {
@@ -1160,10 +1161,10 @@ export class LogisticsDO {
    * once a minute per course, bounded, and never in the request's way: a
    * custody that does not answer costs the board nothing.
    */
-  private async reviveCustodyWires(): Promise<void> {
+  private async reviveCustodyWires(): Promise<number> {
     const custody = this.env.CUSTODY;
     const key = this.env.SERA_PRODUCE_SECRET ?? '';
-    if (custody === undefined || key === '') return;
+    if (custody === undefined || key === '') return 0;
     const nowMs = Date.now();
     const due = this.book
       .snapshot()
@@ -1185,6 +1186,7 @@ export class LogisticsDO {
         // Not this read's affair: the next read asks again.
       }
     }));
+    return due.length;
   }
 
   /**
@@ -1547,8 +1549,8 @@ export class LogisticsDO {
       // for a producer row parked before its config or supplier existed.
       await this.reviveCustodyProduce();
       // REPROGRAMMATION-2 — and for custody's own wires back to this book.
-      await this.reviveCustodyWires();
-      const { codesBloques, codesBloquesPartiel } = await this.codesBloques();
+      const revivals = await this.reviveCustodyWires();
+      const { codesBloques, codesBloquesPartiel } = await this.codesBloques(CUSTODY_CALLS_PER_BOARD - revivals);
       // Additive, and only when there is something to say: a board with no
       // locked code keeps the exact form other apps' walks already copy.
       return Response.json({
