@@ -676,6 +676,16 @@ function fingerprint(cmd: CustodyCommand): string {
   return canonicalJson(content);
 }
 
+/**
+ * The rider id a door act records, held to `/verification`'s rule: logistics
+ * lets interior control bytes through, and a name that misrenders in the
+ * founder's console cannot settle who stood at the door. Refused before the
+ * command is built, so nothing is logged. Absent or empty = the ops door.
+ */
+function doorRiderUnusable(v: string | null): boolean {
+  return v !== null && v !== '' && (v.trim() === '' || v.length > MAX_ID || hasControlChar(v));
+}
+
 function malformed(reason = 'malformed'): Response {
   return Response.json({ ok: false, reason }, { status: 400 });
 }
@@ -2428,6 +2438,7 @@ export class CustodyDO {
         return malformed();
       }
       const doorRider = request.headers.get('X-Rider-Authenticated');
+      if (doorRiderUnusable(doorRider)) return malformed('rider_id_not_usable');
       const cmd: CustodyCommand = {
         kind: 'delivery_evidence',
         command_id: (body['command_id'] as string).trim(),
@@ -2521,6 +2532,7 @@ export class CustodyDO {
         return malformed();
       }
       const doorRider = request.headers.get('X-Rider-Authenticated');
+      if (doorRiderUnusable(doorRider)) return malformed('rider_id_not_usable');
       const cmd: CustodyCommand = {
         kind: 'confirm_drop',
         command_id: (body['command_id'] as string).trim(),
@@ -2646,6 +2658,7 @@ export class CustodyDO {
         return malformed();
       }
       const doorRider = request.headers.get('X-Rider-Authenticated');
+      if (doorRiderUnusable(doorRider)) return malformed('rider_id_not_usable');
       const cmd: CustodyCommand = {
         kind: 'door_inspection',
         command_id: (body['command_id'] as string).trim(),
@@ -2805,6 +2818,7 @@ export class CustodyDO {
         return malformed();
       }
       const returnRider = request.headers.get('X-Rider-Authenticated');
+      if (doorRiderUnusable(returnRider)) return malformed('rider_id_not_usable');
       const cmd: CustodyCommand = {
         kind: 'open_return',
         command_id: (body['command_id'] as string).trim(),
@@ -2868,6 +2882,7 @@ export class CustodyDO {
         return malformed();
       }
       const refusalRider = request.headers.get('X-Rider-Authenticated');
+      if (doorRiderUnusable(refusalRider)) return malformed('rider_id_not_usable');
       const cmd: CustodyCommand = {
         kind: 'door_refusal',
         command_id: (body['command_id'] as string).trim(),
@@ -2920,6 +2935,7 @@ export class CustodyDO {
         return malformed();
       }
       const expireRider = request.headers.get('X-Rider-Authenticated');
+      if (doorRiderUnusable(expireRider)) return malformed('rider_id_not_usable');
       const cmd: CustodyCommand = {
         kind: 'door_expire',
         command_id: (body['command_id'] as string).trim(),
@@ -2976,6 +2992,7 @@ export class CustodyDO {
         return malformed();
       }
       const handoverRider = request.headers.get('X-Rider-Authenticated');
+      if (doorRiderUnusable(handoverRider)) return malformed('rider_id_not_usable');
       const cmd: CustodyCommand = {
         kind: 'return_handover',
         command_id: (body['command_id'] as string).trim(),
@@ -3176,11 +3193,13 @@ export class CustodyDO {
           };
         });
       /**
-       * The door acts after the seal, each with the rider who stood there.
-       * Kind, id, instant, rider, door and outcome only: the command's code,
-       * seal and key digests, evidence and photo refs never leave the log.
-       * `riderId` null = the founder's ops door, or a row logged before door
-       * acts named their rider.
+       * Every logged door-act row (evidence, drop, inspection, refusal,
+       * expiry, return open, handover), accepted or refused, before or after
+       * the seal, each with the rider who sent it. Kind, id, instant, rider,
+       * attribution and outcome only: the command's code, seal and key
+       * digests, evidence and photo refs never leave the log. `riderId` null =
+       * the founder's ops door, or a row logged before door acts named their
+       * rider.
        */
       const DOOR_ACTS: ReadonlySet<CustodyCommand['kind']> = new Set([
         'delivery_evidence', 'confirm_drop', 'door_inspection', 'door_refusal', 'door_expire', 'open_return', 'return_handover',

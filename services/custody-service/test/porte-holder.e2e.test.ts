@@ -38,6 +38,11 @@ const R1_CODE = 'SR-HOLDER-PERSONAL-0001';
 /** A second valid rider, never any of these orders' custodian. */
 const R2 = 'rider-holder-0002';
 const R2_CODE = 'SR-HOLDER-PERSONAL-0002';
+/** A third code whose directory entry carries an interior tab: logistics lets
+ *  it through (its `isStr` permits it), a header value may carry it, and the
+ *  name would misrender in the founder's console. */
+const R3 = 'rider-holder\t0003';
+const R3_CODE = 'SR-HOLDER-PERSONAL-0003';
 const SUPPLIER = 'supplier-holder-1';
 const SELLER_KEY = 'HLD-SELLER-KEY-0001';
 const RIDER_KEY = 'HLD-RIDER-KEY-0001';
@@ -80,6 +85,7 @@ function logisticsStub(seen: Seen) {
       const code = String(((await request.json().catch(() => null)) as Json | null)?.['code'] ?? '');
       if (code === R1_CODE) return Response.json({ ok: true, riderId: R1 });
       if (code === R2_CODE) return Response.json({ ok: true, riderId: R2 });
+      if (code === R3_CODE) return Response.json({ ok: true, riderId: R3 });
       return Response.json({ error: 'unauthorized' }, { status: 401 });
     }
     if (path.startsWith('/produce/')) {
@@ -221,8 +227,34 @@ describe('only the parcel\'s holder acts at the door; every door act names its r
     const SEAL = 'SEAL-HOLDER-A';
     const DROP = 'DROP-HOLDER-A1';
     await opened(mf, A, 'FULL_PREPAY', 'PICKUP-HOLDER-A', DROP);
+
+    // ── before the seal nobody holds it: R2 gets the spine's own refusals ──
+    const preRefusal = () => acts.refuseAtDoor({ commandId: id('r2-pre-r'), orderId: A, reasonCode: 'insufficient_balance' }, R2_CODE);
+    const preDrop = () => acts.confirmDrop({ commandId: id('r2-pre-d'), orderId: A, dropCode: DROP }, R2_CODE);
+    expect(await preRefusal()).toEqual({ kind: 'refused', reason: 'refusal_before_custody' });
+    expect(await preDrop()).toEqual({ kind: 'refused', reason: 'not_validated' });
+
     await r1HoldsIt(mf, A, 'PICKUP-HOLDER-A', SEAL);
     await settled(seen);
+
+    // ── a true duplicate of R2's own command replays its first answer, even
+    //    now that the parcel is R1's: the replay comes before the holder check ──
+    for (const [what, again, reason] of [['refusal', preRefusal, 'refusal_before_custody'], ['drop', preDrop, 'not_validated']] as const) {
+      const before = await snapshot(mf, A, seen);
+      expect(await again(), `R2's own ${what} replays`).toEqual({ kind: 'refused', reason });
+      await new Promise((r) => setTimeout(r, 1_500));
+      expect(await snapshot(mf, A, seen), `R2's replayed ${what} changed nothing`).toBe(before);
+    }
+    const replayed = await call(mf, 'POST', '/rider/delivery/drop', R2_CODE, { orderId: A, command_id: 'r2-pre-d', dropCode: DROP });
+    expect(replayed).toEqual({ status: 409, json: { ok: false, reason: 'not_validated', duplicate: true } });
+
+    // ── a rider id that would misrender is refused before anything is logged ──
+    {
+      const before = await snapshot(mf, A, seen);
+      const odd = await call(mf, 'POST', '/rider/delivery/drop', R3_CODE, { orderId: A, command_id: 'r3-d', dropCode: DROP });
+      expect(odd).toEqual({ status: 400, json: { ok: false, reason: 'rider_id_not_usable' } });
+      expect(await snapshot(mf, A, seen), 'the unusable rider id changed nothing').toBe(before);
+    }
 
     // ── R2, never this order's hand: evidence, then the RIGHT buyer code ──
     let before = await snapshot(mf, A, seen);
@@ -261,11 +293,14 @@ describe('only the parcel\'s holder acts at the door; every door act names its r
     // ── the record names who stood there, and carries no secret ──
     const { raw, rows } = await doorActs(mf, A);
     expect(rows.map((r) => [r.kind, r.command_id, r.riderId, r.attribution, r.recorded])).toEqual([
+      // R2's two pre-seal refusals are on the record, under his own name.
+      ['door_refusal', 'r2-pre-r', R2, 'rider_authenticated', false],
+      ['confirm_drop', 'r2-pre-d', R2, 'rider_authenticated', false],
       ['delivery_evidence', 'r1-e', R1, 'rider_authenticated', true],
       ['confirm_drop', 'r1-d', R1, 'rider_authenticated', true],
       ['confirm_drop', 'r1-d-again', R1, 'rider_authenticated', true],
     ]);
-    expect(rows.every((r) => r.riderId !== R2)).toBe(true);
+    expect(rows.filter((r) => r.riderId === R2).every((r) => !r.recorded)).toBe(true);
     for (const secret of [DROP, SEAL]) {
       expect(raw.includes(secret), `attestations carry ${secret}`).toBe(false);
       expect(raw.includes(createHash('sha256').update(secret, 'utf8').digest('hex')), `attestations carry the digest of ${secret}`).toBe(false);
