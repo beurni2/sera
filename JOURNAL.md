@@ -47,6 +47,8 @@ Format per entry:
   - The one failure is the known `received[0]` race in `custody-do.e2e.test.ts` (« SE-LIVE-5a … expected 'delivery.refused.v1' to be 'delivery.validated.v1' »), described in the CODE-BLOQUE-1 entry below.
   - It is a test that takes the first message without checking its order. This slice does not touch it.
 
+**CI on the pull request.** The first run went red on one test this slice does not touch: `custody-storage.e2e.test.ts` « refuses to re-open over an existing log… » passed vitest's 5 s default under GitHub's load (5034 ms; 0.4 s here). That file's 20 real-Worker tests had no explicit timeout, so each now carries the repository's real-Worker 60 000 ms. Assertions are unchanged; locally 23/23.
+
 **The one independent review:** 0 blockers, 0 should-fix, 4 notes, handled once.
 - N1 fixed: the docblock now states byte identity as it holds. A file recorded before the code lock, with five or more wrong codes before its drop, replays one more alert, so its rebuilt event carries an `aggregateVersion` one higher. Shop+ dedupes the signal on its `command_id` either way, and the course-closed body carries no version.
 - N4 fixed: the delivered-row case also runs through a re-typed code, with its mutation.
@@ -59,7 +61,7 @@ The slice was not re-inspected after the fixes.
 - A delivery recorded before these wires existed, or one whose row was lost, gets the missing row back (and its message sent) only when its drop is replayed or its code re-typed. Both receivers answer a repeat with 200. Riders are not on the live app yet, so few or no such files are expected.
 - Nothing else rebuilds a missing row: not a wake, not the alarm, not a scan.
 
-**Still open.** Whether a wake or a periodic sweep should rebuild missing rows for delivered files; the `received[0]` test race; the logistics tests reading the custody bundle before custody rebuilds it.
+**Still open.** Whether a wake or a periodic sweep should rebuild missing rows for delivered files; the `received[0]` test race; about a hundred other custody real-Worker tests still on the 5 s default; the logistics tests reading the custody bundle before custody rebuilds it.
 
 ## 2026-11-26 · DEPLOY-CLÉ-LIVRAISON-1 — the custody deploy's delivery-key instructions name the right Shop+ secret · coordinator · on the branch, NOT merged
 

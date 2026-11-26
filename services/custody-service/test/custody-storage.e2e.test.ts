@@ -224,7 +224,7 @@ describe('DoD 4 — a Worker deployed with NO ops secret refuses everything, ide
     await mf.dispose();
     // And an unarmed door leaves NO trace: nothing reached an object at all.
     expect(allBytes(dir)).not.toContain('custody:chain:v1');
-  });
+  }, 60_000);
 });
 
 /**
@@ -285,7 +285,7 @@ describe('the object refuses to act on a record it was not told the name of', ()
     });
     expect(act.status).toBe(409);
     await mf.dispose();
-  });
+  }, 60_000);
 });
 
 describe('SECRETS AT REST — the spec says « single-use codes hashed », and now the disk agrees', () => {
@@ -342,7 +342,7 @@ describe('SECRETS AT REST — the spec says « single-use codes hashed », and n
     expect(reuse.status).toBe(409);
     expect(reuse.json).toMatchObject({ reason: 'pickup_code_refused', detail: 'secret_already_used' });
     await mf.dispose();
-  });
+  }, 60_000);
 
   it('stores the log as ONE KEY PER COMMAND, not one growing value', async () => {
     const dir = freshDir('rows');
@@ -363,7 +363,7 @@ describe('SECRETS AT REST — the spec says « single-use codes hashed », and n
     // …and NOT the single-value log that would have hit the 128 KiB per-value
     // cap and left a busy custody file permanently write-dead.
     expect(bytes).not.toContain('custody:command-log:v1');
-  });
+  }, 60_000);
 });
 
 /**
@@ -424,7 +424,7 @@ describe('an orphaned command log is never adopted by a new chain', () => {
     await mf.dispose();
     expect(allBytes(dir)).not.toContain('pkg-ATTACKER');
     expect(allBytes(dir)).toContain('pkg-VICTIM');
-  });
+  }, 60_000);
 });
 
 /**
@@ -468,7 +468,7 @@ describe('the command log is chained too — the facts that never reach the ledg
     expect(res.status).toBe(409);
     expect(res.json).toMatchObject({ reason: 'command_log_tampered' });
     await mf.dispose();
-  });
+  }, 60_000);
 
   it('WHICH CHECK FAILED cannot be rewritten — a damaged package cannot become a wrong-colour one', async () => {
     const dir = freshDir('bind-fault');
@@ -501,7 +501,7 @@ describe('the command log is chained too — the facts that never reach the ledg
     // so the entry the old head bound would have been unchanged.
     expect(((before.json['entries'] as Json[])[0]?.['payload'] as Json)['result']).toBe('refused');
     await mf.dispose();
-  });
+  }, 60_000);
 
   it('AN ARMED, UNSPENT SECRET cannot be swapped — a buyer drop code stays the buyer\'s', async () => {
     const dir = freshDir('bind-secret');
@@ -519,7 +519,7 @@ describe('the command log is chained too — the facts that never reach the ledg
     expect(res.status).toBe(409);
     expect(res.json).toMatchObject({ reason: 'command_log_tampered' });
     await mf.dispose();
-  });
+  }, 60_000);
 });
 
 /**
@@ -583,7 +583,7 @@ describe('the chain row is bound by the head — the ids cannot be rewritten und
       expect(res.status).toBe(409);
       expect(res.json).toMatchObject({ reason: 'chain_tampered' });
       await mf.dispose();
-    });
+    }, 60_000);
   }
 
   it('paymentMode is inside the bound region too — flipping it at rest would arm the Option-B door-payment gate', async () => {
@@ -609,7 +609,7 @@ describe('the chain row is bound by the head — the ids cannot be rewritten und
     expect(res.status).toBe(409);
     expect(res.json).toMatchObject({ reason: 'chain_tampered' });
     await mf.dispose();
-  });
+  }, 60_000);
 
   it('the ARMS-ONLY state is bound too — before any verification, package_id and order_id were both rewritable', async () => {
     const dir = freshDir('chain-arms');
@@ -621,7 +621,7 @@ describe('the chain row is bound by the head — the ids cannot be rewritten und
     expect(res.status).toBe(409);
     expect(res.json).toMatchObject({ reason: 'chain_tampered' });
     await mf.dispose();
-  });
+  }, 60_000);
 
   it('and an UNTOUCHED chain still opens, arms and verifies normally — the guard is not just refusing everything', async () => {
     const dir = freshDir('chain-clean');
@@ -633,7 +633,7 @@ describe('the chain row is bound by the head — the ids cannot be rewritten und
     expect((await call(mf, 'GET', '/ops/ledger/verify?orderId=ord-chain-clean')).json)
       .toMatchObject({ valid: true, headMatches: true });
     await mf.dispose();
-  });
+  }, 60_000);
 });
 
 /**
@@ -702,7 +702,7 @@ describe('a custody record cannot be served from an object that is not its own',
     expect(victim.status).toBe(200);
     expect(victim.json).toMatchObject({ packageId: 'pkg-V' });
     await mf.dispose();
-  });
+  }, 60_000);
 });
 
 describe('a half-written custody file fails closed and says which half is missing', () => {
@@ -749,7 +749,7 @@ describe('a half-written custody file fails closed and says which half is missin
     mf = boot(dir);
     expect((await call(mf, 'GET', '/ops/ledger?orderId=ord-half-a')).status).toBe(409);
     await mf.dispose();
-  });
+  }, 60_000);
 
   it('a head without its last command is caught as tampering, not waved through', async () => {
     const dir = freshDir('half-row');
@@ -761,7 +761,7 @@ describe('a half-written custody file fails closed and says which half is missin
     expect(res.status).toBe(409);
     expect(res.json).toMatchObject({ reason: 'command_log_tampered' });
     await mf.dispose();
-  });
+  }, 60_000);
 });
 
 /**
@@ -803,7 +803,7 @@ describe('the attestation route refuses a damaged file and leaks nothing', () =>
     expect(damaged.json).toMatchObject({ reason: 'command_log_tampered' });
     expect(JSON.stringify(damaged.json)).not.toContain('rider-');
     await mf.dispose();
-  });
+  }, 60_000);
 });
 
 describe('THE FORGERY THE VERIFIER PULLED OFF — the object must now refuse to serve', () => {
@@ -870,7 +870,7 @@ describe('THE FORGERY THE VERIFIER PULLED OFF — the object must now refuse to 
     expect(act.status).toBe(409);
     expect(act.json).toMatchObject({ reason: 'command_log_tampered' });
     await mf.dispose();
-  });
+  }, 60_000);
 
   /**
    * ⚠ THE LIMIT OF THIS GUARD, PROVEN RATHER THAN ASSUMED — and found by
@@ -926,7 +926,7 @@ describe('THE FORGERY THE VERIFIER PULLED OFF — the object must now refuse to 
     expect((await call(mf, 'GET', '/ops/ledger/verify?orderId=ord-roll')).json)
       .toMatchObject({ valid: true, headMatches: true });
     await mf.dispose();
-  });
+  }, 60_000);
 
   it('an UNTOUCHED file with the same shape reboots clean — the guard is not just refusing everything', async () => {
     const dir = freshDir('clean');
@@ -951,7 +951,7 @@ describe('THE FORGERY THE VERIFIER PULLED OFF — the object must now refuse to 
     expect((await call(mf, 'GET', '/ops/ledger/verify?orderId=ord-clean')).json)
       .toMatchObject({ valid: true, headMatches: true });
     await mf.dispose();
-  });
+  }, 60_000);
 });
 
 /**
@@ -1007,7 +1007,7 @@ describe('⚠ a verification recorded under policy v1 replays as v1, for ever', 
     expect(after.status, 'a replay that diverged answers 409 command_log_tampered').toBe(200);
     expect(after.json['entries']).toEqual(before.json['entries']);
     await mf.dispose();
-  });
+  }, 60_000);
 
   it('⚠ the pure judge is version-resolved: the SAME v1 answers accepted under v1 and are refused as out-of-policy under v2', () => {
     // The mechanism itself, stated by value — a v1 list is judgeable only as
