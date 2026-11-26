@@ -8,6 +8,7 @@ import { __resetFiles } from './doubles/expo-file-system';
 // precedent, on the audio boundary.
 import { __modeChargement } from './doubles/expo-audio';
 import { Linking } from './doubles/react-native';
+import { freshCourse, logistiqueCourse, type CourseState } from './doubles/logistique-course';
 
 /**
  * ═══ RENDU-RÉEL — the rider's course, DRIVEN, not read ═══
@@ -26,49 +27,6 @@ const ORDER = 'ord-rendu-1';
 const SEAL = 'SC-4K7M-9PQR';
 const PICKUP = 'K7M-9PQ';
 const DROP = 'DROP-RENDU-1';
-
-interface CourseState {
-  status: 'active_unacknowledged' | 'acknowledged';
-  ramassageConfirmeAt: string | null;
-  codeVerification: string | null;
-  codeScelle: string | null;
-  /** The SE1 ladder's last rung. A rider can drop off it mid-course. */
-  shift: 'on_shift' | 'off_shift';
-}
-
-/** The logistics side: `/rider/moi` + the ack door, answering from live state
- *  so the screen sees what a real poll would show. */
-function logistics(state: CourseState): Route {
-  return (path) => {
-    if (path === '/rider/moi') {
-      return {
-        status: 200,
-        json: {
-          ok: true,
-          rider: {
-            riderId: 'rider-rendu', displayName: 'Boss', certified: true, privacyAckOk: true,
-            shift: { status: state.shift },
-            assignment: {
-              assignmentId: 'as-1', taskId: 'task-1', orderId: ORDER, status: state.status,
-              ackDeadline: null,
-              location: { landmark: 'La pharmacie du marché', directions: 'Après le carrefour', zone: 'Gounghin, Ouagadougou' },
-              preuvePhotoRefs: [], repereAudioRef: 'media/11111111-2222-4333-8444-555555555555',
-              codeRamassage: 'ABC-DEF',
-              ramassageConfirmeAt: state.ramassageConfirmeAt,
-              codeVerification: state.codeVerification,
-              codeScelle: state.codeScelle,
-            },
-          },
-        },
-      };
-    }
-    if (path === '/rider/assignment/ack') {
-      state.status = 'acknowledged';
-      return { status: 200, json: { ok: true } };
-    }
-    return null;
-  };
-}
 
 /**
  * The custody side. ⚠ CONTRACT-CERTIFIED TO THE REAL WORKER'S ANSWERS
@@ -109,13 +67,6 @@ function custody(opts: {
   };
 }
 
-const freshCourse = (): CourseState => ({
-  status: 'active_unacknowledged',
-  ramassageConfirmeAt: null,
-  codeVerification: null,
-  codeScelle: null,
-  shift: 'on_shift',
-});
 
 beforeEach(() => {
   vi.resetModules();
@@ -140,7 +91,7 @@ async function signedIn(routes: readonly Route[]) {
 describe('⚠ ÉCRAN BLANC — the accept tap, driven', () => {
   it('accepting a course does NOT blank the screen — the bug the founder hit', async () => {
     const state = freshCourse();
-    const { s } = await signedIn([logistics(state), custody()]);
+    const { s } = await signedIn([logistiqueCourse(state, ORDER), custody()]);
     expect(s.shows('Une course pour vous'), JSON.stringify(s.texts())).toBe(true);
 
     /**
@@ -175,7 +126,7 @@ describe('⚠ ÉCRAN BLANC — the accept tap, driven', () => {
 describe('⚠ ROUTE-DIRECTE — the seal fires itself, and the road opens', () => {
   it('the supplier confirms → the checks are answered → « Prendre la route » appears, with no seal screen', async () => {
     const state = freshCourse();
-    const { s, w } = await signedIn([logistics(state), custody()]);
+    const { s, w } = await signedIn([logistiqueCourse(state, ORDER), custody()]);
     await s.press('Accepter la course');
 
     // The three checks — all conforming, so by the founder's ruling NO camera.
@@ -225,7 +176,7 @@ describe('⚠ ROUTE-DIRECTE — the seal fires itself, and the road opens', () =
     state.ramassageConfirmeAt = '2026-08-10T10:00:00.000Z';
     state.codeVerification = PICKUP;
     state.codeScelle = SEAL;
-    const { s, w } = await signedIn([logistics(state), custody()]);
+    const { s, w } = await signedIn([logistiqueCourse(state, ORDER), custody()]);
     await s.press('Accepter la course');
     await s.press('Oui', 2);
     await s.press('Oui', 1);
@@ -252,7 +203,7 @@ describe('⚠ ROUTE-DIRECTE — the seal fires itself, and the road opens', () =
     state.codeScelle = SEAL;
     let begins = 0;
     const { s, w } = await signedIn([
-      logistics(state),
+      logistiqueCourse(state, ORDER),
       custody({
         onBegin: () => {
           begins += 1;
@@ -324,7 +275,7 @@ describe('the buyer\'s code locks after five wrong tries — the door, driven', 
     state.codeVerification = PICKUP;
     state.codeScelle = SEAL;
     const lock = lockingDrop(DROP);
-    const { s, w } = await signedIn([logistics(state), lock.route, custody()]);
+    const { s, w } = await signedIn([logistiqueCourse(state, ORDER), lock.route, custody()]);
     await s.press('Accepter la course');
     await s.press('Oui', 2);
     await s.press('Oui', 1);
@@ -385,7 +336,7 @@ describe('⚠ PORTE-SANS-PHOTO — arrival goes straight to the buyer’s code',
 
   it('« Je suis arrivé » → the code screen, with no camera anywhere between', async () => {
     const state = freshCourse();
-    const { s, w } = await toTheDoor([logistics(state), custody()], state);
+    const { s, w } = await toTheDoor([logistiqueCourse(state, ORDER), custody()], state);
 
     expect(s.shows('Prendre la photo'), 'there is no camera at the door').toBe(false);
     expect(s.shows('Le code de la cliente'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
@@ -415,7 +366,7 @@ describe('⚠ PORTE-SANS-PHOTO — arrival goes straight to the buyer’s code',
    */
   it('⚠ « Livré. Merci. » is NOT a dead end — the rider closes it and is back in service', async () => {
     const state = freshCourse();
-    const { s } = await toTheDoor([logistics(state), custody()], state);
+    const { s } = await toTheDoor([logistiqueCourse(state, ORDER), custody()], state);
     await s.type(DROP);
     await s.press('Confirmer la remise');
     expect(s.shows('Livré. Merci.'), 'the delivery landed').toBe(true);
@@ -460,7 +411,7 @@ describe('⚠ PORTE-SANS-PHOTO — arrival goes straight to the buyer’s code',
     let evidences = 0;
     const { s, w } = await toTheDoor(
       [
-        logistics(state),
+        logistiqueCourse(state, ORDER),
         custody({
           onEvidence: () => {
             evidences += 1;
@@ -510,7 +461,7 @@ describe('⚠ REPÈRE-ROUTE — the repère is written once and can be heard all
     state.ramassageConfirmeAt = '2026-08-10T10:00:00.000Z';
     state.codeVerification = PICKUP;
     state.codeScelle = SEAL;
-    const { s } = await signedIn([logistics(state), custody()]);
+    const { s } = await signedIn([logistiqueCourse(state, ORDER), custody()]);
     await s.press('Accepter la course');
     await s.press('Oui', 2);
     await s.press('Oui', 1);
@@ -553,7 +504,7 @@ describe('⚠ REPÈRE-ROUTE — the repère is written once and can be heard all
   it('the voice STOPS when the row leaves the screen — going off shift mid-course', async () => {
     const state = freshCourse();
     state.status = 'acknowledged';
-    const { s } = await signedIn([logistics(state), custody()]);
+    const { s } = await signedIn([logistiqueCourse(state, ORDER), custody()]);
 
     await s.press('Écouter le repère');
     expect(s.shows('Pause'), 'the note is playing').toBe(true);
@@ -617,7 +568,7 @@ describe('⚠ CLAVIER-CODE — the buyer’s code field is inside the keyboard-a
     state.ramassageConfirmeAt = '2026-08-10T10:00:00.000Z';
     state.codeVerification = PICKUP;
     state.codeScelle = SEAL;
-    const { s } = await signedIn([logistics(state), custody()]);
+    const { s } = await signedIn([logistiqueCourse(state, ORDER), custody()]);
     await s.press('Accepter la course');
     await s.press('Oui', 2);
     await s.press('Oui', 1);
@@ -694,7 +645,7 @@ describe('⚠ VOIX-MUETTE-2 — a repère that cannot load is not an eternal « 
     // The founder's iPhone shape: a failed item emits NOTHING, ever.
     __modeChargement('silence');
     const state = freshCourse();
-    const { s } = await signedIn([logistics(state), custody()]);
+    const { s } = await signedIn([logistiqueCourse(state, ORDER), custody()]);
 
     await s.press('Écouter le repère');
     // Nothing has arrived and nothing ever will — but ten seconds have not
@@ -735,7 +686,7 @@ describe('GEO-SERA-1 — the Itinéraire act on the landmark card', () => {
    *  now sends (contract: logistics stores {lat, lng} and serves the stored
    *  location whole on /rider/moi). */
   function logisticsAvecPin(state: CourseState): Route {
-    const base = logistics(state);
+    const base = logistiqueCourse(state, ORDER);
     return (path, body) => {
       const answer = base(path, body);
       if (path === '/rider/moi' && answer !== null) {
@@ -782,7 +733,7 @@ describe('GEO-SERA-1 — the Itinéraire act on the landmark card', () => {
 
   it('no pin on the course: NO row and NO aide — never a dead button, never an invented destination', async () => {
     const state = freshCourse();
-    const { s } = await signedIn([logistics(state), custody()]);
+    const { s } = await signedIn([logistiqueCourse(state, ORDER), custody()]);
     expect(s.shows('Une course pour vous')).toBe(true);
     expect(s.shows('Itinéraire — ouvrir le GPS')).toBe(false);
     expect(s.shows('Le repère reste votre guide')).toBe(false);

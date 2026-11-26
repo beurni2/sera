@@ -630,6 +630,12 @@
     "screenClass": "status"
   },
   {
+    "key": "service.refus_course",
+    "fr": "Vous avez encore une course. Répondez-y d'abord. Si vous l'avez acceptée, appelez Séra pour la rendre.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
     "key": "service.refus_garde_illisible",
     "fr": "Séra n'a pas pu vérifier votre colis. Vous restez en ligne. Réessayez dans un moment.",
     "register": "neutral",
