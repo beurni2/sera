@@ -384,6 +384,15 @@ export type CustodyCommand =
        *  with the request that carried it. */
       evidence: unknown;
       attribution: 'founder_attested' | 'rider_authenticated';
+      /**
+       * The rider who stood at the door, from logistics' answer on the rider
+       * door (X-Rider-Authenticated); absent on the founder's ops door, where
+       * `attribution: founder_attested` already says who acted, and on rows
+       * logged before door acts named their rider. Part of the fingerprint,
+       * as `verify_pickup.attribution` rules: two riders' acts under one id
+       * are two acts, never a duplicate.
+       */
+      riderId?: string;
       at: string;
     }
   | {
@@ -400,6 +409,8 @@ export type CustodyCommand =
       /** HASHED AT THE DOOR — the buyer's code plaintext dies with the request. */
       dropCodeDigest: string;
       attribution: 'founder_attested' | 'rider_authenticated';
+      /** The acting rider, as on `delivery_evidence`. */
+      riderId?: string;
       at: string;
     }
   | {
@@ -416,6 +427,8 @@ export type CustodyCommand =
       command_id: string;
       input: DoorInspectionInput;
       attribution: 'founder_attested' | 'rider_authenticated';
+      /** The acting rider, as on `delivery_evidence`. */
+      riderId?: string;
       at: string;
     }
   | {
@@ -460,6 +473,8 @@ export type CustodyCommand =
       command_id: string;
       returnSealDigest: string;
       attribution: 'founder_attested' | 'rider_authenticated';
+      /** The acting rider, as on `delivery_evidence`. */
+      riderId?: string;
       at: string;
     }
   | {
@@ -473,6 +488,8 @@ export type CustodyCommand =
       command_id: string;
       reasonCode: string;
       attribution: 'founder_attested' | 'rider_authenticated';
+      /** The acting rider, as on `delivery_evidence`. */
+      riderId?: string;
       at: string;
     }
   | {
@@ -485,6 +502,8 @@ export type CustodyCommand =
       kind: 'door_expire';
       command_id: string;
       attribution: 'founder_attested' | 'rider_authenticated';
+      /** The acting rider, as on `delivery_evidence`. */
+      riderId?: string;
       at: string;
     }
   | {
@@ -499,6 +518,8 @@ export type CustodyCommand =
       sellerKeyDigest: string;
       riderKeyDigest: string;
       attribution: 'founder_attested' | 'rider_authenticated';
+      /** The acting rider, as on `delivery_evidence`. */
+      riderId?: string;
       at: string;
     }
   | {
@@ -653,6 +674,16 @@ const digestSecret = (secret: string): string => createHash('sha256').update(sec
 function fingerprint(cmd: CustodyCommand): string {
   const { command_id: _id, at: _at, ...content } = cmd as Record<string, unknown> & { command_id: string; at: string };
   return canonicalJson(content);
+}
+
+/**
+ * The rider id a door act records, held to `/verification`'s rule: logistics
+ * lets interior control bytes through, and a name that misrenders in the
+ * founder's console cannot settle who stood at the door. Refused before the
+ * command is built, so nothing is logged. Absent or empty = the ops door.
+ */
+function doorRiderUnusable(v: string | null): boolean {
+  return v !== null && v !== '' && (v.trim() === '' || v.length > MAX_ID || hasControlChar(v));
 }
 
 function malformed(reason = 'malformed'): Response {
@@ -1586,6 +1617,33 @@ export class CustodyDO {
     return { kind: 'duplicate', outcome: prior.outcome };
   }
 
+  /**
+   * The courier this file's road belongs to, read from the LEDGER: the one
+   * courier the seal ever handed custody to (begin_custody writes exactly one
+   * seller → courier transition per file; the seal is single-use). While he
+   * holds the parcel this is the current custodian, the transit routes' own
+   * expression; once custody has gone on to the customer or the supplier it
+   * is still him, so the holder can re-type his code (« deja_livree », the
+   * documented recovery) while every other rider stays refused. Undefined
+   * before the seal: nobody holds it yet, and the spine's own refusal is the
+   * true sentence for every hand.
+   */
+  private roadHand(): string | undefined {
+    const pkg = this.chain!.package_id;
+    const toCourier = this.spine!.ledger
+      .all()
+      .filter((e) => e.kind === 'custody_transition' && e.packageId === pkg && String(e.payload['to']).startsWith('courier:'));
+    return toCourier.length === 0 ? undefined : String(toCourier[toCourier.length - 1]!.payload['to']);
+  }
+
+  /** Through the rider door, an act by anyone but the road's courier. The
+   *  founder's ops door (no header) is never « not the hand ». */
+  private notTheHand(doorRider: string | null): boolean {
+    if (doorRider === null || doorRider === '') return false;
+    const hand = this.roadHand();
+    return hand !== undefined && hand !== `courier:${doorRider}`;
+  }
+
   private async route(request: Request): Promise<Response> {
     const { pathname } = new URL(request.url);
 
@@ -2380,6 +2438,7 @@ export class CustodyDO {
         return malformed();
       }
       const doorRider = request.headers.get('X-Rider-Authenticated');
+      if (doorRiderUnusable(doorRider)) return malformed('rider_id_not_usable');
       const cmd: CustodyCommand = {
         kind: 'delivery_evidence',
         command_id: (body['command_id'] as string).trim(),
@@ -2388,6 +2447,7 @@ export class CustodyDO {
         // the registered seal it compares against is itself a digest.
         evidence: { ...bundle, custodySealId: digestSecret(bundle['custodySealId'] as string) },
         attribution: doorRider !== null && doorRider !== '' ? 'rider_authenticated' : 'founder_attested',
+        ...(doorRider !== null && doorRider !== '' ? { riderId: doorRider } : {}),
         at: (body['at'] as string | undefined) ?? new Date().toISOString(),
       };
       const prior = this.priorFor(cmd);
@@ -2397,6 +2457,13 @@ export class CustodyDO {
         // as the drop route revives its outbox on a replayed drop.
         if (prior.outcome.httpStatus === 200) await this.autoDecideAfterEvidence(cmd.command_id);
         return this.replayOutcome(prior.outcome, cmd);
+      }
+      // Only the parcel's holder acts at the door — after a true duplicate
+      // replays (the holder's own lost answer), before the conflict answer
+      // (another rider learns nothing about the holder's ids). Nothing is
+      // committed, no wire is armed or revived.
+      if (this.notTheHand(doorRider)) {
+        return Response.json({ ok: false, reason: 'not_the_custodian' }, { status: 409 });
       }
       if (prior.kind === 'conflict') {
         return Response.json({ ok: false, reason: 'command_id_reused_with_other_content' }, { status: 409 });
@@ -2465,11 +2532,13 @@ export class CustodyDO {
         return malformed();
       }
       const doorRider = request.headers.get('X-Rider-Authenticated');
+      if (doorRiderUnusable(doorRider)) return malformed('rider_id_not_usable');
       const cmd: CustodyCommand = {
         kind: 'confirm_drop',
         command_id: (body['command_id'] as string).trim(),
         dropCodeDigest: digestSecret(body['dropCode'] as string),
         attribution: doorRider !== null && doorRider !== '' ? 'rider_authenticated' : 'founder_attested',
+        ...(doorRider !== null && doorRider !== '' ? { riderId: doorRider } : {}),
         at: (body['at'] as string | undefined) ?? new Date().toISOString(),
       };
       const prior = this.priorFor(cmd);
@@ -2479,6 +2548,9 @@ export class CustodyDO {
         // config-starved outbox without inventing a scheduler.
         await this.reviveDropOutboxRows();
         return this.replayOutcome(prior.outcome, cmd);
+      }
+      if (this.notTheHand(doorRider)) {
+        return Response.json({ ok: false, reason: 'not_the_custodian' }, { status: 409 });
       }
       if (prior.kind === 'conflict') {
         return Response.json({ ok: false, reason: 'command_id_reused_with_other_content' }, { status: 409 });
@@ -2586,6 +2658,7 @@ export class CustodyDO {
         return malformed();
       }
       const doorRider = request.headers.get('X-Rider-Authenticated');
+      if (doorRiderUnusable(doorRider)) return malformed('rider_id_not_usable');
       const cmd: CustodyCommand = {
         kind: 'door_inspection',
         command_id: (body['command_id'] as string).trim(),
@@ -2605,10 +2678,14 @@ export class CustodyDO {
           evidenceBundleId: (body['evidenceBundleId'] as string).trim(),
         },
         attribution: doorRider !== null && doorRider !== '' ? 'rider_authenticated' : 'founder_attested',
+        ...(doorRider !== null && doorRider !== '' ? { riderId: doorRider } : {}),
         at: (body['at'] as string | undefined) ?? new Date().toISOString(),
       };
       const prior = this.priorFor(cmd);
       if (prior.kind === 'duplicate') return this.replayOutcome(prior.outcome, cmd);
+      if (this.notTheHand(doorRider)) {
+        return Response.json({ ok: false, reason: 'not_the_custodian' }, { status: 409 });
+      }
       if (prior.kind === 'conflict') {
         return Response.json({ ok: false, reason: 'command_id_reused_with_other_content' }, { status: 409 });
       }
@@ -2741,11 +2818,13 @@ export class CustodyDO {
         return malformed();
       }
       const returnRider = request.headers.get('X-Rider-Authenticated');
+      if (doorRiderUnusable(returnRider)) return malformed('rider_id_not_usable');
       const cmd: CustodyCommand = {
         kind: 'open_return',
         command_id: (body['command_id'] as string).trim(),
         returnSealDigest: digestSecret(body['returnSealId'] as string),
         attribution: returnRider !== null && returnRider !== '' ? 'rider_authenticated' : 'founder_attested',
+        ...(returnRider !== null && returnRider !== '' ? { riderId: returnRider } : {}),
         // Rider-attributed: THIS Worker's clock (the ladder's law, `/door/refusal`).
         at: returnRider !== null && returnRider !== '' ? new Date().toISOString() : ((body['at'] as string | undefined) ?? new Date().toISOString()),
       };
@@ -2755,6 +2834,9 @@ export class CustodyDO {
         // for the retour-ouvert wire (the drop route's own law).
         await this.reviveRetourRows();
         return this.replayOutcome(prior.outcome, cmd);
+      }
+      if (this.notTheHand(returnRider)) {
+        return Response.json({ ok: false, reason: 'not_the_custodian' }, { status: 409 });
       }
       if (prior.kind === 'conflict') {
         return Response.json({ ok: false, reason: 'command_id_reused_with_other_content' }, { status: 409 });
@@ -2800,11 +2882,13 @@ export class CustodyDO {
         return malformed();
       }
       const refusalRider = request.headers.get('X-Rider-Authenticated');
+      if (doorRiderUnusable(refusalRider)) return malformed('rider_id_not_usable');
       const cmd: CustodyCommand = {
         kind: 'door_refusal',
         command_id: (body['command_id'] as string).trim(),
         reasonCode: (body['reasonCode'] as string).trim(),
         attribution: refusalRider !== null && refusalRider !== '' ? 'rider_authenticated' : 'founder_attested',
+        ...(refusalRider !== null && refusalRider !== '' ? { riderId: refusalRider } : {}),
         // RETOUR-VIVANT-1 (verifier MAJOR, closed): on the RIDER door the
         // instant is THIS Worker's clock and the body's `at` is IGNORED —
         // the ONE window is computed from it and judged against it, so a
@@ -2816,6 +2900,9 @@ export class CustodyDO {
       };
       const prior = this.priorFor(cmd);
       if (prior.kind === 'duplicate') return this.replayOutcome(prior.outcome, cmd);
+      if (this.notTheHand(refusalRider)) {
+        return Response.json({ ok: false, reason: 'not_the_custodian' }, { status: 409 });
+      }
       if (prior.kind === 'conflict') {
         return Response.json({ ok: false, reason: 'command_id_reused_with_other_content' }, { status: 409 });
       }
@@ -2848,10 +2935,12 @@ export class CustodyDO {
         return malformed();
       }
       const expireRider = request.headers.get('X-Rider-Authenticated');
+      if (doorRiderUnusable(expireRider)) return malformed('rider_id_not_usable');
       const cmd: CustodyCommand = {
         kind: 'door_expire',
         command_id: (body['command_id'] as string).trim(),
         attribution: expireRider !== null && expireRider !== '' ? 'rider_authenticated' : 'founder_attested',
+        ...(expireRider !== null && expireRider !== '' ? { riderId: expireRider } : {}),
         // The rider's tap is judged against CUSTODY's clock, never a body
         // `at` (see `/door/refusal`): the window cannot be shortened by hand.
         at: expireRider !== null && expireRider !== '' ? new Date().toISOString() : ((body['at'] as string | undefined) ?? new Date().toISOString()),
@@ -2863,6 +2952,9 @@ export class CustodyDO {
         // stranded wire), exactly as a replayed return act revives its own.
         await this.reviveRetourRows([REPROGRAMMATION_OUTBOX_KEY]);
         return this.replayOutcome(prior.outcome, cmd);
+      }
+      if (this.notTheHand(expireRider)) {
+        return Response.json({ ok: false, reason: 'not_the_custodian' }, { status: 409 });
       }
       if (prior.kind === 'conflict') {
         return Response.json({ ok: false, reason: 'command_id_reused_with_other_content' }, { status: 409 });
@@ -2900,12 +2992,14 @@ export class CustodyDO {
         return malformed();
       }
       const handoverRider = request.headers.get('X-Rider-Authenticated');
+      if (doorRiderUnusable(handoverRider)) return malformed('rider_id_not_usable');
       const cmd: CustodyCommand = {
         kind: 'return_handover',
         command_id: (body['command_id'] as string).trim(),
         sellerKeyDigest: digestSecret(body['sellerKey'] as string),
         riderKeyDigest: digestSecret(body['riderKey'] as string),
         attribution: handoverRider !== null && handoverRider !== '' ? 'rider_authenticated' : 'founder_attested',
+        ...(handoverRider !== null && handoverRider !== '' ? { riderId: handoverRider } : {}),
         // Rider-attributed: THIS Worker's clock (the ladder's law, `/door/refusal`).
         at: handoverRider !== null && handoverRider !== '' ? new Date().toISOString() : ((body['at'] as string | undefined) ?? new Date().toISOString()),
       };
@@ -2913,6 +3007,9 @@ export class CustodyDO {
       if (prior.kind === 'duplicate') {
         await this.reviveRetourRows();
         return this.replayOutcome(prior.outcome, cmd);
+      }
+      if (this.notTheHand(handoverRider)) {
+        return Response.json({ ok: false, reason: 'not_the_custodian' }, { status: 409 });
       }
       if (prior.kind === 'conflict') {
         return Response.json({ ok: false, reason: 'command_id_reused_with_other_content' }, { status: 409 });
@@ -3095,6 +3192,33 @@ export class CustodyDO {
             recorded: row.outcome.httpStatus === 200,
           };
         });
+      /**
+       * Every logged door-act row (evidence, drop, inspection, refusal,
+       * expiry, return open, handover), accepted or refused, before or after
+       * the seal, each with the rider who sent it. Kind, id, instant, rider,
+       * attribution and outcome only: the command's code, seal and key
+       * digests, evidence and photo refs never leave the log. `riderId` null =
+       * the founder's ops door, or a row logged before door acts named their
+       * rider.
+       */
+      const DOOR_ACTS: ReadonlySet<CustodyCommand['kind']> = new Set([
+        'delivery_evidence', 'confirm_drop', 'door_inspection', 'door_refusal', 'door_expire', 'open_return', 'return_handover',
+      ]);
+      const doorActs = this.log
+        .filter((row) => DOOR_ACTS.has(row.cmd.kind))
+        .map((row) => {
+          const cmd = row.cmd as Extract<CustodyCommand, { kind: 'confirm_drop' }>;
+          return {
+            kind: cmd.kind,
+            command_id: cmd.command_id,
+            at: cmd.at,
+            riderId: cmd.riderId ?? null,
+            attribution: cmd.attribution,
+            outcome: row.outcome.body['status'] ?? row.outcome.body['kind'] ?? row.outcome.body['reason'] ?? 'unknown',
+            reason: row.outcome.body['reason'] ?? null,
+            recorded: row.outcome.httpStatus === 200,
+          };
+        });
       const attestations = this.log
         .filter((row) => row.cmd.kind === 'verify_pickup')
         .map((row) => {
@@ -3153,6 +3277,7 @@ export class CustodyDO {
         // the seal is a digest by the time it reaches the log, and not even
         // the digest is surfaced.
         custodyTaken,
+        doorActs,
       });
     }
 
