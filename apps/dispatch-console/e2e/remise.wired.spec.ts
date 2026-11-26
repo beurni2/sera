@@ -120,12 +120,22 @@ test('the key comes first → the locked course is listed with its rider, both a
   const readsBefore = boardReads;
   await row.locator('button.remise-debloquer').click();
   await row.locator('button.remise-confirmer').click();
-  await expect(desk.locator('.remise-fait')).toContainText('Code débloqué. Le coursier peut retaper le code.');
+  // The done line names the course he unlocked, by its own order ids.
+  await expect(desk.locator('.remise-fait')).toHaveCount(1);
+  await expect(desk.locator('.remise-fait')).toHaveText('ord-a · ord-b — Code débloqué. Le coursier peut retaper le code.');
   await expect(desk.locator('.remise-row')).toHaveCount(0);
   await expect(desk).toContainText('Aucun code bloqué.');
   expect(unlocks).toHaveLength(2);
   expect(unlocks[1]!['command_id']).toBe(unlocks[0]!['command_id']);
   expect(boardReads).toBeGreaterThan(readsBefore);
+
+  // The same course locks again: on the board's next read its row and lever
+  // stand alone — no stale « Code débloqué » above them.
+  locked.push({ assignmentId: 'as-1', riderId: 'rider-boss', orderIds: ['ord-a', 'ord-b'], depuis: '2026-11-26T10:40:00.000Z' });
+  await desk.locator('button.remise-relire').click();
+  await expect(desk.locator('.remise-row')).toHaveCount(1);
+  await expect(desk.locator('.remise-row button.remise-debloquer')).toBeEnabled();
+  await expect(desk.locator('.remise-fait')).toHaveCount(0);
   // The tree survived every tap.
   await expect(page.getByRole('heading', { name: 'Codes coursiers' })).toBeVisible();
 });
@@ -159,4 +169,36 @@ test('a partial list says so; a board that does not answer says so; neither inve
   await page.locator('button.codes-key-open').click();
   await expect(desk).toContainText('Le tableau n\'a pas répondu.');
   await expect(desk.locator('.remise-row')).toHaveCount(0);
+});
+
+test('while the board read is on its way the desk says « Un instant… » and offers no lever; when it answers, the list appears', async ({ page }) => {
+  let release: () => void = () => undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(`**${BASE}/**`, async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname.slice(BASE.length);
+    if (request.headers()['authorization'] !== `Bearer ${KEY}`) return route.fulfill({ status: 401, json: { error: 'unauthorized' } });
+    if (path === '/ops/riders') return route.fulfill({ json: { ok: true, riders: [] } });
+    if (path === '/ops/rider-codes') return route.fulfill({ json: { ok: true, codes: [] } });
+    if (path === '/ops/board') {
+      // Every key-bearing board read waits until the walk releases it.
+      await held;
+      return route.fulfill({ json: boardOf([{ assignmentId: 'as-1', riderId: 'rider-boss', orderIds: ['ord-a', 'ord-b'], depuis: '2026-11-26T09:10:00.000Z' }], false) });
+    }
+    return route.fulfill({ status: 404, json: { ok: false, reason: 'not_found' } });
+  });
+  await page.goto('/');
+  await page.locator('.codes-key').fill(KEY);
+  await page.locator('button.codes-key-open').click();
+  const desk = page.locator('.remise-desk');
+  await expect(desk.locator('.remise-state')).toHaveText('Un instant…');
+  await expect(desk.locator('button.remise-debloquer')).toHaveCount(0);
+  await expect(desk.locator('.remise-row')).toHaveCount(0);
+
+  release();
+  await expect(desk.locator('.remise-row')).toHaveCount(1);
+  await expect(desk.locator('.remise-row button.remise-debloquer')).toBeEnabled();
+  await expect(desk.locator('.remise-state')).toHaveCount(0);
 });

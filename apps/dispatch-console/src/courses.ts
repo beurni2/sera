@@ -352,7 +352,8 @@ export interface RemiseUi {
   readonly demande: string | null;
   /** The course whose unlock is on the wire. */
   readonly enVol: string | null;
-  readonly faits: Readonly<Record<string, true>>;
+  /** The courses unlocked this session, with the order ids he saw on the row. */
+  readonly faits: Readonly<Record<string, readonly string[]>>;
   /** A refusal's catalog key, per course. */
   readonly echecs: Readonly<Record<string, string>>;
   /** The attempt's command id, per course, kept for a retry. */
@@ -377,9 +378,17 @@ export function commencerRemise(ui: RemiseUi, assignmentId: string, mint: () => 
   return { ui: { ...ui, demande: null, enVol: assignmentId, echecs, commandes: { ...ui.commandes, [assignmentId]: commandId } }, commandId };
 }
 
-export function remiseFaite(ui: RemiseUi, assignmentId: string): RemiseUi {
+export function remiseFaite(ui: RemiseUi, assignmentId: string, orderIds: readonly string[]): RemiseUi {
   const { [assignmentId]: _id, ...commandes } = ui.commandes;
-  return { ...ui, enVol: null, faits: { ...ui.faits, [assignmentId]: true }, commandes };
+  return { ...ui, enVol: null, faits: { ...ui.faits, [assignmentId]: orderIds }, commandes };
+}
+
+/** A board read that lists a course as locked again drops its done mark, so
+ *  the re-locked row never sits under a stale « Code débloqué ». */
+export function remiseRelue(ui: RemiseUi, rows: readonly CodeBloqueRow[]): RemiseUi {
+  const relisted = new Set(rows.map((row) => row.assignmentId));
+  const faits = Object.fromEntries(Object.entries(ui.faits).filter(([assignmentId]) => !relisted.has(assignmentId)));
+  return { ...ui, faits };
 }
 
 export function remiseEchouee(ui: RemiseUi, assignmentId: string, key: string): RemiseUi {

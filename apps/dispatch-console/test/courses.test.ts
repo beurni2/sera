@@ -27,6 +27,7 @@ import {
   demanderRemise,
   remiseEchouee,
   remiseFaite,
+  remiseRelue,
   remiseRefusKey,
   remiseView,
 } from '../src/courses';
@@ -387,9 +388,22 @@ describe('codes bloqués — ASK → CONFIRM → ONE SEND → RESULT', () => {
     const retry = commencerRemise(demanderRemise(refused, 'as-1'), 'as-1', mint)!;
     expect(retry.commandId).toBe(first.commandId);
     expect(retry.ui.echecs['as-1']).toBeUndefined();
-    const done = remiseFaite(retry.ui, 'as-1');
-    expect(done.faits['as-1']).toBe(true);
+    const done = remiseFaite(retry.ui, 'as-1', ['ord-a', 'ord-b']);
+    expect(done.faits['as-1']).toEqual(['ord-a', 'ord-b']);
     expect(done.commandes['as-1']).toBeUndefined();
     expect(done.enVol).toBeNull();
+  });
+
+  it('the done mark carries the course\'s order ids; a board read listing the course as locked again drops it; one not listing it keeps it', () => {
+    const row = (assignmentId: string, orderIds: string[]) => ({ assignmentId, riderId: 'r', riderName: 'r', orderIds, depuis: '' });
+    const x = remiseFaite(commencerRemise(demanderRemise(REMISE_IDLE, 'as-x'), 'as-x', mint)!.ui, 'as-x', ['ord-x1', 'ord-x2']);
+    const both = remiseFaite(commencerRemise(demanderRemise(x, 'as-z'), 'as-z', mint)!.ui, 'as-z', ['ord-z']);
+    expect(both.faits).toEqual({ 'as-x': ['ord-x1', 'ord-x2'], 'as-z': ['ord-z'] });
+    // Another course locks: X's and Z's marks stay, each naming its own course.
+    expect(remiseRelue(both, [row('as-y', ['ord-y'])]).faits).toEqual({ 'as-x': ['ord-x1', 'ord-x2'], 'as-z': ['ord-z'] });
+    // X locks again: only X's mark leaves.
+    expect(remiseRelue(both, [row('as-x', ['ord-x1'])]).faits).toEqual({ 'as-z': ['ord-z'] });
+    // An empty list keeps every mark.
+    expect(remiseRelue(both, []).faits).toEqual(both.faits);
   });
 });

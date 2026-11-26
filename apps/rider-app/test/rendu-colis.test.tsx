@@ -550,7 +550,11 @@ describe('COLIS-FOURNISSEUR-1 — the rider carries one package of several order
 
     await s.type(DROP);
     await s.press('Confirmer la remise');
-    expect(world.ledgers[A]!.delivered || world.ledgers[B]!.delivered, 'nothing is handed over while locked').toBe(false);
+    // While locked even the right code does not reach the next step: no
+    // « Livré », no way back to service, and the tree is still standing.
+    expect(s.shows('Livré. Merci.'), `nothing is handed over while locked: ${JSON.stringify(s.texts())}`).toBe(false);
+    expect(s.canPress('Revenir en service'), 'still at the door').toBe(false);
+    expect(s.canPress('Confirmer la remise'), 'the tree survived the tap').toBe(true);
     expect(s.shows('Le code est bloqué.')).toBe(true);
 
     const before = actes(w.calls, '/rider/delivery/drop').length;
