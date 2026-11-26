@@ -3,6 +3,33 @@ Continuity ledger per CTO charter §6/§6bis. Every entry is evidence-grounded.
 
 Format per entry:
 
+## 2026-11-26 · PORTE-MAIN-1 — only the parcel's holder acts at the door; every door act names its rider · lane S · on the branch, NOT merged, NOT deployed
+
+**Spec.** Sera-Build-Spec §4 SE-I05 (« Delivery requires assigned session + `buyerDropCode` + same custody seal + evidence … »), SE-I04 (one current custodian), SE-I10, §5.5, §5.6, §6.5, §8 SE3; the service's own law in `custody-do.ts` (« through the rider door, the acting hand must be the ledger's CURRENT CUSTODIAN »), until now applied to transit only.
+
+**Built (lane S, `4915cb0` then `47176a1`, merged here `--no-ff`).** `custody-do.ts` only, plus one new test file.
+- The seven rider-door acts after the seal (delivery evidence, drop, door inspection, door refusal, door expiry, return open, return handover) answer `409 not_the_custodian` unless the acting rider is the courier the ledger handed the parcel to at the seal (`roadHand()`: the file's one seller → courier transition; the seal is single-use). The check sits after a true duplicate replays and before the conflict answer; a refused act commits nothing and arms or revives no wire.
+- Before the seal nothing changes: the spine's own refusal stays the answer. The founder's ops door is untouched.
+- Once custody has left the road, the holder stays the hand: his re-typed code still answers `deja_livree` (the documented recovery) and every other rider stays refused. The literal « current custodian » rule would have broken that recovery and the holder's own answer after a return handover; coordinator's ruling at the read-back.
+- Each of the seven commands records `riderId` (rider door only), part of the fingerprint as the existing comment rules. A rider id that would misrender (blank, too long, a control byte) is refused `400 rider_id_not_usable` before anything is logged, the rule `/verification` already applies.
+- `/attestations` gains `doorActs`: every logged door-act row, accepted or refused, with the rider who sent it, and no code, seal, key or digest. Existing rows unchanged.
+
+**Evidence.** New `test/porte-holder.e2e.test.ts` drives the rider app's own custody port against the real bundled Worker with two riders (plus a third code whose id carries a tab), and compares the ledger, events, ledger head, attestations and both receivers' inboxes before and after every refused act. Red on main 4/4; green 4/4. Lane board: custody 257/257, logistics 326/326, rider app 497, console 89 + Playwright 39, typecheck clean, « ALL GATES GREEN ». 16 mutations, anchor matched once each, bundle rebuilt before each, restored byte-identical: all red (the check removed on each of the seven routes; moved before the duplicate replay on the drop and on the refusal; its pre-seal order inverted; the rider id dropped from the drop; the check put on the ops door; the literal current-custodian rule; the check after the conflict answer; the rider-id guard removed). Coordinator re-ran the test (4/4 at both heads) and two mutations (drop check removed; drop check moved before the duplicate replay): both red, restored by md5. Coordinator board on the integrated head (lane commits on top of the merged deploy-tool pin; `pnpm build`, custody bundled, `TURBO_CONCURRENCY=1 run-gates.sh`): « ALL GATES GREEN », exit 0 — custody 257, logistics 326, rider app 497, console 89 + Playwright 39.
+
+**Verifier (one fresh-context pass, given only the spec quotes, the brief's build, definition of done and forbidden list, the holder ruling and the diff).** PASS WITH FINDINGS: 0 blocker, 1 should-fix, 5 notes. Handled once, not re-inspected:
+- should-fix: no test pinned « a rider's own earlier answer replays before the holder check » → fixed (a non-holder's pre-seal refusal and drop, re-sent after the seal, replay their first answers).
+- a pre-seal order note → covered by the same test.
+- the `doorActs` comment → corrected to say what the code does.
+- the recorded rider id had no misrender guard → fixed, as above.
+- kept, not changed here: a rider's own replayed command runs the route's existing resend hook, which only re-sends facts already true (receivers are idempotent). Whether a replay by a rider who does not hold the parcel should skip that hook is a question for a later slice.
+- kept: a command id logged by the old Worker and retried after this deploy answers `command_id_reused_with_other_content` (the trade the fingerprint comment already accepts); a fresh re-type recovers with `deja_livree`. Riders do not use the live rider app yet.
+
+**No screen change.** The rider app shows its existing refusal sentence, which only a rider who does not hold the parcel can meet. No walk.
+
+**Release.** The custody Worker deploys from this branch first, on the founder's word; then the PR merges. Transit already checked the holder; its recorded actor is always the holder, whose id passed the verification rule.
+
+---
+
 ## 2026-11-26 · DEPLOY-TOOL-PIN-1 MERGED on the founder's approval (PR #2)
 
 **Founder.** « Merge all three, deploy shop » (2026-11-26 07:15 UTC, decision card after the report of Shop+ PR #2, Séra PR #2 and platform PR #2).
