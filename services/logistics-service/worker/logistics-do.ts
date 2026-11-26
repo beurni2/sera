@@ -671,6 +671,13 @@ export class LogisticsDO {
   }
 
   /** Custody's last word names this rider as the holder of one of the course's packages. */
+  private custodieCommencee(course: { assignmentId: string; orderId: string }): boolean {
+    return this.ordresDeCourse(course).some((id) => {
+      const holder = this.custodyFacts[id]?.custodian;
+      return holder === 'customer' || (holder?.startsWith('courier:') ?? false);
+    });
+  }
+
   private tientUnColis(riderId: string, course: { assignmentId: string; orderId: string }): boolean {
     const mine = courierActor(riderId);
     return this.ordresDeCourse(course).some((id) => this.custodyFacts[id]?.custodian === mine);
@@ -1296,6 +1303,7 @@ export class LogisticsDO {
         continue;
       }
       const next: CustodyProduceRow = { ...row, rest: 'none' };
+      let refus: unknown;
       const post = async (path: string, body: unknown): Promise<boolean> => {
         try {
           const res = await custody.fetch(new Request(`https://custody${path}`, {
@@ -1303,6 +1311,7 @@ export class LogisticsDO {
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
             body: JSON.stringify(body),
           }));
+          if (!res.ok) refus = ((await res.json().catch(() => null)) as Record<string, unknown> | null)?.['reason'];
           return res.ok;
         } catch {
           return false;
@@ -1335,6 +1344,10 @@ export class LogisticsDO {
           secret: next.code,
         });
         if (armed) next.phase = 'done';
+        // An ending's re-arm over a code already used at the stall: custody
+        // refuses it for ever, and a used code can never verify again, so
+        // nothing a phone holds still opens this pickup. The row is at rest.
+        else if (next.armId !== undefined && refus === 'secret_already_used') next.phase = 'done';
       }
       // The row left while custody answered (its course closed on custody's
       // word, or the desk retired the order): writing it back would make a
@@ -1410,7 +1423,11 @@ export class LogisticsDO {
     const pending = Math.max(producePending, retourPending);
     if (pending > 0) {
       const backoffMs = Math.min(30_000 * 2 ** Math.min(pending, 7), 3_600_000);
-      await this.state.storage.setAlarm(Date.now() + backoffMs).catch(() => undefined);
+      // An act that set an alarm for now while this one ran (an ending's
+      // re-arm, an assign) keeps it: the backoff never pushes it back.
+      const deja = await this.state.storage.getAlarm().catch(() => null);
+      const at = Date.now() + backoffMs;
+      await this.state.storage.setAlarm(deja === null ? at : Math.min(deja, at)).catch(() => undefined);
     }
   }
 
@@ -3339,16 +3356,20 @@ export class LogisticsDO {
           return Response.json({ ok: false, reason: 'custody_unverifiable' }, { status: 503 });
         }
         /**
-         * A course still in his hand whose package he does not hold — offered,
+         * A course still in his hand on which custody never began — offered,
          * or accepted and not yet picked up — keeps him on shift (SE1, SE2.3:
-         * an accepted course has no sweep to give it back). A course whose
-         * package he holds is the held-package law below, unchanged.
+         * an accepted course has no sweep to give it back). Custody began
+         * only where an order's custodian is a courier or the customer: a
+         * begin custody refused still writes the seller as holder, so the
+         * seller alone proves nothing. A course custody began on goes to the
+         * held-package law below, unchanged — so a drop whose closing message
+         * is still on its way does not keep him on shift.
          */
         const enMain = this.book
           .snapshot()
           .assignments.map(([, r]) => r)
           .find((r) => r.riderId === riderId && ACTIVE_ASSIGNMENT_STATUSES.includes(r.status));
-        if (enMain !== undefined && !this.tientUnColis(riderId, enMain)) {
+        if (enMain !== undefined && !this.custodieCommencee(enMain)) {
           return Response.json({ ok: false, reason: 'course_en_cours' }, { status: 409 });
         }
         const exception = this.finDeServiceCouvre(riderId, held);
