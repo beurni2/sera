@@ -31,9 +31,11 @@ test('the console shell boots on the sera theme with catalog strings', async ({ 
   // and what he carries, with the end-of-shift lever — live work, first of
   // the live sections. FLOTTE-1 (SE7.2) adds a TENTH: « Flotte », the
   // founder's fleet book and cost table — administration, before the codes.
+  // An ELEVENTH: « Codes de la cliente bloqués », the founder unlocks the
+  // buyer's code after five wrong tries — live work, after the next passage.
   // The count is pinned deliberately so a section cannot appear or vanish
   // unnoticed, so it is raised here on purpose rather than loosened.
-  await expect(page.locator('h2')).toHaveCount(10);
+  await expect(page.locator('h2')).toHaveCount(11);
   await expect(page.locator('h2').first()).toHaveText('Prêt à assigner');
   await expect(page.locator('h2').nth(1)).toHaveText('Tableau en direct');
   await expect(page.locator('h2').nth(2)).toHaveText('Bureau des exceptions');
@@ -41,9 +43,10 @@ test('the console shell boots on the sera theme with catalog strings', async ({ 
   await expect(page.locator('h2').nth(4)).toHaveText('Suivi des colis');
   await expect(page.locator('h2').nth(5)).toHaveText('Coursiers en course');
   await expect(page.locator('h2').nth(6)).toHaveText('Prochain passage à fixer');
-  await expect(page.locator('h2').nth(7)).toHaveText('Courses du tableau');
-  await expect(page.locator('h2').nth(8)).toHaveText('Flotte');
-  await expect(page.locator('h2').nth(9)).toHaveText('Codes coursiers');
+  await expect(page.locator('h2').nth(7)).toHaveText('Codes de la cliente bloqués');
+  await expect(page.locator('h2').nth(8)).toHaveText('Courses du tableau');
+  await expect(page.locator('h2').nth(9)).toHaveText('Flotte');
+  await expect(page.locator('h2').nth(10)).toHaveText('Codes coursiers');
   await expect(page.getByText('Temps de contrôle au ramassage : 165 s — Dans la cible')).toBeVisible();
   await expect(page.getByText('12:18 · Retour au vendeur · Argent pas prêt')).toBeVisible();
   // D7 staffed-hours default — copy only.

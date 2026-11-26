@@ -1452,6 +1452,18 @@
     "screenClass": "instruction"
   },
   {
+    "key": "delivery.code_bloque",
+    "fr": "Le code est bloqué.",
+    "register": "money",
+    "screenClass": "status"
+  },
+  {
+    "key": "delivery.code_bloque_hint",
+    "fr": "Cinq mauvais codes ont été tapés. Gardez le colis et appelez Séra. Quand Séra débloque, retapez le code de la cliente.",
+    "register": "money",
+    "screenClass": "instruction"
+  },
+  {
     "key": "delivery.not_validated",
     "fr": "Séra n'a pas encore validé la livraison.",
     "register": "neutral",

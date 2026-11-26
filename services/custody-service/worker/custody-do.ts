@@ -544,6 +544,17 @@ export type CustodyCommand =
       kind: 'apply_return';
       command_id: string;
       at: string;
+    }
+  /**
+   * The founder's unlock of the buyer's code after five wrong tries (founder
+   * ruling 2026-11-26). Ops and produce doors only; it burns, re-mints and
+   * releases nothing, and writes no ledger entry.
+   */
+  | {
+      kind: 'unlock_drop_code';
+      command_id: string;
+      attribution: 'founder_attested';
+      at: string;
     };
 
 /**
@@ -1011,6 +1022,8 @@ export class CustodyDO {
         return spine.fileCustodyLiabilityClaim(cmd.claim, cmd.at);
       case 'apply_return':
         return spine.applyDispatcherReturn(cmd.at);
+      case 'unlock_drop_code':
+        return { ok: spine.unlockDropCode() };
     }
   }
 
@@ -1902,6 +1915,13 @@ export class CustodyDO {
       });
     }
 
+    /** Is the buyer's code locked? Never the code, never its digest. A file
+     *  not opened yet is simply not locked. */
+    if (request.method === 'GET' && pathname === '/drop-code/lock') {
+      const lock = this.spine === null ? { locked: false, since: null } : this.spine.dropCodeLock();
+      return Response.json({ ok: true, ...lock });
+    }
+
     /**
      * MANIFESTE-1 (SE3.1 / SE3.2 on the live road) — WHO HOLDS THE PACKAGE,
      * asked by LOGISTICS over the produce door: before a shift may end
@@ -2558,6 +2578,12 @@ export class CustodyDO {
       if (this.tooLargeToCommit(cmd)) {
         return Response.json({ ok: false, reason: 'command_too_large' }, { status: 413 });
       }
+      // The buyer's code is locked after five wrong tries: every fresh try,
+      // the right code too, is refused here and writes NOTHING — kept out of
+      // the replayed spine, as the claim-held refusal is (see the spine).
+      if (this.spine!.dropCodeLock().locked) {
+        return Response.json({ ok: false, reason: 'drop_code_locked' }, { status: 409 });
+      }
       const applied = this.apply(this.spine!, cmd) as
         | { ok: true; duplicate: boolean }
         | { ok: false; reason?: string };
@@ -3064,6 +3090,42 @@ export class CustodyDO {
     }
 
     /**
+     * The founder unlocks the buyer's code after five wrong tries: five fresh
+     * tries, nothing burned, re-minted or released. Ops door and logistics'
+     * produce door (the console's act, relayed); the router never opens it to
+     * a rider or to Shop+, and a rider header here is refused all the same.
+     * Nothing locked → `pas_bloque` and no row.
+     */
+    if (request.method === 'POST' && pathname === '/drop-code/unlock') {
+      if (request.headers.get('X-Rider-Authenticated') !== null) {
+        return Response.json({ ok: false, reason: 'not_founder_door' }, { status: 409 });
+      }
+      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      if (body === null || !isBoundedStr(body['command_id'], MAX_ID) || (body['at'] !== undefined && !isIso(body['at']))) {
+        return malformed();
+      }
+      const cmd: CustodyCommand = {
+        kind: 'unlock_drop_code',
+        command_id: (body['command_id'] as string).trim(),
+        attribution: 'founder_attested',
+        at: (body['at'] as string | undefined) ?? new Date().toISOString(),
+      };
+      const prior = this.priorFor(cmd);
+      if (prior.kind === 'duplicate') return this.replayOutcome(prior.outcome, cmd);
+      if (prior.kind === 'conflict') {
+        return Response.json({ ok: false, reason: 'command_id_reused_with_other_content' }, { status: 409 });
+      }
+      if (!this.spine.dropCodeLock().locked) return Response.json({ ok: true, status: 'pas_bloque' });
+      if (this.tooLargeToCommit(cmd)) {
+        return Response.json({ ok: false, reason: 'command_too_large' }, { status: 413 });
+      }
+      this.apply(this.spine, cmd);
+      const recorded: RecordedOutcome = { httpStatus: 200, body: { ok: true, status: 'debloque' } };
+      await this.commit(cmd, recorded);
+      return Response.json(recorded.body, { status: recorded.httpStatus });
+    }
+
+    /**
      * REPROGRAMMATION-2 — `/wires/reviver`: re-arms this order's rested
      * wires to logistics (the house recovery law, on demand): the
      * reschedule row from the spine's state if it is missing, and any
@@ -3203,6 +3265,7 @@ export class CustodyDO {
        */
       const DOOR_ACTS: ReadonlySet<CustodyCommand['kind']> = new Set([
         'delivery_evidence', 'confirm_drop', 'door_inspection', 'door_refusal', 'door_expire', 'open_return', 'return_handover',
+        'unlock_drop_code',
       ]);
       const doorActs = this.log
         .filter((row) => DOOR_ACTS.has(row.cmd.kind))

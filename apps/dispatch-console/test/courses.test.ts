@@ -19,6 +19,18 @@ import {
   type CourseRow,
 } from '../src/courses';
 import { t } from '../src/i18n';
+import {
+  REMISE_IDLE,
+  annulerRemise,
+  codesBloquesRows,
+  commencerRemise,
+  demanderRemise,
+  remiseEchouee,
+  remiseFaite,
+  remiseRelue,
+  remiseRefusKey,
+  remiseView,
+} from '../src/courses';
 
 /**
  * PURGE-ESSAI — the courses desk's decisions. Pure, so every state a
@@ -290,5 +302,108 @@ describe('a package on the desk: one row per article, one article leaves alone',
     const ui = terminer(avancer(started.ui, started.appels[0]!, false));
     expect(aEchoue(ui, 'ord-p1')).toBe(true);
     expect(aEchoue(ui, 'ord-p2')).toBe(true);
+  });
+});
+
+/**
+ * The buyer's code locked after five wrong tries — the founder's unlock desk.
+ * Pure: what it reads off the board (never the code), what it asks before
+ * sending, and the one command id an attempt rides on a retry.
+ */
+describe('codes bloqués — the board\'s list, read defensively', () => {
+  const board = (extra: Record<string, unknown>) => ({
+    ok: true,
+    board: {
+      riders: [{ riderId: 'rider-boss', displayName: 'Boss' }],
+      assignments: [],
+      ...extra,
+    },
+  });
+
+  it('one row per locked course, the rider by name, every article, the instant it locked', () => {
+    const read = codesBloquesRows(board({
+      codesBloques: [{ assignmentId: 'as-1', riderId: 'rider-boss', orderIds: ['ord-a', 'ord-b'], depuis: '2026-11-26T09:10:00.000Z' }],
+      codesBloquesPartiel: false,
+    }));
+    expect(read).toEqual({
+      rows: [{ assignmentId: 'as-1', riderId: 'rider-boss', riderName: 'Boss', orderIds: ['ord-a', 'ord-b'], depuis: '2026-11-26T09:10:00.000Z' }],
+      partiel: false,
+    });
+  });
+
+  it('a malformed row is skipped, never a blank desk; an old board without the list is empty, not partial', () => {
+    expect(codesBloquesRows(board({
+      codesBloques: [{ assignmentId: '', orderIds: ['x'] }, { assignmentId: 'as-2', orderIds: [] }, 'oui', { assignmentId: 'as-3', riderId: 'r-9', orderIds: ['ord-c'], depuis: 'pas une date' }],
+    }))).toEqual({ rows: [{ assignmentId: 'as-3', riderId: 'r-9', riderName: 'r-9', orderIds: ['ord-c'], depuis: '' }], partiel: false });
+    expect(codesBloquesRows(board({}))).toEqual({ rows: [], partiel: false });
+    expect(codesBloquesRows(null)).toEqual({ rows: [], partiel: false });
+  });
+
+  it('a partial read is carried, so the desk can say the list may not be complete', () => {
+    expect(codesBloquesRows(board({ codesBloques: [], codesBloquesPartiel: true }))).toEqual({ rows: [], partiel: true });
+  });
+
+  it('honest states: loading, failed, empty (and empty-but-partial), list; a refused key escalates', () => {
+    expect(remiseView({ kind: 'bad_key' })).toBeNull();
+    expect(remiseView({ kind: 'loading' })).toEqual({ kind: 'loading', message: 'reprog.chargement' });
+    expect(remiseView({ kind: 'failed' })).toEqual({ kind: 'failed', message: 'reprog.echec', aide: 'reprog.echec_aide' });
+    expect(remiseView({ kind: 'ok', value: { rows: [], partiel: false } })).toEqual({ kind: 'empty', message: 'remise.vide', partiel: false });
+    expect(remiseView({ kind: 'ok', value: { rows: [], partiel: true } })).toEqual({ kind: 'empty', message: 'remise.vide', partiel: true });
+    const row = { assignmentId: 'as-1', riderId: 'r', riderName: 'r', orderIds: ['o'], depuis: '' };
+    expect(remiseView({ kind: 'ok', value: { rows: [row], partiel: false } })).toEqual({ kind: 'liste', rows: [row], partiel: false });
+  });
+
+  it('every key the desk can show is in the catalog', () => {
+    for (const key of ['remise.section', 'remise.intro', 'remise.avant', 'remise.depuis', 'remise.debloquer', 'remise.confirmer_question',
+      'remise.confirmer_aide', 'remise.confirmer', 'remise.annuler', 'remise.en_cours', 'remise.fait', 'remise.refus', 'remise.refus_aide',
+      'remise.vide', 'remise.partiel', 'remise.partiel_aide']) {
+      expect(t(key), key).not.toBe(key);
+    }
+    expect(t('remise.section')).toBe('Codes de la cliente bloqués');
+    expect(t('remise.partiel')).toBe('Cette liste n\'est peut-être pas complète.');
+  });
+});
+
+describe('codes bloqués — ASK → CONFIRM → ONE SEND → RESULT', () => {
+  const mint = (() => { let n = 0; return () => `cmd-${(n += 1)}`; })();
+
+  it('the lever asks and sends nothing; « Annuler » closes; only the confirmation mints an attempt', () => {
+    const asked = demanderRemise(REMISE_IDLE, 'as-1');
+    expect(asked.demande).toBe('as-1');
+    expect(asked.enVol).toBeNull();
+    expect(annulerRemise(asked)).toEqual(REMISE_IDLE);
+    const sent = commencerRemise(asked, 'as-1', mint);
+    expect(sent).not.toBeNull();
+    expect(sent!.ui.enVol).toBe('as-1');
+    expect(sent!.ui.demande).toBeNull();
+    // A second confirm while the first is in flight sends nothing.
+    expect(commencerRemise(demanderRemise(sent!.ui, 'as-1'), 'as-1', mint)).toBeNull();
+  });
+
+  it('a refusal by name keeps the lever and the SAME command id for the retry; done clears it', () => {
+    const first = commencerRemise(demanderRemise(REMISE_IDLE, 'as-1'), 'as-1', mint)!;
+    const refused = remiseEchouee(first.ui, 'as-1', remiseRefusKey('custody_refused'));
+    expect(refused.enVol).toBeNull();
+    expect(refused.echecs['as-1']).toBe('remise.refus');
+    const retry = commencerRemise(demanderRemise(refused, 'as-1'), 'as-1', mint)!;
+    expect(retry.commandId).toBe(first.commandId);
+    expect(retry.ui.echecs['as-1']).toBeUndefined();
+    const done = remiseFaite(retry.ui, 'as-1', ['ord-a', 'ord-b']);
+    expect(done.faits['as-1']).toEqual(['ord-a', 'ord-b']);
+    expect(done.commandes['as-1']).toBeUndefined();
+    expect(done.enVol).toBeNull();
+  });
+
+  it('the done mark carries the course\'s order ids; a board read listing the course as locked again drops it; one not listing it keeps it', () => {
+    const row = (assignmentId: string, orderIds: string[]) => ({ assignmentId, riderId: 'r', riderName: 'r', orderIds, depuis: '' });
+    const x = remiseFaite(commencerRemise(demanderRemise(REMISE_IDLE, 'as-x'), 'as-x', mint)!.ui, 'as-x', ['ord-x1', 'ord-x2']);
+    const both = remiseFaite(commencerRemise(demanderRemise(x, 'as-z'), 'as-z', mint)!.ui, 'as-z', ['ord-z']);
+    expect(both.faits).toEqual({ 'as-x': ['ord-x1', 'ord-x2'], 'as-z': ['ord-z'] });
+    // Another course locks: X's and Z's marks stay, each naming its own course.
+    expect(remiseRelue(both, [row('as-y', ['ord-y'])]).faits).toEqual({ 'as-x': ['ord-x1', 'ord-x2'], 'as-z': ['ord-z'] });
+    // X locks again: only X's mark leaves.
+    expect(remiseRelue(both, [row('as-x', ['ord-x1'])]).faits).toEqual({ 'as-z': ['ord-z'] });
+    // An empty list keeps every mark.
+    expect(remiseRelue(both, []).faits).toEqual(both.faits);
   });
 });

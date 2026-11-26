@@ -373,3 +373,70 @@ describe('WO-2.1 finding ③ — the registry door refuses re-arming (the WO-1.3
     expect(spine.secrets.register('custody_seal', CHAIN.order_id, 'seal-rotated')).toEqual({ ok: true });
   });
 });
+
+describe('the buyer\'s code locks after five wrong tries — the count lives in the replayed spine', () => {
+  function atTheDoor(): CustodySpine {
+    const spine = spineWithCourierCustody();
+    spine.submitDeliveryEvidence(evidenceBundle(), 'server_confirmed', T);
+    const decided = spine.decideValidation(T);
+    if (!decided.ok) throw new Error('setup decide');
+    return spine;
+  }
+  const lockAlerts = (spine: CustodySpine) =>
+    spine.allEvents().filter((e) => e.name === 'reconciliation.alert.v1' && (e.payload as Record<string, unknown>)['scenario'] === 'drop_code_locked');
+
+  it('only a real mismatch counts; the fifth answers drop_code_locked with ONE alert carrying no code', () => {
+    const spine = atTheDoor();
+    for (let i = 1; i <= 4; i += 1) {
+      expect(spine.confirmDropAndEmitEligibility(`faux-${i}`, T)).toEqual({ ok: false, reason: 'drop_code_refused' });
+      expect(spine.dropCodeLock().locked).toBe(false);
+    }
+    expect(spine.confirmDropAndEmitEligibility('faux-5', T)).toEqual({ ok: false, reason: 'drop_code_locked' });
+    expect(spine.dropCodeLock()).toEqual({ locked: true, since: T });
+    const alerts = lockAlerts(spine);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]!.payload).toEqual({ scenario: 'drop_code_locked', order_id: CHAIN.order_id, refusals: 5 });
+    expect(JSON.stringify(alerts)).not.toContain('drop-9042');
+    expect(spine.ledger.currentCustodian(CHAIN.package_id)).toBe('courier:r-1');
+  });
+
+  it('a code that has not arrived never counts', () => {
+    const spine = new CustodySpine(CHAIN, 'sup-1');
+    expect(spine.secrets.register('pickup_verification_code', CHAIN.order_id, 'pvc-4711')).toEqual({ ok: true });
+    expect(spine.secrets.register('custody_seal', CHAIN.order_id, 'seal-e1-0001')).toEqual({ ok: true });
+    spine.establishSellerCustody(T);
+    const v = spine.verifyPickup({ orderId: CHAIN.order_id, riderId: 'r-1', checkResults: allPass, dwellSec: 150, evidenceBundleId: 'eb-1', custodySealId: 'seal-e1-0001' }, 'pvc-4711', T);
+    if (v.kind !== 'accepted') throw new Error('setup verify');
+    spine.beginCustody({ riderId: 'r-1', verificationOrderId: CHAIN.order_id, custodySealId: 'seal-e1-0001', sealPhotoRefs: [], at: T });
+    spine.submitDeliveryEvidence(evidenceBundle(), 'server_confirmed', T);
+    spine.decideValidation(T);
+    for (let i = 1; i <= 6; i += 1) expect(spine.confirmDropAndEmitEligibility('drop-9042', T)).toEqual({ ok: false, reason: 'drop_code_refused' });
+    expect(spine.dropCodeLock().locked).toBe(false);
+    expect(lockAlerts(spine)).toHaveLength(0);
+  });
+
+  it('the unlock resets the count, a re-arm does not; each lock cycle its own alert', () => {
+    const spine = atTheDoor();
+    for (let i = 1; i <= 4; i += 1) spine.confirmDropAndEmitEligibility(`faux-${i}`, T);
+    expect(spine.secrets.register('buyer_drop_code', CHAIN.order_id, 'drop-9042')).toEqual({ ok: true });
+    expect(spine.confirmDropAndEmitEligibility('faux-5', T)).toEqual({ ok: false, reason: 'drop_code_locked' });
+    expect(spine.unlockDropCode()).toBe(true);
+    expect(spine.dropCodeLock()).toEqual({ locked: false, since: null });
+    expect(spine.unlockDropCode()).toBe(false);
+    for (let i = 1; i <= 4; i += 1) expect(spine.confirmDropAndEmitEligibility(`autre-${i}`, T)).toEqual({ ok: false, reason: 'drop_code_refused' });
+    expect(spine.confirmDropAndEmitEligibility('autre-5', T)).toEqual({ ok: false, reason: 'drop_code_locked' });
+    const alerts = lockAlerts(spine);
+    expect(alerts).toHaveLength(2);
+    expect(new Set(alerts.map((a) => a.envelope.command_id)).size).toBe(2);
+  });
+
+  it('REPLAY SAFETY: an old file with seven mismatches then the right code still delivers in the spine (the lock refusal lives at the door, not here), and a delivered file is never locked', () => {
+    const spine = atTheDoor();
+    for (let i = 1; i <= 7; i += 1) spine.confirmDropAndEmitEligibility(`ancien-${i}`, T);
+    expect(spine.confirmDropAndEmitEligibility('drop-9042', T)).toMatchObject({ ok: true, duplicate: false });
+    expect(spine.ledger.currentCustodian(CHAIN.package_id)).toBe('customer');
+    expect(spine.ledger.verifyChain()).toEqual({ valid: true });
+    expect(spine.dropCodeLock().locked).toBe(false);
+    expect(lockAlerts(spine)).toHaveLength(1);
+  });
+});
