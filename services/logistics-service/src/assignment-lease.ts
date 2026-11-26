@@ -307,3 +307,45 @@ export function decideLease(state: LeaseAuthorityState, cmd: LeaseCommand): Leas
       return malformed(state);
   }
 }
+
+/**
+ * A CLOSED course's lease history leaves the one stored lease value for the
+ * course's own record: its tasks' ended leases, their version counters and
+ * the dedupe entries naming them. Pure, like decideLease. An ACTIVE lease is
+ * never moved (a closed course's lease was released by its close; whatever
+ * is still active belongs to work in flight). A sweep's entry moves once no
+ * lease it expired is left here. Replays after the move re-evaluate: an
+ * acquire whose remembered lease is gone falls through exactly as a dead one
+ * does, and a task whose course closed is never assignable again.
+ */
+export function archiveLeaseTasks(
+  state: LeaseAuthorityState,
+  taskIds: readonly string[],
+): {
+  state: LeaseAuthorityState;
+  leases: LeaseRecord[];
+  versions: Record<string, number>;
+  commands: [string, AppliedOutcome][];
+} {
+  const closed = new Set(taskIds);
+  const leases = state.leases.filter((l) => closed.has(l.taskId) && l.status !== 'active');
+  const kept = state.leases.filter((l) => !(closed.has(l.taskId) && l.status !== 'active'));
+  const stillHeld = new Set(kept.map((l) => l.taskId));
+  const versions: Record<string, number> = {};
+  const keptVersions: Record<string, number> = {};
+  for (const [taskId, version] of Object.entries(state.versions)) {
+    if (closed.has(taskId) && !stillHeld.has(taskId)) versions[taskId] = version;
+    else keptVersions[taskId] = version;
+  }
+  const commands: [string, AppliedOutcome][] = [];
+  const keptCommands: Record<string, AppliedOutcome> = {};
+  for (const [commandId, outcome] of Object.entries(state.appliedCommands)) {
+    const moves =
+      outcome.kind === 'expire_due'
+        ? outcome.expired.some((l) => closed.has(l.taskId)) && outcome.expired.every((l) => !stillHeld.has(l.taskId))
+        : closed.has(outcome.lease.taskId) && !stillHeld.has(outcome.lease.taskId);
+    if (moves) commands.push([commandId, outcome]);
+    else keptCommands[commandId] = outcome;
+  }
+  return { state: { leases: kept, versions: keptVersions, appliedCommands: keptCommands }, leases, versions, commands };
+}

@@ -303,6 +303,23 @@ export class ReadyQueue {
     return taskIds;
   }
 
+  /**
+   * A CLOSED order leaves the queue for its own stored record, with the
+   * command ids that admitted its tasks — the caller answers their replays
+   * from that record. An id that also admitted a task still held here stays
+   * (one command can name tasks of two orders, see the purge above).
+   */
+  archiveOrder(orderId: string): { tasks: [string, QueuedTask][]; commandIds: string[] } {
+    const tasks = [...this.tasks.entries()].filter(([, queued]) => queued.orderId === orderId);
+    for (const [taskId] of tasks) this.tasks.delete(taskId);
+    const held = new Set([...this.tasks.values()].map((q) => q.admittedByCommandId));
+    const commandIds = [...new Set(tasks.map(([, q]) => q.admittedByCommandId))].filter(
+      (id) => !held.has(id) && this.processedCommandIds.has(id),
+    );
+    for (const id of commandIds) this.processedCommandIds.delete(id);
+    return { tasks, commandIds };
+  }
+
   /** SE-LIVE-1 — durable composition, ADDITIVE ONLY: the LogisticsDO persists
    * this store as a plain snapshot and rebuilds it on wake. The snapshot is
    * the WHOLE truth of this store; no admission behavior changes. */

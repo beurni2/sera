@@ -1,9 +1,12 @@
 import { DeliveryTaskSchema, PlatformEventSchema } from '@platform/contracts';
 import {
+  archiveLeaseTasks,
   decideLease,
   emptyLeaseState,
+  type AppliedOutcome,
   type LeaseAuthorityState,
   type LeaseCommand,
+  type LeaseRecord,
 } from '../src/assignment-lease.js';
 import {
   GrantedLeaseWitness,
@@ -14,12 +17,14 @@ import {
   AssignmentBook,
   type AssignmentBookSnapshot,
   type AssignmentRecord,
+  type AssignOutcome,
 } from '../src/manual-assignment.js';
 import {
   ADMITTED_PAYMENT_MODES,
   ReadyQueue,
   type FundingCheck,
   type IntakeProjections,
+  type QueuedTask,
   type ReadinessCheck,
   type ReadyQueueSnapshot,
 } from '../src/ready-queue.js';
@@ -230,6 +235,56 @@ const SNAP_COLIS_COURSES = 'snap:colis-courses:v1';
 const SIZE_WATCH_BYTES = 1_048_576;
 const ALERTE_STOCKAGE = 'alerte-stockage:v1';
 type AlertesStockage = Record<string, { bytes: number; at: string }>;
+/** Every snapshot value persist() writes, in one batch (also what ensureLoaded reads). */
+export const SNAPSHOT_KEYS = [SNAP_QUEUE, SNAP_REGISTRY, SNAP_BOOK, SNAP_LEASE, SNAP_WITNESS, SNAP_PROJECTIONS, SNAP_BRIEFS, SNAP_RAMASSAGE, SNAP_CODE_VERIFICATION, SNAP_CUSTODY_OUTBOX, SNAP_RETOURS, SNAP_RESCHEDULES, SNAP_REPROGRAMMATIONS, SNAP_RETOUR_DECIDE, SNAP_CUSTODY_FACTS, SNAP_FIN_DE_SERVICE, SNAP_FLOTTE, SNAP_COLIS_COURSES] as const;
+/**
+ * CLOSED COURSES LEAVE THE HOT SNAPSHOTS. When custody's own wire closes a
+ * course (the drop, or the two-key return), everything the snapshots held for
+ * its order — and for every article of its package — moves to ONE stored
+ * record per order, written in the same batch that removes it, so the hot
+ * values are bounded by the work in flight and the history is kept, per
+ * order, for good. The replay doors read it back and answer as they did.
+ *
+ * Three small pointers find a record from an id that is not an order id.
+ * Each is written ONCE, by the request that creates the id, so a close never
+ * writes more than one record per order of its course: the largest batch is
+ * the snapshots + the size alert + PACKAGE_ORDERS_MAX records, well inside
+ * the storage's 128 keys per write — one batch, never chunked, so the move
+ * stays all-or-nothing.
+ */
+const COURSE_PREFIX = 'course:v1:';
+const POINTEUR_AFFECTATION = 'course-affectation:v1:';
+const POINTEUR_TACHE = 'course-tache:v1:';
+const POINTEUR_REPROGRAMMATION = 'course-reprog:v1:';
+
+interface CourseArchive {
+  orderId: string;
+  /** An article of a package: its course is carried by the first order's record. */
+  tete?: string;
+  closedAt: string;
+  assignments: AssignmentRecord[];
+  bookCommands: [string, AssignOutcome][];
+  tasks: [string, QueuedTask][];
+  queueCommandIds: string[];
+  leases: LeaseRecord[];
+  leaseVersions: Record<string, number>;
+  leaseCommands: [string, AppliedOutcome][];
+  briefs: Record<string, CourseBrief>;
+  ramassage: Record<string, { code: string; confirmeAt?: string }>;
+  codesVerification: Record<string, { code: string; scelle?: string; scelleRetour?: string }>;
+  colisCourses: Record<string, ColisCourse>;
+  retours: Record<string, RetourRow>;
+  retourDecide: Record<string, { orderId: string; decideAt: string }>;
+  reprogrammations: Record<string, { orderId: string; taskId: string }>;
+  funding?: FundingFact;
+  readiness?: ReadinessFact;
+  colis?: ColisMembership;
+  retire?: true;
+  /** Kept as it stood, plaintext code included, exactly as hot storage kept
+   *  it — behind this object's own storage, returned by no door. */
+  custodyOutbox?: CustodyProduceRow;
+  custodyFact?: CustodianFact;
+}
 /** A package names at most ten orders (canon `PACKAGE_ORDERS_MAX`); an
  *  article's label is a product name, bounded like one. */
 const MAX_LIBELLE = 80;
@@ -544,6 +599,8 @@ export class LogisticsDO {
   /** REPROGRAMMATION-2 — when each live course's custody wires were last
    *  asked to revive (in memory: a throttle, never a fact). */
   private wiresRevivedAt: Record<string, number> = {};
+  /** Records and pointers to store in the next persist batch (see COURSE_PREFIX). */
+  private aEcrire: Record<string, unknown> = {};
   private queue!: ReadyQueue;
   private reschedules!: RescheduleBook;
   private registry!: RiderRegistry;
@@ -651,6 +708,7 @@ export class LogisticsDO {
     const outcome = renvoye
       ? await this.dispatch.returnToSupplier(record.orderId, at)
       : await this.dispatch.deliver(record.orderId, at);
+    if (outcome.ok && !outcome.duplicate) this.archiverCourse(outcome.assignment, at);
     await this.persist();
     if (!outcome.ok) return Response.json({ ok: true, status: 'aucune_course' });
     return Response.json({
@@ -669,8 +727,9 @@ export class LogisticsDO {
 
   private async ensureLoaded(): Promise<void> {
     if (this.loaded) return;
-    const keys = [SNAP_QUEUE, SNAP_REGISTRY, SNAP_BOOK, SNAP_LEASE, SNAP_WITNESS, SNAP_PROJECTIONS, SNAP_BRIEFS, SNAP_RAMASSAGE, SNAP_CODE_VERIFICATION, SNAP_CUSTODY_OUTBOX, SNAP_RETOURS, SNAP_RESCHEDULES, SNAP_REPROGRAMMATIONS, SNAP_RETOUR_DECIDE, SNAP_CUSTODY_FACTS, SNAP_FIN_DE_SERVICE, SNAP_FLOTTE, SNAP_COLIS_COURSES];
-    const stored = await this.state.storage.get<unknown>(keys);
+    // A reload drops whatever a failed request had buffered with its memory.
+    this.aEcrire = {};
+    const stored = await this.state.storage.get<unknown>([...SNAPSHOT_KEYS]);
     const lease = stored.get(SNAP_LEASE) as LeaseAuthorityState | undefined;
     this.leaseState = lease ?? emptyLeaseState();
     const projections = stored.get(SNAP_PROJECTIONS) as ProjectionsSnapshot | undefined;
@@ -747,7 +806,149 @@ export class LogisticsDO {
       // Same batch as the snapshots: the alert names exactly what was stored.
       values[ALERTE_STOCKAGE] = alertes;
     }
-    await this.state.storage.put(values);
+    await this.state.storage.put({ ...values, ...this.aEcrire });
+    this.aEcrire = {};
+  }
+
+  /** A closed course's record, by order id (an article's points to its package's first order). */
+  private async archiveDe(orderId: string): Promise<CourseArchive | undefined> {
+    const key = `${COURSE_PREFIX}${orderId}`;
+    return (this.aEcrire[key] as CourseArchive | undefined) ?? (await this.state.storage.get<CourseArchive>(key));
+  }
+
+  /** The record carrying the course itself: the order's own, or its package's first order's. */
+  private async archiveDeCourse(orderId: string): Promise<CourseArchive | undefined> {
+    const archive = await this.archiveDe(orderId);
+    return archive?.tete === undefined ? archive : this.archiveDe(archive.tete);
+  }
+
+  private async archiveParPointeur(prefix: string, id: string): Promise<CourseArchive | undefined> {
+    const orderId = (this.aEcrire[`${prefix}${id}`] as string | undefined) ?? (await this.state.storage.get<string>(`${prefix}${id}`));
+    return orderId === undefined ? undefined : this.archiveDeCourse(orderId);
+  }
+
+  /** The order's own facts leave the hot snapshots (see COURSE_PREFIX). */
+  private prendreFaits(orderId: string): Pick<CourseArchive, 'funding' | 'readiness' | 'colis' | 'retire' | 'custodyOutbox' | 'custodyFact'> {
+    const faits = {
+      ...(this.fundingFacts[orderId] !== undefined ? { funding: this.fundingFacts[orderId] } : {}),
+      ...(this.readinessFacts[orderId] !== undefined ? { readiness: this.readinessFacts[orderId] } : {}),
+      ...(this.colisDe[orderId] !== undefined ? { colis: this.colisDe[orderId] } : {}),
+      ...(this.retires[orderId] === true ? { retire: true as const } : {}),
+      ...(this.custodyOutbox[orderId] !== undefined ? { custodyOutbox: this.custodyOutbox[orderId] } : {}),
+      ...(this.custodyFacts[orderId] !== undefined ? { custodyFact: this.custodyFacts[orderId] } : {}),
+    };
+    delete this.fundingFacts[orderId];
+    delete this.readinessFacts[orderId];
+    delete this.colisDe[orderId];
+    delete this.retires[orderId];
+    delete this.custodyOutbox[orderId];
+    delete this.custodyFacts[orderId];
+    delete this.wiresRevivedAt[orderId];
+    return faits;
+  }
+
+  /**
+   * The move itself, run ONLY on the first close of a course by custody's own
+   * word (course-livrée, course-retournée, or the last article of a package on
+   * either) — so a producer row still short of `done` moves too: custody's
+   * drop or return proves it holds that chain. A package moves whole, at its
+   * last article: no article leaves while the course still carries another.
+   */
+  private archiverCourse(closed: AssignmentRecord, at: string): void {
+    const tete = closed.orderId;
+    const colis = this.colisCourses[closed.assignmentId];
+    const membres = [...new Set([tete, ...(colis?.orderIds ?? []), ...(this.colisDe[tete]?.orderIds ?? [])])];
+    const book = this.book.archiveOrder(tete);
+    const queue = this.queue.archiveOrder(tete);
+    const taskIds = [...new Set([...queue.tasks.map(([taskId]) => taskId), ...book.assignments.flatMap((a) => [a.taskId, a.lease.taskId])])];
+    const lease = archiveLeaseTasks(this.leaseState, taskIds);
+    this.leaseState = lease.state;
+    const assignmentIds = book.assignments.map((a) => a.assignmentId);
+    const prendre = <T>(store: Record<string, T>, keys: readonly string[]): Record<string, T> => {
+      const out: Record<string, T> = {};
+      for (const key of keys) {
+        if (store[key] === undefined) continue;
+        out[key] = store[key]!;
+        delete store[key];
+      }
+      return out;
+    };
+    const vide = { assignments: [], bookCommands: [], tasks: [], queueCommandIds: [], leases: [], leaseVersions: {}, leaseCommands: [], briefs: {}, ramassage: {}, codesVerification: {}, colisCourses: {}, retours: {}, retourDecide: {}, reprogrammations: {} };
+    const record: CourseArchive = {
+      orderId: tete,
+      closedAt: at,
+      assignments: book.assignments,
+      bookCommands: book.commands,
+      tasks: queue.tasks,
+      queueCommandIds: queue.commandIds,
+      leases: lease.leases,
+      leaseVersions: lease.versions,
+      leaseCommands: lease.commands,
+      briefs: prendre(this.briefs, taskIds),
+      ramassage: prendre(this.ramassage, assignmentIds),
+      codesVerification: prendre(this.codesVerification, assignmentIds),
+      colisCourses: prendre(this.colisCourses, assignmentIds),
+      retours: prendre(this.retours, assignmentIds),
+      retourDecide: prendre(this.retourDecide, assignmentIds),
+      reprogrammations: prendre(this.reprogrammations, Object.keys(this.reprogrammations).filter((id) => this.reprogrammations[id]!.orderId === tete)),
+      ...this.prendreFaits(tete),
+    };
+    this.aEcrire[`${COURSE_PREFIX}${tete}`] = record;
+    for (const membre of membres) {
+      if (membre === tete) continue;
+      this.aEcrire[`${COURSE_PREFIX}${membre}`] = { orderId: membre, tete, closedAt: at, ...vide, ...this.prendreFaits(membre) } satisfies CourseArchive;
+    }
+  }
+
+  /**
+   * The producer's task wire, redelivered for a task whose course closed and
+   * moved: the queue's own answers in the queue's own order (event, name,
+   * replay, canon, claimed id), read from the course's record.
+   */
+  private async tacheFermee(body: unknown): Promise<Response | null> {
+    const taskId = ((body as Record<string, unknown>)['payload'] as Record<string, unknown> | undefined)?.['task'] as Record<string, unknown> | undefined;
+    if (typeof taskId?.['id'] !== 'string') return null;
+    const archive = await this.archiveParPointeur(POINTEUR_TACHE, taskId['id']);
+    if (archive === undefined) return null;
+    const refus = (reason: string) => Response.json({ ok: false, admitted: false, reason }, { status: 422 });
+    const parsed = PlatformEventSchema.safeParse(body);
+    if (!parsed.success) return refus('not_a_platform_event');
+    if (parsed.data.name !== 'logistics.task_ready.v1') return refus('unexpected_event_name');
+    if (archive.queueCommandIds.includes(parsed.data.envelope.command_id)) {
+      const existing = archive.tasks.find(
+        ([, q]) => q.correlationId === parsed.data.envelope.correlation_id && q.status !== 'closed_rescheduled' && q.status !== 'closed_taken_back',
+      );
+      if (existing !== undefined) return Response.json({ ok: true, admitted: true, duplicate: true, taskId: existing[1].task.id });
+    }
+    if (!DeliveryTaskSchema.safeParse(parsed.data.payload['task']).success) return refus('task_not_canonical');
+    return refus('task_id_already_claimed');
+  }
+
+  /** custody's closing wire, redelivered for a course already moved: today's settled answer. */
+  private async closRejoue(orderId: string, kind: Reglement): Promise<Response | null> {
+    const archive = await this.archiveDe(orderId);
+    if (archive === undefined) return null;
+    const course = archive.tete === undefined ? archive : await this.archiveDe(archive.tete);
+    const colis = Object.values(course?.colisCourses ?? {}).find((c) => c.orderIds.includes(orderId));
+    if (colis !== undefined && colis.reglement[orderId] !== undefined) {
+      return Response.json({ ok: true, status: colis.reglement[orderId] === 'livree' ? 'deja_livree' : 'deja_retournee' });
+    }
+    const status = kind === 'livree' ? 'delivered' : 'returned';
+    const ferme = course?.assignments.find((a) => a.status === status);
+    if (ferme === undefined) return Response.json({ ok: true, status: 'aucune_course' });
+    return Response.json({
+      ok: true,
+      status: kind === 'livree' ? 'deja_livree' : 'deja_retournee',
+      leaseReleased: false,
+      assignment: {
+        assignmentId: ferme.assignmentId,
+        taskId: ferme.taskId,
+        orderId: ferme.orderId,
+        riderId: ferme.riderId,
+        status: ferme.status,
+        ...(kind === 'livree' ? { deliveredAt: ferme.deliveredAt ?? null } : {}),
+      },
+    });
   }
 
   /**
@@ -1127,10 +1328,13 @@ export class LogisticsDO {
     if (request.method === 'POST' && pathname === '/intake/task-ready') {
       const body = await request.json().catch(() => null);
       if (body === null) return malformed();
+      const ferme = await this.tacheFermee(body);
+      if (ferme !== null) return ferme;
       const outcome = this.queue.onTaskReady(body, now);
       if (!outcome.admitted) {
         return Response.json({ ok: false, admitted: false, reason: outcome.reason }, { status: 422 });
       }
+      if (!outcome.duplicate) this.aEcrire[`${POINTEUR_TACHE}${outcome.task.id}`] = outcome.task.orderId;
       return Response.json({ ok: true, admitted: true, duplicate: outcome.duplicate, taskId: outcome.task.id });
     }
     if (request.method === 'POST' && pathname === '/intake/funding') {
@@ -1158,6 +1362,21 @@ export class LogisticsDO {
        */
       const colis = lireColis(body['package'], orderId);
       if (colis === 'malformed') return Response.json({ ok: false, reason: 'package_malformed' }, { status: 400 });
+      const fermee = await this.archiveDe(orderId);
+      if (fermee !== undefined) {
+        // A CLOSED order's facts live in its record: the same rules, the same
+        // answers, applied there — never back into the hot projections, so the
+        // order can never come back to « à préparer ».
+        if (colis !== undefined && fermee.colis !== undefined && !memeColis(colis, fermee.colis)) {
+          return Response.json({ ok: false, reason: 'package_contradicts_stored' }, { status: 409 });
+        }
+        const fait: FundingFact = { status, paymentMode: body['paymentMode'] as string, asOf: body['asOf'] as string, stale: (body['stale'] as boolean | undefined) ?? false };
+        if (fermee.funding !== undefined && Date.parse(fait.asOf) < Date.parse(fermee.funding.asOf)) {
+          return Response.json({ ok: true, orderId, applied: false, reason: 'older_fact_ignored' });
+        }
+        this.aEcrire[`${COURSE_PREFIX}${orderId}`] = { ...fermee, funding: fait, ...(fermee.colis === undefined && colis !== undefined ? { colis } : {}) } satisfies CourseArchive;
+        return Response.json({ ok: true, orderId, applied: true });
+      }
       const colisConnu = this.colisDe[orderId];
       if (colis !== undefined && colisConnu !== undefined && !memeColis(colis, colisConnu)) {
         return Response.json({ ok: false, reason: 'package_contradicts_stored' }, { status: 409 });
@@ -1200,6 +1419,15 @@ export class LogisticsDO {
         stale: (body['stale'] as boolean | undefined) ?? false,
         ...(body['supplierRef'] !== undefined ? { supplierRef: (body['supplierRef'] as string).trim() } : {}),
       };
+      const fermee = await this.archiveDe(orderId);
+      if (fermee !== undefined) {
+        // A CLOSED order's facts live in its record (the funding door's law).
+        if (fermee.readiness !== undefined && Date.parse(incoming.asOf) < Date.parse(fermee.readiness.asOf)) {
+          return Response.json({ ok: true, orderId, applied: false, reason: 'older_fact_ignored' });
+        }
+        this.aEcrire[`${COURSE_PREFIX}${orderId}`] = { ...fermee, readiness: incoming } satisfies CourseArchive;
+        return Response.json({ ok: true, orderId, applied: true });
+      }
       // Same ordering law as funding: an older redelivered fact never wins.
       const stored = this.readinessFacts[orderId];
       if (stored !== undefined && Date.parse(incoming.asOf) < Date.parse(stored.asOf)) {
@@ -1703,6 +1931,7 @@ export class LogisticsDO {
        * unconsumed pickup code on re-arm, so the dead course's code dies.
        */
       if (!outcome.duplicate) {
+        this.aEcrire[`${POINTEUR_AFFECTATION}${outcome.assignment.assignmentId}`] = outcome.assignment.orderId;
         if (this.codesVerification[outcome.assignment.assignmentId] === undefined) {
           // ROUTE-DIRECTE — the pickup code and the seal are minted together,
           // in the same batch as the assignment, so a course can never exist
@@ -1802,6 +2031,29 @@ export class LogisticsDO {
           { ok: false, reason: 'custody_bound_not_asserted' },
           { status: 428 },
         );
+      }
+      if (this.book.get((body['assignmentId'] as string).trim()) === undefined) {
+        // A closed course's assignment answers as it did before it moved.
+        const ferme = (await this.archiveParPointeur(POINTEUR_AFFECTATION, (body['assignmentId'] as string).trim()))?.assignments.find(
+          (a) => a.assignmentId === (body['assignmentId'] as string).trim(),
+        );
+        if (ferme !== undefined && ferme.status === 'taken_back_by_dispatch') {
+          return Response.json({
+            ok: true,
+            duplicate: true,
+            leaseReleased: false,
+            assignment: {
+              assignmentId: ferme.assignmentId,
+              taskId: ferme.taskId,
+              orderId: ferme.orderId,
+              riderId: ferme.riderId,
+              status: ferme.status,
+              takenBackAt: ferme.takenBackAt ?? null,
+              takenBackBy: ferme.takenBackBy ?? null,
+            },
+          });
+        }
+        if (ferme !== undefined) return Response.json({ ok: false, reason: 'not_active' }, { status: 409 });
       }
       const outcome = await this.dispatch.takeBack(
         (body['assignmentId'] as string).trim(),
@@ -2146,6 +2398,23 @@ export class LogisticsDO {
             // whole point of taking it back is composing a fresh one.
             queued.status !== 'closed_taken_back',
         );
+      // A CLOSED order's task left the queue with its record: it still ends
+      // the route, with the same two answers (see COURSE_PREFIX).
+      const ouverteFermee =
+        openForOrder !== undefined
+          ? undefined
+          : (await this.archiveDeCourse(orderId))?.tasks.find(
+              ([, queued]) => queued.status !== 'closed_rescheduled' && queued.status !== 'closed_taken_back',
+            );
+      if (ouverteFermee !== undefined) {
+        if (ouverteFermee[1].admittedByCommandId === commandId) {
+          return Response.json({ ok: true, admitted: true, duplicate: true, taskId: ouverteFermee[0] });
+        }
+        return Response.json(
+          { ok: false, reason: 'order_already_has_task', taskId: ouverteFermee[0], status: ouverteFermee[1].status },
+          { status: 409 },
+        );
+      }
       if (openForOrder !== undefined) {
         // AN OPEN TASK FOR THIS ORDER ENDS THE ROUTE, both ways. Either this
         // very command composed it — answer duplicate from the task itself,
@@ -2204,6 +2473,7 @@ export class LogisticsDO {
         // unprepared order cannot be dispatched by hand any more than by wire.
         return Response.json({ ok: false, admitted: false, reason: outcome.reason }, { status: 422 });
       }
+      if (!outcome.duplicate) this.aEcrire[`${POINTEUR_TACHE}${outcome.task.id}`] = outcome.task.orderId;
       // COURSE-BRIEF filed against the ADMITTED task's own id — never the one
       // this route hoped for. A refused compose leaves no brief behind.
       this.briefs[outcome.task.id] = {
@@ -2432,6 +2702,8 @@ export class LogisticsDO {
       if (body === null || !isStr(body['command_id']) || !isStr(body['orderId']) || !isIso(body['at'])) {
         return malformed();
       }
+      const rejoue = await this.closRejoue((body['orderId'] as string).trim(), 'livree');
+      if (rejoue !== null) return rejoue;
       const reglement = await this.reglerColis((body['orderId'] as string).trim(), 'livree', body['at'] as string);
       if (reglement !== null) return reglement;
       const outcome = await this.dispatch.deliver((body['orderId'] as string).trim(), body['at'] as string);
@@ -2443,6 +2715,7 @@ export class LogisticsDO {
       if (!outcome.duplicate) {
         this.flotte = logCourse(this.flotte, { orderId: outcome.assignment.orderId, riderId: outcome.assignment.riderId, kind: 'livree', at: body['at'] as string });
         await this.state.storage.put(SNAP_FLOTTE, this.flotte);
+        this.archiverCourse(outcome.assignment, body['at'] as string);
       }
       return Response.json({
         ok: true,
@@ -2522,6 +2795,8 @@ export class LogisticsDO {
       if (body === null || !isStr(body['command_id']) || !isStr(body['orderId']) || !isIso(body['at'])) {
         return malformed();
       }
+      const rejoue = await this.closRejoue((body['orderId'] as string).trim(), 'retournee');
+      if (rejoue !== null) return rejoue;
       const reglement = await this.reglerColis((body['orderId'] as string).trim(), 'retournee', body['at'] as string);
       if (reglement !== null) return reglement;
       const outcome = await this.dispatch.returnToSupplier((body['orderId'] as string).trim(), body['at'] as string);
@@ -2532,6 +2807,7 @@ export class LogisticsDO {
       // failed-delivery rate the §7.2 gate will read (SE7.3).
       if (!outcome.duplicate) {
         this.flotte = logCourse(this.flotte, { orderId: outcome.assignment.orderId, riderId: outcome.assignment.riderId, kind: 'retournee', at: body['at'] as string });
+        this.archiverCourse(outcome.assignment, body['at'] as string);
       }
       await this.persist();
       return Response.json({
@@ -2639,7 +2915,9 @@ export class LogisticsDO {
       // THE REPLAY IS JUDGED FIRST (verifier MINOR, closed): a retried tap
       // whose window has meanwhile passed is still the fix it already made,
       // never a fresh refusal over a passage the rider is already reading.
-      const replay = this.reprogrammations[commandId];
+      const replay =
+        this.reprogrammations[commandId] ??
+        (await this.archiveParPointeur(POINTEUR_REPROGRAMMATION, commandId))?.reprogrammations[commandId];
       if (replay !== undefined) {
         return Response.json({
           ok: true,
@@ -2685,6 +2963,8 @@ export class LogisticsDO {
       const brief = this.briefs[active.taskId];
       if (brief !== undefined) this.briefs[outcome.taskId] = brief;
       this.reprogrammations[commandId] = { orderId: active.orderId, taskId: outcome.taskId };
+      this.aEcrire[`${POINTEUR_REPROGRAMMATION}${commandId}`] = active.orderId;
+      this.aEcrire[`${POINTEUR_TACHE}${outcome.taskId}`] = active.orderId;
       return Response.json({
         ok: true,
         duplicate: false,
@@ -2875,6 +3155,19 @@ export class LogisticsDO {
         if (body === null || !isStr(body['assignmentId'])) return malformed();
         const assignmentId = (body['assignmentId'] as string).trim();
         const assignment = this.book.get(assignmentId);
+        if (assignment === undefined) {
+          // A closed course's assignment answers as it did before it moved:
+          // its own rider hears « not active », never « unknown ».
+          const ferme = (await this.archiveParPointeur(POINTEUR_AFFECTATION, assignmentId))?.assignments.find((a) => a.assignmentId === assignmentId);
+          if (ferme !== undefined && ferme.riderId === riderId) {
+            return Response.json(
+              pathname === '/rider/assignment/ack'
+                ? { ok: false, reason: 'not_active', anchored: false }
+                : { ok: false, reason: 'not_active', leaseReleased: false },
+              { status: 409 },
+            );
+          }
+        }
         // Ownership: a rider acts only on THEIR assignment. Foreign and
         // unknown ids are the SAME answer — no oracle.
         if (assignment === undefined || assignment.riderId !== riderId) {
