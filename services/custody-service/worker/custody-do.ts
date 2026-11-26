@@ -1470,9 +1470,13 @@ export class CustodyDO {
    * is ABSENT, derived from what is recorded and never from the request in
    * hand: the spine's own `delivery.validated.v1` (replayed from the log, so
    * the same event the drop emitted), and the logged drop's own command id
-   * and instant. Byte-identical to what that drop armed, so each receiver
-   * dedupes a repeat. A row that exists is never touched here, delivered or
-   * not. No successful drop in the log ⇒ nothing.
+   * and instant. Byte-identical to what that drop armed when the log is
+   * replayed by the code that armed it (a file recorded before the code
+   * lock, with five or more wrong codes before its drop, replays one more
+   * alert, so its rebuilt event carries an `aggregateVersion` one higher);
+   * Shop+ dedupes the signal on its `command_id` either way, and the
+   * course-closed body carries no version. A row that exists is never
+   * touched here, delivered or not. No successful drop in the log ⇒ nothing.
    */
   private async absentDropRows(log: readonly LoggedCommand[]): Promise<Record<string, unknown>> {
     const rows: Record<string, unknown> = {};

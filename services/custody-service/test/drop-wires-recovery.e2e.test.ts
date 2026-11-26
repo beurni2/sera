@@ -298,11 +298,11 @@ describe('a recorded delivery that lost its outgoing messages gets them back', (
     { kept: 'shop', keptKey: ELIGIBILITY_KEY, lostKey: LIVREE_ROW_KEY },
     { kept: 'logistics', keptKey: LIVREE_ROW_KEY, lostKey: ELIGIBILITY_KEY },
   ];
-  for (const half of HALVES) {
-    it(`a message already delivered is never sent again: with the ${half.kept} message delivered and the other missing, only the missing one is rebuilt, and the delivered row stays delivered`, async () => {
-      const orderId = `ord-wires-half-${half.kept}`;
+  for (const half of HALVES) for (const via of ['replay', 'retype'] as const) {
+    it(`a message already delivered is never sent again: with the ${half.kept} message delivered and the other missing, ${via === 'replay' ? 'the replayed drop' : 'the code re-typed under a fresh command'} rebuilds only the missing one, and the delivered row stays delivered`, async () => {
+      const orderId = `ord-wires-half-${half.kept}-${via}`;
       const code = `DROP-${orderId}`;
-      const dir = freshDir(`half-${half.kept}`);
+      const dir = freshDir(`half-${half.kept}-${via}`);
       const first: Seen = { shop: [], logistics: [] };
       let mf = boot(dir, first, true);
       await atTheDoor(mf, orderId, code);
@@ -319,7 +319,11 @@ describe('a recorded delivery that lost its outgoing messages gets them back', (
 
       const seen: Seen = { shop: [], logistics: [] };
       mf = boot(dir, seen, true);
-      expect(await drop(mf, orderId, `drop-${orderId}`, code)).toMatchObject({ kind: 'recorded', body: { status: 'custody_with_customer' } });
+      if (via === 'replay') {
+        expect(await drop(mf, orderId, `drop-${orderId}`, code)).toMatchObject({ kind: 'recorded', body: { status: 'custody_with_customer' } });
+      } else {
+        expect(await drop(mf, orderId, `retype-${orderId}`, code)).toMatchObject({ kind: 'recorded', body: { status: 'deja_livree' } });
+      }
       const livreeOf = (x: Seen) => x.logistics.filter((p) => p.path === '/produce/course-livree').map((p) => p.raw);
       await vi.waitFor(() => {
         expect(half.kept === 'shop' ? livreeOf(seen) : seen.shop).toHaveLength(1);
