@@ -3,6 +3,47 @@ Continuity ledger per CTO charter §6/§6bis. Every entry is evidence-grounded.
 
 Format per entry:
 
+## 2026-11-26 · STOCKAGE-BORNÉ-1 — the dispatch object's stored state follows the work in flight, except the fleet log and the reschedule lineage · lane S1 · on the branch, NOT merged, NOT deployed
+
+**Lane.** S1 (Wave 1), built in its own lane session on `claude/project-thread-or8o4y`; seven commits (`23cbb56` `33062ca` `447b5c9` `c25c971` `f596e46` `b1ae264` `335c56f`) on `main` `69b52d1`, merged here `--no-ff` at `87e9b13`, lane shas kept. 7 files, all in `services/logistics-service`, all on the written claim.
+
+**Before.** The dispatch object keeps its working state in 18 stored values, each with a per-value size cap. Every closed course stayed in them for good (its assignment, task, lease history, codes, order facts and custody row), and every board or rider read that expired nothing still added a line. The values grew with the history until a save would be refused; a refused save then threw with memory already changed, so the board could show what was never stored. The fleet test pinned a paper date that has since passed (the red on `main`'s ci 212).
+
+**Now.**
+1. The fleet test's dates follow the test's own clock (a paper due in ten days, one passed two days ago).
+2. A sweep that expires nothing records nothing.
+3. A save the storage refuses answers `persist_failed` at every door, including the doors that save on their own; memory and the refused batch's records reload from storage.
+4. A size watch: any stored value whose upper-bound size (twice its JSON length in characters) passes 1 MiB leaves an alert, read at `GET /ops/stockage` behind the ops key. How the founder is told is not built.
+5. When custody's own wire closes a course (drop, two-key return, or a package's last article), everything held for it moves to one stored record per order, in the same save. Three pointers, written once when an assignment, task or second passage is created, find a record by a non-order id. Every replay door reads the record and answers as before. No door returns a stored code. Largest save: 29 keys (limit 128), never split.
+6. A custody call still in flight when its course closes no longer writes the course back: the custody read, the producer wire, the return-key arm, and the founder's return decision (which now answers 409 `no_active_course`).
+
+**Bounded, except two.** The hot values are bounded by the work in flight EXCEPT the fleet log (209 111 B after 2 000 courses, about 105 B per course: the alert fires near 10 000 courses, and near 20 000 every save is refused and courses stop closing) and the reschedule lineage (grows per reschedule). Both are a named follow-on slice that must land before real volume. Riders are not live yet.
+
+**Evidence (lane).** Real Worker under Miniflare, sizes read back from storage. 2 000 delivered courses + 31 000 reads: every working value ≤ 337 B except the fleet log; the next accept through the rider app's own port succeeds; one record per course. At 150 courses the book, lease, queue, outbox and projections values went from 186 318 / 237 989 / 71 947 / 34 696 / 28 185 B to 68 / 51 / 43 / 5 / 53 B. Replay pins green before and after the move, and on the code before it. Real custody Worker behind a holding binding for the in-flight cases: red before, green after, ten runs. Logistics 326/326, typecheck clean, recorded-answers certifier 198/198. Mutations (13), each anchor matched once, each red, each restored byte-identical.
+
+**Evidence (coordinator).** Re-run on `335c56f`: storage and fleet tests 29/29; three of the review-fix mutations re-run, each anchor matched once, red, restored byte-identical (the return-decision guard → 1 red; the old byte measure → 2 red; the `persist_failed` mapping → 1 red). **Board of record on `335c56f`:** `pnpm install --frozen-lockfile`, `pnpm build`, `run-gates.sh` (77 gates) — **ALL GATES GREEN**; logistics typecheck and tests ran fresh (326/326); custody 253, rider app 497, dispatch console 89, recorded-answers 198.
+
+**CI fix at integration (coordinator).** On the PR's first GitHub run the 600-read test (« a board or rider read that expires nothing stores nothing ») ran 5.6 s against vitest's 5 s default under the runner's parallel load, and passed in 3.3 s later in the same job. Reproduced red under CPU load here, green under the same load with the explicit `60_000` timeout the repository's real-Worker tests carry; assertions unchanged; every other test in the file stays at 1.4 s or less under that load. One commit on the designated branch; the lane branch stays at `335c56f`.
+
+**Approved changes of answer.** Retire on a delivered order answers `inconnu`. For a course created before deploy and closed after, a replay by its old assignment id answers 404 instead of 409 (also a task-ready replay answers 422 and a second-passage replay 409); only test courses exist before deploy. Delivered courses leave the founder's « confiée » list when they are delivered.
+
+**Verifier.** One fresh-context pass on `b1ae264`: 0 blocker · 0 major · 5 minor · 9 notes. Handled once in `335c56f`, not re-inspected: the return decision over a closed course; the size watch as an upper bound; `persist_failed` named in self-saving doors; the buffer clear on reload tested. **Not done, by the lane's reasoned disagreement, accepted:** taking the save buffer before the write. With it, a request resuming after another's refused close stores the move without its record (shown by test); the buffer stays with its memory until the reload. Recorded as follow-ons: the fleet log and lineage; values stored before deploy are not shrunk; ops-only raw doors answer differently for moved commands; two pre-existing reliability items in this object, each its own slice.
+
+**Open.** The follow-ons above · a bound on order fact sizes at intake (follow-on) · how the founder is told of a size alert.
+
+---
+
+## 2026-11-26 · Wave 0 MERGED on the founder's « go » (RÈGLES-UNIFIÉES-1)
+
+**Founder order (2026-11-26, 03:00 UTC).** « you can go » — on the Wave 0 report (RÈGLES-UNIFIÉES-1 in all five repositories; LOCK-LABELS-1 in Shop+, which also carried the 2026-10-02 journal commit `90e3653`).
+- **Order kept:** platform-contracts first — `main` `7459af0 → 17c2357` (fast-forward), **ci 164 green** — then the four apps, each `main` fast-forwarded to the commit the report named.
+- **This repository:** `main` `993e601 → 69b52d1` (fast-forward).
+- **expo-preview 157 green** (rider app re-published, unchanged code). **ci 212 red, only on the recorded baseline:** the fleet test `flotte.e2e.test.ts` (« declare a moto (replayed by id) … ») pins a paper's expiry to a date now past; it fails in the `tests` gate and again inside `reponses-enregistrees`, which runs the same e2e set. Every other gate green. The Séra lane's first slice fixes this test's clock.
+- **No deploy workflow was dispatched.** The change is docs and lock-file labels only; the publish runs that a push to `main` starts re-published unchanged code.
+- **This entry** is on the designated branch only; it reaches `main` with the next merge the founder approves.
+
+---
+
 ## 2026-11-26 · RÈGLES-UNIFIÉES-1 — CLAUDE.md and AGENTS.md identical in all five repositories, with the 2026-11-25 order · on the branch, NOT merged
 
 **Founder order (2026-11-25).** « I want it to act as a coordinator that will create 2-3 tasks agents that will be working safely and securely coordinating with each other for it to move faster. Make sure they are working safely and securely and always coordinating with other. »

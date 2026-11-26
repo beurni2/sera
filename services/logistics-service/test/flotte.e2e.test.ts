@@ -71,6 +71,13 @@ const T = '2026-09-18T09:00:00.000Z';
 const LOC = { zone: 'Zogona, Ouagadougou', landmark: "À l'échangeur", directions: 'Après le rond-point', maskedRelay: '' };
 const WIN = { start: T, end: '2026-09-18T16:00:00.000Z' };
 const RIDER = 'rider-flotte-1';
+// The papers' dates are written against the test's OWN clock — the Worker
+// judges them against its wall clock, so a fixed calendar date only ever
+// passes inside one 30-day window. One is due in ten days (« expire:
+// false »), the other passed two days ago (« expire: true »).
+const JOUR = 86_400_000;
+const ASSURANCE = new Date(Date.now() + 10 * JOUR).toISOString();
+const VISITE = new Date(Date.now() - 2 * JOUR).toISOString();
 const overhead = Object.fromEntries(FLEET_OVERHEAD_ITEMS.map((k) => [k, 10_000]));
 const H = { riderCostPerShiftFcfa: 8_000, deliveriesPerShift: 8, electricityPerDeliveryFcfa: 100, failedAttemptRate: 0.2, monthlyFleetOverheadFcfa: overhead, monthlyDispatchOverheadFcfa: 60_000, monthlyDeliveries: 600 };
 
@@ -98,7 +105,8 @@ describe('FLOTTE-1 — the fleet book, the shift record and the delivery count o
     expect((await ops('/ops/flotte/moto', { command_id: 'fl-m-bad', label: '', fleetTranche: 1 })).status).toBe(400);
     expect((await ops('/ops/flotte/moto', { command_id: 'fl-m-nope', vehicleId: 'nope', label: 'X', fleetTranche: 1 })).status).toBe(404);
 
-    expect((await ops('/ops/flotte/moto/entree', { command_id: 'fl-e1', vehicleId, kind: 'document', doc: { kind: 'assurance', expiresAt: '2026-10-01T00:00:00.000Z' } })).status).toBe(200);
+    expect((await ops('/ops/flotte/moto/entree', { command_id: 'fl-e1', vehicleId, kind: 'document', doc: { kind: 'assurance', expiresAt: ASSURANCE } })).status).toBe(200);
+    expect((await ops('/ops/flotte/moto/entree', { command_id: 'fl-e1b', vehicleId, kind: 'document', doc: { kind: 'visite_technique', expiresAt: VISITE } })).status).toBe(200);
     expect((await ops('/ops/flotte/moto/entree', { command_id: 'fl-e2', vehicleId, kind: 'maintenance', note: 'plaquettes', costFcfa: 12_000, odometerKm: 1_350 })).status).toBe(200);
     expect((await ops('/ops/flotte/moto/entree', { command_id: 'fl-e3', vehicleId, kind: 'energie', kwh: 2.4, costFcfa: 300 })).status).toBe(200);
     expect(await ops('/ops/flotte/moto/entree', { command_id: 'fl-e4', vehicleId, kind: 'compteur', odometerKm: 1_300 })).toMatchObject({ status: 409, json: { reason: 'odometer_goes_backwards' } });
@@ -112,9 +120,12 @@ describe('FLOTTE-1 — the fleet book, the shift record and the delivery count o
     expect(confiee.json).toMatchObject({ ok: true, status: 'confiee', moto: { checkedOutBy: RIDER } });
 
     const f = (await ops('/ops/flotte')).json;
-    expect((f['motos'] as Json[])[0]).toMatchObject({ vehicleId, odometerKm: 1_350, docs: [{ kind: 'assurance', expiresAt: '2026-10-01T00:00:00.000Z' }], checkedOutBy: RIDER });
-    expect((f['entries'] as Json[]).map((e) => e['kind'])).toEqual(['energie', 'maintenance', 'document']);
-    expect(f['documentsDus']).toEqual([{ vehicleId, label: 'Moto A', kind: 'assurance', expiresAt: '2026-10-01T00:00:00.000Z', expire: false }]);
+    expect((f['motos'] as Json[])[0]).toMatchObject({ vehicleId, odometerKm: 1_350, docs: [{ kind: 'assurance', expiresAt: ASSURANCE }, { kind: 'visite_technique', expiresAt: VISITE }], checkedOutBy: RIDER });
+    expect((f['entries'] as Json[]).map((e) => e['kind'])).toEqual(['energie', 'maintenance', 'document', 'document']);
+    expect(f['documentsDus']).toEqual([
+      { vehicleId, label: 'Moto A', kind: 'visite_technique', expiresAt: VISITE, expire: true },
+      { vehicleId, label: 'Moto A', kind: 'assurance', expiresAt: ASSURANCE, expire: false },
+    ]);
   });
 
   it('the rider’s own start act opens the shift record on his moto; custody’s wire counts the delivery on it, once; his end act closes the record; the yardstick reads deliveries/moto/day', async () => {
