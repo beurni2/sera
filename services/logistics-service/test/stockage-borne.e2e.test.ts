@@ -245,7 +245,8 @@ describe('dispatch storage stays bounded by active work, on the real Worker', ()
     }
     await neutre();
     expect(snapSizes(dir)).toEqual(avant);
-  });
+    // 600 reads through the real Worker: ~1-3 s alone, past vitest's 5 s default under a CI runner's parallel load.
+  }, 60_000);
 
   it(`after ${COURSES} delivered courses and ${LECTURES} reads, every stored snapshot stays under 1 MiB and does not grow with the history; the next « Accepter » succeeds; the history is kept per order`, async () => {
     const { mf, dir } = spawn();
