@@ -291,6 +291,11 @@ export function decideLease(state: LeaseAuthorityState, cmd: LeaseCommand): Leas
         expired.push(gone);
         return gone;
       });
+      // Every board and rider read sweeps, each with a fresh instant: a sweep
+      // that expired nothing must leave the state untouched, or the one stored
+      // lease value grows on every read. Its retry re-evaluates to the same
+      // empty result, so there is nothing a dedupe entry would protect.
+      if (expired.length === 0) return { ok: true, state, expired, idempotentReplay: false };
       const next: LeaseAuthorityState = {
         leases,
         versions: state.versions,
