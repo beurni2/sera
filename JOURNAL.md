@@ -3,6 +3,16 @@ Continuity ledger per CTO charter §6/§6bis. Every entry is evidence-grounded.
 
 Format per entry:
 
+## 2026-11-26 · DEPLOY-TOOL-PIN-1 MERGED on the founder's approval (PR #2)
+
+**Founder.** « Merge all three, deploy shop » (2026-11-26 07:15 UTC, decision card after the report of Shop+ PR #2, Séra PR #2 and platform PR #2).
+- **Merged:** `main` re-checked unchanged at `24e4d8e` just before; merged as `a6d2fc3` (merge commit, the branch shas kept). PR gates green on `8c45080`.
+- **On `main`:** ci 217 green · expo-preview 159 green (the rider app republished with no app change).
+- **Nothing deployed:** the merge changes no live Worker. The next custody or logistics deploy must print wrangler 4.130.0 from the lock file.
+- **Still open, named:** the remaining items written in the entry below.
+
+---
+
 ## 2026-11-26 · DEPLOY-TOOL-PIN-1 — deploys run the lock file's wrangler 4.130.0 · on the branch, NOT merged, NOT deployed
 
 **Founder ruling (2026-11-26 03:05 UTC, « agree with all of them »).** Pin Cloudflare's deploy tool in Séra and platform at the version Shop+ and Boutik+ already deploy with (4.130.0).
