@@ -348,10 +348,13 @@ describe('the buyer\'s code locks after five wrong tries, and the founder unlock
     expect(busy.revivals, 'the revivals keep their own cap of 20').toBe(20);
     expect(busy.total, 'never more than 30 custody calls per board read').toBeLessThanOrEqual(30);
     expect(busy.lockReads.length, 'the lock reads take what the revivals left').toBe(30 - busy.revivals);
-    expect(busy.lockReads, 'in board order').toEqual(allIds.slice(0, busy.lockReads.length));
+    // The reads go out together, so they reach custody in any order: what the
+    // budget decides is WHICH articles are read (the first ones in board
+    // order), and the list it gives back is in board order.
+    expect([...busy.lockReads].sort(), 'the first articles in board order are the ones read').toEqual(allIds.slice(0, busy.lockReads.length).sort());
     expect(busy.answer.kind === 'ok' && busy.answer.value.partiel, 'the cut is said').toBe(true);
     if (busy.answer.kind !== 'ok') return;
-    expect(busy.answer.value.rows.flatMap((r) => r.orderIds), 'only what was read is listed').toEqual(busy.lockReads);
+    expect(busy.answer.value.rows.flatMap((r) => r.orderIds), 'only what was read is listed, in board order').toEqual(allIds.slice(0, busy.lockReads.length));
 
     // The other twenty are revived on the next read, inside the minute.
     const busyAgain = await oneRead();
@@ -364,10 +367,10 @@ describe('the buyer\'s code locks after five wrong tries, and the founder unlock
     const quiet = await oneRead();
     expect(quiet.revivals).toBe(0);
     expect(quiet.total).toBe(30);
-    expect(quiet.lockReads).toEqual(allIds.slice(0, 30));
+    expect([...quiet.lockReads].sort()).toEqual(allIds.slice(0, 30).sort());
     expect(quiet.answer.kind === 'ok' && quiet.answer.value.partiel, 'the cap is said').toBe(true);
     if (quiet.answer.kind !== 'ok') return;
-    expect(quiet.answer.value.rows.flatMap((r) => r.orderIds)).toEqual(quiet.lockReads);
+    expect(quiet.answer.value.rows.flatMap((r) => r.orderIds)).toEqual(allIds.slice(0, 30));
 
     // One read failing, under the budget: the list is partial too.
     await ops(logistics, '/ops/order/retirer', { command_id: 'cap-r3', orderId: 'ord-cap-3-0', colisEntier: true });
