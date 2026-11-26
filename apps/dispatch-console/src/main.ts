@@ -2053,8 +2053,6 @@ if (app) {
     reprogSection.appendChild(relire);
   }
 
-  renderReprog();
-
   /**
    * ═══ THE BUYER'S CODE LOCKED AFTER FIVE WRONG TRIES — « Débloquer le code » ═══
    *
