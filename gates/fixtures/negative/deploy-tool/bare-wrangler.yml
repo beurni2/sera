@@ -1,0 +1,15 @@
+# Negative fixture: whatever wrangler happens to be on the runner's PATH.
+name: deploy
+permissions:
+  contents: read
+on: workflow_dispatch
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy
+        working-directory: services/custody-service
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          wrangler deploy

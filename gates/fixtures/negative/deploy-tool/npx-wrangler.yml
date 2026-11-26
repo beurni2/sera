@@ -1,0 +1,14 @@
+# Negative fixture: the deploy tool fetched from the registry at deploy time.
+name: deploy
+permissions:
+  contents: read
+on: workflow_dispatch
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy
+        working-directory: services/custody-service
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx --yes wrangler@4 deploy
