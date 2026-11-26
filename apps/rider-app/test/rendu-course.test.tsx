@@ -282,6 +282,91 @@ describe('⚠ ROUTE-DIRECTE — the seal fires itself, and the road opens', () =
   });
 });
 
+/**
+ * ═══ THE BUYER'S CODE LOCKS AFTER FIVE WRONG TRIES ═══
+ *
+ * The drop fake below is NO KINDER THAN THE WORKER (custody-do.ts, the drop
+ * route): a true duplicate (same command id, same content) replays and adds
+ * nothing; every FRESH wrong code is one strike; the FIFTH strike answers
+ * `drop_code_locked`; while locked, every fresh try — the right code too —
+ * answers `drop_code_locked`; it NEVER unlocks by itself — only the test's
+ * `founderUnlocks()` (the founder's console act) resets the strikes.
+ */
+function lockingDrop(right: string) {
+  const seen = new Map<string, { status: number; json: Record<string, unknown> }>();
+  let strikes = 0;
+  let delivered = false;
+  const route: Route = (path, body) => {
+    if (path !== '/rider/delivery/drop') return null;
+    const id = String(body?.['command_id'] ?? '');
+    const prior = seen.get(id);
+    if (prior) return { status: prior.status, json: { ...prior.json, duplicate: true } };
+    let answer: { status: number; json: Record<string, unknown> };
+    if (delivered) answer = { status: 200, json: { ok: true, status: 'deja_livree' } };
+    else if (strikes >= 5) return { status: 409, json: { ok: false, reason: 'drop_code_locked' } };
+    else if (body?.['dropCode'] === right) {
+      delivered = true;
+      answer = { status: 200, json: { ok: true, status: 'custody_with_customer' } };
+    } else {
+      strikes += 1;
+      answer = { status: 409, json: { ok: false, reason: strikes === 5 ? 'drop_code_locked' : 'drop_code_refused' } };
+    }
+    seen.set(id, answer);
+    return answer;
+  };
+  return { route, founderUnlocks: () => { strikes = 0; } };
+}
+
+describe('the buyer\'s code locks after five wrong tries — the door, driven', () => {
+  it('four wrong codes say so; the fifth says the code is locked; the screen survives and both ways out stay pressable; after the founder unlocks, the right code delivers under a FRESH command id', async () => {
+    const state = freshCourse();
+    state.ramassageConfirmeAt = '2026-08-10T10:00:00.000Z';
+    state.codeVerification = PICKUP;
+    state.codeScelle = SEAL;
+    const lock = lockingDrop(DROP);
+    const { s, w } = await signedIn([logistics(state), lock.route, custody()]);
+    await s.press('Accepter la course');
+    await s.press('Oui', 2);
+    await s.press('Oui', 1);
+    await s.press('Oui', 0);
+    await s.press('Envoyer la vérification');
+    await s.press('En route');
+    await s.press('Je suis arrivé');
+    expect(s.shows('Le code de la cliente'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+
+    for (let i = 1; i <= 4; i += 1) {
+      await s.type(`FAUX-${i}`);
+      await s.press('Confirmer la remise');
+      expect(s.shows('Ce n\'est pas le bon code.'), `wrong try ${i}: ${JSON.stringify(s.texts())}`).toBe(true);
+    }
+    await s.type('FAUX-5');
+    await s.press('Confirmer la remise');
+    expect(s.shows('Le code est bloqué.'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    expect(s.shows('Cinq mauvais codes ont été tapés. Gardez le colis et appelez Séra.')).toBe(true);
+    expect(s.shows('Ce n\'est pas le bon code.'), 'the lock is not told as a wrong code').toBe(false);
+    expect(s.canPress('Confirmer la remise'), 'the send stays reachable').toBe(true);
+    expect(s.canPress('Un souci ?'), 'the way out stays reachable').toBe(true);
+
+    // Locked: the right code is still refused by the same sentence.
+    await s.type(DROP);
+    await s.press('Confirmer la remise');
+    expect(s.shows('Le code est bloqué.')).toBe(true);
+
+    lock.founderUnlocks();
+    await s.type(DROP);
+    await s.press('Confirmer la remise');
+    expect(s.shows('Livré. Merci.'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+
+    // Every send after the lock carried its OWN command id: a held id would
+    // have replayed the locked answer for ever.
+    const drops = w.calls.filter((c) => c.path === '/rider/delivery/drop').map((c) => String(c.body?.['command_id']));
+    const afterLock = drops.slice(4);
+    expect(afterLock.length).toBeGreaterThanOrEqual(3);
+    expect(new Set(afterLock).size, `ids after the lock: ${JSON.stringify(afterLock)}`).toBe(afterLock.length);
+    s.unmount();
+  });
+});
+
 describe('⚠ PORTE-SANS-PHOTO — arrival goes straight to the buyer’s code', () => {
   async function toTheDoor(routes: readonly Route[], state: CourseState) {
     state.ramassageConfirmeAt = '2026-08-10T10:00:00.000Z';

@@ -1,4 +1,4 @@
-import { boardCourses, type CourseRow } from './courses';
+import { boardCourses, codesBloquesRows, type CodesBloques, type CourseRow } from './courses';
 import { aReprogrammerRows, enDeuxiemePassageRows, type DeuxiemePassageRow, type ReprogRow } from './reprogrammation';
 import { logisticsBase, type OpsAnswer } from './rider-codes-port';
 
@@ -66,6 +66,12 @@ export interface CoursesPort {
    * (`reponse_sans_statut`), the desk's own law.
    */
   autoriserFinDeService(riderId: string, nextOwner: NextOwner, commandId: string): Promise<OpsAnswer<{ readonly status: string; readonly packageIds: readonly string[] }>>;
+  /** The live courses whose buyer's code locked after five wrong tries, off
+   *  the same board read, and whether that list may be partial. */
+  codesBloques(): Promise<OpsAnswer<CodesBloques>>;
+  /** Unlock the buyer's code on every article of the order's live course.
+   *  A 200 that names neither status is reported as a refusal. */
+  debloquer(orderId: string, commandId: string): Promise<OpsAnswer<{ readonly status: 'debloque' | 'pas_bloque' }>>;
 }
 
 const TIMEOUT_MS = 15_000;
@@ -117,6 +123,17 @@ export function renvoiCommandId(orderId: string): string {
  *  on the desk and reused on a retry (the door replays by id). */
 export function finServiceCommandId(riderId: string): string {
   return `cmd-console-fin-service-${riderId}-${crypto.randomUUID()}`;
+}
+
+/** The unlock's id, minted ONCE per attempt on the desk and reused on a
+ *  retry: every article already unlocked replays its answer by it. */
+export function remiseCommandId(orderId: string): string {
+  return `cmd-console-debloque-${orderId}-${crypto.randomUUID()}`;
+}
+
+function remiseStatusOf(body: unknown): { readonly status: 'debloque' | 'pas_bloque' } | null {
+  const status = body !== null && typeof body === 'object' ? (body as Record<string, unknown>)['status'] : null;
+  return status === 'debloque' || status === 'pas_bloque' ? { status } : null;
 }
 
 function decideAtOf(body: unknown): { decideAt: string } | null {
@@ -213,6 +230,17 @@ export function httpCourses(
       if (answer.value === null) return { kind: 'refused', reason: 'reponse_sans_statut' };
       return { kind: 'ok', value: answer.value };
     },
+    codesBloques: () => call('/ops/board', { method: 'GET' }, codesBloquesRows),
+    async debloquer(orderId: string, commandId: string): Promise<OpsAnswer<{ readonly status: 'debloque' | 'pas_bloque' }>> {
+      const answer = await call(
+        '/ops/remise/debloquer',
+        { method: 'POST', body: JSON.stringify({ command_id: commandId, orderId }) },
+        remiseStatusOf,
+      );
+      if (answer.kind !== 'ok') return answer;
+      if (answer.value === null) return { kind: 'refused', reason: 'reponse_sans_statut' };
+      return { kind: 'ok', value: answer.value };
+    },
   };
 }
 
@@ -228,7 +256,10 @@ function finDeServiceOf(body: unknown): { readonly status: string; readonly pack
  *  that reads as « nothing to retire ». */
 export function unwiredCourses(): CoursesPort {
   const no = async (): Promise<OpsAnswer<never>> => ({ kind: 'unreachable' });
-  return { board: no, retirer: no, reprogrammations: no, reprogrammer: no, deuxiemesPassages: no, renvoyer: no, manifestes: no, autoriserFinDeService: no };
+  return {
+    board: no, retirer: no, reprogrammations: no, reprogrammer: no, deuxiemesPassages: no, renvoyer: no, manifestes: no, autoriserFinDeService: no,
+    codesBloques: no, debloquer: no,
+  };
 }
 
 export function resolveCourses(opsKey: string, base: string = logisticsBase()): CoursesPort {

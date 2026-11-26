@@ -54,8 +54,18 @@ import {
   terminer,
   type CoursesRead,
   type RetraitUi,
+  REMISE_IDLE,
+  annulerRemise,
+  commencerRemise,
+  demanderRemise,
+  remiseEchouee,
+  remiseFaite,
+  remiseRefusKey,
+  remiseView,
+  type RemiseRead,
+  type RemiseUi,
 } from './courses';
-import { finServiceCommandId, renvoiCommandId, reprogCommandId, resolveCourses } from './courses-port';
+import { finServiceCommandId, remiseCommandId, renvoiCommandId, reprogCommandId, resolveCourses } from './courses-port';
 import {
   FIN_SERVICE_IDLE,
   annulerFin,
@@ -1225,6 +1235,8 @@ if (app) {
         void refreshCourses();
         // REPROGRAMMATION-1 — and the next-passage desk, on the same key.
         void refreshReprog();
+        // And the locked buyer's codes desk.
+        void refreshRemise();
         // MANIFESTE-1 — and the riders' manifests.
         void refreshManifestes();
         // FLOTTE-1 — and the fleet book.
@@ -2041,6 +2053,147 @@ if (app) {
     reprogSection.appendChild(relire);
   }
 
+  /**
+   * ═══ THE BUYER'S CODE LOCKED AFTER FIVE WRONG TRIES — « Débloquer le code » ═══
+   *
+   * Founder ruling (2026-11-26): « drop code locks after 5 tries (console
+   * unlock) ». Live work, so it sits with the next-passage desk. The rider
+   * keeps the parcel; the founder calls the buyer and the rider, then
+   * unlocks: ASK → CONFIRM → ONE SEND → RESULT, and the row leaves only on the
+   * board's own re-read. The code itself never reaches this screen.
+   */
+  const remiseHeading = document.createElement('h2');
+  remiseHeading.textContent = t('remise.section');
+  const remiseSection = document.createElement('section');
+  remiseSection.className = 'remise-desk';
+  let remiseRead: RemiseRead = { kind: 'loading' };
+  let remise: RemiseUi = REMISE_IDLE;
+
+  async function refreshRemise(): Promise<void> {
+    if (opsKey === null) {
+      renderRemise();
+      return;
+    }
+    remiseRead = { kind: 'loading' };
+    renderRemise();
+    const answer = await coursesPort().codesBloques();
+    remiseRead = answer.kind === 'ok' ? { kind: 'ok', value: answer.value } : answer.kind === 'bad_key' ? { kind: 'bad_key' } : { kind: 'failed' };
+    renderRemise();
+  }
+
+  async function debloquerCode(assignmentId: string, orderId: string): Promise<void> {
+    const started = commencerRemise(remise, assignmentId, () => remiseCommandId(orderId));
+    if (started === null) return;
+    remise = started.ui;
+    renderRemise();
+    const answer = await coursesPort().debloquer(orderId, started.commandId);
+    if (answer.kind === 'bad_key') {
+      remise = remiseEchouee(remise, assignmentId, 'codes.cle_refusee');
+      remiseRead = { kind: 'bad_key' };
+      renderRemise();
+      return;
+    }
+    if (answer.kind === 'ok') {
+      remise = remiseFaite(remise, assignmentId);
+      renderRemise();
+      await refreshRemise();
+      return;
+    }
+    remise = remiseEchouee(remise, assignmentId, remiseRefusKey(answer.kind === 'refused' ? answer.reason : 'unreachable'));
+    renderRemise();
+  }
+
+  function renderRemise(): void {
+    remiseSection.replaceChildren();
+    if (logisticsBase() === '') {
+      remiseSection.append(line('remise-state', t('codes.pas_relie')), line('remise-hint', t('reprog.pas_relie_aide')));
+      return;
+    }
+    if (opsKey === null) {
+      remiseSection.appendChild(line('remise-state', t('reprog.cle_dabord')));
+      return;
+    }
+    if (remiseRead.kind === 'bad_key') {
+      remiseSection.append(line('remise-state', t('codes.cle_refusee')), line('remise-hint', t('codes.cle_refusee_aide')));
+      return;
+    }
+    remiseSection.append(line('remise-hint', t('remise.intro')), line('remise-hint', t('remise.avant')));
+    if (Object.keys(remise.faits).length > 0) remiseSection.appendChild(line('remise-fait', t('remise.fait')));
+
+    const view = remiseView(remiseRead);
+    if (view === null) return;
+    if (view.kind === 'loading' || view.kind === 'failed') {
+      remiseSection.appendChild(line('remise-state', t(view.message)));
+      if (view.kind === 'failed') remiseSection.appendChild(line('remise-hint', t(view.aide)));
+    } else {
+      if (view.kind === 'empty') remiseSection.appendChild(line('remise-state', t(view.message)));
+      else {
+        for (const course of view.rows) {
+          const row = document.createElement('div');
+          row.className = 'remise-row';
+          row.append(
+            line('remise-row-rider', course.riderName),
+            line('remise-row-orders', course.orderIds.join(' · ')),
+          );
+          if (course.depuis !== '') {
+            const depuis = new Date(course.depuis);
+            row.appendChild(line('remise-row-depuis', `${t('remise.depuis')} ${depuis.toLocaleDateString([], { day: 'numeric', month: 'short' })} ${hhmm(course.depuis)}`));
+          }
+          const orderId = course.orderIds[0]!;
+          if (remise.demande === course.assignmentId) {
+            const card = document.createElement('div');
+            card.className = 'remise-card';
+            card.append(line('remise-titre', t('remise.confirmer_question')), line('remise-ligne', t('remise.confirmer_aide')));
+            const oui = document.createElement('button');
+            oui.className = 'remise-confirmer';
+            oui.textContent = t('remise.confirmer');
+            oui.disabled = remise.enVol !== null;
+            oui.addEventListener('click', () => {
+              void debloquerCode(course.assignmentId, orderId);
+            });
+            const non = document.createElement('button');
+            non.className = 'remise-annuler';
+            non.textContent = t('remise.annuler');
+            non.addEventListener('click', () => {
+              remise = annulerRemise(remise);
+              renderRemise();
+            });
+            card.append(oui, non);
+            row.appendChild(card);
+          } else {
+            const lever = document.createElement('button');
+            lever.className = 'remise-debloquer';
+            lever.textContent = t(remise.enVol === course.assignmentId ? 'remise.en_cours' : 'remise.debloquer');
+            lever.disabled = remise.enVol !== null;
+            lever.addEventListener('click', () => {
+              remise = demanderRemise(remise, course.assignmentId);
+              renderRemise();
+            });
+            row.appendChild(lever);
+            const echec = remise.echecs[course.assignmentId];
+            if (echec !== undefined) {
+              const notice = document.createElement('div');
+              notice.className = 'remise-notice';
+              notice.append(line('remise-notice-titre', t(echec)), line('remise-notice-aide', t('remise.refus_aide')));
+              row.appendChild(notice);
+            }
+          }
+          remiseSection.appendChild(row);
+        }
+      }
+      if (view.partiel) remiseSection.append(line('remise-state', t('remise.partiel')), line('remise-hint', t('remise.partiel_aide')));
+    }
+    const relire = document.createElement('button');
+    relire.className = 'remise-relire';
+    relire.textContent = t('reprog.relire');
+    relire.disabled = remise.enVol !== null;
+    relire.addEventListener('click', () => {
+      void refreshRemise();
+    });
+    remiseSection.appendChild(relire);
+  }
+
+  renderRemise();
   renderReprog();
   /**
    * THE NEXT-PASSAGE DESK IS LIVE WORK AND SITS ABOVE THE TWO ADMINISTRATIVE
@@ -2439,7 +2592,7 @@ if (app) {
   // MANIFESTE-1 — the riders' live state sits above the next-passage desk;
   // FLOTTE-1 — the fleet desk is administrative and sits with the courses
   // and codes desks (the codes desk stays LAST).
-  main.append(manifesteHeading, manifesteSection, reprogHeading, reprogSection, coursesHeading, coursesSection, flotteHeading, flotteSection, codesHeading, codesSection);
+  main.append(manifesteHeading, manifesteSection, reprogHeading, reprogSection, remiseHeading, remiseSection, coursesHeading, coursesSection, flotteHeading, flotteSection, codesHeading, codesSection);
 
   // The REAL service-side deadline, ONE sweep for BOTH stores (WO-4.3).
   setInterval(() => {

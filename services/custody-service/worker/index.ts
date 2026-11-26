@@ -211,7 +211,12 @@ const RIDER_ROUTES: ReadonlySet<string> = new Set([
 // arms a secret, reads a record, or moves custody.
 // MANIFESTE-1 — `GET /custodian` is logistics' read of the ledger's current
 // custodian (SE3.2 end-shift, SE3.1 manifest): a read, on the same key.
-const PRODUCE_ROUTES: ReadonlySet<string> = new Set(['POST /order/open', 'POST /secrets/arm', 'POST /return/apply', 'POST /wires/reviver', 'GET /custodian']);
+// The buyer's code lock: logistics reads it for the founder's board and
+// relays his console unlock. Never a rider's act, never Shop+'s.
+const PRODUCE_ROUTES: ReadonlySet<string> = new Set([
+  'POST /order/open', 'POST /secrets/arm', 'POST /return/apply', 'POST /wires/reviver', 'GET /custodian',
+  'GET /drop-code/lock', 'POST /drop-code/unlock',
+]);
 // COLIS-FOURNISSEUR-1 — a third act: Shop+ declares a package's door
 // collection reference to each article's file before the charge. It carries
 // no money and pays nothing; the provider's confirmation still must name it.
