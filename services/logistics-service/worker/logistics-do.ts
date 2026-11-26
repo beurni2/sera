@@ -1061,7 +1061,19 @@ export class LogisticsDO {
       this.loaded = false;
       return Response.json({ ok: false, reason: 'internal_error' }, { status: 500 });
     }
-    if (request.method !== 'GET') await this.persist();
+    if (request.method !== 'GET') {
+      try {
+        await this.persist();
+      } catch {
+        // The storage refused the write: memory now holds a change that was
+        // never stored. Serving it would split what riders and the board see
+        // from what survives the next eviction, and every later write would
+        // re-send the same refused value — so the change is dropped, the
+        // next request reloads from storage, and this one fails by name.
+        this.loaded = false;
+        return Response.json({ ok: false, reason: 'persist_failed' }, { status: 500 });
+      }
+    }
     return response;
   }
 

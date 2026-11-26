@@ -167,4 +167,22 @@ describe('dispatch storage stays bounded by active work, on the real Worker', ()
     await neutre();
     expect(snapSizes(dir)).toEqual(avant);
   });
+
+  it('a save the storage refuses fails by name, and the object then serves only what was stored', async () => {
+    const { mf, dir } = spawn();
+    const d = doors(mf);
+    await riderEnService(d, 'rider-avant');
+    // The founder's own door, a name far past what one stored value can hold.
+    const refuse = await d.ops('/ops/riders', { riderId: 'rider-trop-grand', displayName: 'x'.repeat(2_400_000), phoneAlias: 'tg' });
+    expect(refuse).toEqual({ status: 500, json: { ok: false, reason: 'persist_failed' } });
+    // Memory was reloaded from storage: the board knows only stored riders…
+    const board = JSON.stringify((await d.ops('/ops/board')).json);
+    expect(board).toContain('rider-avant');
+    expect(board).not.toContain('rider-trop-grand');
+    // …and the next write is stored.
+    expect((await d.ops('/ops/riders', { riderId: 'rider-apres', displayName: 'Après', phoneAlias: 'ap' })).status).toBe(200);
+    const registre = JSON.stringify(lu(dir, 'snap:registry:v1'));
+    expect(registre).toContain('rider-apres');
+    expect(registre).not.toContain('rider-trop-grand');
+  });
 });
