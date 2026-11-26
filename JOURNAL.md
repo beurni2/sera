@@ -3,6 +3,17 @@ Continuity ledger per CTO charter §6/§6bis. Every entry is evidence-grounded.
 
 Format per entry:
 
+## 2026-11-26 · Wave 0 MERGED on the founder's « go » (RÈGLES-UNIFIÉES-1)
+
+**Founder order (2026-11-26, 03:00 UTC).** « you can go » — on the Wave 0 report (RÈGLES-UNIFIÉES-1 in all five repositories; LOCK-LABELS-1 in Shop+, which also carried the 2026-10-02 journal commit `90e3653`).
+- **Order kept:** platform-contracts first — `main` `7459af0 → 17c2357` (fast-forward), **ci 164 green** — then the four apps, each `main` fast-forwarded to the commit the report named.
+- **This repository:** `main` `993e601 → 69b52d1` (fast-forward).
+- **expo-preview 157 green** (rider app re-published, unchanged code). **ci 212 red, only on the recorded baseline:** the fleet test `flotte.e2e.test.ts` (« declare a moto (replayed by id) … ») pins a paper's expiry to a date now past; it fails in the `tests` gate and again inside `reponses-enregistrees`, which runs the same e2e set. Every other gate green. The Séra lane's first slice fixes this test's clock.
+- **No deploy workflow was dispatched.** The change is docs and lock-file labels only; the publish runs that a push to `main` starts re-published unchanged code.
+- **This entry** is on the designated branch only; it reaches `main` with the next merge the founder approves.
+
+---
+
 ## 2026-11-26 · RÈGLES-UNIFIÉES-1 — CLAUDE.md and AGENTS.md identical in all five repositories, with the 2026-11-25 order · on the branch, NOT merged
 
 **Founder order (2026-11-25).** « I want it to act as a coordinator that will create 2-3 tasks agents that will be working safely and securely coordinating with each other for it to move faster. Make sure they are working safely and securely and always coordinating with other. »
