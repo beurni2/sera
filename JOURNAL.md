@@ -3,6 +3,36 @@ Continuity ledger per CTO charter §6/§6bis. Every entry is evidence-grounded.
 
 Format per entry:
 
+## 2026-11-26 · DEPLOY-TOOL-PIN-1 — deploys run the lock file's wrangler 4.130.0 · on the branch, NOT merged, NOT deployed
+
+**Founder ruling (2026-11-26 03:05 UTC, « agree with all of them »).** Pin Cloudflare's deploy tool in Séra and platform at the version Shop+ and Boutik+ already deploy with (4.130.0).
+
+**What changed.** Built by the coordinator in its own worktree (`4b8a0a6`, then the review fixes `b891c7e`), merged here `--no-ff`.
+- `services/custody-service/package.json` and `services/logistics-service/package.json`: `"wrangler": "4.130.0"` (devDependency). `pnpm-lock.yaml`: +449 lines, additive only (0 removed, no existing resolution moved); the added packages carry the same integrity as Shop+'s lock.
+- `custody-deploy.yml` and `logistics-deploy.yml`: `npx --yes wrangler@4` became `pnpm exec wrangler` (16 commands). No argument, stdin pipe, condition or step order changed. Every deploy job runs `pnpm install --frozen-lockfile` first.
+- New gate `scripts/gates/deploy-tool-pinned.mjs` (byte-identical in platform). Over the workflow files it refuses: any line that runs wrangler through a download runner (npx, pnpx, bunx, pnpm dlx, yarn dlx, npm exec/x) wherever it sits on the line; installing wrangler outside the lock file; any wrangler command (a known subcommand, a flag, or a line continuation after it) not run as `pnpm exec wrangler` or a lock-file binary; a wrangler action. Only whole-line comments are skipped. Over the manifests: a range, two packages pinned differently, workflows that call wrangler while no package declares it. Exit 2 when it sees no wrangler command at all. 14 negative fixtures under `gates/fixtures/negative/deploy-tool/` plus the positive and the nothing-seen case on `run-gates.sh`.
+
+**Evidence.** Gate on main's two deploy workflows: 16 violations, exit 1. On the branch: 16 commands, all from the lock file, exit 0. It also reads Shop+'s and Boutik+'s workflows clean (no false refusal on the forms in use). New rules mutation-tested on a scratch copy (anchor matched once): each turned its fixture to exit 0 or 2, except narrowing the download rule alone, which stays at exit 1 because the lock-file rule also refuses those lines. Board of record (`TURBO_CONCURRENCY=1 bash scripts/run-gates.sh` on `b891c7e`): ALL GATES GREEN — custody-service 253, logistics-service 326, rider-app 497, dispatch-console 89; 57 negative fixtures failed with exit 1 and the 2 nothing-seen cases with exit 2. All four workflow files parse as YAML.
+
+**A board fragility seen here (not this slice's, named).** In a fresh worktree under `TURBO_CONCURRENCY=1`, logistics' e2e suites can run before custody's own `pretest` writes `services/custody-service/dist-worker/worker.mjs`, which they read; the first board then stops on ENOENT. This slice made it visible only by invalidating both services' test cache. The board above ran with the bundle present. A follow-on should make logistics' tests depend on that bundle explicitly.
+
+**Verifier.** One fresh-context pass over both repos, handled once: 1 blocker (platform's console deploy file no longer parsed; fixed there), 0 major, 3 minor (npx inside quotes or backticks counted as a lock-file call; download runners caught only before a listed subcommand; the comment strip cut at a « # » inside a string; all fixed), 4 notes (two refusals had no fixture, now have; installing outside the lock file now refused; still open: a `…/node_modules/.bin/` path is not checked against a package that declares wrangler, and the step's working directory is not checked to resolve the binary; both resolve to 4.130.0 today, checked by hand). Not re-inspected.
+
+**Release.** A merge changes no live Worker; the rider app republishes with no app change. The next custody or logistics deploy must print wrangler 4.130.0, which is why this should merge before the next Séra Worker deploy.
+
+**Still open (not in this slice).** Pinning GitHub actions to commit SHAs; `permissions:` blocks on the deploy jobs; the scoped contracts read grant; the rider-app publish tool taken from the lock file too (a new dependency: founder's yes first); the `production` environment on deploy jobs (HELD); deploying only from `main`.
+
+## 2026-11-26 · STOCKAGE-BORNÉ-1 DEPLOYED, then MERGED on the founder's approval (PR #1)
+
+**Founder order (2026-11-26 05:22 UTC).** « Go on all three », on the decision card after the report of Boutik+ PR #2, Séra PR #1 and Shop+ PR #1.
+- **What would ship, checked first:** the last logistics deploy was `9a77bba` (2026-09-27). Between it and `main`, nothing in the logistics Worker's code or its runtime packages changed (tests, a dev dependency and an i18n repin the Worker does not import), so the deploy shipped this slice only.
+- **Deployed first, from the branch:** logistics-deploy 36 green on `756ace8`: « PROVENANCE OK — live logistics Worker is 756ace843d09831aa0bd607504f570005973c6ae speaking canon 3.21.0. » No migration, no `wrangler.toml` change.
+- **Then merged:** `main` had not moved (`69b52d1`). Merged as `24e4d8e` (merge commit; the lane shas, the CI timeout fix `b29cd7f` and the journals kept). PR gates green on `756ace8`.
+- **On `main`:** ci 215 green (the fleet date red is gone) · expo-preview 158 green (the rider app, unchanged by this slice, republished).
+- **Still open, named:** the fleet log and the reschedule lineage grow with history (a follow-on slice before real volume) · a bound on order fact sizes at intake · how the founder is told of a size alert.
+
+---
+
 ## 2026-11-26 · STOCKAGE-BORNÉ-1 — the dispatch object's stored state follows the work in flight, except the fleet log and the reschedule lineage · lane S1 · on the branch, NOT merged, NOT deployed
 
 **Lane.** S1 (Wave 1), built in its own lane session on `claude/project-thread-or8o4y`; seven commits (`23cbb56` `33062ca` `447b5c9` `c25c971` `f596e46` `b1ae264` `335c56f`) on `main` `69b52d1`, merged here `--no-ff` at `87e9b13`, lane shas kept. 7 files, all in `services/logistics-service`, all on the written claim.
