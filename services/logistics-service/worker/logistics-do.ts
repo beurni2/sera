@@ -974,6 +974,9 @@ export class LogisticsDO {
       );
       const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
       if (!res.ok || body === null || body['ok'] !== true) return 'unknown';
+      // The course closed and moved while custody answered: its facts live in
+      // its record now, and writing this one back would make it hot again.
+      if ((await this.archiveDe(orderId)) !== undefined) return 'known';
       const custodian = body['currentCustodian'];
       const packageId = body['packageId'];
       this.custodyFacts[orderId] = {
@@ -1160,7 +1163,9 @@ export class LogisticsDO {
       // writing `...row` back would silently ERASE his `confirmeAt` — seen once
       // as a null confirmation in the cross-Worker seam under parallel load.
       // (And an article joining the bag meanwhile keeps the row pending.)
-      const current = this.retours[assignmentId] ?? row;
+      const current = this.retours[assignmentId];
+      // …and a row that LEFT meanwhile (its course closed and moved) stays gone.
+      if (current === undefined) continue;
       const tousArmes = (current.orderIds ?? [current.orderId]).every((id) => armes.has(id));
       const next: RetourRow = { ...current, armes: [...armes], armRest: 'none', armAttempts: current.armAttempts + 1, armPhase: tousArmes ? 'done' : 'pending' };
       this.retours[assignmentId] = next;
@@ -1244,6 +1249,10 @@ export class LogisticsDO {
         });
         if (armed) next.phase = 'done';
       }
+      // The row left while custody answered (its course closed on custody's
+      // word, or the desk retired the order): writing it back would make a
+      // closed order hot again.
+      if (this.custodyOutbox[orderId] === undefined) continue;
       next.attempts = row.attempts + 1;
       this.custodyOutbox[orderId] = next;
       changed = true;

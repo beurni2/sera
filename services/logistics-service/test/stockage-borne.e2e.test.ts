@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, statSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -19,7 +19,8 @@ import { httpShiftActs } from '../../../apps/rider-app/src/net/shift-acts';
  *
  *   1. a read that expires nothing stores nothing;
  *   2. a closed course leaves the hot snapshots for its own per-order record,
- *      so their size follows the work in flight, never the history — and
+ *      so their size follows the work in flight, never the history — even
+ *      when custody was still answering for that course as it closed — and
  *      every replay of a closed course still answers as it did;
  *   3. a save the storage refuses fails by name, and the object then serves
  *      only what was stored; a value past the engineering bound (1 MiB, half
@@ -33,6 +34,9 @@ const OPS = 'test-ops-stockage';
 const INTAKE = 'test-intake-stockage';
 const VERIFY = 'test-verify-stockage';
 const LIVREE = 'test-livree-stockage';
+const PRODUCE = 'test-produce-stockage';
+const CUSTODY_OPS = 'test-custody-ops-stockage';
+const CUSTODY_SCRIPT = join(import.meta.dirname, '..', '..', 'custody-service', 'dist-worker', 'worker.mjs');
 const BORNE = 1_048_576;
 
 const COURSES = Number(process.env['STOCKAGE_COURSES'] ?? 150);
@@ -46,17 +50,84 @@ afterEach(async () => {
   live = [];
 });
 
-function spawn(): { mf: Miniflare; dir: string } {
+function spawn(custody?: (request: Request) => Promise<Response>): { mf: Miniflare; dir: string } {
   const dir = mkdtempSync(join(tmpdir(), 'stockage-borne-'));
   const mf = new Miniflare({
     modules: true,
     scriptPath: 'dist-worker/worker.mjs',
     durableObjects: { LOGISTICS: 'LogisticsDO' },
     durableObjectsPersist: dir,
-    bindings: { SERA_OPS_SECRET: OPS, SERA_INTAKE_SECRET: INTAKE, SERA_RIDER_VERIFY_SECRET: VERIFY, SERA_COURSE_LIVREE_SECRET: LIVREE },
+    ...(custody !== undefined ? { serviceBindings: { CUSTODY: custody as never } } : {}),
+    bindings: {
+      SERA_OPS_SECRET: OPS,
+      SERA_INTAKE_SECRET: INTAKE,
+      SERA_RIDER_VERIFY_SECRET: VERIFY,
+      SERA_COURSE_LIVREE_SECRET: LIVREE,
+      ...(custody !== undefined ? { SERA_PRODUCE_SECRET: PRODUCE } : {}),
+    },
   });
   live.push(mf);
   return { mf, dir };
+}
+
+/**
+ * The REAL custody Worker behind the dispatch object's binding, with one
+ * hold: the next call `retenir` names waits until the test lets it go. A
+ * real binding allows exactly that — an outbound call never holds the
+ * object's input gate, so other requests run while it waits. Every call
+ * still reaches custody and gets custody's own answer; nothing is invented.
+ */
+function custodyRetenue(logistics: () => Miniflare) {
+  const custody = new Miniflare({
+    modules: [{ type: 'ESModule', path: 'custody-worker.mjs', contents: readFileSync(CUSTODY_SCRIPT, 'utf8') }],
+    compatibilityDate: '2025-07-05',
+    compatibilityFlags: ['nodejs_compat'],
+    durableObjects: { CUSTODY: 'CustodyDO', PACKAGE_CLAIM: 'PackageClaimDO' },
+    durableObjectsPersist: mkdtempSync(join(tmpdir(), 'stockage-custody-')),
+    serviceBindings: { LOGISTICS: ((request: Request) => logistics().dispatchFetch(request.url, request as never)) as never },
+    bindings: {
+      SERA_CUSTODY_OPS_SECRET: CUSTODY_OPS,
+      SERA_PRODUCE_SECRET: PRODUCE,
+      SHOP_ARM_SECRET: 'test-shop-arm-stockage',
+      SERA_RIDER_VERIFY_SECRET: VERIFY,
+      SERA_COURSE_LIVREE_SECRET: LIVREE,
+    },
+  });
+  live.push(custody);
+  const appels: { path: string; corps: string }[] = [];
+  let quand: ((path: string, corps: string) => boolean) | undefined;
+  let arrive = (): void => undefined;
+  let lache: Promise<void> = Promise.resolve();
+  const binding = async (request: Request): Promise<Response> => {
+    const url = new URL(request.url);
+    const corps = request.method === 'POST' ? await request.clone().text() : url.search;
+    appels.push({ path: url.pathname, corps });
+    if (quand?.(url.pathname, corps) === true) {
+      quand = undefined;
+      arrive();
+      await lache;
+    }
+    return custody.dispatchFetch(request.url, request as never) as never;
+  };
+  const retenir = (match: (path: string, corps: string) => boolean) => {
+    let lacher = (): void => undefined;
+    lache = new Promise<void>((r) => (lacher = r));
+    const arrivee = new Promise<void>((r) => (arrive = r));
+    quand = match;
+    return {
+      arrivee: () => Promise.race([arrivee, new Promise<never>((_, non) => setTimeout(() => non(new Error('the held custody call never came')), 10_000))]),
+      lacher: () => lacher(),
+    };
+  };
+  return { binding, appels, retenir };
+}
+
+async function attendre(pret: () => boolean, pourquoi: string): Promise<void> {
+  for (let i = 0; i < 400; i += 1) {
+    if (pret()) return;
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  throw new Error(pourquoi);
 }
 
 /** Every stored value of the dispatch object, straight off its SQLite file. */
@@ -408,6 +479,83 @@ describe('dispatch storage stays bounded by active work, on the real Worker', ()
     expect(rejeuAvant.json).toMatchObject({ ok: true, duplicate: true, taskId: fixe.json['taskId'] });
     expect((await livrer(d, O, 'pas'))['status']).toBe('livree');
     expect(await d.ops('/ops/reprogrammer', { command_id: 'rp-pas', orderId: O, fenetre: fen })).toEqual(rejeuAvant);
+  });
+
+  /*
+   * A course can close while the object is waiting on custody for that very
+   * course (custody's answer is an outbound call; other requests run
+   * meanwhile). Whatever the waiting work then writes back must not bring
+   * the closed course into the hot snapshots again. The next alarm is the
+   * witness that the first one finished: alarms never overlap.
+   */
+  it('a custody read still in flight when the course closes does not bring the course back', async () => {
+    let mf!: Miniflare;
+    const custody = custodyRetenue(() => mf);
+    const spawned = spawn(custody.binding);
+    mf = spawned.mf;
+    const d = doors(mf);
+    const RIDER = 'rider-lecture';
+    const code = await riderEnService(d, RIDER);
+    const O = 'ord-lecture';
+    await faits(d, O, new Date().toISOString());
+    await courseAcceptee(d, code, RIDER, O, 'lec');
+    const tenue = custody.retenir((path) => path === '/produce/custodian');
+    const lecture = d.rider(code, '/rider/moi');
+    await tenue.arrivee();
+    expect((await livrer(d, O, 'lec'))['status']).toBe('livree');
+    tenue.lacher();
+    expect((await lecture).status).toBe(200);
+    expect(lu<Json>(spawned.dir, `course:v1:${O}`)).toMatchObject({ orderId: O });
+    expect(JSON.stringify(lu(spawned.dir, 'snap:custody-facts:v1') ?? {})).not.toContain(O);
+  });
+
+  it('a producer call still in flight when the course closes does not bring its custody row back', async () => {
+    let mf!: Miniflare;
+    const custody = custodyRetenue(() => mf);
+    const spawned = spawn(custody.binding);
+    mf = spawned.mf;
+    const d = doors(mf);
+    const RIDER = 'rider-fil';
+    const code = await riderEnService(d, RIDER);
+    const [O1, O2] = ['ord-fil-1', 'ord-fil-2'];
+    for (const o of [O1, O2]) await faits(d, o, new Date().toISOString());
+    const t1 = (await d.ops('/ops/task', { command_id: 't-fil-1', orderId: O1, location: LOC, window: fenetre() })).json['taskId'] as string;
+    const t2 = (await d.ops('/ops/task', { command_id: 't-fil-2', orderId: O2, location: LOC, window: fenetre() })).json['taskId'] as string;
+    const tenue = custody.retenir((path, corps) => path === '/produce/order/open' && corps.includes(O1));
+    const a1 = await d.ops('/ops/assign', { command_id: 'a-fil-1', taskId: t1, riderId: RIDER });
+    expect(a1.status, JSON.stringify(a1.json)).toBe(200);
+    await tenue.arrivee();
+    expect(await d.acts.accepterCourse(code, (a1.json['assignment'] as Json)['assignmentId'] as string)).toEqual({ ok: true });
+    expect((await livrer(d, O1, 'fil'))['status']).toBe('livree');
+    expect((await d.ops('/ops/assign', { command_id: 'a-fil-2', taskId: t2, riderId: RIDER })).status).toBe(200);
+    tenue.lacher();
+    await attendre(() => custody.appels.some((a) => a.path === '/produce/order/open' && a.corps.includes(O2)), 'the next alarm never ran');
+    expect(lu<Json>(spawned.dir, `course:v1:${O1}`)).toMatchObject({ orderId: O1, custodyOutbox: { assignmentId: (a1.json['assignment'] as Json)['assignmentId'] } });
+    expect(JSON.stringify(lu(spawned.dir, 'snap:custody-outbox:v1'))).not.toContain(O1);
+  });
+
+  it('a return-key arm still in flight when the course closes does not bring the return back', async () => {
+    let mf!: Miniflare;
+    const custody = custodyRetenue(() => mf);
+    const spawned = spawn(custody.binding);
+    mf = spawned.mf;
+    const d = doors(mf);
+    const RIDER = 'rider-cles';
+    const code = await riderEnService(d, RIDER);
+    const [O1, O2] = ['ord-cles-1', 'ord-cles-2'];
+    for (const o of [O1, O2]) await faits(d, o, new Date().toISOString());
+    const { assignmentId } = await courseAcceptee(d, code, RIDER, O1, 'cles-1');
+    await attendre(() => custody.appels.some((a) => a.path === '/produce/secrets/arm' && a.corps.includes(`arm-pickup-${assignmentId}`)), 'the pickup code was never armed');
+    const t2 = (await d.ops('/ops/task', { command_id: 't-cles-2', orderId: O2, location: LOC, window: fenetre() })).json['taskId'] as string;
+    const tenue = custody.retenir((path, corps) => path === '/produce/secrets/arm' && corps.includes(`arm-retour-rider-${assignmentId}`));
+    expect((await d.produce('/produce/retour-ouvert', { command_id: 'ro-cles', orderId: O1, at: new Date().toISOString() })).json['status']).toBe('retour_ouvert');
+    await tenue.arrivee();
+    expect((await d.produce('/produce/course-retournee', { command_id: 'cr-cles', orderId: O1, at: new Date().toISOString() })).json['status']).toBe('retournee');
+    expect((await d.ops('/ops/assign', { command_id: 'a-cles-2', taskId: t2, riderId: RIDER })).status).toBe(200);
+    tenue.lacher();
+    await attendre(() => custody.appels.some((a) => a.path === '/produce/order/open' && a.corps.includes(O2)), 'the next alarm never ran');
+    expect(lu<Json>(spawned.dir, `course:v1:${O1}`)).toMatchObject({ orderId: O1, retours: { [assignmentId]: { orderId: O1 } } });
+    expect(JSON.stringify(lu(spawned.dir, 'snap:retours:v1'))).not.toContain(assignmentId);
   });
 
   it('a save the storage refuses fails by name, and the object then serves only what was stored', async () => {
