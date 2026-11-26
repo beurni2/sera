@@ -150,6 +150,12 @@ export function dropOutcome(answer: CustodyAnswer): ActOutcomeKeys {
     if (answer.reason === 'drop_code_refused') {
       return { title: 'delivery.wrong_code', hint: 'delivery.wrong_code_hint', tone: 'refused' };
     }
+    // Five wrong codes locked it (founder ruling 2026-11-26): a WAITING truth
+    // — once Séra unlocks, retyping the buyer's code works — so the next tap
+    // is a fresh command, never a replay of this answer.
+    if (answer.reason === 'drop_code_locked') {
+      return { title: 'delivery.code_bloque', hint: 'delivery.code_bloque_hint', tone: 'waiting' };
+    }
     if (answer.reason === 'not_validated' || answer.reason === 'validation_before_evidence') {
       return { title: 'delivery.not_validated', hint: 'delivery.not_validated_hint', tone: 'waiting' };
     }

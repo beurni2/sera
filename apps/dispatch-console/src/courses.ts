@@ -274,3 +274,119 @@ export function demandeKey(demande: RetraitDemande): string {
 export function retirerKey(row: CourseRow): string {
   return colisEnMains(row) ? 'courses.retirer_colis' : 'courses.retirer';
 }
+
+/**
+ * ═══ THE BUYER'S CODE LOCKED AFTER FIVE WRONG TRIES — the unlock desk ═══
+ *
+ * Founder ruling (2026-11-26): « drop code locks after 5 tries (console
+ * unlock) ». The board lists the live courses custody says are locked, one row
+ * per course with its locked articles, and whether that list may be partial
+ * (a custody read failed, or the board's read cap was hit). The code itself
+ * never reaches this console. Unlocking is never one tap: ASK → CONFIRM →
+ * ONE SEND → RESULT, and a refusal keeps the lever with the SAME command id.
+ */
+export interface CodeBloqueRow {
+  readonly assignmentId: string;
+  readonly riderId: string;
+  /** The rider's display name when the board gives one, else their id. */
+  readonly riderName: string;
+  readonly orderIds: readonly string[];
+  /** ISO instant the first article locked; '' when the board did not say. */
+  readonly depuis: string;
+}
+
+export interface CodesBloques {
+  readonly rows: readonly CodeBloqueRow[];
+  readonly partiel: boolean;
+}
+
+export function codesBloquesRows(body: unknown): CodesBloques {
+  const board = pick(pick(body, 'board'), null);
+  const riders = new Map<string, string>();
+  for (const entry of array(pick(board, 'riders'))) {
+    const riderId = str(pick(entry, 'riderId'));
+    if (riderId === '') continue;
+    const name = str(pick(entry, 'displayName'));
+    riders.set(riderId, name === '' ? riderId : name);
+  }
+  const rows: CodeBloqueRow[] = [];
+  for (const entry of array(pick(board, 'codesBloques'))) {
+    const assignmentId = str(pick(entry, 'assignmentId'));
+    const orderIds = array(pick(entry, 'orderIds')).map(str).filter((id) => id !== '');
+    if (assignmentId === '' || orderIds.length === 0) continue;
+    const riderId = str(pick(entry, 'riderId'));
+    const depuis = str(pick(entry, 'depuis'));
+    rows.push({
+      assignmentId,
+      riderId,
+      riderName: riders.get(riderId) ?? riderId,
+      orderIds,
+      depuis: Number.isFinite(Date.parse(depuis)) ? depuis : '',
+    });
+  }
+  return { rows, partiel: pick(board, 'codesBloquesPartiel') === true };
+}
+
+export type RemiseRead =
+  | { readonly kind: 'loading' }
+  | { readonly kind: 'bad_key' }
+  | { readonly kind: 'failed' }
+  | { readonly kind: 'ok'; readonly value: CodesBloques };
+
+export type RemiseView =
+  | { readonly kind: 'loading'; readonly message: string }
+  | { readonly kind: 'failed'; readonly message: string; readonly aide: string }
+  | { readonly kind: 'empty'; readonly message: string; readonly partiel: boolean }
+  | { readonly kind: 'liste'; readonly rows: readonly CodeBloqueRow[]; readonly partiel: boolean };
+
+export function remiseView(read: RemiseRead): RemiseView | null {
+  if (read.kind === 'bad_key') return null;
+  if (read.kind === 'loading') return { kind: 'loading', message: 'reprog.chargement' };
+  if (read.kind === 'failed') return { kind: 'failed', message: 'reprog.echec', aide: 'reprog.echec_aide' };
+  if (read.value.rows.length === 0) return { kind: 'empty', message: 'remise.vide', partiel: read.value.partiel };
+  return { kind: 'liste', rows: read.value.rows, partiel: read.value.partiel };
+}
+
+export interface RemiseUi {
+  /** The course whose confirmation is open. */
+  readonly demande: string | null;
+  /** The course whose unlock is on the wire. */
+  readonly enVol: string | null;
+  readonly faits: Readonly<Record<string, true>>;
+  /** A refusal's catalog key, per course. */
+  readonly echecs: Readonly<Record<string, string>>;
+  /** The attempt's command id, per course, kept for a retry. */
+  readonly commandes: Readonly<Record<string, string>>;
+}
+
+export const REMISE_IDLE: RemiseUi = { demande: null, enVol: null, faits: {}, echecs: {}, commandes: {} };
+
+export function demanderRemise(ui: RemiseUi, assignmentId: string): RemiseUi {
+  return { ...ui, demande: assignmentId };
+}
+
+export function annulerRemise(ui: RemiseUi): RemiseUi {
+  return { ...ui, demande: null };
+}
+
+/** The ONE send, from an open confirmation; nothing while another is in flight. */
+export function commencerRemise(ui: RemiseUi, assignmentId: string, mint: () => string): { readonly ui: RemiseUi; readonly commandId: string } | null {
+  if (ui.enVol !== null || ui.demande !== assignmentId) return null;
+  const commandId = ui.commandes[assignmentId] ?? mint();
+  const { [assignmentId]: _gone, ...echecs } = ui.echecs;
+  return { ui: { ...ui, demande: null, enVol: assignmentId, echecs, commandes: { ...ui.commandes, [assignmentId]: commandId } }, commandId };
+}
+
+export function remiseFaite(ui: RemiseUi, assignmentId: string): RemiseUi {
+  const { [assignmentId]: _id, ...commandes } = ui.commandes;
+  return { ...ui, enVol: null, faits: { ...ui.faits, [assignmentId]: true }, commandes };
+}
+
+export function remiseEchouee(ui: RemiseUi, assignmentId: string, key: string): RemiseUi {
+  return { ...ui, enVol: null, echecs: { ...ui.echecs, [assignmentId]: key } };
+}
+
+/** Every refusal reads the same calm sentence; its aide says what to do. */
+export function remiseRefusKey(_reason: string): string {
+  return 'remise.refus';
+}

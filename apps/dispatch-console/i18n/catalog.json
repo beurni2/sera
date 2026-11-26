@@ -1894,5 +1894,101 @@
     "fr": "Relire",
     "register": "neutral",
     "screenClass": "general"
+  },
+  {
+    "key": "remise.section",
+    "fr": "Codes de la cliente bloqués",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "remise.intro",
+    "fr": "Cinq mauvais codes ont été tapés. Rien n'a été remis : le coursier garde le colis.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "remise.avant",
+    "fr": "Appelez la cliente et le coursier avant de débloquer.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "remise.depuis",
+    "fr": "Bloqué depuis",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "remise.debloquer",
+    "fr": "Débloquer le code",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "remise.confirmer_question",
+    "fr": "Débloquer ce code ?",
+    "register": "neutral",
+    "screenClass": "general"
+  },
+  {
+    "key": "remise.confirmer_aide",
+    "fr": "Le coursier aura de nouveau cinq essais.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "remise.confirmer",
+    "fr": "Oui, débloquer",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "remise.annuler",
+    "fr": "Annuler",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "remise.en_cours",
+    "fr": "Envoi…",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "remise.fait",
+    "fr": "Code débloqué. Le coursier peut retaper le code.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "remise.refus",
+    "fr": "Le code n'a pas pu être débloqué.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "remise.refus_aide",
+    "fr": "Relisez le tableau, puis réessayez.",
+    "register": "neutral",
+    "screenClass": "instruction"
+  },
+  {
+    "key": "remise.vide",
+    "fr": "Aucun code bloqué.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "remise.partiel",
+    "fr": "Cette liste n'est peut-être pas complète.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "remise.partiel_aide",
+    "fr": "Relisez le tableau dans un instant.",
+    "register": "neutral",
+    "screenClass": "instruction"
   }
 ]

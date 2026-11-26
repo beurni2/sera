@@ -62,6 +62,11 @@ describe('dropOutcome — the buyer’s code, every answer a true sentence', () 
       title: 'delivery.wrong_code', hint: 'delivery.wrong_code_hint', tone: 'refused',
     });
   });
+  it('a locked code waits for Séra: its own sentence, never « wrong code », and a WAITING tone so the next tap is a fresh command', () => {
+    expect(dropOutcome(ref('drop_code_locked'))).toEqual({
+      title: 'delivery.code_bloque', hint: 'delivery.code_bloque_hint', tone: 'waiting',
+    });
+  });
   it('a too-early code waits with dignity — validation is the founder’s act, not an error wall', () => {
     for (const reason of ['not_validated', 'validation_before_evidence']) {
       expect(dropOutcome(ref(reason))).toEqual({

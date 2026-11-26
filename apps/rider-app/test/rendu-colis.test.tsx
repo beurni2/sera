@@ -146,6 +146,9 @@ interface Ledger {
   ladder: string | null;
   /** An answer the TEST forces on this order's next act (a dead network). */
   panne: string | null;
+  /** Wrong buyer codes since the founder's last unlock — counted per article,
+   *  as custody counts them in each order's own file. */
+  strikes: number;
 }
 
 /** One ledger per order, and the commands each one remembers. */
@@ -156,7 +159,7 @@ interface World {
 
 const ledger = (): Ledger => ({
   pickupUsed: false, verified: false, refusEnlevement: false, sealed: false, evidence: false, inspection: null, colis: true, doorPaid: false,
-  returnOpen: false, returned: false, delivered: false, ladder: null, panne: null,
+  returnOpen: false, returned: false, delivered: false, ladder: null, panne: null, strikes: 0,
 });
 const freshWorld = (): World => ({ ledgers: { [A]: ledger(), [B]: ledger() }, recorded: new Map() });
 
@@ -249,10 +252,16 @@ function custody(world: World, paymentMode: string): Route {
       return commit({ status: 200, json: { ok: true, kind: 'return_opened' } });
     }
     if (path === '/rider/delivery/drop') {
+      // The custody route: a locked, undelivered file refuses every fresh try
+      // before the spine sees it, and writes nothing (no commit).
+      if (!l.delivered && l.strikes >= 5) return { status: 409, json: { ok: false, reason: 'drop_code_locked' } };
       if (l.inspection === 'valid_rejection' || l.inspection === 'changement_avis' || l.returnOpen) return commit({ status: 409, json: { ok: false, reason: 'return_in_progress' } });
       if (paymentMode === PORTE && l.inspection !== 'accepted') return commit({ status: 409, json: { ok: false, reason: 'inspection_not_accepted' } });
       if (paymentMode === PORTE && !l.doorPaid) return commit({ status: 409, json: { ok: false, reason: 'door_payment_not_confirmed' } });
-      if (body?.['dropCode'] !== DROP) return commit({ status: 409, json: { ok: false, reason: 'drop_code_refused' } });
+      if (body?.['dropCode'] !== DROP) {
+        l.strikes += 1;
+        return commit({ status: 409, json: { ok: false, reason: l.strikes === 5 ? 'drop_code_locked' : 'drop_code_refused' } });
+      }
       l.delivered = true;
       return commit({ status: 200, json: { ok: true, status: 'custody_with_customer' } });
     }
@@ -517,6 +526,44 @@ describe('COLIS-FOURNISSEUR-1 — the rider carries one package of several order
     expect(world.ledgers[A]!.delivered && world.ledgers[B]!.delivered).toBe(true);
     expect(actes(w.calls, '/rider/delivery/drop').map((f) => f.orderId)).toEqual([A, B]);
     expect(s.canPress('Revenir en service'), 'nothing left to carry: the ordinary way out').toBe(true);
+  });
+
+  it('prepaid, she keeps both: five wrong codes lock BOTH articles together; the screen survives with both ways out; after the founder unlocks, the right code hands over both under fresh ids', async () => {
+    const state = course('FULL_PREPAY');
+    const world = freshWorld();
+    const { s, w } = await toTheDoor(state, world);
+    await s.press('La cliente le garde');
+    await s.press('La cliente le garde');
+    expect(s.shows('2 articles à remettre.'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    for (let i = 1; i <= 4; i += 1) {
+      await s.type(`FAUX-${i}`);
+      await s.press('Confirmer la remise');
+      expect(s.shows('Ce n\'est pas le bon code.'), `wrong try ${i}: ${JSON.stringify(s.texts())}`).toBe(true);
+    }
+    await s.type('FAUX-5');
+    await s.press('Confirmer la remise');
+    expect(world.ledgers[A]!.strikes, 'one wrong gesture strikes each article once').toBe(5);
+    expect(world.ledgers[B]!.strikes).toBe(5);
+    expect(s.shows('Le code est bloqué.'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    expect(s.canPress('Confirmer la remise'), 'the send stays reachable').toBe(true);
+    expect(s.canPress('Un souci ?'), 'the way out stays reachable').toBe(true);
+
+    await s.type(DROP);
+    await s.press('Confirmer la remise');
+    expect(world.ledgers[A]!.delivered || world.ledgers[B]!.delivered, 'nothing is handed over while locked').toBe(false);
+    expect(s.shows('Le code est bloqué.')).toBe(true);
+
+    const before = actes(w.calls, '/rider/delivery/drop').length;
+    world.ledgers[A]!.strikes = 0; // the founder's console unlock reaches every article
+    world.ledgers[B]!.strikes = 0;
+    await s.type(DROP);
+    await s.press('Confirmer la remise');
+    expect(world.ledgers[A]!.delivered && world.ledgers[B]!.delivered, `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    const ids = actes(w.calls, '/rider/delivery/drop').map((f) => `${String(f.orderId)}|${String(f.id)}`);
+    expect(new Set(ids.slice(before)).size, 'the send after the unlock is fresh on every article').toBe(ids.slice(before).length);
+    const seen = new Set(ids.slice(0, before));
+    expect(ids.slice(before).some((k) => seen.has(k)), 'no locked id was reused').toBe(false);
+    expect(s.shows('Livré. Merci.')).toBe(true);
   });
 
   it('⚠ an automatic act whose SECOND article’s ledger does not answer leaves a way out, and the retry moves nothing twice', async () => {
