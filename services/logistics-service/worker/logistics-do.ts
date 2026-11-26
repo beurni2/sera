@@ -670,7 +670,7 @@ export class LogisticsDO {
     return this.colisCourses[assignment.assignmentId]?.orderIds ?? [assignment.orderId];
   }
 
-  /** Custody's last word names this rider as the holder of one of the course's packages. */
+  /** Custody began on one of the course's orders: its last word names a courier or the customer. */
   private custodieCommencee(course: { assignmentId: string; orderId: string }): boolean {
     return this.ordresDeCourse(course).some((id) => {
       const holder = this.custodyFacts[id]?.custodian;
@@ -678,6 +678,7 @@ export class LogisticsDO {
     });
   }
 
+  /** Custody's last word names this rider as the holder of one of the course's packages. */
   private tientUnColis(riderId: string, course: { assignmentId: string; orderId: string }): boolean {
     const mine = courierActor(riderId);
     return this.ordresDeCourse(course).some((id) => this.custodyFacts[id]?.custodian === mine);
