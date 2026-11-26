@@ -567,6 +567,21 @@ export class AssignmentBook {
     return removed;
   }
 
+  /**
+   * A CLOSED order leaves the book for its own stored record. Unlike the
+   * purge above, its dedupe entries leave WITH it: they name only its
+   * assignments, and `assign()`'s replay law already re-evaluates once a
+   * remembered assignment is not active — a record that is gone reads the
+   * same. Both halves are handed back for the caller to store.
+   */
+  archiveOrder(orderId: string): { assignments: AssignmentRecord[]; commands: [string, AssignOutcome][] } {
+    const assignments = this.forgetOrder(orderId);
+    const ids = new Set(assignments.map((a) => a.assignmentId));
+    const commands = [...this.appliedCommandIds.entries()].filter(([, outcome]) => outcome.ok && ids.has(outcome.assignment.assignmentId));
+    for (const [commandId] of commands) this.appliedCommandIds.delete(commandId);
+    return { assignments, commands };
+  }
+
   /** SE-LIVE-1 — durable composition, ADDITIVE ONLY: full-store snapshot for
    * the LogisticsDO (AssignOutcome carries only JSON-plain data, including
    * the canonical event). No assignment rule above changes. */
