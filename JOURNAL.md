@@ -3,6 +3,24 @@ Continuity ledger per CTO charter §6/§6bis. Every entry is evidence-grounded.
 
 Format per entry:
 
+## 2026-11-26 · RÈGLES-UNIFIÉES-1 — CLAUDE.md and AGENTS.md identical in all five repositories, with the 2026-11-25 order · on the branch, NOT merged
+
+**Founder order (2026-11-25).** « I want it to act as a coordinator that will create 2-3 tasks agents that will be working safely and securely coordinating with each other for it to move faster. Make sure they are working safely and securely and always coordinating with other. »
+
+**What was wrong.** The rules files had drifted: Shop+ carried every founder order up to 2026-09-09; Boutik+ and Séra lacked the 2026-09-09 order (plain-words reports); platform-contracts lacked the 2026-08-14 and 2026-09-09 orders; platform had neither file.
+
+**What moved (docs only).** Base: Shop+'s `CLAUDE.md` (main `76bbb96`). Two edits, nothing else: (1) the 2026-11-25 order inserted in §6bis directly after the 2026-09-09 block and before « When you have enough information to act, act. »; (2) in the 2026-08-14 block, the first « How it binds » bullet now reads « Delegation is bounded … For building work, the 2026-11-25 order sets the team: one coordinator and up to three task agents, under its rules … » in place of « One subagent, or none. ». The result is written as `CLAUDE.md` and `AGENTS.md` in platform-contracts, boutik-plus, shop-plus, sera and platform (created there).
+
+**Evidence.** `cmp` of every pair silent; `md5sum` of all ten files: one hash, `b87d9a8ed374002469d213a023163975`. `diff` against Shop+'s old file: exactly the inserted block and the one replaced bullet. No code, pin, workflow or test changed.
+
+**On merge.** Docs only, but a push to `main` re-runs the publish workflows with unchanged code: the buyer site and the reseller app (Shop+), the rider app (Séra), the supplier app (Boutik+). Merge order on « go »: platform-contracts first, then the four apps.
+
+**Baseline board (2026-11-26, before this slice, after `pnpm build` as CI does):** red on ONE test, counted by two gates (tests, reponses-enregistrees): `logistics-service/test/flotte.e2e.test.ts` « FLOTTE-1 … declare a moto » expects a document due on 2026-10-01 to be not yet expired (`expire: false`) and today it is (`expire: true`) — a fixed calendar date that has passed. Every other test green (logistics 301/302, custody 253/253, rider app 497/497). Known before this session; it blocks code slices in Séra until fixed in that lane's first slice.
+
+**Verifier (one fresh-context pass, given the amendment text, the five diffs and the definition of done).** 0 BLOCKER · 0 MAJOR · 1 MINOR · 4 NOTE. It rebuilt the expected file itself from the base and the amendment: all ten files match it byte for byte (one blob, `f7dcb08`); the only change is the inserted block and the one bullet; each commit touches only the two files. Handled once: MINOR — in Shop+ this branch also carries LOCK-LABELS-1 and the 2026-10-02 journal commit `90e3653`, so the report names them as part of the Shop+ batch. NOTES, journalled, not changed (the text is the founder's, inserted verbatim): the new order's « only lane, status and a neutral slice name reach the journals » is read as limiting what passes from the board, while §6bis 2026-09-09 still keeps the full technical record here, without finding ids or open holes before deploy; the heading says « two or three » where the body says « up to three »; platform now inherits the base's model-calibration heading and §4's « three apps = three repos » sentence. This journal entry lands before the report, so the reported tip includes it.
+
+---
+
 ## 2026-09-30 · PROFIL-PUBLIÉ MERGED AND PUBLISHED on the founder's « go »
 
 **Founder order (2026-09-30).** « go » — on the report of the entry below (merging publishes to riders at once, as the report said).
