@@ -219,6 +219,17 @@ const SNAP_FLOTTE = 'snap:flotte:v1';
  * own wires. The course closes when every order in it is delivered or home.
  */
 const SNAP_COLIS_COURSES = 'snap:colis-courses:v1';
+/**
+ * The size watch. Each snapshot above is ONE stored value under the
+ * platform's per-value cap (2 MiB); a value past this engineering bound —
+ * half the cap — leaves an alert record, latest per snapshot key, that the
+ * founder reads at GET /ops/stockage. Measured as the UTF-8 bytes of the
+ * value's JSON: an approximation of the stored encoding, close enough for a
+ * watch that fires at half the cap. How he is told is not decided here.
+ */
+const SIZE_WATCH_BYTES = 1_048_576;
+const ALERTE_STOCKAGE = 'alerte-stockage:v1';
+type AlertesStockage = Record<string, { bytes: number; at: string }>;
 /** A package names at most ten orders (canon `PACKAGE_ORDERS_MAX`); an
  *  article's label is a product name, bounded like one. */
 const MAX_LIBELLE = 80;
@@ -705,7 +716,7 @@ export class LogisticsDO {
   }
 
   private async persist(): Promise<void> {
-    await this.state.storage.put({
+    const values: Record<string, unknown> = {
       [SNAP_QUEUE]: this.queue.snapshot(),
       [SNAP_REGISTRY]: this.registry.snapshot(),
       [SNAP_BOOK]: this.book.snapshot(),
@@ -724,7 +735,19 @@ export class LogisticsDO {
       [SNAP_FIN_DE_SERVICE]: this.finDeService,
       [SNAP_FLOTTE]: this.flotte,
       [SNAP_COLIS_COURSES]: this.colisCourses,
-    });
+    };
+    const encoder = new TextEncoder();
+    const lourds = Object.entries(values)
+      .map(([key, value]) => [key, encoder.encode(JSON.stringify(value)).byteLength] as const)
+      .filter(([, bytes]) => bytes > SIZE_WATCH_BYTES);
+    if (lourds.length > 0) {
+      const at = new Date().toISOString();
+      const alertes: AlertesStockage = { ...((await this.state.storage.get<AlertesStockage>(ALERTE_STOCKAGE)) ?? {}) };
+      for (const [key, bytes] of lourds) alertes[key] = { bytes, at };
+      // Same batch as the snapshots: the alert names exactly what was stored.
+      values[ALERTE_STOCKAGE] = alertes;
+    }
+    await this.state.storage.put(values);
   }
 
   /**
@@ -1213,6 +1236,17 @@ export class LogisticsDO {
       // REPROGRAMMATION-2 — and for custody's own wires back to this book.
       await this.reviveCustodyWires();
       return Response.json({ ok: true, board: this.board() });
+    }
+    // The size watch's record, read-only (see SIZE_WATCH_BYTES).
+    if (request.method === 'GET' && pathname === '/ops/stockage') {
+      const alertes = (await this.state.storage.get<AlertesStockage>(ALERTE_STOCKAGE)) ?? {};
+      return Response.json({
+        ok: true,
+        borne: SIZE_WATCH_BYTES,
+        alertes: Object.entries(alertes)
+          .sort(([a], [b]) => (a < b ? -1 : 1))
+          .map(([key, alerte]) => ({ key, bytes: alerte.bytes, at: alerte.at })),
+      });
     }
     if (request.method === 'POST' && pathname === '/ops/riders') {
       const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;

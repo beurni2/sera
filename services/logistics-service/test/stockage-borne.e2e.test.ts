@@ -185,4 +185,26 @@ describe('dispatch storage stays bounded by active work, on the real Worker', ()
     expect(registre).toContain('rider-apres');
     expect(registre).not.toContain('rider-trop-grand');
   });
+
+  it('a snapshot past 1 MiB leaves an alert the founder can read, on his key only', async () => {
+    const { mf, dir } = spawn();
+    const d = doors(mf);
+    expect((await d.sansCle('/ops/stockage')).status).toBe(401);
+    expect(await d.ops('/ops/stockage')).toEqual({ status: 200, json: { ok: true, borne: BORNE, alertes: [] } });
+    expect((await d.ops('/ops/riders', { riderId: 'rider-lourd', displayName: 'y'.repeat(1_200_000), phoneAlias: 'lo' })).status).toBe(200);
+    const stocke = snapSizes(dir)['snap:registry:v1']!;
+    expect(stocke).toBeGreaterThan(BORNE);
+    const alerte = await d.ops('/ops/stockage');
+    expect(alerte.status).toBe(200);
+    const alertes = alerte.json['alertes'] as Json[];
+    expect(alertes).toHaveLength(1);
+    expect(alertes[0]).toMatchObject({ key: 'snap:registry:v1', at: expect.any(String) });
+    // The object measures the value's JSON bytes — a stated approximation of
+    // the stored encoding, held here to within 5 % of what storage holds.
+    expect(Math.abs((alertes[0]!['bytes'] as number) - stocke)).toBeLessThan(stocke * 0.05);
+    // A read door: asking twice records nothing.
+    const avant = snapSizes(dir);
+    expect(await d.ops('/ops/stockage')).toEqual(alerte);
+    expect(snapSizes(dir)).toEqual(avant);
+  });
 });
