@@ -228,11 +228,17 @@ const SNAP_COLIS_COURSES = 'snap:colis-courses:v1';
  * The size watch. Each snapshot above is ONE stored value under the
  * platform's per-value cap (2 MiB); a value past this engineering bound —
  * half the cap — leaves an alert record, latest per snapshot key, that the
- * founder reads at GET /ops/stockage. Measured as the UTF-8 bytes of the
- * value's JSON: an approximation of the stored encoding, close enough for a
- * watch that fires at half the cap. How he is told is not decided here.
+ * founder reads at GET /ops/stockage. Measured as an UPPER bound of the
+ * stored size: twice the value's JSON length in UTF-16 units, since storage
+ * spends at most two bytes a character on text and these values are text.
+ * It keeps a whole string at two bytes a character once one character is
+ * past U+00FF (the ’ a phone types), so the JSON's UTF-8 bytes could read
+ * half the stored size and let a value reach the cap unseen. How he is
+ * told is not decided here.
  */
 const SIZE_WATCH_BYTES = 1_048_576;
+/** persist()'s own refusal, told apart from any other throw so every door names it. */
+class SauvegardeRefusee extends Error {}
 const ALERTE_STOCKAGE = 'alerte-stockage:v1';
 type AlertesStockage = Record<string, { bytes: number; at: string }>;
 /** Every snapshot value persist() writes, in one batch (also what ensureLoaded reads). */
@@ -795,9 +801,8 @@ export class LogisticsDO {
       [SNAP_FLOTTE]: this.flotte,
       [SNAP_COLIS_COURSES]: this.colisCourses,
     };
-    const encoder = new TextEncoder();
     const lourds = Object.entries(values)
-      .map(([key, value]) => [key, encoder.encode(JSON.stringify(value)).byteLength] as const)
+      .map(([key, value]) => [key, 2 * JSON.stringify(value).length] as const)
       .filter(([, bytes]) => bytes > SIZE_WATCH_BYTES);
     if (lourds.length > 0) {
       const at = new Date().toISOString();
@@ -806,7 +811,15 @@ export class LogisticsDO {
       // Same batch as the snapshots: the alert names exactly what was stored.
       values[ALERTE_STOCKAGE] = alertes;
     }
-    await this.state.storage.put({ ...values, ...this.aEcrire });
+    try {
+      await this.state.storage.put({ ...values, ...this.aEcrire });
+    } catch {
+      throw new SauvegardeRefusee();
+    }
+    // Cleared only once stored: a refused batch keeps its records with the
+    // memory they belong to, so a request resuming after the refusal can
+    // never store a course's move without the course's record. The reload
+    // that drops that memory drops them too (ensureLoaded).
     this.aEcrire = {};
   }
 
@@ -1288,10 +1301,12 @@ export class LogisticsDO {
     let response: Response;
     try {
       response = await this.route(request);
-    } catch {
+    } catch (erreur) {
       // In-memory state may hold a half-applied mutation that was never
       // persisted — drop it and reload from the last durable truth.
       this.loaded = false;
+      // A door that saves on its own (a close, a shift) is named like the save below.
+      if (erreur instanceof SauvegardeRefusee) return Response.json({ ok: false, reason: 'persist_failed' }, { status: 500 });
       return Response.json({ ok: false, reason: 'internal_error' }, { status: 500 });
     }
     if (request.method !== 'GET') {
@@ -3050,6 +3065,11 @@ export class LogisticsDO {
         if (!res.ok) {
           return Response.json({ ok: false, reason: 'custody_refused', detail: typeof answer?.['reason'] === 'string' ? answer['reason'] : 'refused' }, { status: 409 });
         }
+      }
+      // The course closed and moved while custody answered (a drop is still
+      // accepted after a return the founder applied): nothing is written over it.
+      if (this.courseDe(orderId)?.assignmentId !== active.assignmentId) {
+        return Response.json({ ok: false, reason: 'no_active_course' }, { status: 409 });
       }
       this.retourDecide[active.assignmentId] = { orderId, decideAt: now };
       // The passage the founder might still have fixed is off the desk: the

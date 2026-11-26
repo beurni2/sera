@@ -75,7 +75,10 @@ function spawn(custody?: (request: Request) => Promise<Response>): { mf: Minifla
  * hold: the next call `retenir` names waits until the test lets it go. A
  * real binding allows exactly that — an outbound call never holds the
  * object's input gate, so other requests run while it waits. Every call
- * still reaches custody and gets custody's own answer; nothing is invented.
+ * still reaches custody and gets custody's own answer, except where a test
+ * passes `commeCustody`: then the held call gets custody's own recorded
+ * success body for that door, for a call this test cannot bring custody's
+ * ledger to accept (the founder's return needs a chain custody rescheduled).
  */
 function custodyRetenue(logistics: () => Miniflare) {
   const custody = new Miniflare({
@@ -98,6 +101,7 @@ function custodyRetenue(logistics: () => Miniflare) {
   let quand: ((path: string, corps: string) => boolean) | undefined;
   let arrive = (): void => undefined;
   let lache: Promise<void> = Promise.resolve();
+  let reponse: (() => Response) | undefined;
   const binding = async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
     const corps = request.method === 'POST' ? await request.clone().text() : url.search;
@@ -106,14 +110,18 @@ function custodyRetenue(logistics: () => Miniflare) {
       quand = undefined;
       arrive();
       await lache;
+      const tenue = reponse;
+      reponse = undefined;
+      if (tenue !== undefined) return tenue();
     }
     return custody.dispatchFetch(request.url, request as never) as never;
   };
-  const retenir = (match: (path: string, corps: string) => boolean) => {
+  const retenir = (match: (path: string, corps: string) => boolean, commeCustody?: () => Response) => {
     let lacher = (): void => undefined;
     lache = new Promise<void>((r) => (lacher = r));
     const arrivee = new Promise<void>((r) => (arrive = r));
     quand = match;
+    reponse = commeCustody;
     return {
       arrivee: () => Promise.race([arrivee, new Promise<never>((_, non) => setTimeout(() => non(new Error('the held custody call never came')), 10_000))]),
       lacher: () => lacher(),
@@ -558,6 +566,88 @@ describe('dispatch storage stays bounded by active work, on the real Worker', ()
     expect(JSON.stringify(lu(spawned.dir, 'snap:retours:v1'))).not.toContain(assignmentId);
   });
 
+  it('the founder\'s return decision still in flight when the course closes is not written over it', async () => {
+    let mf!: Miniflare;
+    const custody = custodyRetenue(() => mf);
+    const spawned = spawn(custody.binding);
+    mf = spawned.mf;
+    const d = doors(mf);
+    const RIDER = 'rider-decide';
+    const code = await riderEnService(d, RIDER);
+    const O = 'ord-decide';
+    await faits(d, O, new Date().toISOString());
+    const { taskId, assignmentId } = await courseAcceptee(d, code, RIDER, O, 'dec');
+    const issue = { taskId, orderId: O, family: 'reschedule', reasonCode: 'honest_absence', humanReasonRef: 'reason.honest_absence', faultClass: 'buyer', attempt: { number: 2, at: new Date().toISOString() } };
+    expect(await d.produce('/produce/reprogrammation', { command_id: 'w-dec', orderId: O, at: new Date().toISOString(), outcome: issue })).toEqual({ status: 200, json: { ok: true, status: 'enregistre' } });
+    // Custody's recorded answer when the founder's return applies (its /return/apply door).
+    const tenue = custody.retenir((path) => path === '/produce/return/apply', () => Response.json({ ok: true, kind: 'return_applied', outcome: null }));
+    const decision = d.ops('/ops/retour/decider', { command_id: 'rd-dec', orderId: O });
+    await tenue.arrivee();
+    expect((await livrer(d, O, 'dec'))['status']).toBe('livree');
+    tenue.lacher();
+    expect(await decision).toEqual({ status: 409, json: { ok: false, reason: 'no_active_course' } });
+    expect(lu<Json>(spawned.dir, `course:v1:${O}`)).toMatchObject({ orderId: O });
+    expect(JSON.stringify(lu(spawned.dir, 'snap:retour-decide:v1') ?? {})).not.toContain(assignmentId);
+  });
+
+  /*
+   * A close whose record is larger than one stored value can hold: here the
+   * order's supplier reference (≈ 1.1 MB) sits once in the hot facts and once
+   * in the custody row, each under the cap, and both land in the one record.
+   */
+  const TROP = 'S'.repeat(1_100_000);
+  async function courseLourde(d: Doors, code: string, riderId: string, orderId: string, tag: string): Promise<{ assignmentId: string }> {
+    const asOf = new Date().toISOString();
+    expect((await d.intake('/intake/funding', { orderId, status: 'funded', paymentMode: 'FULL_PREPAY', asOf })).status).toBe(200);
+    expect((await d.intake('/intake/readiness', { orderId, ready: true, asOf, supplierRef: TROP })).status).toBe(200);
+    return courseAcceptee(d, code, riderId, orderId, tag);
+  }
+
+  it('a refused save inside a door that saves on its own is named, and the next write is stored', async () => {
+    const { mf, dir } = spawn();
+    const d = doors(mf);
+    const RIDER = 'rider-nom';
+    const code = await riderEnService(d, RIDER);
+    const O = 'ord-nom';
+    const { assignmentId } = await courseLourde(d, code, RIDER, O, 'nom');
+    expect(await d.produce('/produce/course-retournee', { command_id: 'cr-nom', orderId: O, at: new Date().toISOString() })).toEqual({ status: 500, json: { ok: false, reason: 'persist_failed' } });
+    // Nothing of the refused move was stored, and memory came back from storage…
+    expect(lu(dir, `course:v1:${O}`)).toBeUndefined();
+    expect(JSON.stringify(lu(dir, 'snap:book:v1'))).toContain(assignmentId);
+    expect(JSON.stringify((await d.ops('/ops/board')).json)).toContain(assignmentId);
+    // …along with the refused batch's records: the next writes are stored.
+    for (const n of [1, 2]) expect((await d.ops('/ops/riders', { riderId: `rider-apres-${n}`, displayName: 'Après', phoneAlias: `ap${n}` })).status).toBe(200);
+    expect(JSON.stringify(lu(dir, 'snap:registry:v1'))).toContain('rider-apres-2');
+  });
+
+  it('a request that resumes after another\'s refused close never stores the move without its record', async () => {
+    let mf!: Miniflare;
+    const custody = custodyRetenue(() => mf);
+    const spawned = spawn(custody.binding);
+    mf = spawned.mf;
+    const d = doors(mf);
+    const codeX = await riderEnService(d, 'rider-attente');
+    const codeB = await riderEnService(d, 'rider-lourd');
+    const OX = 'ord-attente';
+    await faits(d, OX, new Date().toISOString());
+    const x = await courseAcceptee(d, codeX, 'rider-attente', OX, 'att');
+    const OB = 'ord-lourd';
+    const b = await courseLourde(d, codeB, 'rider-lourd', OB, 'lrd');
+    // The founder's take-back waits on custody's word for its course…
+    const tenue = custody.retenir((path, corps) => path === '/produce/custodian' && corps.includes(OX));
+    const reprise = d.ops('/ops/assignment/take-back', { command_id: 'tb-att', assignmentId: x.assignmentId, custodyNotBegun: true });
+    await tenue.arrivee();
+    // …while custody's drop closes the other course, whose save is refused.
+    expect(await d.produce('/produce/course-livree', { command_id: 'cl-lrd', orderId: OB, at: new Date().toISOString() })).toEqual({ status: 500, json: { ok: false, reason: 'persist_failed' } });
+    tenue.lacher();
+    await reprise;
+    expect((await d.ops('/ops/riders', { riderId: 'rider-temoin', displayName: 'Témoin', phoneAlias: 'tm' })).status).toBe(200);
+    // The closed course is either still hot or in its record — never in neither.
+    const chaud = JSON.stringify(lu(spawned.dir, 'snap:book:v1')).includes(b.assignmentId);
+    const range = lu(spawned.dir, `course:v1:${OB}`) !== undefined;
+    expect(chaud || range).toBe(true);
+  });
+
   it('a save the storage refuses fails by name, and the object then serves only what was stored', async () => {
     const { mf, dir } = spawn();
     const d = doors(mf);
@@ -589,12 +679,26 @@ describe('dispatch storage stays bounded by active work, on the real Worker', ()
     const alertes = alerte.json['alertes'] as Json[];
     expect(alertes).toHaveLength(1);
     expect(alertes[0]).toMatchObject({ key: 'snap:registry:v1', at: expect.any(String) });
-    // The object measures the value's JSON bytes — a stated approximation of
-    // the stored encoding, held here to within 5 % of what storage holds.
-    expect(Math.abs((alertes[0]!['bytes'] as number) - stocke)).toBeLessThan(stocke * 0.05);
+    // An upper bound of what storage holds: never under it, about twice it for plain letters.
+    expect(alertes[0]!['bytes'] as number).toBeGreaterThanOrEqual(stocke);
+    expect(alertes[0]!['bytes'] as number).toBeLessThanOrEqual(2 * stocke);
     // A read door: asking twice records nothing.
     const avant = snapSizes(dir);
     expect(await d.ops('/ops/stockage')).toEqual(alerte);
     expect(snapSizes(dir)).toEqual(avant);
+  });
+
+  it('a value with one two-byte character is watched by its stored size, not by its UTF-8 length', async () => {
+    const { mf, dir } = spawn();
+    const d = doors(mf);
+    expect((await d.ops('/ops/riders', { riderId: 'rider-apostrophe', displayName: `${'z'.repeat(560_000)}’`, phoneAlias: 'ap' })).status).toBe(200);
+    const stocke = snapSizes(dir)['snap:registry:v1']!;
+    expect(stocke).toBeGreaterThan(BORNE);
+    // The JSON's UTF-8 bytes read about half of it — a measure that would stay silent.
+    expect(new TextEncoder().encode(JSON.stringify(lu(dir, 'snap:registry:v1'))).byteLength).toBeLessThan(BORNE);
+    const alertes = (await d.ops('/ops/stockage')).json['alertes'] as Json[];
+    expect(alertes).toHaveLength(1);
+    expect(alertes[0]).toMatchObject({ key: 'snap:registry:v1' });
+    expect(alertes[0]!['bytes'] as number).toBeGreaterThanOrEqual(stocke);
   });
 });
