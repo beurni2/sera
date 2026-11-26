@@ -3,6 +3,17 @@ Continuity ledger per CTO charter §6/§6bis. Every entry is evidence-grounded.
 
 Format per entry:
 
+## 2026-11-26 · STOCKAGE-BORNÉ-1 DEPLOYED, then MERGED on the founder's approval (PR #1)
+
+**Founder order (2026-11-26 05:22 UTC).** « Go on all three », on the decision card after the report of Boutik+ PR #2, Séra PR #1 and Shop+ PR #1.
+- **What would ship, checked first:** the last logistics deploy was `9a77bba` (2026-09-27). Between it and `main`, nothing in the logistics Worker's code or its runtime packages changed (tests, a dev dependency and an i18n repin the Worker does not import), so the deploy shipped this slice only.
+- **Deployed first, from the branch:** logistics-deploy 36 green on `756ace8`: « PROVENANCE OK — live logistics Worker is 756ace843d09831aa0bd607504f570005973c6ae speaking canon 3.21.0. » No migration, no `wrangler.toml` change.
+- **Then merged:** `main` had not moved (`69b52d1`). Merged as `24e4d8e` (merge commit; the lane shas, the CI timeout fix `b29cd7f` and the journals kept). PR gates green on `756ace8`.
+- **On `main`:** ci 215 green (the fleet date red is gone) · expo-preview 158 green (the rider app, unchanged by this slice, republished).
+- **Still open, named:** the fleet log and the reschedule lineage grow with history (a follow-on slice before real volume) · a bound on order fact sizes at intake · how the founder is told of a size alert.
+
+---
+
 ## 2026-11-26 · STOCKAGE-BORNÉ-1 — the dispatch object's stored state follows the work in flight, except the fleet log and the reschedule lineage · lane S1 · on the branch, NOT merged, NOT deployed
 
 **Lane.** S1 (Wave 1), built in its own lane session on `claude/project-thread-or8o4y`; seven commits (`23cbb56` `33062ca` `447b5c9` `c25c971` `f596e46` `b1ae264` `335c56f`) on `main` `69b52d1`, merged here `--no-ff` at `87e9b13`, lane shas kept. 7 files, all in `services/logistics-service`, all on the written claim.
