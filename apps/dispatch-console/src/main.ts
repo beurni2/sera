@@ -60,6 +60,7 @@ import {
   demanderRemise,
   remiseEchouee,
   remiseFaite,
+  remiseRelue,
   remiseRefusKey,
   remiseView,
   type RemiseRead,
@@ -2078,10 +2079,12 @@ if (app) {
     renderRemise();
     const answer = await coursesPort().codesBloques();
     remiseRead = answer.kind === 'ok' ? { kind: 'ok', value: answer.value } : answer.kind === 'bad_key' ? { kind: 'bad_key' } : { kind: 'failed' };
+    if (answer.kind === 'ok') remise = remiseRelue(remise, answer.value.rows);
     renderRemise();
   }
 
-  async function debloquerCode(assignmentId: string, orderId: string): Promise<void> {
+  async function debloquerCode(assignmentId: string, orderIds: readonly string[]): Promise<void> {
+    const orderId = orderIds[0]!;
     const started = commencerRemise(remise, assignmentId, () => remiseCommandId(orderId));
     if (started === null) return;
     remise = started.ui;
@@ -2094,7 +2097,7 @@ if (app) {
       return;
     }
     if (answer.kind === 'ok') {
-      remise = remiseFaite(remise, assignmentId);
+      remise = remiseFaite(remise, assignmentId, orderIds);
       renderRemise();
       await refreshRemise();
       return;
@@ -2118,7 +2121,9 @@ if (app) {
       return;
     }
     remiseSection.append(line('remise-hint', t('remise.intro')), line('remise-hint', t('remise.avant')));
-    if (Object.keys(remise.faits).length > 0) remiseSection.appendChild(line('remise-fait', t('remise.fait')));
+    for (const orderIds of Object.values(remise.faits)) {
+      remiseSection.appendChild(line('remise-fait', `${orderIds.join(' · ')} — ${t('remise.fait')}`));
+    }
 
     const view = remiseView(remiseRead);
     if (view === null) return;
@@ -2139,7 +2144,6 @@ if (app) {
             const depuis = new Date(course.depuis);
             row.appendChild(line('remise-row-depuis', `${t('remise.depuis')} ${depuis.toLocaleDateString([], { day: 'numeric', month: 'short' })} ${hhmm(course.depuis)}`));
           }
-          const orderId = course.orderIds[0]!;
           if (remise.demande === course.assignmentId) {
             const card = document.createElement('div');
             card.className = 'remise-card';
@@ -2149,7 +2153,7 @@ if (app) {
             oui.textContent = t('remise.confirmer');
             oui.disabled = remise.enVol !== null;
             oui.addEventListener('click', () => {
-              void debloquerCode(course.assignmentId, orderId);
+              void debloquerCode(course.assignmentId, course.orderIds);
             });
             const non = document.createElement('button');
             non.className = 'remise-annuler';
