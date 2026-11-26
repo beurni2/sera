@@ -312,6 +312,9 @@ describe('dispatch storage stays bounded by active work, on the real Worker', ()
     const asOf = new Date().toISOString();
     await faits(d, O, asOf);
     const { taskId, assignmentId } = await courseAcceptee(d, code, RIDER, O, 'rj');
+    // The supplier confirms the code the rider says: what the custody codes wait on.
+    const lue = (await d.rider(code, '/rider/moi')).json['rider'] as Json;
+    await d.intake('/intake/ramassage/verify', { command_id: 'rj-ram', orderId: O, code: (lue['assignment'] as Json)['codeRamassage'] });
     const vue = (await d.rider(code, '/rider/moi')).json['rider'] as Json;
     const codes = [(vue['assignment'] as Json)['codeVerification'], (vue['assignment'] as Json)['codeRamassage']] as string[];
     expect(codes.every((c) => typeof c === 'string' && c.length > 0)).toBe(true);

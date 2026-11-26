@@ -172,6 +172,8 @@ describe('the whole handshake: minted at assign, shown to the rider, judged for 
     expect(recomposed['ok'], JSON.stringify(recomposed)).toBe(true);
     const regranted = await ops(mf, '/ops/assign', { command_id: 'r3-a2', taskId: recomposed['taskId'], riderId: 'rider-boss' });
     expect(regranted['ok'], JSON.stringify(regranted)).toBe(true);
+    // The ramassage code is his once he accepts the new course.
+    expect((await appPorts(mf).acts.accepterCourse(code, (regranted['assignment'] as Json)['assignmentId'] as string)).ok).toBe(true);
     const fresh = await session.signIn(code);
     if (!fresh.ok) throw new Error('refresh refused');
     const nouveau = fresh.session.assignment?.codeRamassage as string;

@@ -114,6 +114,13 @@ async function ops(mf: Miniflare, path: string, body?: unknown): Promise<{ statu
   return { status: res.status, json: (await res.json()) as Json };
 }
 
+/** The supplier types the code the rider says: what the custody codes wait on. */
+async function fournisseurConfirme(mf: Miniflare, session: ReturnType<typeof appPorts>['session'], code: string, orderId: string, commandId: string): Promise<void> {
+  const lu = await session.signIn(code);
+  if (!lu.ok) throw new Error('sign-in refused');
+  expect((await intake(mf, '/intake/ramassage/verify', { command_id: commandId, orderId, code: lu.session.assignment?.codeRamassage })).json).toEqual({ ok: true, verdict: 'confirme' });
+}
+
 async function intake(mf: Miniflare, path: string, body: unknown): Promise<{ status: number; json: Json }> {
   const res = await mf.dispatchFetch(`http://logistics${path}`, {
     method: 'POST',
@@ -251,8 +258,10 @@ describe('COLIS-FOURNISSEUR-1 — one course, one package, several orders, acros
     expect(stall.json).toEqual({ ok: true, verdict: 'confirme' });
 
     // ═══ EACH ARTICLE'S OWN LEDGER, one code, one seal. ═══
-    const pv = a.codeVerification!;
-    const sc = a.codeScelle!;
+    const remis = await session.signIn(code);
+    if (!remis.ok) throw new Error('sign-in refused');
+    const pv = remis.session.assignment!.codeVerification!;
+    const sc = remis.session.assignment!.codeScelle!;
     const chaines: Record<string, Json> = {};
     for (const o of [A, B]) {
       const v = await riderCustody(custody, '/rider/verification', code, { orderId: o, command_id: `v-${o}`, presentedPickupCode: pv, checkResults: ALL_PASS, dwellSec: 150, evidenceBundleId: `ev-${o}` });
@@ -288,7 +297,7 @@ describe('COLIS-FOURNISSEUR-1 — one course, one package, several orders, acros
       custodySealIntact: true, buyerAccepts: false, refusalColumn: 'valid', startedAt: T, completedAt: T, evidenceBundleId: `sans-photo-porte-${B}`,
     });
     expect(refusB.json).toMatchObject({ ok: true, kind: 'valid_rejection', faultClass: 'seller' });
-    const retourB = await riderCustody(custody, '/rider/return/open', code, { orderId: B, command_id: 'r-b', returnSealId: a.codeScelleRetour });
+    const retourB = await riderCustody(custody, '/rider/return/open', code, { orderId: B, command_id: 'r-b', returnSealId: remis.session.assignment!.codeScelleRetour });
     expect(retourB.json).toMatchObject({ ok: true, kind: 'return_opened' });
 
     // The fifth wire crossed: B is in the return bag, the rider's key minted.
@@ -362,6 +371,7 @@ describe('COLIS-FOURNISSEUR-1 — one course, one package, several orders, acros
     const assignmentId = (granted.json['assignment'] as Json)['assignmentId'] as string;
     expect((await acts.accepterCourse(code, assignmentId)).ok).toBe(true);
     for (const o of [A, B]) await attendre(() => ledger(custody, o), (r) => r.status === 200, `chain ${o} never opened`);
+    await fournisseurConfirme(logistics, session, code, A, 'colis-ram-0');
     const signed = await session.signIn(code);
     if (!signed.ok) throw new Error('sign-in refused');
     const a = signed.session.assignment!;
@@ -439,6 +449,7 @@ describe('COLIS-FOURNISSEUR-1 — one course, one package, several orders, acros
     const granted = await ops(logistics, '/ops/assign', { command_id: 'avis-seul-a', taskId: seul.json['taskId'], riderId: RIDER });
     expect((await acts.accepterCourse(code, (granted.json['assignment'] as Json)['assignmentId'] as string)).ok).toBe(true);
     await attendre(() => ledger(custody, D), (r) => r.status === 200, 'chain D never opened');
+    await fournisseurConfirme(logistics, session, code, D, 'colis-ram-d');
     const signed = await session.signIn(code);
     if (!signed.ok) throw new Error('sign-in refused');
     const a = signed.session.assignment!;
@@ -488,6 +499,7 @@ describe('COLIS-FOURNISSEUR-1 — one course, one package, several orders, acros
     expect(granted.json['ok'], JSON.stringify(granted.json)).toBe(true);
     expect((await acts.accepterCourse(code, (granted.json['assignment'] as Json)['assignmentId'] as string)).ok).toBe(true);
     for (const o of [A, B]) await attendre(() => ledger(custody, o), (r) => r.status === 200, `chain ${o} never opened`);
+    await fournisseurConfirme(logistics, session, code, A, 'colis-ram-1');
     const signed = await session.signIn(code);
     if (!signed.ok) throw new Error('sign-in refused');
     const a = signed.session.assignment!;

@@ -294,6 +294,10 @@ describe('the founder retires a test course from the board — console port, rea
     const granted = await ops(mf, '/ops/assign', { command_id: 'a-assign', taskId: taskA, riderId: 'rider-boss' });
     const assignmentId = (granted['assignment'] as Json)['assignmentId'] as string;
     expect((await appPorts(mf).acts.accepterCourse(code, assignmentId)).ok).toBe(true);
+    // The supplier confirms the code the rider says: what the custody codes wait on.
+    const lu = await appPorts(mf).session.signIn(code);
+    if (!lu.ok) throw new Error('sign-in refused');
+    await intake(mf, '/intake/ramassage/verify', { command_id: 'a-ram', orderId: A, code: lu.session.assignment?.codeRamassage });
     // The rider really is carrying all of it before the purge.
     const moi = await appPorts(mf).session.signIn(code);
     if (!moi.ok) throw new Error('sign-in refused');

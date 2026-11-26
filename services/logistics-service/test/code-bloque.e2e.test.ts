@@ -204,6 +204,10 @@ async function colisConfie(logistics: Miniflare, orderIds: string[], riderId: st
   expect(granted.json['ok'], JSON.stringify(granted.json)).toBe(true);
   const assignmentId = (granted.json['assignment'] as Json)['assignmentId'] as string;
   expect((await acts.accepterCourse(code, assignmentId)).ok).toBe(true);
+  // The supplier confirms the code the rider says: what the custody codes wait on.
+  const lu = await appPorts(logistics).session.signIn(code);
+  if (!lu.ok) throw new Error('sign-in refused');
+  await intake(logistics, '/intake/ramassage/verify', { command_id: `${prefix}-ram`, orderId: orderIds[0], code: lu.session.assignment?.codeRamassage });
   return { code, assignmentId };
 }
 

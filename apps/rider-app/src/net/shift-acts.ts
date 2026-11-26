@@ -61,6 +61,9 @@ export type RefusService =
   // MANIFESTE-1 — the door could not read the ledger: the shift stays on,
   // said by name (the action is « try again », the cause is not hidden).
   | 'custody_unverifiable'
+  // A course still in hand (offered, or accepted and not picked up): the
+  // shift stays on, and the rider is told what to do with it.
+  | 'course_en_cours'
   | 'autre';
 
 export type ActeServiceResult =
@@ -116,6 +119,7 @@ export function refusFromBody(body: unknown): RefusService {
     'not_on_shift',
     'custody_would_be_orphaned',
     'custody_unverifiable',
+    'course_en_cours',
   ];
   return known.includes(reason as RefusService) ? (reason as RefusService) : 'autre';
 }
@@ -136,6 +140,8 @@ export function refusServiceKey(refus: RefusService): string {
       return 'service.refus_garde';
     case 'custody_unverifiable':
       return 'service.refus_garde_illisible';
+    case 'course_en_cours':
+      return 'service.refus_course';
     default:
       return 'service.act_failed';
   }

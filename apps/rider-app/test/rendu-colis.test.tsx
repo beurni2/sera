@@ -94,11 +94,13 @@ function logistics(state: CourseState): Route {
                   ackDeadline: null,
                   location: { landmark: 'La pharmacie du marché', directions: 'Après le carrefour', zone: 'Gounghin, Ouagadougou' },
                   preuvePhotoRefs: [], repereAudioRef: null,
-                  codeRamassage: 'ABC-DEF',
+                  // The Worker's rule (certified in logistics' prise-en-charge test): nothing
+                  // to say or present at the stall before he accepts the course.
+                  codeRamassage: state.status === 'acknowledged' ? 'ABC-DEF' : null,
                   ramassageConfirmeAt: '2026-09-23T08:00:00.000Z',
-                  codeVerification: PICKUP,
-                  codeScelle: SEAL,
-                  codeScelleRetour: RETSEAL,
+                  codeVerification: state.status === 'acknowledged' ? PICKUP : null,
+                  codeScelle: state.status === 'acknowledged' ? SEAL : null,
+                  codeScelleRetour: state.status === 'acknowledged' ? RETSEAL : null,
                   paymentMode: state.paymentMode,
                   codeRetour: state.codeRetour,
                   retourConfirmeAt: state.codeRetourFournisseur === null ? null : '2026-09-23T10:00:00.000Z',
