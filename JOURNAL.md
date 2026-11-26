@@ -3,6 +3,20 @@ Continuity ledger per CTO charter §6/§6bis. Every entry is evidence-grounded.
 
 Format per entry:
 
+## 2026-11-26 · MESSAGES-LIVRÉE-1 + DEPLOY-CLÉ-LIVRAISON-1 — DEPLOYED and MERGED
+
+**Founder.** « Release all three » (2026-11-26 21:17 UTC, decision card), which named for Séra: put the custody service live from the branch, check it, then merge.
+
+**Deploy first, from the designated branch at `d98ec60`.** custody-deploy 28 (id 45897194479): all six custody keys uploaded; « PROVENANCE OK — live custody Worker is `d98ec60…` speaking canon 3.21.0 ».
+
+**Merge.** main re-checked unchanged at `1d66eec`; PR #5 merged as `66ec261`. On main: ci 226 green · expo-preview 162 (rider app) green.
+
+**Deploy note, as reported.** A delivery that lost its two messages gets them back only when its drop is replayed or its code re-typed; nothing goes looking for such deliveries. Riders are not on the live app yet.
+
+**Still open.** Whether a wake or a periodic sweep should rebuild missing rows for delivered files; the `received[0]` test race; about a hundred other custody real-Worker tests still on the 5 s default; the logistics tests reading the custody bundle before custody rebuilds it.
+
+---
+
 ## 2026-11-26 · MESSAGES-LIVRÉE-1 — a finished delivery's two outgoing messages are saved with the delivery, and a delivery that lost them gets them back · lane S6 · on the branch, NOT merged, NOT deployed
 
 **Founder.** « go » (2026-11-26 19:26 UTC), on the next batch of fixes.
