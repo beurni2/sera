@@ -31,6 +31,9 @@ import { checkProducerActor } from './actor-provenance.js';
  * settlement — the signal is the entire output.
  */
 
+/** Founder ruling 2026-11-26: « drop code locks after 5 tries ». */
+export const DROP_CODE_STRIKES_TO_LOCK = 5;
+
 export type SpineRefusal =
   | 'verification_not_accepted'
   | 'seal_missing_or_mismatched'
@@ -46,6 +49,8 @@ export type SpineRefusal =
   | 'offline_never_final'
   | 'not_validated'
   | 'drop_code_refused'
+  /** The fifth wrong buyer's code since the last unlock (founder, 2026-11-26). */
+  | 'drop_code_locked'
   | 'validation_before_evidence'
   | 'unknown_transition'
   | 'evidence_already_submitted'
@@ -136,6 +141,16 @@ export class CustodySpine {
    * overwrite it and nothing is handed over, even before the return opens.
    */
   private changementAvisFinal = false;
+  /**
+   * The buyer's code locks after five wrong tries; only the founder unlocks
+   * it (founder ruling 2026-11-26). Counted HERE, in the replayed spine, so
+   * every wake rebuilds the same count from the log. The REFUSAL while locked
+   * lives at the drop route, never here: an old file holding five or more
+   * mismatches and then the right code must replay to the same ledger.
+   */
+  private dropCodeStrikes = 0;
+  private dropLockCycle = 0;
+  private dropLockedAt: string | null = null;
 
   constructor(
     private readonly chain: ChainIds,
@@ -543,7 +558,24 @@ export class CustodySpine {
       if (!this.doorPaymentConfirmed) return { ok: false, reason: 'door_payment_not_confirmed' };
     }
     const code = this.secrets.consume('buyer_drop_code', this.chain.order_id, presentedDropCode, at);
-    if (!code.ok) return { ok: false, reason: 'drop_code_refused' };
+    if (!code.ok) {
+      // Only a real mismatch strikes: a code that has not arrived yet must
+      // never lock an honest buyer out.
+      if (code.reason === 'secret_mismatch') {
+        this.dropCodeStrikes += 1;
+        if (this.dropCodeStrikes === DROP_CODE_STRIKES_TO_LOCK) {
+          this.dropLockCycle += 1;
+          this.dropLockedAt = at;
+          this.emit('reconciliation.alert.v1', `drop-code-locked-${this.chain.order_id}-${this.dropLockCycle}`, {
+            scenario: 'drop_code_locked',
+            order_id: this.chain.order_id,
+            refusals: DROP_CODE_STRIKES_TO_LOCK,
+          }, at);
+          return { ok: false, reason: 'drop_code_locked' };
+        }
+      }
+      return { ok: false, reason: 'drop_code_refused' };
+    }
     const transition = this.ledger.append({
       packageId: this.chain.package_id,
       kind: 'custody_transition',
@@ -577,6 +609,21 @@ export class CustodySpine {
     // fee-retained against a settlement-eligible order.
     this.custodyWithCourier = false;
     return { ok: true, duplicate: false, events: [e1, e2] };
+  }
+
+  /** Locked = five mismatches since the last unlock, and not delivered. */
+  dropCodeLock(): { locked: boolean; since: string | null } {
+    const locked = this.dropCodeStrikes >= DROP_CODE_STRIKES_TO_LOCK && !this.eligibilityEmittedForOrder.has(this.chain.order_id);
+    return { locked, since: locked ? this.dropLockedAt : null };
+  }
+
+  /** The founder's unlock: five fresh tries. Burns, re-mints and releases
+   *  nothing. Answers whether there was a lock to lift. */
+  unlockDropCode(): boolean {
+    if (!this.dropCodeLock().locked) return false;
+    this.dropCodeStrikes = 0;
+    this.dropLockedAt = null;
+    return true;
   }
 
   // ── WO-2.4 — Option-B door flow (SE5.1/§6.3; SE-I11) ─────────────────────
