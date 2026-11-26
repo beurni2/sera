@@ -1915,6 +1915,13 @@ export class CustodyDO {
       });
     }
 
+    /** Is the buyer's code locked? Never the code, never its digest. A file
+     *  not opened yet is simply not locked. */
+    if (request.method === 'GET' && pathname === '/drop-code/lock') {
+      const lock = this.spine === null ? { locked: false, since: null } : this.spine.dropCodeLock();
+      return Response.json({ ok: true, ...lock });
+    }
+
     /**
      * MANIFESTE-1 (SE3.1 / SE3.2 on the live road) — WHO HOLDS THE PACKAGE,
      * asked by LOGISTICS over the produce door: before a shift may end
@@ -1925,13 +1932,6 @@ export class CustodyDO {
      * would have to read as « unknown ». Answered BEFORE the « order not
      * open » guard for that reason.
      */
-    /** Is the buyer's code locked? Never the code, never its digest. A file
-     *  not opened yet is simply not locked. */
-    if (request.method === 'GET' && pathname === '/drop-code/lock') {
-      const lock = this.spine === null ? { locked: false, since: null } : this.spine.dropCodeLock();
-      return Response.json({ ok: true, ...lock });
-    }
-
     if (request.method === 'GET' && pathname === '/custodian') {
       if (this.chain === null || this.spine === null) {
         return Response.json({ ok: true, open: false, packageId: null, currentCustodian: null });
