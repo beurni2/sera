@@ -11,10 +11,16 @@ import { join } from 'node:path';
  * allow-list — and never be downloaded from the registry at deploy time.
  *
  * Over the workflow files it refuses:
- *   1. any `npx` call that names wrangler;
- *   2. any wrangler command that is not `pnpm exec wrangler …` or a lock-file
- *      binary (`…/node_modules/.bin/wrangler …`);
- *   3. a Cloudflare wrangler action (it installs its own copy).
+ *   1. any line that runs wrangler through a download runner (`npx`, `pnpx`,
+ *      `bunx`, `pnpm dlx`, `yarn dlx`, `npm exec`, `npm x`), wherever it sits
+ *      on the line — inside quotes, backticks or `$( )` too;
+ *   2. any line that installs wrangler outside the lock file;
+ *   3. any wrangler command that is not `pnpm exec wrangler …` or a lock-file
+ *      binary (`…/node_modules/.bin/wrangler …`) — a command being wrangler
+ *      followed by a known subcommand, a flag, or a line continuation;
+ *   4. a Cloudflare wrangler action (it installs its own copy).
+ * Only whole-line comments are skipped: a `#` inside a command is kept, so
+ * the worst a comment can do is cause a refusal, never hide one.
  * Over the workspace manifests it refuses a wrangler version that is not one
  * exact version, two manifests that pin it differently, and workflows that
  * call wrangler while no manifest declares it.
@@ -42,20 +48,27 @@ if (files.length === 0) {
   process.exit(2);
 }
 
-const SUBCOMMAND = /\bwrangler(?:@\S+)?["']?\s+(deploy|secret|pages|versions|deployments|rollback|kv|r2|d1|queues|tail|whoami|dev|types|login)\b/g;
+const CALL = /\bwrangler(?:@\S+)?["']?(?=\s+(?:--?[A-Za-z]|\\\s*$|(?:deploy|delete|publish|secret|secrets|pages|versions|deployments|rollback|triggers|kv|r2|d1|queues|hyperdrive|vectorize|workflows|dispatch-namespace|tail|whoami|dev|types|login|logout|init|setup|check)\b))/g;
+const DOWNLOAD = /\b(?:npx|pnpx|bunx|pnpm\s+dlx|yarn\s+dlx|npm\s+(?:exec|x))\s[^\n]*\bwrangler\b/;
+const INSTALL = /\b(?:npm|pnpm|yarn|bun)\s+(?:i|install|add)\b[^\n]*\bwrangler\b/;
 const refused = [];
 let calls = 0;
 for (const file of files) {
   readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
     const at = `${file}:${i + 1}`;
-    const code = line.replace(/(^|\s)#.*$/, '');
+    if (/^\s*#/.test(line)) return;
+    const code = line;
     if (/wrangler-action/.test(code)) refused.push(`${at} a wrangler action installs its own copy: ${code.trim()}`);
-    if (/(^|[\s;|&(])npx\s[^\n]*wrangler/.test(code)) refused.push(`${at} npx fetches wrangler at deploy time: ${code.trim()}`);
-    for (const m of code.matchAll(SUBCOMMAND)) {
+    const downloads = DOWNLOAD.test(code);
+    if (downloads) refused.push(`${at} a download runner fetches wrangler at deploy time: ${code.trim()}`);
+    if (INSTALL.test(code)) refused.push(`${at} wrangler is installed outside the lock file: ${code.trim()}`);
+    for (const m of code.matchAll(CALL)) {
       calls += 1;
+      // A download-runner line is already refused above; one refusal per cause.
+      if (downloads) continue;
       const before = code.slice(0, m.index);
       const fromLock = /pnpm exec $/.test(before) || /node_modules\/\.bin\/$/.test(before);
-      if (!fromLock && !/npx\s/.test(before)) {
+      if (!fromLock) {
         refused.push(`${at} wrangler is not called from the lock file (use \`pnpm exec wrangler\`): ${code.trim()}`);
       }
     }

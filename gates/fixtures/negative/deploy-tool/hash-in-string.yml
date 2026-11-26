@@ -1,0 +1,15 @@
+# Negative fixture: a « #» inside a string before a registry download.
+name: deploy
+permissions:
+  contents: read
+on: workflow_dispatch
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy
+        working-directory: services/worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          echo "step #1"; npx --yes wrangler@4 deploy

@@ -245,12 +245,16 @@ capture no-ssh-lockfile-urls-negative fail node scripts/gates/no-ssh-lockfile-ur
 
 log "gate: deploy-tool-pinned — every workflow runs the lock file's wrangler, one exact version (must pass)"
 capture deploy-tool-pinned-positive pass node scripts/gates/deploy-tool-pinned.mjs
-for fx in npx-wrangler bare-wrangler wrangler-action; do
+for fx in npx-wrangler npx-quoted hash-in-string dlx-flag-first dlx-continued install-wrangler bare-wrangler bare-flag-first bare-continued bare-unlisted wrangler-action; do
   log "gate: deploy-tool-pinned — NEGATIVE FIXTURE ($fx, must fail)"
   capture "deploy-tool-pinned-negative-$fx" fail node scripts/gates/deploy-tool-pinned.mjs "gates/fixtures/negative/deploy-tool/$fx.yml"
 done
 log "gate: deploy-tool-pinned — NEGATIVE FIXTURE (a range instead of one exact version, must fail)"
 capture deploy-tool-pinned-negative-range-pin fail node scripts/gates/deploy-tool-pinned.mjs gates/fixtures/negative/deploy-tool/range-pin/workflows gates/fixtures/negative/deploy-tool/range-pin
+for fx in pinned-differently no-manifest; do
+  log "gate: deploy-tool-pinned — NEGATIVE FIXTURE ($fx: two packages pin it differently / no package declares it, must fail)"
+  capture "deploy-tool-pinned-negative-$fx" fail node scripts/gates/deploy-tool-pinned.mjs "gates/fixtures/negative/deploy-tool/$fx/workflows" "gates/fixtures/negative/deploy-tool/$fx"
+done
 log "gate: deploy-tool-pinned — NOTHING SEEN (no wrangler command: the gate must say so with exit 2, never pass)"
 capture deploy-tool-pinned-nothing-seen 2 node scripts/gates/deploy-tool-pinned.mjs gates/fixtures/negative/deploy-tool/no-wrangler.yml
 
