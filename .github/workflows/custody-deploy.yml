@@ -166,10 +166,14 @@ jobs:
       # revived by the alarm once this is set, which is what « honest resting
       # state, never a silent drop » was built for.
       #
-      # ⚠ SAME VALUE AS SHOP+'s `PROGRESS_WRITE_SECRET`, which gates the
-      # `/fulfillment/progress` and `/fulfillment/transit` doors on the
-      # storefront Worker. A different value is a 401 on every attempt — the
-      # same class of silence as the media write key.
+      # ⚠ SAME VALUE AS SHOP+'s `SERA_PROGRESS_SECRET` — Séra's own key on
+      # the `/fulfillment/progress` and `/fulfillment/transit` doors of the
+      # storefront Worker since 2026-09-03 (SECTEURS-PROGRES-1). NEVER Shop+'s
+      # `PROGRESS_WRITE_SECRET`: that one now opens only Boutik+'s preparation
+      # facts, so it is answered 403 `wrong_writer` here, and any other value
+      # is a 401 — every attempt, the same class of silence as the media key.
+      # This step writes the repository secret onto the Worker on EVERY run,
+      # so a value set on the Worker by hand is replaced by the repository's.
       - name: Arm SHOP_PROGRESS_SECRET (piped — skipped only if the repo secret is absent)
         working-directory: services/custody-service
         env:
@@ -177,7 +181,7 @@ jobs:
           PROGRESS_SECRET: ${{ secrets.SHOP_PROGRESS_SECRET }}
         run: |
           if [ -z "$PROGRESS_SECRET" ]; then
-            echo "::warning title=Retour vers les consoles NON armé::SHOP_PROGRESS_SECRET absent — une livraison terminée, un départ et une arrivée restent dans la file (unsendable_no_config) et n'arrivent JAMAIS sur la console du fournisseur ni sur la vôtre. Rien n'est perdu : la file repart dès que le secret est posé et ce workflow relancé. Il doit valoir exactement le PROGRESS_WRITE_SECRET de shop-plus."
+            echo "::warning title=Retour vers les consoles NON armé::SHOP_PROGRESS_SECRET absent — une livraison terminée, un départ et une arrivée restent dans la file (unsendable_no_config) et n'arrivent JAMAIS sur la console du fournisseur ni sur la vôtre. Rien n'est perdu : la file repart dès que le secret est posé et ce workflow relancé. Il doit valoir exactement le SERA_PROGRESS_SECRET de shop-plus, jamais son PROGRESS_WRITE_SECRET."
             exit 0
           fi
           printf '%s' "$PROGRESS_SECRET" | pnpm exec wrangler secret put SHOP_PROGRESS_SECRET

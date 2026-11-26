@@ -1271,6 +1271,10 @@ export class CustodyDO {
    * skipped them. Now the rows go `pending` regardless; a standing alarm
    * flushes every pending row when it fires, so the guard only needs to stop
    * a SECOND alarm from stomping the backoff.
+   *
+   * It re-pends rows that EXIST. A row MISSING altogether is rebuilt before
+   * it is called: by `commit()` on a re-typed code, by the exact-replay
+   * branch of `/delivery/drop` itself (see `absentDropRows`).
    */
   private async reviveDropOutboxRows(): Promise<void> {
     const stranded = await this.state.storage.get<EligibilityOutbox>(ELIGIBILITY_OUTBOX_KEY);
@@ -1460,6 +1464,40 @@ export class CustodyDO {
     return canonicalJson(cmd).length > 64 * 1024;
   }
 
+  /**
+   * The two rows a recorded successful drop owes — the eligibility signal to
+   * Shop+ and the course-closed confirmation to logistics — for each key that
+   * is ABSENT, derived from what is recorded and never from the request in
+   * hand: the spine's own `delivery.validated.v1` (replayed from the log, so
+   * the same event the drop emitted), and the logged drop's own command id
+   * and instant. Byte-identical to what that drop armed when the log is
+   * replayed by the code that armed it (a file recorded before the code
+   * lock, with five or more wrong codes before its drop, replays one more
+   * alert, so its rebuilt event carries an `aggregateVersion` one higher);
+   * Shop+ dedupes the signal on its `command_id` either way, and the
+   * course-closed body carries no version. A row that exists is never
+   * touched here, delivered or not. No successful drop in the log ⇒ nothing.
+   */
+  private async absentDropRows(log: readonly LoggedCommand[]): Promise<Record<string, unknown>> {
+    const rows: Record<string, unknown> = {};
+    const delivered = log.find(
+      (r) => r.cmd.kind === 'confirm_drop' && r.outcome.httpStatus === 200 && r.outcome.body['status'] === 'custody_with_customer',
+    )?.cmd as Extract<CustodyCommand, { kind: 'confirm_drop' }> | undefined;
+    if (delivered === undefined || this.chain === null) return rows;
+    if ((await this.state.storage.get(COURSE_LIVREE_OUTBOX_KEY)) === undefined) {
+      rows[COURSE_LIVREE_OUTBOX_KEY] = {
+        status: 'pending',
+        attempts: 0,
+        body: { orderId: this.chain.order_id, command_id: `livree-${delivered.command_id}`, at: delivered.at },
+      } satisfies CourseLivreeOutbox;
+    }
+    const event = this.spine?.allEvents().find((e) => e.name === 'delivery.validated.v1');
+    if (event !== undefined && (await this.state.storage.get(ELIGIBILITY_OUTBOX_KEY)) === undefined) {
+      rows[ELIGIBILITY_OUTBOX_KEY] = { status: 'pending', attempts: 0, event } satisfies EligibilityOutbox;
+    }
+    return rows;
+  }
+
   private async commit(cmd: CustodyCommand, outcome: RecordedOutcome): Promise<void> {
     const row: LoggedCommand = { cmd, outcome };
     const next = [...this.log, row];
@@ -1538,9 +1576,23 @@ export class CustodyDO {
         armRetour = true;
       }
     }
+    /**
+     * The successful drop's two wires — eligibility to Shop+, course-closed
+     * to logistics — arm IN THE SAME PUT as the drop that delivered: the
+     * delivery and the messages it owes are saved together or not at all.
+     * On a later drop (the buyer's code re-typed, answered « deja_livree »)
+     * the same derivation rebuilds a row that is missing; one that exists is
+     * left to `reviveDropOutboxRows`' rule.
+     */
+    let armDrop = false;
+    if (cmd.kind === 'confirm_drop') {
+      const dropRows = await this.absentDropRows(next);
+      Object.assign(puts, dropRows);
+      armDrop = Object.keys(dropRows).length > 0;
+    }
     await this.state.storage.put(puts);
     this.log = next;
-    if (armRefus || armRetour) await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
+    if (armRefus || armRetour || armDrop) await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
   }
 
   /** The head implied by a given log, with the CURRENT rebuilt ledger. */
@@ -2565,7 +2617,11 @@ export class CustodyDO {
       if (prior.kind === 'duplicate') {
         // The at-least-once recovery hook (the shop outbox's own precedent):
         // a redelivered drop is the one moment that can re-arm a stranded or
-        // config-starved outbox without inventing a scheduler.
+        // config-starved outbox without inventing a scheduler. A row that is
+        // MISSING (a recorded delivery whose rows never landed) is rebuilt
+        // first, from the log; then every existing row follows its own rule.
+        const missing = await this.absentDropRows(this.log);
+        if (Object.keys(missing).length > 0) await this.state.storage.put(missing);
         await this.reviveDropOutboxRows();
         return this.replayOutcome(prior.outcome, cmd);
       }
@@ -2609,39 +2665,10 @@ export class CustodyDO {
          */
         await this.reviveDropOutboxRows();
       }
-      if (applied.ok && !applied.duplicate) {
-        // The spine emitted the ONE eligibility signal for this order — put
-        // it on the wire, at-least-once. The put is AFTER commit; workerd's
-        // output gate holds the response across these same-object writes, so
-        // the commit-then-arm window admits no externally visible partial
-        // state (the revival hooks re-arm rows that EXIST — they do not
-        // recreate a row a crash prevented from ever being written; the
-        // output gate is what makes that window unreachable). COURSE-LIVRÉE:
-        // the third wire arms HERE, at the same provider-truth commit site —
-        // its own row, its own key, riding the SAME single put as the
-        // eligibility row (« ONE WRITE, NOT TWO », the commit path's law), so
-        // the two wires arm together or not at all. Its command_id derives
-        // from the drop command's own id, and `at` is the drop's instant.
-        const event = this.spine!
-          .allEvents()
-          .find((e) => e.name === 'delivery.validated.v1');
-        const armed: Record<string, unknown> = {
-          [COURSE_LIVREE_OUTBOX_KEY]: {
-            status: 'pending',
-            attempts: 0,
-            body: { orderId: this.chain!.order_id, command_id: `livree-${cmd.command_id}`, at: cmd.at },
-          } satisfies CourseLivreeOutbox,
-        };
-        if (event !== undefined) {
-          armed[ELIGIBILITY_OUTBOX_KEY] = {
-            status: 'pending',
-            attempts: 0,
-            event,
-          } satisfies EligibilityOutbox;
-        }
-        await this.state.storage.put(armed);
-        await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
-      }
+      // A fresh successful drop's two messages (the ONE eligibility signal
+      // for this order, and the course-closed confirmation, `livree-<this
+      // drop's id>` at this drop's instant) were armed by `commit()` in the
+      // same single put as the drop itself, and the alarm set after it.
       return Response.json(recorded.body, { status: recorded.httpStatus });
     }
 

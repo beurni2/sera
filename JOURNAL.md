@@ -3,6 +3,88 @@ Continuity ledger per CTO charter §6/§6bis. Every entry is evidence-grounded.
 
 Format per entry:
 
+## 2026-11-26 · MESSAGES-LIVRÉE-1 — a finished delivery's two outgoing messages are saved with the delivery, and a delivery that lost them gets them back · lane S6 · on the branch, NOT merged, NOT deployed
+
+**Founder.** « go » (2026-11-26 19:26 UTC), on the next batch of fixes.
+
+**Spec.**
+- Execution Contract §4: « **Events:** versioned envelopes · consumer backward-compatibility · **replay** support · **duplicate-event** handling · **dead-letter** handling · rollback-safe. »
+- Execution Contract §2 critical path: « custody → evidence → ValidationDecision ──▶ settlement-eligibility signal ».
+- Sera-Build-Spec §4 SE-I06: « custody/delivery validation + financial release remain pending until authoritative server ack ».
+- SE-I04: « Every package has exactly one current custodian; task status alone MUST NOT be custody truth. »
+- The service's own law at `commit()`: « ONE WRITE, NOT TWO … A single `put` of both keys commits together or not at all ». The refusal and return wires already arm in that same put.
+
+**Built.** Lane S6 built `75cde78`, then `830cbf8` from the one review below. Both were merged here `--no-ff` (`f680520`, `d0f74f1`). The changed files are `services/custody-service/worker/custody-do.ts` and one new real-Worker test, `test/drop-wires-recovery.e2e.test.ts`.
+
+*Before.* A successful drop wrote its log row and head in one put. It then armed the settlement-eligibility row and the course-closed row in a SECOND awaited put. The comment on it leaned on the output gate, which holds the response but never joins two awaited writes into one. A stop between the two writes left a delivered file with no row, and nothing rebuilt a missing row: `reviveDropOutboxRows()` only re-pends rows that exist.
+
+*Now.*
+- **One new private `absentDropRows(log)`.**
+  - It finds the one logged successful drop (`confirm_drop`, 200, `custody_with_customer`).
+  - For each ABSENT row it builds today's exact bytes:
+    - the course-closed row: `{status:'pending', attempts:0, body:{orderId, command_id:'livree-'+<that drop's id>, at:<that drop's at>}}`;
+    - the eligibility row, when the spine holds `delivery.validated.v1`: `{status:'pending', attempts:0, event}`.
+  - A row that exists is never touched.
+- **`commit()`.** For `confirm_drop` only, those rows join the same `puts` as the log row and the head, in one `storage.put`. The alarm is set after the put when they were armed. This covers the fresh drop and the re-typed code (`deja_livree` is itself committed).
+- **The exact replay of the drop command** commits nothing. It puts the absent rows, then calls `reviveDropOutboxRows()` unchanged. Each road derives once.
+- The second put after `commit()` and its output-gate comment are gone.
+- No route, row shape, event, receiver payload or answer order changed.
+
+**Evidence.**
+- New file 9/9 on the real bundled Worker, with persisted storage, rows deleted between runtimes, and the rider app's own port:
+  - exact replay × {eligibility, course-closed, both} missing: each receiver hears the original bytes once;
+  - re-typed code with both missing: the body carries the LOGGED drop's id and instant, not the re-type's;
+  - a delivered row with the other missing, through both the replay and the re-type: only the missing one is sent, and the delivered row is deep-equal on disk;
+  - a fresh drop: the head, the drop's log row and both rows are found together.
+- Red on main: 6 failed, 1 passed (coordinator re-run with main's `custody-do.ts`, restored, cmp OK).
+- Mutations, each anchor matched once, restored with cmp OK, bundle rebuilt:
+  - derive skipped on `deja_livree`: red;
+  - course-closed presence ignored: red (2 tests, replay and re-type);
+  - eligibility presence ignored: red (2 tests);
+  - the lane's id/instant-from-the-new-command mutations: red;
+  - rows moved to a separate put inside `commit()`: SURVIVES. This is accepted, because a closed window between two writes cannot be seen without stubbing storage.
+- Board on `f680520`: ALL GATES GREEN (custody 272, logistics 328, rider 500, console 97, recorded answers 200, e2e 34, Playwright 43, every negative fixture failed). The hand-back commit `830cbf8` changes a docblock and the one test file. Re-run on `d0f74f1`: the new file 9/9, and the full custody suite three times: 274/274, 274/274, and 273/274.
+  - The one failure is the known `received[0]` race in `custody-do.e2e.test.ts` (« SE-LIVE-5a … expected 'delivery.refused.v1' to be 'delivery.validated.v1' »), described in the CODE-BLOQUE-1 entry below.
+  - It is a test that takes the first message without checking its order. This slice does not touch it.
+
+**CI on the pull request.** The first run went red on one test this slice does not touch: `custody-storage.e2e.test.ts` « refuses to re-open over an existing log… » passed vitest's 5 s default under GitHub's load (5034 ms; 0.4 s here). That file's 20 real-Worker tests had no explicit timeout, so each now carries the repository's real-Worker 60 000 ms. Assertions are unchanged; locally 23/23.
+
+**The one independent review:** 0 blockers, 0 should-fix, 4 notes, handled once.
+- N1 fixed: the docblock now states byte identity as it holds. A file recorded before the code lock, with five or more wrong codes before its drop, replays one more alert, so its rebuilt event carries an `aggregateVersion` one higher. Shop+ dedupes the signal on its `command_id` either way, and the course-closed body carries no version.
+- N4 fixed: the delivered-row case also runs through a re-typed code, with its mutation.
+- N2, journalled: a re-type that rebuilds a row sets the alarm to now, as the other `commit()` wires do.
+- N3, journalled: the single write is shown by the code and by the four keys found together, never by a crash test.
+
+The slice was not re-inspected after the fixes.
+
+**Deploy note.**
+- A delivery recorded before these wires existed, or one whose row was lost, gets the missing row back (and its message sent) only when its drop is replayed or its code re-typed. Both receivers answer a repeat with 200. Riders are not on the live app yet, so few or no such files are expected.
+- Nothing else rebuilds a missing row: not a wake, not the alarm, not a scan.
+
+**Still open.** Whether a wake or a periodic sweep should rebuild missing rows for delivered files; the `received[0]` test race; about a hundred other custody real-Worker tests still on the 5 s default; the logistics tests reading the custody bundle before custody rebuilds it.
+
+## 2026-11-26 · DEPLOY-CLÉ-LIVRAISON-1 — the custody deploy's delivery-key instructions name the right Shop+ secret · coordinator · on the branch, NOT merged
+
+`.github/workflows/custody-deploy.yml`, text only (`0315c90`). The comment and the French warning beside the `SHOP_PROGRESS_SECRET` step asked for Shop+'s `PROGRESS_WRITE_SECRET`. Since the 2026-09-03 split, that secret opens only Boutik+'s preparation facts, and Séra's doors answer it with 403 `wrong_writer`. They now name Shop+'s `SERA_PROGRESS_SECRET`, which both sides have used since then. The step itself is unchanged. The live pairing was checked on 2026-11-26.
+
+---
+
+## 2026-11-26 · CODE-BLOQUE-1 — DEPLOYED and MERGED
+
+**Founder.** « Deploy and merge both » (2026-11-26 18:41 UTC, decision card), which named for Séra: put the custody service and then the logistics service live from the branch and check each, then merge PR #4.
+
+**Deploy first, from the designated branch at `0821fe1`.**
+- custody-deploy 27 (id 45878016987): « PROVENANCE OK — live custody Worker is `0821fe1…` speaking canon 3.21.0 », every custody key re-armed.
+- logistics-deploy 37 (id 45878332855), after it: « PROVENANCE OK — live logistics Worker is `0821fe1…` speaking canon 3.21.0 », every logistics key re-armed.
+
+**Merge.** main re-checked unchanged at `359c0a0`; merged as `1d66eec`. On main: expo-preview 161 (rider app) green · ci 223 green.
+
+**Deploy note, as reported.** An undelivered file that already held five or more wrong codes since its last success is locked from the deploy on, and shows on the console desk.
+
+**Still open.** The lock's one alert per lock cycle is written but not yet shown to the founder; the custody e2e `received[0]` filter; the logistics tests reading the custody bundle before custody rebuilds it.
+
+---
+
 ## 2026-11-26 · CODE-BLOQUE-1 — the buyer's code locks after five wrong tries; only the founder unlocks it · lane S · on the branch, NOT merged, NOT deployed
 
 **Founder ruling (2026-11-26, project chat):** « drop code locks after 5 tries (console unlock) ».
