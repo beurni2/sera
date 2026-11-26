@@ -3,6 +3,22 @@ Continuity ledger per CTO charter §6/§6bis. Every entry is evidence-grounded.
 
 Format per entry:
 
+## 2026-11-26 · CODE-BLOQUE-1 — DEPLOYED and MERGED
+
+**Founder.** « Deploy and merge both » (2026-11-26 18:41 UTC, decision card), which named for Séra: put the custody service and then the logistics service live from the branch and check each, then merge PR #4.
+
+**Deploy first, from the designated branch at `0821fe1`.**
+- custody-deploy 27 (id 45878016987): « PROVENANCE OK — live custody Worker is `0821fe1…` speaking canon 3.21.0 », every custody key re-armed.
+- logistics-deploy 37 (id 45878332855), after it: « PROVENANCE OK — live logistics Worker is `0821fe1…` speaking canon 3.21.0 », every logistics key re-armed.
+
+**Merge.** main re-checked unchanged at `359c0a0`; merged as `1d66eec`. On main: expo-preview 161 (rider app) green · ci 223 green.
+
+**Deploy note, as reported.** An undelivered file that already held five or more wrong codes since its last success is locked from the deploy on, and shows on the console desk.
+
+**Still open.** The lock's one alert per lock cycle is written but not yet shown to the founder; the custody e2e `received[0]` filter; the logistics tests reading the custody bundle before custody rebuilds it.
+
+---
+
 ## 2026-11-26 · CODE-BLOQUE-1 — the buyer's code locks after five wrong tries; only the founder unlocks it · lane S · on the branch, NOT merged, NOT deployed
 
 **Founder ruling (2026-11-26, project chat):** « drop code locks after 5 tries (console unlock) ».
