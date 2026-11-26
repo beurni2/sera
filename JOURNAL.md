@@ -3,6 +3,18 @@ Continuity ledger per CTO charter §6/§6bis. Every entry is evidence-grounded.
 
 Format per entry:
 
+## 2026-11-26 · PORTE-MAIN-1 — DEPLOYED and MERGED
+
+**Founder.** « Deploy and merge both » (2026-11-26 08:48 UTC, decision card), which named for Séra: put the custody service live from the branch and check it, then merge PR #3.
+
+**Deploy first.** custody-deploy 26 from the designated branch at `ef7b112`, the first custody deploy with the lock file's pinned wrangler: the live health check reports release `ef7b112` speaking canon 3.21.0 (provenance OK), every custody key re-armed. The only runtime change since the previous custody deploy (`97f1427`, 2026-09-24) is this slice; the rest is the deploy-tool pin and test time budgets.
+
+**Merge.** main re-checked unchanged at `a6d2fc3`; merged as `359c0a0`. On main: ci 219 green · expo-preview 160 (rider app) green.
+
+**Next.** The drop-code lock after five wrong tries (per article; unlocked from the dispatch console) starts from this main.
+
+---
+
 ## 2026-11-26 · PORTE-MAIN-1 — only the parcel's holder acts at the door; every door act names its rider · lane S · on the branch, NOT merged, NOT deployed
 
 **Spec.** Sera-Build-Spec §4 SE-I05 (« Delivery requires assigned session + `buyerDropCode` + same custody seal + evidence … »), SE-I04 (one current custodian), SE-I10, §5.5, §5.6, §6.5, §8 SE3; the service's own law in `custody-do.ts` (« through the rider door, the acting hand must be the ledger's CURRENT CUSTODIAN »), until now applied to transit only.
