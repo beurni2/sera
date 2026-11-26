@@ -3,6 +3,111 @@ Continuity ledger per CTO charter §6/§6bis. Every entry is evidence-grounded.
 
 Format per entry:
 
+## 2026-11-26 · CODE-BLOQUE-1 — the buyer's code locks after five wrong tries; only the founder unlocks it · lane S · on the branch, NOT merged, NOT deployed
+
+**Founder ruling (2026-11-26, project chat):** « drop code locks after 5 tries (console unlock) ».
+- Counted per article (decision card 06:45 UTC, « Per article »).
+- Unlocked from the Séra dispatch console (same card).
+
+**Spec.**
+- Sera-Build-Spec §4 SE-I05 (delivery requires `buyerDropCode` …) and SE-I04 (one current custodian).
+- SE-I10 (no generic failed terminal: the lock is not one, custody stays with the rider).
+- §5.5 (evidence never releases), §5.6 (`buyerDropCode` private; no code or digest in any answer, board row or alert).
+- §6.5 (no release from a Séra direct command: the unlock releases nothing and writes no ledger entry).
+- §8 SE3 (each order keeps its own drop).
+- §2 (dispatcher MUST NOT edit ledger, refund or payout).
+- Execution Contract §10.5.
+
+**Built.** Lane S built `75d289b` → `56d8d47`, then the review fixes `e36904d` and `ad9baf5`, merged here `--no-ff` as `0c7c7f5`. One coordinator commit sits on top, `852a123`. Then the verifier's fixes `b1b9e3f`, `9e86ba6` and `844f0fa`, merged here `--no-ff` as `bd0598a`.
+
+*Custody.*
+- The spine counts real mismatches only (`secret_mismatch`). A code not armed yet never counts, the same command id re-sent counts once, and a re-arm never resets.
+- The fifth mismatch since the last unlock answers `drop_code_locked` and emits ONE `reconciliation.alert.v1` per lock cycle: `{scenario:'drop_code_locked', order_id, refusals:5}`, with a deterministic id. It is kept in the spine's events and is not wired.
+- While locked, the drop route refuses every fresh try, the right code too, with `409 drop_code_locked`. The refusal comes after the duplicate replay, the holder check, the conflict check and the size check, and it commits nothing. The refusal stays out of the replayed spine, so an old log with five or more mismatches followed by a success replays to the same ledger (spine test).
+- New command `unlock_drop_code` (founder-attested, deduplicated like every command):
+  - locked: it resets the count and answers `debloque`;
+  - not locked: it answers `pas_bloque` and writes no row;
+  - it burns, re-mints and releases nothing.
+- Routes `GET /drop-code/lock` and `POST /drop-code/unlock` are open on the ops and produce doors only. The rider door and Shop+'s door answer 404, and a rider header inside the object answers `409 not_founder_door`.
+- `/attestations` lists unlock rows with no code and no digest.
+
+*Logistics.*
+- `/ops/board` lists the live courses whose articles are locked (`codesBloques`) and says when that list may be partial (`codesBloquesPartiel`). Both appear only when there is something to say, so the recorded board form is unchanged.
+- One board read makes at most 30 custody calls. The platform allows 32 Worker invocations per request, and each service-binding call counts. The wire revivals (existing: at most 20, once a minute per order) go first; the lock reads take what is left, in board order, each with the custodian read's 4 s timeout.
+- `/ops/remise/debloquer` relays the unlock to every article of the live course, under one relayed id. Any failing article's answer comes back by name (`no_active_course`, `custody_non_relie`, `custody_unreachable`, `custody_refused` + detail), and a retry under the same id converges.
+
+*Rider app.* `drop_code_locked` shows « Le code est bloqué. » with « Cinq mauvais codes ont été tapés. Gardez le colis et appelez Séra. Quand Séra débloque, retapez le code de la cliente. » Both strings are in the money register, with tone waiting, so the next tap is a fresh command. « Un souci ? » stays the way out.
+
+*Dispatch console.* A new desk, « Codes de la cliente bloqués », after the next-passage desk.
+- Each locked course shows its rider, its articles and since when.
+- « Débloquer le code » opens a confirmation and sends nothing. « Oui, débloquer » sends once, with the desk-minted id reused on retry.
+- A refusal keeps the lever. The row leaves on the board's own re-read.
+- Honest states: no base, key first, refused key, loading, failed, empty, partial.
+
+*Coordinator commit `852a123`.* The console shell test's pinned section count goes from 10 to 11, naming the new desk at position 7. The count stays pinned on purpose. The lane's permission check refused that edit, so it was applied here as approved.
+
+**Evidence.**
+- New `custody-service/test/code-bloque.e2e.test.ts` runs on the real bundled Worker through the rider app's own custody port, asking the ledger, the events and the ledger head. It covers:
+  - 4 wrong codes refused, the 5th locks, and the right code is then refused;
+  - still locked after eviction, with no rows added;
+  - the doors that cannot unlock, then the unlock and its duplicate;
+  - unarmed tries, re-sent ids and a re-arm;
+  - `pas_bloque`;
+  - a foreign rider;
+  - a second lock cycle.
+- New `logistics-service/test/code-bloque.e2e.test.ts` runs two real Workers, the console's own port and the rider app's ports, on a 2-article package:
+  - lock, list, unlock relayed to both articles, delivery, and the course closes;
+  - the 30-call budget, counted on every custody call, with and without revivals due;
+  - the partial flag.
+- Walks:
+  - rider app, single parcel and package: 4 wrong codes, then the lock sentence; the tree survives and both ways out stay pressable; after the fake founder unlock, delivery under fresh command ids;
+  - console, wired Playwright walk `remise.wired.spec.ts`: nothing sent before the confirmation, a refusal by name, done in his words.
+- Mutations: 21 by the lane at C3 and 3 more for the verifier's fixes, each anchor matched once and restored byte-identical, all red. Coordinator re-check: the drop route's lock refusal removed gives 3 of 4 custody lock tests red, restored by md5.
+- **Coordinator board of record on `852a123`** (`TURBO_CONCURRENCY=1 run-gates.sh`): ALL GATES GREEN. Custody 265, logistics 328, rider app 500, console 96 + Playwright 41, real-Worker e2e 200 + 34, recorded-answers gate green.
+- **After the verifier's fixes (`bd0598a`)** the coordinator re-ran only what they touch: custody 265 (bundle rebuilt), console 97 plus Playwright 43 (the two new walks included, the shell list green), rider app 500, typecheck green. Logistics code is unchanged by the fixes.
+- The first board run went red only because custody's bundle in this checkout predated the slice. This is the known fragility named under DEPLOY-TOOL-PIN-1: logistics' e2e reads custody's bundle before custody's own test step rebuilds it. After re-bundling, the board was green.
+
+**Verifier.** One fresh-context pass, given only three things: the spec quotes, the brief with its decisions, and the diff `e0cfa32..852a123`. Verdict: PASS WITH FINDINGS, with 0 blockers, 1 should-fix and 6 notes. It re-ran both new e2e files green.
+
+It found sound:
+- the place of the lock refusal (it commits nothing, and has no await before apply);
+- the count rule;
+- the byte-identical ledger head on replay;
+- the doors that can unlock, and `pas_bloque`;
+- no code or digest anywhere;
+- the 30-call budget;
+- the relay;
+- the console's send-once rule;
+- the rider tone;
+- the catalog strings;
+- the scope.
+
+Each finding was handled once, and the slice was not re-inspected:
+- *Should-fix, fixed.* The console's « Code débloqué » line named no course and never cleared. Now it names the course's orders, and a done mark leaves when the board lists that course as locked again. This has a unit test and a wired walk: the done line reads « ord-a · ord-b — Code débloqué. … », and after a re-lock the row stands alone. Two mutations each went red: removing the re-list drop in the page fails the walk (one stale line), and removing the filter in the model fails a unit test.
+  - The verifier also suggested no done line on `pas_bloque`. **Kept, as a coordinator ruling.** After `pas_bloque` the article is not locked, so « Le coursier peut retaper le code » is true. It happens when an earlier unlock already took effect, or on a retry under the same id.
+- *Fixed.* The new lock-read route sat between an older comment and the route that comment describes. It was moved, with no code change.
+- *Fixed.* One rider-app walk assertion read the fake's own flag and could not fail. It was replaced by an on-screen check: the next step is not reached while locked. A mutation proves it can go red: mapping « locked » to « delivered » in the rider's act model shows « Livré. Merci. », and the new check fails.
+- *Fixed.* The dispatch desk's « no base » and loading states had no walk. Both are walked now; « no base » is in a new unwired spec.
+- *Journalled.* Replaying an old log that holds five or more mismatches adds one lock alert that never fired live. Later `/ops/events` versions shift by one. The ledger head is unaffected, because events are outside it, and the outboxes send their stored copies.
+- *Journalled.* The console's `remise.*` strings are tagged neutral, following the next-passage desk, as decision 10 allowed. The rider's matching strings are money.
+- *Journalled, as a correction for the record.* Commit `75d289b` says « in a row » and « already-used codes do not count ». The rule is five mismatches since the last unlock, and a used code cannot occur before delivery. Commit `d3af9d9` says « 32 reads ». The budget is 30 custody calls per board read, revivals included (`e36904d`).
+
+**Known flake, not this slice's.** `custody-do.e2e.test.ts` (« walks the whole road ») failed once in the lane's first board.
+- The « two orders » test reads `ord-custody-refused`, which heals its pickup-refusal wire to pending with an alarm set for now.
+- When the next test disposes the Worker before that alarm runs, the alarm fires after the reboot that adds the Shop+ binding. That pickup refusal then reaches the receiver first, and the test takes `received[0]` without checking the order.
+- Follow-on: pick the wire whose `payload.order_id` is the test's own order.
+
+**Deploy note.** Strikes are rebuilt from the command log. So at the custody deploy, a live undelivered file that already holds five or more wrong codes since its last success is locked at once. It shows on the console desk, and the founder unlocks it there. The ledger head is unchanged. Riders do not use the live rider app yet.
+
+**Still open, named.**
+- The wire revivals at the board read have no timeout (existing code).
+- The platform documents do not say whether the hop into each custody record also counts toward the 32 invocations. Any cut is said on the desk.
+- Logistics' tests should depend on custody's bundle explicitly.
+
+**Release.** On the founder's word: the custody Worker first, then logistics, both from this branch, each checked on its health. Then the PR merges; the rider app publishes on the merge (harmless before custody answers the new reason). The dispatch console is local, and he pulls main.
+
+---
+
 ## 2026-11-26 · PORTE-MAIN-1 — DEPLOYED and MERGED
 
 **Founder.** « Deploy and merge both » (2026-11-26 08:48 UTC, decision card), which named for Séra: put the custody service live from the branch and check it, then merge PR #3.
