@@ -67,11 +67,14 @@ jobs:
       # Bundled explicitly, AFTER build — never trusted to a cached task output.
       - name: Bundle the custody Worker
         run: pnpm --filter @sera/custody-service bundle:worker
+      # The deploy tool comes from the lock file (wrangler 4.130.0, a
+      # devDependency of this service, integrity-checked) through `pnpm exec`,
+      # never fetched from the registry at deploy time beside the Cloudflare key.
       - name: Deploy to Cloudflare Workers
         working-directory: services/custody-service
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: npx --yes wrangler@4 deploy
+        run: pnpm exec wrangler deploy
       - name: Arm SERA_CUSTODY_OPS_SECRET (piped — skipped only if the repo secret is absent)
         working-directory: services/custody-service
         env:
@@ -82,7 +85,7 @@ jobs:
             echo "::warning title=Porte custody NON armée::SERA_CUSTODY_OPS_SECRET absent — the custody door refuses everything (fail-closed) until the repo secret is set and this workflow re-dispatched."
             exit 0
           fi
-          printf '%s' "$CUSTODY_SECRET" | npx --yes wrangler@4 secret put SERA_CUSTODY_OPS_SECRET
+          printf '%s' "$CUSTODY_SECRET" | pnpm exec wrangler secret put SERA_CUSTODY_OPS_SECRET
 
       - name: Arm SERA_RIDER_VERIFY_SECRET (piped — skipped only if the repo secret is absent)
         working-directory: services/custody-service
@@ -94,7 +97,7 @@ jobs:
             echo "::warning title=Porte rider-verify NON armée::SERA_RIDER_VERIFY_SECRET absent — custody cannot ask logistics who a rider is, so the rider door refuses rider-code verification (fail-closed) until the repo secret is set and this workflow re-dispatched."
             exit 0
           fi
-          printf '%s' "$RIDER_VERIFY_SECRET" | npx --yes wrangler@4 secret put SERA_RIDER_VERIFY_SECRET
+          printf '%s' "$RIDER_VERIFY_SECRET" | pnpm exec wrangler secret put SERA_RIDER_VERIFY_SECRET
 
       # VRAI-ROUTE (2026-08-10) — the two PRODUCER keys. SERA_PRODUCE_SECRET is
       # logistics' key to /produce/* (chain-open at dispatch + the machine
@@ -113,7 +116,7 @@ jobs:
             echo "::warning title=Porte produce NON armée::SERA_PRODUCE_SECRET absent — dispatch cannot open the custody chain or arm the machine pickup code (fail-closed) until the repo secret is set and this workflow re-dispatched."
             exit 0
           fi
-          printf '%s' "$PRODUCE_SECRET" | npx --yes wrangler@4 secret put SERA_PRODUCE_SECRET
+          printf '%s' "$PRODUCE_SECRET" | pnpm exec wrangler secret put SERA_PRODUCE_SECRET
 
       - name: Arm SHOP_ARM_SECRET (piped — skipped only if the repo secret is absent)
         working-directory: services/custody-service
@@ -125,7 +128,7 @@ jobs:
             echo "::warning title=Porte produce-shop NON armée::SHOP_ARM_SECRET absent — Shop+ cannot arm the buyer's drop code (fail-closed) until the repo secret is set and this workflow re-dispatched."
             exit 0
           fi
-          printf '%s' "$ARM_SECRET" | npx --yes wrangler@4 secret put SHOP_ARM_SECRET
+          printf '%s' "$ARM_SECRET" | pnpm exec wrangler secret put SHOP_ARM_SECRET
 
       # COURSE-LIVRÉE (2026-08-13) — custody PRESENTS this key at logistics'
       # /produce/course-livree door: the drop confirmation that closes the
@@ -144,7 +147,7 @@ jobs:
             echo "::warning title=Fil course-livrée NON armé::SERA_COURSE_LIVREE_SECRET absent — une remise confirmée ne libère JAMAIS le coursier (la course reste sur son écran et il reste « en course » au tableau). Rien n'est perdu, mais relancer ce workflow ne suffit pas : posez le secret, redéployez, puis SAISISSEZ LE CODE DE REMISE UNE NOUVELLE FOIS sur la commande touchée — cette validation relance la file. Même valeur sur les deux Workers."
             exit 0
           fi
-          printf '%s' "$LIVREE_SECRET" | npx --yes wrangler@4 secret put SERA_COURSE_LIVREE_SECRET
+          printf '%s' "$LIVREE_SECRET" | pnpm exec wrangler secret put SERA_COURSE_LIVREE_SECRET
 
       # ⚠ THE WIRE THAT CARRIES A FINISHED DELIVERY BACK TO THE CONSOLES, AND
       # WHICH WAS NEVER ARMED (founder report 2026-08-10: « once I tap in the
@@ -177,7 +180,7 @@ jobs:
             echo "::warning title=Retour vers les consoles NON armé::SHOP_PROGRESS_SECRET absent — une livraison terminée, un départ et une arrivée restent dans la file (unsendable_no_config) et n'arrivent JAMAIS sur la console du fournisseur ni sur la vôtre. Rien n'est perdu : la file repart dès que le secret est posé et ce workflow relancé. Il doit valoir exactement le PROGRESS_WRITE_SECRET de shop-plus."
             exit 0
           fi
-          printf '%s' "$PROGRESS_SECRET" | npx --yes wrangler@4 secret put SHOP_PROGRESS_SECRET
+          printf '%s' "$PROGRESS_SECRET" | pnpm exec wrangler secret put SHOP_PROGRESS_SECRET
 
       # ═══ The F9 assertion: the live Worker must BE the bundle this job built ═══
       - name: Assert the live custody Worker is the bundle this job built

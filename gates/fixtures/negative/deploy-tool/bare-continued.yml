@@ -1,0 +1,16 @@
+# Negative fixture: a PATH wrangler whose subcommand is on the next line.
+name: deploy
+permissions:
+  contents: read
+on: workflow_dispatch
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy
+        working-directory: services/worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          wrangler \
+            deploy

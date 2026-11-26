@@ -1,0 +1,11 @@
+# Fixture: a workflow that never runs the deploy tool — the gate saw nothing
+# and must say so (exit 2), never pass.
+name: ci
+permissions:
+  contents: read
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: pnpm test

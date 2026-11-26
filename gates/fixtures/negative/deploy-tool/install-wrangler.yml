@@ -1,0 +1,16 @@
+# Negative fixture: wrangler installed outside the lock file, then run.
+name: deploy
+permissions:
+  contents: read
+on: workflow_dispatch
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy
+        working-directory: services/worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          npm install --no-save wrangler@latest
+          pnpm exec wrangler deploy
