@@ -20,7 +20,7 @@ Format per entry:
 
 **Release.** A merge changes no live Worker; the rider app republishes with no app change. The next custody or logistics deploy must print wrangler 4.130.0, which is why this should merge before the next Séra Worker deploy.
 
-**Still open (not in this slice).** Pinning GitHub actions to commit SHAs; `permissions:` blocks on the deploy jobs; the scoped contracts read grant; eas-cli fetched by npx in the rider-app publish (moving it into the lock file is a new dependency: founder's yes first); the `production` environment on deploy jobs (HELD); deploying only from `main`.
+**Still open (not in this slice).** Pinning GitHub actions to commit SHAs; `permissions:` blocks on the deploy jobs; the scoped contracts read grant; the rider-app publish tool taken from the lock file too (a new dependency: founder's yes first); the `production` environment on deploy jobs (HELD); deploying only from `main`.
 
 ## 2026-11-26 · STOCKAGE-BORNÉ-1 DEPLOYED, then MERGED on the founder's approval (PR #1)
 
