@@ -211,6 +211,13 @@ const SNAP_FIN_DE_SERVICE = 'snap:fin-de-service:v1';
  *  fresh read: the check re-asks; this bounds the fallback only. */
 const CUSTODY_READ_TIMEOUT_MS = 4_000;
 /**
+ * The buyer's code lock on the founder's board: at most this many article
+ * reads per board read, taken in board order (coordinator ruling,
+ * 2026-11-26). An unbounded fan-out over every live course could break the
+ * whole board on a busy day; hitting the cap is said (`codesBloquesPartiel`).
+ */
+const CODE_LOCK_READS_PER_BOARD = 32;
+/**
  * FLOTTE-1 (SE7.2) — the fleet book: motos, their papers and readings, the
  * shifts the registry opened and closed, the courses custody's wires closed
  * (on the moto the rider had), and the founder's cost hypotheses (⏳ his
@@ -1003,6 +1010,60 @@ export class LogisticsDO {
     }
   }
 
+  /**
+   * The live courses whose buyer's code custody says is locked after five
+   * wrong tries — custody's word, read fresh, never stored here. One row per
+   * course with its locked articles. Bounded (see CODE_LOCK_READS_PER_BOARD),
+   * in parallel, each read on the custodian read's own timeout; a read that
+   * fails or is cut by the cap makes the list `partiel`, never quietly short.
+   */
+  private async codesBloques(): Promise<{
+    codesBloques: { assignmentId: string; riderId: string; orderIds: string[]; depuis: string }[];
+    codesBloquesPartiel: boolean;
+  }> {
+    const courses = this.book
+      .snapshot()
+      .assignments.map(([, r]) => r)
+      .filter((r) => ACTIVE_ASSIGNMENT_STATUSES.includes(r.status));
+    const articles = courses.flatMap((course) => this.ordresDeCourse(course).map((orderId) => ({ course, orderId })));
+    if (articles.length === 0) return { codesBloques: [], codesBloquesPartiel: false };
+    const custody = this.env.CUSTODY;
+    const key = this.env.SERA_PRODUCE_SECRET ?? '';
+    if (custody === undefined || key === '') return { codesBloques: [], codesBloquesPartiel: true };
+    const lus = articles.slice(0, CODE_LOCK_READS_PER_BOARD);
+    let partiel = articles.length > lus.length;
+    const answers = await Promise.all(lus.map(async ({ orderId }) => {
+      try {
+        const res = await custody.fetch(
+          new Request(`https://custody/produce/drop-code/lock?orderId=${encodeURIComponent(orderId)}`, {
+            method: 'GET',
+            headers: { Authorization: `Bearer ${key}` },
+            signal: AbortSignal.timeout(CUSTODY_READ_TIMEOUT_MS),
+          }),
+        );
+        const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+        if (!res.ok || body === null || body['ok'] !== true || typeof body['locked'] !== 'boolean') return null;
+        return body['locked'] === true ? { since: typeof body['since'] === 'string' ? body['since'] : '' } : false;
+      } catch {
+        return null;
+      }
+    }));
+    const rows = new Map<string, { assignmentId: string; riderId: string; orderIds: string[]; depuis: string }>();
+    lus.forEach(({ course, orderId }, i) => {
+      const answer = answers[i];
+      if (answer === null) {
+        partiel = true;
+        return;
+      }
+      if (answer === false || answer === undefined) return;
+      const row = rows.get(course.assignmentId) ?? { assignmentId: course.assignmentId, riderId: course.riderId, orderIds: [], depuis: answer.since };
+      row.orderIds.push(orderId);
+      if (answer.since !== '' && (row.depuis === '' || answer.since < row.depuis)) row.depuis = answer.since;
+      rows.set(course.assignmentId, row);
+    });
+    return { codesBloques: [...rows.values()], codesBloquesPartiel: partiel };
+  }
+
   /** The courses the manifest reads for one rider: every LIVE course, plus
    *  any closed-by-the-desk course whose package the ledger still places with
    *  him (« cancelled task can't leave custody inventory »). */
@@ -1487,7 +1548,17 @@ export class LogisticsDO {
       await this.reviveCustodyProduce();
       // REPROGRAMMATION-2 — and for custody's own wires back to this book.
       await this.reviveCustodyWires();
-      return Response.json({ ok: true, board: this.board() });
+      const { codesBloques, codesBloquesPartiel } = await this.codesBloques();
+      // Additive, and only when there is something to say: a board with no
+      // locked code keeps the exact form other apps' walks already copy.
+      return Response.json({
+        ok: true,
+        board: {
+          ...this.board(),
+          ...(codesBloques.length > 0 ? { codesBloques } : {}),
+          ...(codesBloquesPartiel ? { codesBloquesPartiel } : {}),
+        },
+      });
     }
     // The size watch's record, read-only (see SIZE_WATCH_BYTES).
     if (request.method === 'GET' && pathname === '/ops/stockage') {
@@ -2997,6 +3068,45 @@ export class LogisticsDO {
         passage: outcome.priorTaskIds.length + 1,
         fenetre: { start, end },
       });
+    }
+
+    /**
+     * The founder unlocks the buyer's code from his console, after five wrong
+     * tries (founder ruling 2026-11-26): relayed to EVERY article of the live
+     * course on custody's produce door, as the return decision is. Any
+     * article's failure is the whole answer, by name — never « débloqué » —
+     * and a retry under the same command id re-sends to every article: the
+     * ones already unlocked replay their recorded answer.
+     */
+    if (request.method === 'POST' && pathname === '/ops/remise/debloquer') {
+      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      if (body === null || !isStr(body['command_id']) || !isStr(body['orderId'])) return malformed();
+      const commandId = (body['command_id'] as string).trim();
+      const active = this.courseDe((body['orderId'] as string).trim());
+      if (active === undefined) return Response.json({ ok: false, reason: 'no_active_course' }, { status: 409 });
+      const custody = this.env.CUSTODY;
+      const key = this.env.SERA_PRODUCE_SECRET ?? '';
+      if (custody === undefined || key === '') return Response.json({ ok: false, reason: 'custody_non_relie' }, { status: 503 });
+      let debloque = false;
+      for (const id of this.ordresDeCourse(active)) {
+        let res: Response;
+        try {
+          res = await custody.fetch(new Request('https://custody/produce/drop-code/unlock', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+            body: JSON.stringify({ orderId: id, command_id: `debloque-${commandId}`, at: now }),
+          }));
+        } catch {
+          return Response.json({ ok: false, reason: 'custody_unreachable' }, { status: 503 });
+        }
+        const answer = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+        if (res.status >= 500) return Response.json({ ok: false, reason: 'custody_unreachable' }, { status: 503 });
+        if (!res.ok) {
+          return Response.json({ ok: false, reason: 'custody_refused', detail: typeof answer?.['reason'] === 'string' ? answer['reason'] : 'refused' }, { status: 409 });
+        }
+        if (answer?.['status'] === 'debloque') debloque = true;
+      }
+      return Response.json({ ok: true, status: debloque ? 'debloque' : 'pas_bloque' });
     }
 
     /**
