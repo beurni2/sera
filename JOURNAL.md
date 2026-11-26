@@ -3,6 +3,33 @@ Continuity ledger per CTO charter §6/§6bis. Every entry is evidence-grounded.
 
 Format per entry:
 
+## 2026-11-26 · PRISE-EN-CHARGE-1 — only the rider who accepted, after the supplier confirms, gets the custody codes; an ended course's code is replaced at custody; a shift does not end on a course in hand; a repeated « Accepter » is answered as accepted · lane S8 · on the branch, NOT merged, NOT deployed
+
+**Founder.** « Start batch 1 » (2026-11-26 22:03 UTC, decision card on the batch plan). Lane S, integrated on `claude/project-thread-jqj97g` (lane commits `25e586d`, `67abc22`; merges `07e8d28`, `9b8cda3`; coordinator comment-only `09772d8`).
+
+**Spec.** Sera-Build-Spec SE-I05 (« Pickup also requires assigned session + `pickupVerificationCode` »), SE-I03, SE-I04, §6.2 (the seller hands over first), §8 SE1 and SE3; Sera-Building-Plan SE2.3; founder orders VRAI-ROUTE and ROUTE-DIRECTE; CLAUDE.md Laws 6 and 7.
+
+**What changed (logistics service).**
+- `/rider/moi`: `codeRamassage` only on a course this rider accepted; `codeVerification` only on an accepted course whose supplier confirmation is stamped for this assignment; `codeScelle` and `codeScelleRetour` by the same rule, or while logistics' custody facts name this rider as holder (a course already in custody keeps its seals).
+- A course that ends before custody (decline, the answer window, the founder's take-back) re-arms each of its orders at custody with a fresh code nobody holds, under its own command id (`arm-pickup-fin-<assignmentId>`), stored with the ending. A re-arm custody answers `secret_already_used` comes to rest (a used code can never verify again). The GET sweeps of `/ops/board` and `/rider/moi` now store an ending they find. The producer flush never writes a stale answer over a row rewritten while custody answered.
+- The alarm keeps the earlier of an alarm already set for now and its own backoff.
+- `/rider/shift/end` answers 409 `course_en_cours` while the book holds an active course for this rider on which custody never began (custody began only where an order's custodian is a courier or the customer). The held-package rule and its dispatcher exception are unchanged.
+- `/rider/assignment/ack` by the same rider on a course already accepted answers 200 `duplicate: true`; the lease is anchored once. Another rider still gets 404, an ended course 409.
+
+**What changed (rider app).** `course_en_cours` is a named refusal: `service.refus_course` (neutral/status) « Vous avez encore une course. Répondez-y d'abord. Si vous l'avez acceptée, appelez Séra pour la rendre. »
+
+**Evidence.** `prise-en-charge.e2e` 15/15 on the real logistics and custody Workers, through the rider app's own ports, asking custody's ledger and the board (codes absent on offer and after accept, present after the supplier confirms, verify and seal; decline, window, take-back: the old code refused, nobody custodian; decline and window: the next rider's own code verifies; shift end refused then allowed; a drop whose closing message is held still lets the shift end; a refused begin keeps it refused; double ack; the stand-in certified field by field; two races on the real Worker). Two screen walks (`rendu-prise`). Full board after `pnpm build`: ALL GATES GREEN (logistics 343, rider 502, custody 274, console 97 + Playwright 43, second e2e 215, certify-mocks 34, copy-lint OK, drift-check OK canon 3.21.0, recorded answers certified). Mutations, each anchor matched once, bundle rebuilt, restored byte-identical, all red (16): codes without acceptance; without confirmation; seals on the strict gate only; ramassage code on an offer; no re-arm on decline, take-back, sweep; re-arm reusing the first command id; flush overwriting a rewritten row; shift end without the check; seller counted as custody begun; custody-began check removed; duplicate ack for any rider; no duplicate branch; spent-code rest removed; alarm minimum removed.
+
+**Set-up changes in existing tests.** Eleven existing logistics test files change their set-up only: the rider accepts and the supplier confirms before the custody codes are read. Two pinned assertions flip on purpose: `vrai-produce` test 1 asserts null before the confirmation and present after; `shift-acts` l.329 expects a second accept to be `{ ok: true }`. Three rider stand-ins (`rendu-colis`, `rendu-porte`, `rendu-retour`) serve the codes only on an accepted course, as the Worker now does. No assertion was weakened.
+
+**Verifier (one pass, handled once).** No path hands a code to a rider who did not accept. One should-fix (the shift-end check refused a rider whose parcel custody had already handed on) and three notes (the spent-code rest, the alarm minimum, a test retry that resent one command id) fixed with their tests and mutations. Not re-inspected (NO-LOOP).
+
+**Deploy note.** logistics-deploy from this branch, provenance read back, then merge (which publishes the rider app). A course offered before the deploy shows no codes until it is accepted and the supplier confirms; a course already in custody keeps its seals.
+
+**Still open, named.** After a return handed to the seller, the shift stays refused until custody's closing message lands. Other open items for this slice are held in the private batch record until their fixes deploy.
+
+---
+
 ## 2026-11-26 · MESSAGES-LIVRÉE-1 + DEPLOY-CLÉ-LIVRAISON-1 — DEPLOYED and MERGED
 
 **Founder.** « Release all three » (2026-11-26 21:17 UTC, decision card), which named for Séra: put the custody service live from the branch, check it, then merge.
