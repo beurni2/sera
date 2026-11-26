@@ -36,6 +36,8 @@ const INTAKE = 'test-intake-prise';
 const VERIFY = 'test-verify-prise';
 const CUSTODY_OPS = 'test-custody-ops-prise';
 const PRODUCE_KEY = 'test-produce-key-prise';
+const SHOP_ARM_KEY = 'test-shop-arm-key-prise';
+const LIVREE_KEY = 'test-course-livree-key-prise';
 const SUPPLIER = 'supplier-prise-1';
 const CUSTODY_SCRIPT = join(import.meta.dirname, '..', '..', 'custody-service', 'dist-worker', 'worker.mjs');
 
@@ -45,6 +47,8 @@ interface Hold {
   logistics?: Miniflare;
   logisticsDir: string;
   custodyDir: string;
+  /** Custody's closing message on its way to logistics, held back on the wire. */
+  retenir?: { livree: number };
 }
 
 let live: Miniflare[] = [];
@@ -61,9 +65,21 @@ function spawnCustody(hold: Hold): Miniflare {
     durableObjects: { CUSTODY: 'CustodyDO', PACKAGE_CLAIM: 'PackageClaimDO' },
     durableObjectsPersist: hold.custodyDir,
     serviceBindings: {
-      LOGISTICS: (request: Request) => hold.logistics!.dispatchFetch(request.url, request as never) as never,
+      LOGISTICS: (async (request: Request) => {
+        if (hold.retenir !== undefined && new URL(request.url).pathname === '/produce/course-livree') {
+          hold.retenir.livree += 1;
+          return new Response('held on the wire', { status: 503 });
+        }
+        return hold.logistics!.dispatchFetch(request.url, request as never);
+      }) as never,
     },
-    bindings: { SERA_CUSTODY_OPS_SECRET: CUSTODY_OPS, SERA_PRODUCE_SECRET: PRODUCE_KEY, SERA_RIDER_VERIFY_SECRET: VERIFY },
+    bindings: {
+      SERA_CUSTODY_OPS_SECRET: CUSTODY_OPS,
+      SERA_PRODUCE_SECRET: PRODUCE_KEY,
+      SERA_RIDER_VERIFY_SECRET: VERIFY,
+      SHOP_ARM_SECRET: SHOP_ARM_KEY,
+      SERA_COURSE_LIVREE_SECRET: LIVREE_KEY,
+    },
   });
   live.push(mf);
   hold.custody = mf;
@@ -79,7 +95,7 @@ function spawnLogistics(hold: Hold): Miniflare {
     serviceBindings: {
       CUSTODY: (request: Request) => hold.custody!.dispatchFetch(request.url, request as never) as never,
     },
-    bindings: { SERA_OPS_SECRET: OPS, SERA_INTAKE_SECRET: INTAKE, SERA_RIDER_VERIFY_SECRET: VERIFY, SERA_PRODUCE_SECRET: PRODUCE_KEY },
+    bindings: { SERA_OPS_SECRET: OPS, SERA_INTAKE_SECRET: INTAKE, SERA_RIDER_VERIFY_SECRET: VERIFY, SERA_PRODUCE_SECRET: PRODUCE_KEY, SERA_COURSE_LIVREE_SECRET: LIVREE_KEY },
   });
   live.push(mf);
   hold.logistics = mf;
@@ -285,8 +301,11 @@ async function nouveauCoursierPrend(hold: Hold, orderId: string, taskId: string,
   expect((await appPorts(hold).acts.accepterCourse(code2, as2)).ok).toBe(true);
   await fournisseurConfirme(hold, orderId, (await vue(hold, code2))?.['codeRamassage'], `${tag}-r2`);
   const a2 = await vue(hold, code2);
+  // Each try is its own command: custody replays a command id's first
+  // answer, so a refusal could never turn into recorded under one id.
+  let essai = 0;
   await attendre(
-    async () => (await verifier(hold, code2, orderId, a2?.['codeVerification'], `${tag}-2`)).kind,
+    async () => (await verifier(hold, code2, orderId, a2?.['codeVerification'], `${tag}-2-${(essai += 1)}`)).kind,
     (k) => k === 'recorded',
     'the re-assigned rider\'s own fresh code must verify',
   );
@@ -442,6 +461,44 @@ describe('a course that ends before custody leaves its old code dead at custody'
     expect(tente.kind, `a taken-back course's code must not verify: ${JSON.stringify(tente)}`).toBe('refused');
     expect((await ledger(hold, O)).json['currentCustodian'] ?? null).toBeNull();
   }, 60_000);
+
+  it('take-back after the code was used at the stall: the re-arm comes to rest, the old code stays refused, and the next course arms at once', async () => {
+    const hold = both('use');
+    const O = 'ord-prise-use';
+    const RIDER = 'rider-prise-use';
+    const taskId = await commande(hold, O, 'pu');
+    const code = await rider(hold, RIDER);
+    const as = await confier(hold, taskId, RIDER, 'pu-a');
+    await chaineOuverte(hold, O);
+    expect((await appPorts(hold).acts.accepterCourse(code, as)).ok).toBe(true);
+    await fournisseurConfirme(hold, O, (await vue(hold, code))?.['codeRamassage'], 'pu-r');
+    const held = await vue(hold, code);
+    expect((await verifier(hold, code, O, held?.['codeVerification'], 'pu')).kind, 'the code is used at the stall').toBe('recorded');
+    const back = await ops(hold, '/ops/assignment/take-back', { command_id: 'pu-tb', assignmentId: as, custodyNotBegun: true });
+    expect(back.status, JSON.stringify(back.json)).toBe(200);
+
+    // Custody refuses re-arming a used code for ever; the row must still come to rest.
+    const old = await codeDeLaCourseFinie(hold, O, as);
+    expect(old).toBe(held?.['codeVerification']);
+    expect((await verifier(hold, code, O, old, 'pu-vieux')).kind, 'a used code never verifies again').toBe('refused');
+    expect((await ledger(hold, O)).json['currentCustodian'] ?? null).toBeNull();
+
+    // Another order's course arms and verifies straight away.
+    const O2 = 'ord-prise-use-2';
+    const taskId2 = await commande(hold, O2, 'pu2');
+    const code2 = await rider(hold, 'rider-prise-use-2');
+    const as2 = await confier(hold, taskId2, 'rider-prise-use-2', 'pu2-a');
+    await chaineOuverte(hold, O2);
+    expect((await appPorts(hold).acts.accepterCourse(code2, as2)).ok).toBe(true);
+    await fournisseurConfirme(hold, O2, (await vue(hold, code2))?.['codeRamassage'], 'pu2-r');
+    const a2 = await vue(hold, code2);
+    let essai = 0;
+    await attendre(
+      async () => (await verifier(hold, code2, O2, a2?.['codeVerification'], `pu2-${(essai += 1)}`)).kind,
+      (k) => k === 'recorded',
+      'the next course\'s code must verify',
+    );
+  }, 60_000);
 });
 
 describe('a shift does not end on a course still in hand', () => {
@@ -476,6 +533,70 @@ describe('a shift does not end on a course still in hand', () => {
     expect((await coursesDuTableau(hold)).find((a) => a['assignmentId'] === as)?.['status']).toBe('acknowledged');
     expect((await ops(hold, '/ops/assignment/take-back', { command_id: 'pfa-tb', assignmentId: as, custodyNotBegun: true })).status).toBe(200);
     expect((await appPorts(hold).acts.endShift(code)).ok).toBe(true);
+  }, 60_000);
+
+  /** Accept, supplier confirms, verify and seal: the package is his at custody. */
+  const prisEnCharge = async (hold: Hold, O: string, code: string, as: string, tag: string): Promise<Json | null> => {
+    await chaineOuverte(hold, O);
+    expect((await appPorts(hold).acts.accepterCourse(code, as)).ok).toBe(true);
+    await fournisseurConfirme(hold, O, (await vue(hold, code))?.['codeRamassage'], `${tag}-r`);
+    const a = await vue(hold, code);
+    expect((await verifier(hold, code, O, a?.['codeVerification'], tag)).kind).toBe('recorded');
+    expect((await appPorts(hold).custody.beginCustody({ commandId: id(`b-${tag}`), orderId: O, custodySealId: a?.['codeScelle'] as string, sealPhotoRefs: [] }, code)).kind).toBe('recorded');
+    return a;
+  };
+
+  it('delivered at custody, custody\'s closing message still on its way: the shift ends', async () => {
+    const hold = both('fin-livree');
+    hold.retenir = { livree: 0 };
+    const O = 'ord-prise-fin-livree';
+    const RIDER = 'rider-prise-fin-livree';
+    const taskId = await commande(hold, O, 'pfl');
+    const code = await rider(hold, RIDER);
+    const as = await confier(hold, taskId, RIDER, 'pfl-a');
+    const a = await prisEnCharge(hold, O, code, as, 'pfl');
+
+    const drop = 'DROP-PFL';
+    const armed = await hold.custody!.dispatchFetch('http://custody/produce-shop/secrets/arm', {
+      method: 'POST', headers: { Authorization: `Bearer ${SHOP_ARM_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderId: O, command_id: 'pfl-arm-drop', kind: 'buyer_drop_code', secret: drop }),
+    });
+    expect(armed.status, await armed.text()).toBe(200);
+    const evidence = await hold.custody!.dispatchFetch('http://custody/rider/delivery/evidence', {
+      method: 'POST', headers: { Authorization: `Bearer ${code}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderId: O, command_id: 'pfl-e', bundle: { taskId: (a?.['chaine'] as Json)['taskId'], packageId: `pkg-${O}`, custodySealId: a?.['codeScelle'], artifacts: [], capturedAt: T } }),
+    });
+    expect(evidence.status, await evidence.text()).toBe(200);
+    const dropped = await hold.custody!.dispatchFetch('http://custody/rider/delivery/drop', {
+      method: 'POST', headers: { Authorization: `Bearer ${code}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderId: O, command_id: 'pfl-drop', dropCode: drop }),
+    });
+    expect(dropped.status, await dropped.text()).toBe(200);
+    expect((await ledger(hold, O)).json['currentCustodian']).toBe('customer');
+    // Custody tried to tell logistics, and the wire held it back: the book still has the course.
+    await attendre(async () => hold.retenir!.livree, (n) => n > 0, 'custody never sent its closing message');
+    expect((await coursesDuTableau(hold)).find((r) => r['assignmentId'] === as)?.['status']).toBe('acknowledged');
+
+    expect((await appPorts(hold).acts.endShift(code)).ok, 'the parcel is with the customer: nothing is in his hand').toBe(true);
+  }, 60_000);
+
+  it('a refused begin leaves the seller as holder at custody, and the shift is still refused', async () => {
+    const hold = both('fin-vendeur');
+    const O = 'ord-prise-fin-vendeur';
+    const RIDER = 'rider-prise-fin-vendeur';
+    const taskId = await commande(hold, O, 'pfv');
+    const code = await rider(hold, RIDER);
+    const as = await confier(hold, taskId, RIDER, 'pfv-a');
+    await chaineOuverte(hold, O);
+    expect((await appPorts(hold).acts.accepterCourse(code, as)).ok).toBe(true);
+    await fournisseurConfirme(hold, O, (await vue(hold, code))?.['codeRamassage'], 'pfv-r');
+    const a = await vue(hold, code);
+    // The seal before any verification: custody refuses, and writes the seller as holder.
+    const tot = await appPorts(hold).custody.beginCustody({ commandId: id('b-pfv'), orderId: O, custodySealId: a?.['codeScelle'] as string, sealPhotoRefs: [] }, code);
+    expect(tot.kind, JSON.stringify(tot)).not.toBe('recorded');
+    expect((await ledger(hold, O)).json['currentCustodian']).toBe(`seller:${SUPPLIER}`);
+
+    expect(await appPorts(hold).acts.endShift(code)).toEqual({ ok: false, reason: 'refused', refus: 'course_en_cours' });
   }, 60_000);
 });
 
@@ -605,5 +726,55 @@ describe('the ending\'s re-arm survives a flush that was mid-answer', () => {
     expect(arms[0]!.command_id).toBe(`arm-pickup-${as}`);
     expect(arms[1]!.command_id).toBe(`arm-pickup-fin-${as}`);
     expect(arms[1]!.secret).not.toBe(arms[0]!.secret);
+  }, 60_000);
+
+  it('a course ends while the alarm waits on another order\'s refused arm → its fresh code is armed at once, not after the backoff', async () => {
+    const hold: Hold = { logisticsDir: mkdtempSync(join(tmpdir(), 'prise-attente-logistics-')), custodyDir: '' };
+    const standIn = new Miniflare({
+      modules: true,
+      script: `const arms = []; let trigger = null;
+      export default { async fetch(request, env) {
+        const path = new URL(request.url).pathname;
+        if (path === '/seen') return Response.json(arms);
+        if (path === '/trigger') { trigger = await request.json(); return Response.json({ ok: true }); }
+        if (path === '/produce/order/open') return Response.json({ ok: true, status: 'opened' });
+        if (path === '/produce/secrets/arm') {
+          const body = await request.json();
+          arms.push({ orderId: body.orderId, command_id: body.command_id });
+          if (trigger !== null && body.orderId === trigger.whenOrder) {
+            const t = trigger; trigger = null;
+            // The other course ends at exactly this instant, and this arm is refused.
+            const res = await env.LOGISTICS.fetch(new Request('https://logistics/rider/assignment/decline', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t.code },
+              body: JSON.stringify({ assignmentId: t.assignmentId }),
+            }));
+            await res.text();
+            return Response.json({ ok: false, reason: 'busy' }, { status: 503 });
+          }
+          return Response.json({ ok: true, status: 'armed', kind: body.kind });
+        }
+        return Response.json({ ok: false, reason: 'not_found' }, { status: 404 });
+      } }`,
+      serviceBindings: {
+        LOGISTICS: (request: Request) => hold.logistics!.dispatchFetch(request.url, request as never) as never,
+      },
+    });
+    live.push(standIn);
+    hold.custody = standIn;
+    spawnLogistics(hold);
+    const seen = async () => (await (await standIn.dispatchFetch('http://custody/seen')).json()) as { orderId: string; command_id: string }[];
+
+    const OB = 'ord-prise-attente-b';
+    const codeB = await rider(hold, 'rider-prise-attente-b');
+    const asB = await confier(hold, await commande(hold, OB, 'pab'), 'rider-prise-attente-b', 'pab-a');
+    await attendre(seen, (a) => a.some((x) => x.command_id === `arm-pickup-${asB}`), 'the first arm never reached custody');
+
+    const OA = 'ord-prise-attente-a';
+    await standIn.dispatchFetch('http://custody/trigger', { method: 'POST', body: JSON.stringify({ code: codeB, assignmentId: asB, whenOrder: OA }) });
+    await rider(hold, 'rider-prise-attente-a');
+    await confier(hold, await commande(hold, OA, 'paa'), 'rider-prise-attente-a', 'paa-a');
+
+    await attendre(seen, (a) => a.some((x) => x.command_id === `arm-pickup-fin-${asB}`), 'the declined course\'s fresh code waited for the backoff');
   }, 60_000);
 });
