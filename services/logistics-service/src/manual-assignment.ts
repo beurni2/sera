@@ -62,7 +62,11 @@ export type AssignmentStatus =
    * wire (`custody.returned_to_supplier.v1` is the custody moment this
    * mirrors) — never on a rider's claim. SE-I10: a return is a named exit,
    * never a generic failure. */
-  | 'returned';
+  | 'returned'
+  /** The founder declared the parcel lost on the road (ruling 2026-11-27):
+   * the NAMED loss terminal, entered only once custody moved every article
+   * to its lost custodian. The rider is free; SE-I10: never a generic failure. */
+  | 'lost';
 
 export interface AssignmentRecord {
   assignmentId: string;
@@ -90,6 +94,8 @@ export interface AssignmentRecord {
   /** RETOUR-VIVANT-1 — the return's own instant, custody's word as the
    *  course-retournée wire carried it. Absent unless status is 'returned'. */
   returnedAt?: string;
+  /** The declaration's own instant. Absent unless status is 'lost'. */
+  lostAt?: string;
 }
 
 export type AssignOutcome =
@@ -413,6 +419,22 @@ export class AssignmentBook {
     this.assignments.set(active.assignmentId, returned);
     this.aggregateVersion += 1;
     return { ok: true, duplicate: false, assignment: returned };
+  }
+
+  /** `returnToSupplier`'s twin for a parcel declared lost on the road. */
+  declareLost(orderId: string, at: string): DeliverOutcome {
+    const already = [...this.assignments.values()].find(
+      (a) => a.orderId === orderId && a.status === 'lost',
+    );
+    if (already !== undefined) return { ok: true, duplicate: true, assignment: already };
+    const active = [...this.assignments.values()].find(
+      (a) => a.orderId === orderId && ACTIVE_STATUSES.includes(a.status),
+    );
+    if (active === undefined) return { ok: false, reason: 'no_active_course' };
+    const lost: AssignmentRecord = { ...active, status: 'lost', lostAt: at };
+    this.assignments.set(active.assignmentId, lost);
+    this.aggregateVersion += 1;
+    return { ok: true, duplicate: false, assignment: lost };
   }
 
   /**

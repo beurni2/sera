@@ -216,6 +216,8 @@ const RIDER_ROUTES: ReadonlySet<string> = new Set([
 const PRODUCE_ROUTES: ReadonlySet<string> = new Set([
   'POST /order/open', 'POST /secrets/arm', 'POST /return/apply', 'POST /wires/reviver', 'GET /custodian',
   'GET /drop-code/lock', 'POST /drop-code/unlock',
+  // A parcel lost on the road: the founder's console act, relayed per article.
+  'POST /colis/perdu',
 ]);
 // COLIS-FOURNISSEUR-1 — a third act: Shop+ declares a package's door
 // collection reference to each article's file before the charge. It carries

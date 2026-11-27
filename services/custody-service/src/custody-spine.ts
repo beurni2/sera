@@ -74,11 +74,21 @@ export type SpineRefusal =
   | 'door_leg_not_expected'
   | 'door_references_full'
   | 'change_of_mind_not_in_package'
-  | 'change_of_mind_recorded';
+  | 'change_of_mind_recorded'
+  /** Founder ruling 2026-11-27: a parcel declared lost on the road is final. */
+  | 'colis_declare_perdu';
 
 /** A package's door is retried under its collection's one reference; a new
  *  collection is rare (a changed set). 25 is the door's attempt ceiling. */
 const MAX_DOOR_REFERENCES = 25;
+
+/**
+ * The named terminal a parcel declared lost on the road moves to (founder
+ * ruling 2026-11-27, Sera-Build-Spec §6.5): its one current custodian from
+ * then on — never a generic failed state, never none, never the rider. Séra
+ * carries the liability, so it is named for Séra.
+ */
+export const LOST_CUSTODIAN = 'lost:sera';
 
 export interface ChainIds {
   order_id: string;
@@ -149,6 +159,16 @@ export class CustodySpine {
    * mismatches and then the right code must replay to the same ledger.
    */
   private dropCodeStrikes = 0;
+  /**
+   * The evidence bundle the ACCEPTED pickup verification recorded — the one
+   * bundle custody holds for a parcel on the road, and the one a lost
+   * declaration's claim names. Kept from the logged command, so replay
+   * rebuilds the same value. Today it is often the rider app's honest
+   * « sans-photo »: recorded, never invented.
+   */
+  private pickupEvidenceBundleId: string | null = null;
+  /** Founder ruling 2026-11-27 — the declaration is final; one per file. */
+  private lostDeclared = false;
   private dropLockCycle = 0;
   private dropLockedAt: string | null = null;
 
@@ -264,6 +284,7 @@ export class CustodySpine {
       return outcome; // custody never begins
     }
     this.verificationAccepted = true;
+    this.pickupEvidenceBundleId = input.evidenceBundleId;
     return outcome;
   }
 
@@ -918,6 +939,9 @@ export class CustodySpine {
     | { ok: true; outcome: DeliveryOutcome }
     | { ok: false; reason: SpineRefusal }
     | LadderRefusal {
+    // The door's window has no say over a parcel the founder declared lost:
+    // the only act left to it is none.
+    if (this.lostDeclared) return { ok: false, reason: 'colis_declare_perdu' };
     // The buyer settled inside the window and the drop completed → the
     // order is terminal; the expired window escalates NOTHING.
     if (this.eligibilityEmittedForOrder.has(this.chain.order_id)) {
@@ -1105,6 +1129,8 @@ export class CustodySpine {
   fileCustodyLiabilityClaim(raw: unknown, at: string):
     | { ok: true; claim: CustodyLiabilityClaim; event: PlatformEvent }
     | { ok: false; reason: SpineRefusal | 'claim_not_canonical' } {
+    // A parcel declared lost already carries its one claim.
+    if (this.lostDeclared) return { ok: false, reason: 'colis_declare_perdu' };
     if (this.returnFlow === null) return { ok: false, reason: 'return_not_open' };
     const parsed = CustodyLiabilityClaimSchema.safeParse(raw);
     if (!parsed.success) return { ok: false, reason: 'claim_not_canonical' };
@@ -1115,6 +1141,51 @@ export class CustodySpine {
       evidence_bundle_id: parsed.data.evidenceBundleId,
     }, at);
     return { ok: true, claim: parsed.data, event };
+  }
+
+  /**
+   * A parcel lost on the road (founder ruling 2026-11-27, §6.5): only while a
+   * courier is the current custodian, the ledger moves to the named lost
+   * terminal, a `sera_loss` claim is recorded at the amount the founder typed
+   * for THIS order (Séra computes nothing), and `package.lost.v1` states the
+   * fact — the order id and the instant. Final: a second declaration answers
+   * `already` and files nothing. No money moves here.
+   */
+  declareLost(amount: number, at: string):
+    | { ok: true; already: boolean }
+    | { ok: false; reason: SpineRefusal | 'claim_not_canonical' } {
+    if (this.lostDeclared) return { ok: true, already: true };
+    if (!this.custodyWithCourier) return { ok: false, reason: 'custody_not_with_courier' };
+    if (this.pickupEvidenceBundleId === null) return { ok: false, reason: 'verification_not_accepted' };
+    const claim = CustodyLiabilityClaimSchema.safeParse({
+      orderId: this.chain.order_id,
+      cause: 'sera_loss',
+      amount,
+      evidenceBundleId: this.pickupEvidenceBundleId,
+      state: 'opened',
+    });
+    if (!claim.success) return { ok: false, reason: 'claim_not_canonical' };
+    const transition = this.ledger.append({
+      packageId: this.chain.package_id,
+      kind: 'custody_transition',
+      payload: { from: this.ledger.currentCustodian(this.chain.package_id), to: LOST_CUSTODIAN },
+      at,
+    });
+    if (!transition.ok) return { ok: false, reason: 'custodian_conflict' };
+    this.custodyWithCourier = false;
+    this.lostDeclared = true;
+    this.liabilityClaims.push(claim.data);
+    this.emit('custody_liability.claim_opened.v1', `liability-${this.chain.order_id}-${this.liabilityClaims.length}`, {
+      order_id: claim.data.orderId,
+      cause: claim.data.cause,
+      evidence_bundle_id: claim.data.evidenceBundleId,
+    }, at);
+    this.emit('package.lost.v1', `lost-${this.chain.order_id}`, { orderId: this.chain.order_id, at }, at);
+    return { ok: true, already: false };
+  }
+
+  isLostDeclared(): boolean {
+    return this.lostDeclared;
   }
 
   allLiabilityClaims(): readonly CustodyLiabilityClaim[] {
