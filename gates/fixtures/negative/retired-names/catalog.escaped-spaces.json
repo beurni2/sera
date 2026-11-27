@@ -1,0 +1,20 @@
+[
+  {
+    "key": "accueil.titre",
+    "fr": "Bienvenue sur Ma\u00a0Boutique",
+    "register": "selling",
+    "screenClass": "label"
+  },
+  {
+    "key": "partage.bouton",
+    "fr": "Ouvrir Mon\u202fShop",
+    "register": "selling",
+    "screenClass": "label"
+  },
+  {
+    "key": "accueil.sous_titre",
+    "fr": "Mon\u0020Shop, partout avec vous",
+    "register": "selling",
+    "screenClass": "label"
+  }
+]

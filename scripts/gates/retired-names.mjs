@@ -11,12 +11,13 @@ import { pathToFileURL } from 'node:url';
  *
  * This file is the SAME, byte for byte, in every repository of the ecosystem.
  * It imports nothing from the repository it runs in, so a copy can be checked
- * against another with a hash.
+ * against another with a hash, and every board checks it against one.
  *
  * What stays legal, and `gates/fixtures/retired-names-legal/` fails the board
  * if a pattern here ever breaks it:
  *   · ordinary French « ma boutique » with a small b — the words « my shop »,
  *     as in « Personnaliser ma boutique »;
+ *   · ordinary French « mon shopping », as in « faire mon shopping »;
  *   · the canon name with a possessive before it, « mon Shop+ »;
  *   · words that merely contain the letters (schemaBoutique, commonShop).
  *
@@ -37,11 +38,20 @@ import { pathToFileURL } from 'node:url';
 const isMainModule = import.meta.url === pathToFileURL(process.argv[1] ?? '').href;
 
 export const PATTERNS = [
-  /* As words. A capital B is the brand; « ma boutique » with a small b is
-     ordinary French and stays legal. A no-break space counts as a space. */
-  { name: 'retired brand, words (Ma Boutique)', regex: /(?<![A-Za-zÀ-ÿ])[Mm][Aa][  ]+(Boutique|BOUTIQUE)/ },
-  /* « mon Shop+ » is the canon name with a possessive: the `+` keeps it legal. */
-  { name: 'retired brand, words (Mon Shop)', regex: /(?<![A-Za-zÀ-ÿ])[Mm][Oo][Nn][  ]+(Shop|SHOP)(?!\+)/ },
+  /* As words. Between the two words, a space is any white space (in
+     JavaScript `\s` already covers the tab and the raw no-break spaces U+00A0
+     and U+202F), or the same space written as an escape (\u00a0, \u202f,
+     \u0020, \xa0, \x20) the way catalogs and source write it, or as an HTML
+     entity (&nbsp;, &#160;, &#xA0;, &#8239;, &#x202F;). Before the first word
+     comes no letter, or an escape that ends in a letter (\n, \r, \t, \u202f):
+     its last character belongs to the escape, not to a word. */
+  /* A capital B is the brand; « ma boutique » with a small b is ordinary
+     French and stays legal. */
+  { name: 'retired brand, words (Ma Boutique)', regex: /(?:(?<![A-Za-zÀ-ÿ])|(?<=\\[nrt]|\\u202[fF]))[Mm][Aa](?:\s|\\u(?:00[aA]0|202[fF]|0020)|\\x(?:20|[aA]0)|&(?:nbsp|#160|#[xX][aA]0|#8239|#[xX]202[fF]);)+(Boutique|BOUTIQUE)/ },
+  /* « Mon shop » in any case is the retired name. « mon Shop+ » is the canon
+     name with a possessive, and « mon shopping » is ordinary French: a `+` or
+     a letter after the word keeps it legal. */
+  { name: 'retired brand, words (Mon Shop)', regex: /(?:(?<![A-Za-zÀ-ÿ])|(?<=\\[nrt]|\\u202[fF]))[Mm][Oo][Nn](?:\s|\\u(?:00[aA]0|202[fF]|0020)|\\x(?:20|[aA]0)|&(?:nbsp|#160|#[xX][aA]0|#8239|#[xX]202[fF]);)+[Ss][Hh][Oo][Pp](?![+A-Za-zÀ-ÿ])/ },
   /* As identifiers, anywhere in a longer name (getMaBoutique, isMonShop). */
   { name: 'retired brand, PascalCase identifier (MaBoutique)', regex: /MaBoutique/ },
   { name: 'retired brand, PascalCase identifier (MonShop)', regex: /MonShop/ },
@@ -51,9 +61,25 @@ export const PATTERNS = [
   { name: 'retired brand, identifier (monShop, mon-shop, mon_shop)', regex: /(?<![A-Za-zÀ-ÿ0-9])mon[-_]?shop/i },
 ];
 
-/* Left out of the no-argument run. A path ending in `/` is a folder. */
+/* Left out of the no-argument run. A path ending in `/` is a folder. The
+   canon is named file by file: exactly the files of the platform-contracts
+   docs manifest. Anything else under docs/, a runbook or a licence, is read
+   like any other file. A name with no file in a repository leaves nothing
+   out there. */
+const CANON = 'the canon, or its drift-checked copy: it states Law 10 itself';
 export const LEFT_OUT = [
-  { path: 'docs/', reason: 'the canon, or its drift-checked copy: it states Law 10 itself' },
+  { path: 'docs/Boutik-Plus-Build-Spec.md', reason: CANON },
+  { path: 'docs/Boutik-Plus-Building-Plan.md', reason: CANON },
+  { path: 'docs/Boutik-Plus-Web-North-Star.md', reason: CANON },
+  { path: 'docs/DESIGN-LANGUAGE.md', reason: CANON },
+  { path: 'docs/ECOSYSTEM-MASTER-REFERENCE.md', reason: CANON },
+  { path: 'docs/Ecosystem-Engineering-Execution-Contract.md', reason: CANON },
+  { path: 'docs/GRAND-TEINT.md', reason: CANON },
+  { path: 'docs/PERF-BUDGETS.md', reason: CANON },
+  { path: 'docs/Sera-Build-Spec.md', reason: CANON },
+  { path: 'docs/Sera-Building-Plan.md', reason: CANON },
+  { path: 'docs/Shop-Plus-Build-Spec.md', reason: CANON },
+  { path: 'docs/Shop-Plus-Building-Plan.md', reason: CANON },
   { path: 'design-reference/', reason: 'the legacy prototype and design references: the one place the law lets the old names stand' },
   { path: 'CLAUDE.md', reason: 'the rules: they state Law 10' },
   { path: 'AGENTS.md', reason: 'the rules: they state Law 10' },

@@ -9,8 +9,8 @@
       "regex": "/(?<!insufficient_)(?<![a-zA-ZÀ-ÿ])balances?\\s*[:=][^=]|\\.\\s*balances?\\b|(seller|user|account|client|vendeur|compte|wallet|cash|credit|fund|payout|ledger|running)Balances?\\b|\\b(seller|user|account|client|vendeur|compte)_balances?\\b/i"
     },
     {
-      "name": "balance of an earner, with its unit",
-      "regex": "/(seller|reseller|supplier|rider|courier|vendor|merchant|user|account|client)[_-]?balances?[_-]?(fcfa|xof|amount|cfa)/i"
+      "name": "balance of an earner",
+      "regex": "/(seller|reseller|supplier|rider|courier|vendor|merchant|user|account|client)[_-]?balances?(?:[_-]?(?:in[_-]?)?(fcfa|xof|amount|cfa)|\\b)/i"
     },
     {
       "name": "holdFunds/captureFunds/releaseFunds",
@@ -254,11 +254,11 @@
   "retired-names": [
     {
       "name": "retired brand, words (Ma Boutique)",
-      "regex": "/(?<![A-Za-zÀ-ÿ])[Mm][Aa][  ]+(Boutique|BOUTIQUE)/"
+      "regex": "/(?:(?<![A-Za-zÀ-ÿ])|(?<=\\\\[nrt]|\\\\u202[fF]))[Mm][Aa](?:\\s|\\\\u(?:00[aA]0|202[fF]|0020)|\\\\x(?:20|[aA]0)|&(?:nbsp|#160|#[xX][aA]0|#8239|#[xX]202[fF]);)+(Boutique|BOUTIQUE)/"
     },
     {
       "name": "retired brand, words (Mon Shop)",
-      "regex": "/(?<![A-Za-zÀ-ÿ])[Mm][Oo][Nn][  ]+(Shop|SHOP)(?!\\+)/"
+      "regex": "/(?:(?<![A-Za-zÀ-ÿ])|(?<=\\\\[nrt]|\\\\u202[fF]))[Mm][Oo][Nn](?:\\s|\\\\u(?:00[aA]0|202[fF]|0020)|\\\\x(?:20|[aA]0)|&(?:nbsp|#160|#[xX][aA]0|#8239|#[xX]202[fF]);)+[Ss][Hh][Oo][Pp](?![+A-Za-zÀ-ÿ])/"
     },
     {
       "name": "retired brand, PascalCase identifier (MaBoutique)",
