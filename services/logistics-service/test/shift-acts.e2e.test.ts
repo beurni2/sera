@@ -326,8 +326,8 @@ describe('⚠ the whole ladder, through the app’s own ports, judged by the BOA
     if (!accepted.ok) throw new Error('refresh refused');
     expect(accepted.session.assignment?.status).toBe('acknowledged');
 
-    // Accepting twice, or a course that is not yours: refused BY NAME.
-    expect(await acts.accepterCourse(code, assignmentId)).toEqual({ ok: false, reason: 'refused', refus: 'not_active' });
+    // Accepting twice is the same acceptance; a course that is not yours is refused BY NAME.
+    expect(await acts.accepterCourse(code, assignmentId)).toEqual({ ok: true });
     expect(await acts.accepterCourse(code, 'as-nowhere')).toEqual({ ok: false, reason: 'refused', refus: 'unknown_assignment' });
   });
 

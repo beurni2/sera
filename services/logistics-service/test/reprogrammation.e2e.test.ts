@@ -205,6 +205,10 @@ async function courseConfiee(mf: Miniflare, orderId: string, riderId: string, pr
   const assignmentId = (granted['assignment'] as Json)['assignmentId'] as string;
   const accepted = await acts.accepterCourse(code, assignmentId);
   expect(accepted.ok, JSON.stringify(accepted)).toBe(true);
+  // The supplier confirms the code the rider says: what the custody codes wait on.
+  const lu = await appPorts(mf).session.signIn(code);
+  if (!lu.ok) throw new Error('sign-in refused');
+  expect(await intake(mf, '/intake/ramassage/verify', { command_id: `${prefix}-ram`, orderId, code: lu.session.assignment?.codeRamassage })).toEqual({ ok: true, verdict: 'confirme' });
   return { code, assignmentId, taskId: composed['taskId'] as string };
 }
 

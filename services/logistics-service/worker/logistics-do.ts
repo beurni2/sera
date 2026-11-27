@@ -352,6 +352,10 @@ interface CustodyProduceRow {
    *  never stores it; this row lives behind this object's own storage. */
   code: string;
   supplierRef?: string;
+  /** Set when a course ended before custody: the fresh code goes to custody
+   *  under its own command id, since custody answers a reused id with the
+   *  first secret's answer and would keep the old code armed. */
+  armId?: string;
 }
 
 interface RetourRow {
@@ -664,6 +668,20 @@ export class LogisticsDO {
   /** COLIS-FOURNISSEUR-1 — every order a course carries (the first names it). */
   private ordresDeCourse(assignment: { assignmentId: string; orderId: string }): string[] {
     return this.colisCourses[assignment.assignmentId]?.orderIds ?? [assignment.orderId];
+  }
+
+  /** Custody began on one of the course's orders: its last word names a courier or the customer. */
+  private custodieCommencee(course: { assignmentId: string; orderId: string }): boolean {
+    return this.ordresDeCourse(course).some((id) => {
+      const holder = this.custodyFacts[id]?.custodian;
+      return holder === 'customer' || (holder?.startsWith('courier:') ?? false);
+    });
+  }
+
+  /** Custody's last word names this rider as the holder of one of the course's packages. */
+  private tientUnColis(riderId: string, course: { assignmentId: string; orderId: string }): boolean {
+    const mine = courierActor(riderId);
+    return this.ordresDeCourse(course).some((id) => this.custodyFacts[id]?.custodian === mine);
   }
 
   /** The LIVE course carrying this order — its own, or the package it rides in. */
@@ -1268,6 +1286,7 @@ export class LogisticsDO {
     const key = this.env.SERA_PRODUCE_SECRET ?? '';
     let worst = 0;
     let changed = false;
+    let replaced = false;
     for (const [orderId, row] of Object.entries(this.custodyOutbox)) {
       if (row.phase === 'done') continue;
       if (custody === undefined || key === '') {
@@ -1285,6 +1304,7 @@ export class LogisticsDO {
         continue;
       }
       const next: CustodyProduceRow = { ...row, rest: 'none' };
+      let refus: unknown;
       const post = async (path: string, body: unknown): Promise<boolean> => {
         try {
           const res = await custody.fetch(new Request(`https://custody${path}`, {
@@ -1292,6 +1312,7 @@ export class LogisticsDO {
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
             body: JSON.stringify(body),
           }));
+          if (!res.ok) refus = ((await res.json().catch(() => null)) as Record<string, unknown> | null)?.['reason'];
           return res.ok;
         } catch {
           return false;
@@ -1319,23 +1340,35 @@ export class LogisticsDO {
       if (next.phase === 'arm') {
         const armed = await post('/produce/secrets/arm', {
           orderId,
-          command_id: `arm-pickup-${next.assignmentId}`,
+          command_id: next.armId ?? `arm-pickup-${next.assignmentId}`,
           kind: 'pickup_verification_code',
           secret: next.code,
         });
         if (armed) next.phase = 'done';
+        // An ending's re-arm over a code already used at the stall: custody
+        // refuses it for ever, and a used code can never verify again, so
+        // nothing a phone holds still opens this pickup. The row is at rest.
+        else if (next.armId !== undefined && refus === 'secret_already_used') next.phase = 'done';
       }
       // The row left while custody answered (its course closed on custody's
       // word, or the desk retired the order): writing it back would make a
       // closed order hot again.
       if (this.custodyOutbox[orderId] === undefined) continue;
+      // The row was rewritten while custody answered (the course ended and
+      // re-armed, or a new course took the order): writing this answer back
+      // would put the old code's row in its place. The new row is flushed
+      // on its own, below.
+      if (this.custodyOutbox[orderId] !== row) {
+        replaced = true;
+        continue;
+      }
       next.attempts = row.attempts + 1;
       this.custodyOutbox[orderId] = next;
       changed = true;
       if (next.phase !== 'done') worst = Math.max(worst, next.attempts);
     }
     if (changed) await this.state.storage.put(SNAP_CUSTODY_OUTBOX, this.custodyOutbox);
-    return worst;
+    return replaced ? Math.max(worst, await this.flushCustodyProduce()) : worst;
   }
 
   /** Reviving is only ever an alarm: the flush re-judges every rest itself.
@@ -1347,6 +1380,42 @@ export class LogisticsDO {
     await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
   }
 
+  /**
+   * A course that ended before custody (declined, its answer window passed,
+   * taken back) must leave nothing a phone could still present at the stall:
+   * each of its orders' rows is re-armed with a fresh code nobody holds,
+   * through the same producer wire as the first arm. Custody's registry
+   * replaces an unconsumed pickup code on re-arm (SE-I05: « Pickup also
+   * requires assigned session + `pickupVerificationCode` »). A row already
+   * rewritten for a newer course is left alone. Returns whether a row moved;
+   * the caller's persist stores it with the ending.
+   */
+  private desarmer(ended: { assignmentId: string; orderId: string }): boolean {
+    let moved = false;
+    for (const id of this.ordresDeCourse(ended)) {
+      const row = this.custodyOutbox[id];
+      if (row === undefined || row.assignmentId !== ended.assignmentId) continue;
+      this.custodyOutbox[id] = {
+        ...row,
+        phase: row.phase === 'open' ? 'open' : 'arm',
+        attempts: 0,
+        code: mintCodeVerification(),
+        armId: `arm-pickup-fin-${ended.assignmentId}`,
+      };
+      moved = true;
+    }
+    return moved;
+  }
+
+  /** The sweep, followed by the re-arm of every course it gave back. */
+  private async balayer(now: string): Promise<Awaited<ReturnType<LeasedDispatch['expireDue']>>> {
+    const swept = await this.dispatch.expireDue(now);
+    let moved = false;
+    for (const ended of swept.requeued) moved = this.desarmer(ended) || moved;
+    if (moved) await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
+    return swept;
+  }
+
   async alarm(): Promise<void> {
     await this.ensureLoaded();
     const producePending = await this.flushCustodyProduce();
@@ -1355,7 +1424,11 @@ export class LogisticsDO {
     const pending = Math.max(producePending, retourPending);
     if (pending > 0) {
       const backoffMs = Math.min(30_000 * 2 ** Math.min(pending, 7), 3_600_000);
-      await this.state.storage.setAlarm(Date.now() + backoffMs).catch(() => undefined);
+      // An act that set an alarm for now while this one ran (an ending's
+      // re-arm, an assign) keeps it: the backoff never pushes it back.
+      const deja = await this.state.storage.getAlarm().catch(() => null);
+      const at = Date.now() + backoffMs;
+      await this.state.storage.setAlarm(deja === null ? at : Math.min(deja, at)).catch(() => undefined);
     }
   }
 
@@ -1544,7 +1617,9 @@ export class LogisticsDO {
        * route calls; its events ride the response there — a lazy sweep's
        * outcome is fully visible in the very board it returns.
        */
-      await this.dispatch.expireDue(now);
+      // A GET is not persisted by the wrapper: a sweep that gave a course back
+      // stores the ending and its re-arm together, here.
+      if ((await this.balayer(now)).requeued.length > 0) await this.persist();
       // VRAI-ROUTE — the founder's daily read doubles as the recovery hook
       // for a producer row parked before its config or supplier existed.
       await this.reviveCustodyProduce();
@@ -2165,6 +2240,9 @@ export class LogisticsDO {
           { status: outcome.reason === 'unknown_assignment' ? 404 : 409 },
         );
       }
+      if (!outcome.duplicate && this.desarmer(outcome.assignment)) {
+        await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
+      }
       // MANIFESTE-1 — « cancelled task can't leave custody inventory »: the
       // course is off the book, so the LEDGER is asked now, and its fresh
       // word is what keeps a sealed package on the rider's manifest (and
@@ -2726,7 +2804,7 @@ export class LogisticsDO {
       // The sweep instant may be supplied (ops door only — deterministic
       // tests and honest re-runs); default is the server's now.
       const sweepAt = (body?.['nowIso'] as string | undefined) ?? now;
-      const swept = await this.dispatch.expireDue(sweepAt);
+      const swept = await this.balayer(sweepAt);
       return Response.json({
         ok: true,
         expiredLeases: swept.expiredLeases,
@@ -3201,7 +3279,7 @@ export class LogisticsDO {
       if (request.method === 'GET' && pathname === '/rider/moi') {
         // The lazy sweep (see /ops/board): a rider polling their session must
         // never be shown a course whose lease already died.
-        await this.dispatch.expireDue(now);
+        if ((await this.balayer(now)).requeued.length > 0) await this.persist();
         // MANIFESTE-1 — custody's word on his package, fresh for this read
         // (one bounded call per live course; the pilot has one).
         await this.refreshCustody(riderId, now);
@@ -3278,6 +3356,23 @@ export class LogisticsDO {
           await this.state.storage.put(SNAP_CUSTODY_FACTS, this.custodyFacts);
           return Response.json({ ok: false, reason: 'custody_unverifiable' }, { status: 503 });
         }
+        /**
+         * A course still in his hand on which custody never began — offered,
+         * or accepted and not yet picked up — keeps him on shift (SE1, SE2.3:
+         * an accepted course has no sweep to give it back). Custody began
+         * only where an order's custodian is a courier or the customer: a
+         * begin custody refused still writes the seller as holder, so the
+         * seller alone proves nothing. A course custody began on goes to the
+         * held-package law below, unchanged — so a drop whose closing message
+         * is still on its way does not keep him on shift.
+         */
+        const enMain = this.book
+          .snapshot()
+          .assignments.map(([, r]) => r)
+          .find((r) => r.riderId === riderId && ACTIVE_ASSIGNMENT_STATUSES.includes(r.status));
+        if (enMain !== undefined && !this.custodieCommencee(enMain)) {
+          return Response.json({ ok: false, reason: 'course_en_cours' }, { status: 409 });
+        }
         const exception = this.finDeServiceCouvre(riderId, held);
         const outcome = this.registry.endShift(riderId, now, 'server_confirmed', {
           heldPackageIds: held,
@@ -3315,12 +3410,19 @@ export class LogisticsDO {
           return Response.json({ ok: false, reason: 'unknown_assignment' }, { status: 404 });
         }
         if (pathname === '/rider/assignment/ack') {
+          // A repeated accept (the first answer lost on the road) is the same
+          // acceptance: answered as such, and the lease is not anchored twice.
+          if (assignment.status === 'acknowledged') {
+            const lease = this.leaseState.leases.find((l) => l.taskId === assignment.lease.taskId && l.status === 'active');
+            return Response.json({ ok: true, status: 'acknowledged', pending: false, anchored: lease?.anchoredAt !== undefined, duplicate: true });
+          }
           const outcome = await this.dispatch.acknowledge(assignmentId, 'server_confirmed', now);
           if (!outcome.ok) return Response.json(outcome, { status: 409 });
           return Response.json(outcome);
         }
         const outcome = await this.dispatch.decline(assignmentId, 'server_confirmed', now);
         if (!outcome.ok) return Response.json(outcome, { status: 409 });
+        if (!outcome.pending && this.desarmer(assignment)) await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
         return Response.json(outcome);
       }
       return Response.json({ ok: false, reason: 'not_found' }, { status: 404 });
@@ -3491,6 +3593,13 @@ export class LogisticsDO {
       .assignments.map(([, r]) => r)
       .find((r) => r.riderId === riderId && ACTIVE_ASSIGNMENT_STATUSES.includes(r.status));
     const queued = assignment === undefined ? undefined : this.queue.get(assignment.taskId);
+    // What custody would accept at the stall reaches the phone only on a
+    // course he accepted and the supplier confirmed; the seals also stay with
+    // a rider custody already names as holder (a course begun before this
+    // rule must still reach the door with the seal he carries).
+    const acceptee = assignment?.status === 'acknowledged';
+    const remis = acceptee && assignment !== undefined && this.ramassage[assignment.assignmentId]?.confirmeAt !== undefined;
+    const porte = assignment !== undefined && this.tientUnColis(riderId, assignment);
     return {
       riderId,
       displayName: record?.displayName ?? '',
@@ -3527,18 +3636,20 @@ export class LogisticsDO {
               repereAudioRef: this.briefs[assignment.taskId]?.repereAudioRef ?? null,
               preuvePhotoRefs: this.briefs[assignment.taskId]?.preuvePhotoRefs ?? [],
               /** RAMASSAGE — shown to its OWN rider, said to the supplier. */
-              codeRamassage: this.ramassage[assignment.assignmentId]?.code ?? null,
+              codeRamassage: acceptee ? (this.ramassage[assignment.assignmentId]?.code ?? null) : null,
               /**
                * VRAI-ROUTE — the two facts the rider's JOURNEY screens turn
                * on. `ramassageConfirmeAt` is when the supplier confirmed the
                * handshake (the « En route » button appears then, never
                * before); `codeVerification` is the machine-carried pickup
                * code the app presents INSIDE the custody verification act —
-               * the rider never reads or types it, and no other read
-               * carries it.
+               * the rider never reads or types it, no other read carries it,
+               * and this read carries it only on a course HE accepted and
+               * the supplier confirmed (SE-I05, §6.2: the seller hands over
+               * first), so no phone holds it before the handover.
                */
               ramassageConfirmeAt: this.ramassage[assignment.assignmentId]?.confirmeAt ?? null,
-              codeVerification: this.codesVerification[assignment.assignmentId]?.code ?? null,
+              codeVerification: remis ? (this.codesVerification[assignment.assignmentId]?.code ?? null) : null,
               /**
                * PORTE-CUSTODY part C (founder-approved 2026-08-14) — the
                * course's payment mode, as the FUNDING FACT said it (SE-I02:
@@ -3560,7 +3671,7 @@ export class LogisticsDO {
                * door. `null` on a course composed before this existed: honest,
                * never a seal nobody minted.
                */
-              codeScelle: this.codesVerification[assignment.assignmentId]?.scelle ?? null,
+              codeScelle: remis || porte ? (this.codesVerification[assignment.assignmentId]?.scelle ?? null) : null,
               /**
                * RETOUR-VIVANT-1 — the NEW return seal (§6.4), machine-carried
                * like the outbound one: the app presents it when the refused
@@ -3568,7 +3679,7 @@ export class LogisticsDO {
                * on a course composed before it was minted — honest, never a
                * seal nobody minted.
                */
-              codeScelleRetour: this.codesVerification[assignment.assignmentId]?.scelleRetour ?? null,
+              codeScelleRetour: remis || porte ? (this.codesVerification[assignment.assignmentId]?.scelleRetour ?? null) : null,
               /**
                * RETOUR-VIVANT-1 — the return handshake, the ramassage's mirror:
                * `codeRetour` is the RIDER's key, shown to him and SAID to the

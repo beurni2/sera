@@ -148,6 +148,13 @@ async function courseConfiee(
   return { session, acts, code, assignmentId, taskId: composed['taskId'] as string };
 }
 
+/** The supplier types the code the rider says: what the custody codes wait on. */
+async function fournisseurConfirme(mf: Miniflare, session: ReturnType<typeof appPorts>['session'], code: string, orderId: string, commandId: string): Promise<void> {
+  const lu = await session.signIn(code);
+  if (!lu.ok) throw new Error('sign-in refused');
+  expect(await intake(mf, '/intake/ramassage/verify', { command_id: commandId, orderId, code: lu.session.assignment?.codeRamassage })).toEqual({ ok: true, verdict: 'confirme' });
+}
+
 /** The chain is open on the REAL custody worker once its ledger answers. */
 async function attendreChaine(custody: Miniflare, orderId: string): Promise<void> {
   for (let i = 0; i < 80; i += 1) {
@@ -167,9 +174,24 @@ describe('dispatch opens the chain and arms the machine code on the REAL custody
 
     await attendreChaine(custody, O);
 
+    // Accepted, the supplier has not confirmed: no custody code, no seal.
+    const avant = await session.signIn(code);
+    if (!avant.ok) throw new Error('sign-in refused');
+    expect((avant.session.assignment as unknown as Json)['codeVerification'], 'no pickup code before the supplier confirms').toBeNull();
+    expect((avant.session.assignment as unknown as Json)['codeScelle'], 'no seal before the supplier confirms').toBeNull();
+    expect((avant.session.assignment as unknown as Json)['ramassageConfirmeAt']).toBeNull();
+
+    // The supplier confirms the rider's ramassage code (the ONE-WAY
+    // handshake) — and the rider's next poll carries the instant her
+    // « En route » button turns on, and the codes.
+    const ram = avant.session.assignment?.codeRamassage as string;
+    const dit = await intake(mf, '/intake/ramassage/verify', { command_id: 'p1-v', orderId: O, code: ram });
+    expect(dit).toEqual({ ok: true, verdict: 'confirme' });
     const moi = await session.signIn(code);
     if (!moi.ok) throw new Error('sign-in refused');
     const assignment = moi.session.assignment as unknown as Json;
+    const stamped = assignment['ramassageConfirmeAt'];
+    expect(typeof stamped).toBe('string');
     const pv = assignment['codeVerification'] as string;
     expect(pv, 'the machine pickup code must ride /rider/moi').toMatch(FORME_PV);
     /**
@@ -187,7 +209,6 @@ describe('dispatch opens the chain and arms the machine code on the REAL custody
     expect(sc, 'the machine seal must ride /rider/moi, parsed').toMatch(FORME_SC);
     expect(sc, 'and it must never be confusable with the pickup code').not.toMatch(FORME_PV);
     expect(sc).not.toBe(pv);
-    expect(assignment['ramassageConfirmeAt']).toBeNull();
 
     // The chain custody holds is EXACTLY the one dispatch composed: an
     // identical re-open absorbs (`already_open`); one different id — package,
@@ -216,17 +237,7 @@ describe('dispatch opens the chain and arms the machine code on the REAL custody
     const kinds = (led.json['entries'] as { kind: string }[]).map((e) => e.kind);
     expect(kinds).toContain('pickup_verification');
 
-    // The supplier confirms the rider's ramassage code (the ONE-WAY
-    // handshake) — and the rider's next poll carries the instant her
-    // « En route » button turns on.
-    const ram = moi.session.assignment?.codeRamassage as string;
-    const dit = await intake(mf, '/intake/ramassage/verify', { command_id: 'p1-v', orderId: O, code: ram });
-    expect(dit).toEqual({ ok: true, verdict: 'confirme' });
-    const apres = await session.signIn(code);
-    if (!apres.ok) throw new Error('re-read refused');
-    const stamped = (apres.session.assignment as unknown as Json)['ramassageConfirmeAt'];
-    expect(typeof stamped).toBe('string');
-    // ...and a replayed confirmation never moves it.
+    // A replayed confirmation never moves the instant.
     await intake(mf, '/intake/ramassage/verify', { command_id: 'p1-v2', orderId: O, code: ram });
     const encore = await session.signIn(code);
     if (!encore.ok) throw new Error('re-read refused');
@@ -267,6 +278,7 @@ describe('dispatch opens the chain and arms the machine code on the REAL custody
     const O = 'ord-vrai-produce-3';
     const { session, code } = await courseConfiee(mf, O, 'rider-boss', 'p3', { supplierRef: 'supplier-vrai-b3' });
     await attendreChaine(custody, O);
+    await fournisseurConfirme(mf, session, code, O, 'p3-v');
     const moi = await session.signIn(code);
     if (!moi.ok) throw new Error('sign-in refused');
     const pv = (moi.session.assignment as unknown as Json)['codeVerification'] as string;

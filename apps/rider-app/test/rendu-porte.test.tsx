@@ -60,10 +60,12 @@ function logistics(state: CourseState): Route {
               // it was `null` here only because no walk had asked for it, and
               // « the voice reaches her door » cannot be proven over an absence.
               preuvePhotoRefs: [], repereAudioRef: 'media/11111111-2222-4333-8444-555555555555',
-              codeRamassage: 'ABC-DEF',
+              // The Worker's rule (certified in logistics' prise-en-charge test): nothing
+              // to say or present at the stall before he accepts the course.
+              codeRamassage: state.status === 'acknowledged' ? 'ABC-DEF' : null,
               ramassageConfirmeAt: state.ramassageConfirmeAt,
-              codeVerification: state.codeVerification,
-              codeScelle: state.codeScelle,
+              codeVerification: state.status === 'acknowledged' ? state.codeVerification : null,
+              codeScelle: state.status === 'acknowledged' ? state.codeScelle : null,
               paymentMode: state.paymentMode,
             },
           },
