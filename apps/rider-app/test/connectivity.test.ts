@@ -25,6 +25,7 @@ function fileStore(path: string): OutboxStore {
   return {
     read: async () => (existsSync(path) ? readFileSync(path, 'utf8') : null),
     write: async (s) => writeFileSync(path, s),
+    keepAside: async (raw) => writeFileSync(`${path}.damaged-${Date.now()}`, raw),
   };
 }
 

@@ -17,7 +17,8 @@ import { drainOnReconnect } from '../../../apps/rider-app/src/offline/backlog';
  *
  *   · an alert the phone could not SAVE is still sent, and recorded once;
  *   · two quick alerts, the first still in the air, are BOTH recorded — the
- *     first one's send can no longer wipe the second from the phone.
+ *     first one's send can no longer wipe the second from the phone, and the
+ *     second is sent at once instead of waiting behind the first.
  */
 
 const OPS = 'test-ops-sos-keep';
@@ -155,6 +156,39 @@ describe('⚠ two quick SOS are both recorded', () => {
     expect(await restore(store)).toEqual([]);
     const ids = (await board(mf)).map((i) => i['commandId']).sort();
     expect(ids).toEqual(['cmd-sos-quick-1', 'cmd-sos-quick-2']);
+  }, 60_000);
+
+  it('the first send still hangs when the rider presses again: the second is on the board before the first one lands', async () => {
+    const mf = spawn();
+    const code = await riderWithCode(mf, 'rider-awa');
+    const store = phone();
+    await appendSosRaise(store, 'cmd-sos-held-1' as never, intent('rider-awa'));
+
+    const gate: { open?: () => void } = {};
+    let first = true;
+    const slow = (async (url: string, init?: RequestInit) => {
+      if (first) {
+        first = false;
+        await new Promise<void>((r) => {
+          gate.open = r;
+        });
+      }
+      return mf.dispatchFetch(url, init as never);
+    }) as never;
+    const send = httpSosSender('http://logistics', code, slow);
+    const firstDrain = flush(store, send);
+    for (let i = 0; i < 100 && gate.open === undefined; i += 1) await Promise.resolve();
+    expect(gate.open, 'the first alert is on the wire').toBeDefined();
+
+    // The app saves the second alert and drains at once, as `fireSos` does.
+    await appendSosRaise(store, 'cmd-sos-held-2' as never, intent('rider-awa'));
+    expect(await flush(store, send)).toEqual([{ commandId: 'cmd-sos-held-2', outcome: 'applied' }]);
+    expect((await board(mf)).map((i) => i['commandId']), 'the second alert waited behind the first').toEqual(['cmd-sos-held-2']);
+
+    gate.open!();
+    expect(await firstDrain).toEqual([{ commandId: 'cmd-sos-held-1', outcome: 'applied' }]);
+    expect(await restore(store)).toEqual([]);
+    expect((await board(mf)).map((i) => i['commandId']).sort()).toEqual(['cmd-sos-held-1', 'cmd-sos-held-2']);
   }, 60_000);
 
   it('the first send dies on the sender’s own deadline while the rider presses again: both reach the board', async () => {

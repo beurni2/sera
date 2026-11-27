@@ -17,9 +17,11 @@ import { join } from 'node:path';
 
 function fakeStore(initial: string | null = null): ActMemoryStore & { readonly bytes: () => string | null } {
   let held = initial;
+  const aside: string[] = [];
   return {
     async read() { return held; },
     async write(s: string) { held = s; },
+    async keepAside(raw: string) { aside.push(raw); },
     bytes: () => held,
   };
 }
@@ -145,7 +147,8 @@ describe('⚠ THE ACT MEMORY DOES NOT LIVE IN THE OUTBOX\'S FILE (blocker A1)', 
    */
   const shared = (): OutboxStore & { bytes: () => string | null } => {
     let held: string | null = null;
-    return { async read() { return held; }, async write(s2) { held = s2; }, bytes: () => held };
+    const aside: string[] = [];
+    return { async read() { return held; }, async write(s2) { held = s2; }, async keepAside(raw) { aside.push(raw); }, bytes: () => held };
   };
   const sos = { commandId: 'cmd-sos-1', kind: 'sos.raise', payload: {}, status: 'pending' } as unknown as OutboxEntry;
 

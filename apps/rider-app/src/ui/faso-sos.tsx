@@ -98,6 +98,9 @@ export function SosSheet({
             <Text style={styles.title}>{strings.raised}</Text>
             <Text style={styles.hint}>{strings.raisedHint}</Text>
             {onSandboxAck !== undefined && <SandboxAck label={strings.previewAck} onPress={onSandboxAck} />}
+            {/* A wired build has no stand-in ack, so this is the rider's way out.
+                Closing only closes the sheet: the alert stays open on Séra's board. */}
+            {onSandboxAck === undefined && <Pressable style={styles.cancel} onPress={onCancel} accessibilityRole="button"><Text style={styles.cancelText}>{strings.close}</Text></Pressable>}
           </>
         )}
         {state === 'escalated' && (
@@ -106,6 +109,9 @@ export function SosSheet({
             <Text style={styles.hint}>{strings.escalatedHint}</Text>
             <Text style={styles.note}>{strings.transportPending}</Text>
             {onSandboxAck !== undefined && <SandboxAck label={strings.previewAckEscalated} onPress={onSandboxAck} />}
+            {/* A wired build has no stand-in ack, so this is the rider's way out.
+                Closing only closes the sheet: the alert stays open on Séra's board. */}
+            {onSandboxAck === undefined && <Pressable style={styles.cancel} onPress={onCancel} accessibilityRole="button"><Text style={styles.cancelText}>{strings.close}</Text></Pressable>}
           </>
         )}
         {state === 'acknowledged' && (

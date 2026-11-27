@@ -164,24 +164,17 @@ describe('⚠ an SOS the phone could not save is still sent', () => {
 });
 
 describe('⚠ a slow first alert never answers for the second one', () => {
-  it('the first alert’s late 200 must not mark the second, refused, alert « reçue »', async () => {
-    // Séra takes the first alert it sees and refuses every other one, so the
-    // second alert stays owed.
-    let firstSeen: string | null = null;
-    const board: Board = {
-      incidents: new Map(),
-      refuse: (id) => {
-        if (firstSeen === null) firstSeen = id;
-        return id !== firstSeen;
-      },
-    };
-    // The first alert's first POST hangs on a bad connection until we let it go.
+  it('the second alert is sent at once, beside the first one still in the air, and the first one’s late 200 never marks it « reçue »', async () => {
+    // The first alert's POST hangs on a bad connection until we let it go.
+    // Séra takes that first alert and refuses every other one, so the second
+    // alert stays owed.
     const gate: { open?: () => void } = {};
-    let gated = false;
+    let firstId: string | null = null;
+    const board: Board = { incidents: new Map(), refuse: (id) => id !== firstId };
     const slowFirst = (inner: typeof fetch): typeof fetch =>
       (async (input: string, init?: RequestInit): Promise<Response> => {
-        if (!gated && String(input).endsWith('/rider/sos')) {
-          gated = true;
+        if (firstId === null && String(input).endsWith('/rider/sos')) {
+          firstId = JSON.parse(String(init?.body))['command_id'] as string;
           await new Promise<void>((r) => {
             gate.open = r;
           });
@@ -195,20 +188,23 @@ describe('⚠ a slow first alert never answers for the second one', () => {
     expect(gate.open, 'the first alert is on the wire').toBeDefined();
     expect(s.shows(SENDING)).toBe(true);
     await s.press('Fermer');
+    expect(s.shows(SENDING), 'the sheet did not close').toBe(false);
 
     await s.press('SOS');
     await holdSos(s);
-    // The second alert's own send carried the first one again (Séra took it)
-    // and then itself (Séra refused it): it is still owed, and says so.
-    expect(board.incidents.size).toBe(1);
+    // The first alert is still held on the wire: the second one went anyway,
+    // on its own, and Séra refused it — so it is owed, and says so.
+    const sent = sosCalls(w).map((c) => c.body?.['command_id']);
+    expect(sent.filter((id) => id !== firstId), 'the second alert waited behind the first').toHaveLength(1);
+    expect(sent.filter((id) => id === firstId), 'the first alert was sent again, ahead of the second').toHaveLength(0);
+    expect(board.incidents.size).toBe(0);
     expect(s.shows(NOT_YET), JSON.stringify(s.texts())).toBe(true);
 
-    // Now the first alert's original request lands, late.
+    // Now the first alert's request lands, late, and Séra has it.
     gate.open!();
     for (let i = 0; i < 8; i += 1) await s.settle();
-    expect(board.incidents.size, 'only the first alert reached Séra').toBe(1);
+    expect([...board.incidents.keys()], 'only the first alert reached Séra').toEqual([firstId]);
     expect(s.shows(RECEIVED), 'the second alert was refused; the sheet must not say Séra has it').toBe(false);
     expect(s.shows(NOT_YET)).toBe(true);
-    expect(sosCalls(w).map((c) => c.body?.['command_id']).filter((id) => id !== firstSeen).length, 'the second alert was sent').toBeGreaterThanOrEqual(1);
   }, 20_000);
 });

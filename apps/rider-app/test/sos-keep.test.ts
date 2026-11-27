@@ -124,6 +124,40 @@ describe('⚠ a second SOS saved while the first is still being sent is never wi
     expect(await restore(afterwards)).toEqual([]);
   });
 
+  it('a second SOS is sent while the first one’s send still hangs: it never waits behind it', async () => {
+    const store = createDocumentOutboxStore();
+    const first = mintCommandId();
+    const second = mintCommandId();
+    await appendSosRaise(store, first, intent);
+
+    const posted: string[] = [];
+    const held: { release?: () => void } = {};
+    const fetchFn = (_url: string, init?: RequestInit): Promise<Response> => {
+      const id = JSON.parse(String(init?.body))['command_id'] as string;
+      posted.push(id);
+      if (id !== first) return Promise.resolve(okBody());
+      // A bad connection: a send of the first SOS waits until we let it go.
+      return new Promise((resolve) => {
+        held.release = () => resolve(okBody());
+      });
+    };
+    const send = httpSosSender('http://logistics.test', CODE, fetchFn);
+
+    const firstDrain = flush(store, send);
+    await until(() => posted.length === 1, 'the first SOS is on the wire');
+    // The rider presses again: the app saves the second SOS and drains at once.
+    await appendSosRaise(store, second, intent);
+    const secondDrain = flush(store, send);
+    await until(() => posted.includes(second), 'the second SOS reached Séra while the first send still hung');
+    expect(posted, 'the first SOS was sent a second time, ahead of the second').toEqual([first, second]);
+    expect(await secondDrain).toEqual([{ commandId: second, outcome: 'applied' }]);
+    // The first is still owed, and its own send settles it.
+    expect(await stillPending(store, first)).toBe(true);
+    held.release!();
+    expect(await firstDrain).toEqual([{ commandId: first, outcome: 'applied' }]);
+    expect(await restore(createDocumentOutboxStore())).toEqual([]);
+  });
+
   it('two SOS saved in the same instant are both kept', async () => {
     const store = createDocumentOutboxStore();
     const a = mintCommandId();
