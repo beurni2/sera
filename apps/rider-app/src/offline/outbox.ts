@@ -35,6 +35,10 @@ export interface OutboxEntry {
 export interface OutboxStore {
   read(): Promise<string | null>;
   write(serialized: string): Promise<void>;
+  /** Keep bytes that do not read as this store's file under a new name. They
+   *  are never parsed again and never deleted: a damaged queue may still hold
+   *  a rider's SOS, and only a person may decide it is gone. */
+  keepAside(raw: string): Promise<void>;
 }
 
 /**
@@ -50,15 +54,56 @@ export type FlushOutcome = 'applied' | 'idempotentReplay' | 'collision-refused';
 export type OutboxSender = (entry: OutboxEntry) => Promise<FlushOutcome>;
 
 const serialize = (entries: readonly OutboxEntry[]): string => JSON.stringify(entries);
-const deserialize = (raw: string): OutboxEntry[] => JSON.parse(raw) as OutboxEntry[];
+
+/**
+ * ONE READ-MODIFY-WRITE AT A TIME, PER STORE. Two of them interleaving is how a
+ * second SOS was lost: both read the same list, and the later write erased the
+ * other's entry. Every read and write of a store runs in this lane, in order.
+ * ⚠ Nothing in it ever waits on the network — a send that hangs for 15 s must
+ * never hold up the save of the next alert.
+ */
+const lanes = new WeakMap<object, Promise<unknown>>();
+export function inLane<T>(store: object, work: () => Promise<T>): Promise<T> {
+  const run = (lanes.get(store) ?? Promise.resolve()).then(work);
+  lanes.set(store, run.catch(() => undefined));
+  return run;
+}
+
+/** The entries some drain of this store is sending right now. Another drain
+ *  leaves them to it, so a new SOS is never queued behind a send that hangs. */
+const inFlight = new WeakMap<object, Set<string>>();
+
+/**
+ * Read the queue. Bytes that are not a list — half a file, the old shared
+ * shape, or a file that exists with zero bytes — are DAMAGED: kept aside, never
+ * parsed as truth, and a fresh list starts, so the next save works instead of
+ * failing for ever. Call it only inside the lane.
+ *
+ * Zero bytes is never something this outbox writes (an empty list is « [] »):
+ * it is what a dead in-place write or a power loss right after a move leaves,
+ * and whatever SOS it held is gone. Only NO file at all is a new phone.
+ */
+async function readQueue(store: OutboxStore): Promise<OutboxEntry[]> {
+  const raw = await store.read();
+  if (raw === null) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    parsed = undefined;
+  }
+  if (Array.isArray(parsed)) return parsed as OutboxEntry[];
+  await store.keepAside(raw);
+  await store.write(serialize([]));
+  return [];
+}
 
 /**
  * Restore-on-open: read the persisted queue. On the document dir this survives an
  * app kill and a device reboot (unlike the cache dir); an empty/absent store is [].
  */
-export async function restore(store: OutboxStore): Promise<OutboxEntry[]> {
-  const raw = await store.read();
-  return raw === null || raw === '' ? [] : deserialize(raw);
+export function restore(store: OutboxStore): Promise<OutboxEntry[]> {
+  return inLane(store, () => readQueue(store));
 }
 
 /**
@@ -66,9 +111,11 @@ export async function restore(store: OutboxStore): Promise<OutboxEntry[]> {
  * (e.g. the SOS raise mints at the gesture, for instant UI, then persists in the
  * background). The entry's id is never recomputed here. `enqueue` = mint + append.
  */
-export async function append(store: OutboxStore, entry: OutboxEntry): Promise<void> {
-  const existing = await restore(store);
-  await store.write(serialize([...existing, entry]));
+export function append(store: OutboxStore, entry: OutboxEntry): Promise<void> {
+  return inLane(store, async () => {
+    const existing = await readQueue(store);
+    await store.write(serialize([...existing, entry]));
+  });
 }
 
 /**
@@ -94,23 +141,38 @@ export interface FlushResult {
  * authority holds the truth — a replay is not a second effect); `collision-refused`
  * is SURFACED and KEPT pending (the caller resolves it — the outbox never silently
  * drops a refused command). Pure over the store; the sender is the only I/O.
+ *
+ * ⚠ IT REMOVES WHAT SETTLED, IT DOES NOT WRITE BACK WHAT IT READ. The sends run
+ * outside the lane, so a rider can save another SOS while one is in the air;
+ * writing back the list read before the sends erased that SOS. The file is read
+ * again, in the lane, and only the ids this flush settled leave it.
  */
 export async function flush(store: OutboxStore, send: OutboxSender): Promise<FlushResult[]> {
   const entries = await restore(store);
+  const sending = inFlight.get(store) ?? new Set<string>();
+  inFlight.set(store, sending);
   const results: FlushResult[] = [];
-  const remaining: OutboxEntry[] = [];
+  const settled = new Set<string>();
   for (const entry of entries) {
-    if (entry.status !== 'pending') {
-      remaining.push(entry);
-      continue;
+    // Not pending, or already in the air from another drain: left where it is.
+    if (entry.status !== 'pending' || sending.has(entry.commandId)) continue;
+    sending.add(entry.commandId);
+    let outcome: FlushOutcome;
+    try {
+      outcome = await send(entry); // send carries entry.commandId — the persisted one, unchanged
+    } finally {
+      sending.delete(entry.commandId);
     }
-    const outcome = await send(entry); // send carries entry.commandId — the persisted one, unchanged
     results.push({ commandId: entry.commandId, outcome });
-    if (outcome === 'collision-refused') {
-      remaining.push(entry); // surfaced, kept for the caller — never a silent drop
-    }
-    // 'applied' | 'idempotentReplay' → settled at the authority; dropped from pending
+    // 'applied' | 'idempotentReplay' → settled at the authority; dropped from pending.
+    // 'collision-refused' → surfaced, kept for the caller — never a silent drop.
+    if (outcome !== 'collision-refused') settled.add(entry.commandId);
   }
-  await store.write(serialize(remaining));
+  if (settled.size > 0) {
+    await inLane(store, async () => {
+      const now = await readQueue(store);
+      await store.write(serialize(now.filter((entry) => !settled.has(entry.commandId))));
+    });
+  }
   return results;
 }

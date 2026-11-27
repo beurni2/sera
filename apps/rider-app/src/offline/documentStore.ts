@@ -10,8 +10,9 @@ import type { OutboxStore } from './outbox';
  * label lost on kill).
  *
  * Thin I/O only — the outbox logic + the three fixtures test the `OutboxStore` PORT
- * with a temp-file fake; this adapter is the device binding (its native surface
- * never runs under vitest). No custody write, no franc.
+ * with a temp-file fake; this adapter is the device binding (under vitest it runs
+ * on `test/doubles/expo-file-system`, whose bounds are the native code's). No
+ * custody write, no franc.
  */
 
 const OUTBOX_FILE = 'sera-outbox.json';
@@ -38,34 +39,75 @@ const OUTBOX_FILE = 'sera-outbox.json';
  */
 const ACT_MEMORY_FILE = 'sera-act-memory.json';
 
-export function createDocumentOutboxStore(): OutboxStore {
-  const handle = (): File => new File(Paths.document, OUTBOX_FILE);
+const keptAsideListeners = new Set<() => void>();
+
+/** Hear about every file kept aside, so the rider can be told. Returns the way
+ *  to stop listening. */
+export function onFileKeptAside(listener: () => void): () => void {
+  keptAsideListeners.add(listener);
+  return () => {
+    keptAsideListeners.delete(listener);
+  };
+}
+
+/**
+ * ONE FILE, WRITTEN SO THAT A DYING PHONE NEVER TEARS THE ONLY COPY.
+ *
+ * The native `write` truncates before it writes, so writing the real file in
+ * place left half a list — or nothing — when the phone died mid-write. The new
+ * bytes go to `<name>.tmp` first, and only a whole `.tmp` is moved over the
+ * real file. The native `move` deletes the destination before it renames, so a
+ * phone that dies between the two leaves no real file and a whole `.tmp` that
+ * holds the newest list: that `.tmp` is moved into place before anything reads
+ * or writes again, and before a new `.tmp` could overwrite it.
+ */
+function documentFile(name: string): OutboxStore {
+  const main = (): File => new File(Paths.document, name);
+  const tmp = (): File => new File(Paths.document, `${name}.tmp`);
+  const promote = async (): Promise<void> => {
+    const real = main();
+    const pending = tmp();
+    // A zero-byte `.tmp` with no real file is a first write that was refused or
+    // died before any byte: it never held a list, so it is not promoted.
+    if (!real.exists && pending.exists && (await pending.text()) !== '') await pending.move(real);
+  };
   return {
     async read(): Promise<string | null> {
-      const file = handle();
+      await promote();
+      const file = main();
       return file.exists ? await file.text() : null;
     },
     async write(serialized: string): Promise<void> {
-      const file = handle();
-      if (!file.exists) file.create();
-      file.write(serialized);
+      await promote();
+      const next = tmp();
+      if (!next.exists) next.create();
+      next.write(serialized);
+      await next.move(main(), { overwrite: true });
+    },
+    async keepAside(raw: string): Promise<void> {
+      // `create` refuses an existing file, so kept bytes are never overwritten.
+      const kept = new File(Paths.document, name.replace(/\.json$/, `.damaged-${Date.now()}.json`));
+      kept.create();
+      kept.write(raw);
+      for (const listener of keptAsideListeners) listener();
     },
   };
+}
+
+/**
+ * ONE STORE OBJECT PER FILE FOR THE LIFE OF THE APP. The outbox lane is keyed
+ * by store object; a second object over the same file would get a lane of its
+ * own, and its writes could overlap the first one's.
+ */
+let outboxStore: OutboxStore | null = null;
+let actMemoryStore: OutboxStore | null = null;
+
+export function createDocumentOutboxStore(): OutboxStore {
+  return (outboxStore ??= documentFile(OUTBOX_FILE));
 }
 
 /** The act memory's own durable surface — same document dir, same thin I/O,
  *  SEPARATE FILE. Same `read`/`write` port shape, so nothing else changes. */
 export function createDocumentActMemoryStore(): OutboxStore {
-  const handle = (): File => new File(Paths.document, ACT_MEMORY_FILE);
-  return {
-    async read(): Promise<string | null> {
-      const file = handle();
-      return file.exists ? await file.text() : null;
-    },
-    async write(serialized: string): Promise<void> {
-      const file = handle();
-      if (!file.exists) file.create();
-      file.write(serialized);
-    },
-  };
+  return (actMemoryStore ??= documentFile(ACT_MEMORY_FILE));
 }

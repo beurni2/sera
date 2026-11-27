@@ -1,3 +1,4 @@
+import { inLane } from '../offline/outbox';
 
 /**
  * ═══ SE-LIVE-4c-ix · WHAT THE PHONE REMEMBERS ABOUT AN ACT ═══
@@ -78,6 +79,29 @@ const KEY = 'custody-act-memory.v1';
 export interface ActMemoryStore {
   read(): Promise<string | null>;
   write(serialized: string): Promise<void>;
+  keepAside(raw: string): Promise<void>;
+}
+
+/**
+ * The parsed root, or `null` when there is none. Bytes that do not parse as a
+ * JSON object or array are DAMAGED — zero bytes from a file that exists among
+ * them, since this memory never writes them (an empty memory is « {} ») — so
+ * they are kept aside, never overwritten, and a fresh memory starts: a damaged
+ * memory is no memory, never a guessed stage. Call it only inside the lane.
+ */
+async function readRoot(store: ActMemoryStore): Promise<Record<string, unknown> | null> {
+  const raw = await store.read();
+  if (raw === null) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    parsed = undefined;
+  }
+  if (parsed !== null && typeof parsed === 'object') return parsed as Record<string, unknown>;
+  await store.keepAside(raw);
+  await store.write('{}');
+  return null;
 }
 
 /**
@@ -90,18 +114,15 @@ export interface ActMemoryStore {
  * that a future attempt fails loudly instead of eating the queue.
  */
 
-export async function loadActMemory(store: ActMemoryStore, orderId: string): Promise<ActMemory | null> {
-  const raw = await store.read();
-  if (raw === null || raw === '') return null;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    // Unreadable memory is no memory — never a crash on a rider's launch.
-    return null;
-  }
-  if (parsed === null || typeof parsed !== 'object') return null;
-  const held = (parsed as Record<string, unknown>)[KEY];
+export function loadActMemory(store: ActMemoryStore, orderId: string): Promise<ActMemory | null> {
+  return inLane(store, () => loadIn(store, orderId));
+}
+
+async function loadIn(store: ActMemoryStore, orderId: string): Promise<ActMemory | null> {
+  // Unreadable memory is no memory — never a crash on a rider's launch.
+  const parsed = await readRoot(store);
+  if (parsed === null) return null;
+  const held = parsed[KEY];
   if (held === null || typeof held !== 'object') return null;
   const m = held as Record<string, unknown>;
   // ⚠ IT MUST NAME THIS ORDER. Restoring one order's stage onto another is how
@@ -132,41 +153,29 @@ export async function loadActMemory(store: ActMemoryStore, orderId: string): Pro
  * shape as the credential scans elsewhere. This function cannot police what a
  * future caller hands it.
  */
-export async function rememberAct(store: ActMemoryStore, memory: ActMemory): Promise<void> {
-  const raw = await store.read();
-  let root: Record<string, unknown> = {};
-  if (raw !== null && raw !== '') {
-    try {
-      const parsed: unknown = JSON.parse(raw);
-      // ⚠ AN ARRAY IS SOMEONE ELSE'S FILE (blocker A1). `typeof [] === 'object'`,
-      // so this once accepted the outbox's queue as its root and then wrote it
-      // back as an object — silently deleting every pending write, an SOS
-      // among them. Refuse loudly rather than destroy what we do not own.
-      if (Array.isArray(parsed)) {
-        throw new Error('act-memory: refusing to write over a non-memory store');
-      }
-      if (parsed !== null && typeof parsed === 'object') root = parsed as Record<string, unknown>;
-    } catch (error) {
-      if (error instanceof Error && error.message.startsWith('act-memory:')) throw error;
-      root = {};
+export function rememberAct(store: ActMemoryStore, memory: ActMemory): Promise<void> {
+  return inLane(store, async () => {
+    const root = (await readRoot(store)) ?? {};
+    // ⚠ AN ARRAY IS SOMEONE ELSE'S FILE (blocker A1). `typeof [] === 'object'`,
+    // so this once accepted the outbox's queue as its root and then wrote it
+    // back as an object — silently deleting every pending write, an SOS
+    // among them. Refuse loudly rather than destroy what we do not own.
+    if (Array.isArray(root)) {
+      throw new Error('act-memory: refusing to write over a non-memory store');
     }
-  }
-  root[KEY] = memory;
-  await store.write(JSON.stringify(root));
+    root[KEY] = memory;
+    await store.write(JSON.stringify(root));
+  });
 }
 
 /** Forget this order entirely — used when the rider signs out, so a shared or
  *  handed-on phone carries nothing about someone else's package. */
-export async function forgetActs(store: ActMemoryStore): Promise<void> {
-  const raw = await store.read();
-  if (raw === null || raw === '') return;
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (parsed === null || typeof parsed !== 'object') return;
-    const root = parsed as Record<string, unknown>;
+export function forgetActs(store: ActMemoryStore): Promise<void> {
+  return inLane(store, async () => {
+    // Nothing readable to forget: damaged bytes were kept aside by the read.
+    const root = await readRoot(store);
+    if (root === null) return;
     delete root[KEY];
     await store.write(JSON.stringify(root));
-  } catch {
-    // Nothing readable to forget.
-  }
+  });
 }

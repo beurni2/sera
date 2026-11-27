@@ -3,6 +3,44 @@ Continuity ledger per CTO charter §6/§6bis. Every entry is evidence-grounded.
 
 Format per entry:
 
+## 2026-11-27 · SOS-GARDE-1 — every rider SOS stays on the phone until Séra has it; the sent SOS sheet can be closed; the « reçue » sheet also asks him to call Séra · lane S9 · on the branch, NOT merged, NOT deployed
+
+**Founder.** « You can start the next batch » (2026-11-27 01:21 UTC, in the project chat, on the batch plan). At 01:31 UTC he chose his Boutik+ console as the place a rider's real SOS is seen. Lane S, carried onto `claude/project-thread-jqj97g` as one squashed commit `474499c` (tree equal to the lane branch's head apart from this journal).
+
+**Spec.** Sera-Build-Spec §8 SE8 (« SOS visible from every rider flow; ack within SLA … live drill before pilot »); Sera-Building-Plan SE7.1 (« persistent signal until ack »); SE-I06 (queued = pending until the server's answer); CLAUDE.md Laws 6 and 7, §5 honest states, §6bis walks and seams.
+
+**What changed (rider app only).**
+- Every read and write of a device store (the outbox, the act memory) runs one at a time in its own lane, never across the network. A drain sends outside the lane, then re-reads in the lane and removes only the entries it settled; an entry another drain is already sending is left to it.
+- Both device files are written to `<name>.tmp` and moved over the real file. When the real file is absent and a whole `.tmp` is present, the `.tmp` is moved into place before anything reads or writes. One store object per file for the life of the app.
+- Bytes that do not read as the file's shape are kept aside as `<name>.damaged-<ms>.json` (never parsed, never deleted), a fresh file starts, and the existing notice line is shown (unchanged). A file that exists with zero bytes is one of them (the app never writes zero bytes: an empty list is « [] », an empty memory « {} »); no file at all is a new phone, in silence. A zero-byte `.tmp` with no real file is a first save that never wrote a byte, so it is not moved into place (`7cdd0e7`).
+- A save the phone refuses still sends the SOS once with its minted `command_id` when online, holds it in memory and resends it on every reconnect until Séra has it. The notice clears only when the drain owes nothing, no unsaved SOS remains and no file was kept aside. An older alert's late answer never speaks for a newer alert's sheet.
+- `faso-sos.tsx`: on a wired build the raised and escalated sheets show « Fermer » (`sos.close`); closing only closes the sheet, the alert stays open on Séra's board. The demo build is unchanged.
+- `sos.reached_hint` (neutral/instruction): « Restez où vous êtes si c'est sûr. Si vous pouvez, appelez aussi Séra. »
+- `docs/runbooks/SOS-DRILL.md`: the live SOS is seen on the founder's Boutik+ console once its desk is released; the dispatch console's SOS is practice; night alerts by SMS come later.
+- The `expo-file-system` test double now follows the installed native code (57.0.6): `write` truncates first, `create` refuses an existing file, `move` with `overwrite` deletes the destination before it renames, `text` is asynchronous and throws on a missing file; a phone can die between those steps.
+
+**Evidence.** `sos-keep.e2e` 4/4 on the real logistics Worker (a refused save reaches `GET /ops/sos` once; two quick SOS both reach the board while the first send is held). Rider suite 52 files, 534 tests, exit 0, no unhandled errors; walks at 20 s on the real app and the real sheet. Full board on `7cdd0e7` after `pnpm build` and both bundles: ALL GATES GREEN (rider 534, logistics 347, custody 274, dispatch console 97 + Playwright 43). Typecheck clean; copy-lint OK (347 entries). Mutations, each anchor matched once, restored byte-identical, all red: 25 by the lane (the drain writing back what it read; the lane removed around a save, around a drain's removal; writing in place; no promote; damaged bytes dropped, in both files; listeners never told; no in-flight skip; a refused save not sent, not resent; each sheet guard; « Fermer » removed, raised and escalated; the old hint; one object per file; the act memory's lane) and 6 by the coordinator; for the zero-byte rule, 4 more by the lane and 3 by the coordinator (the outbox not keeping an empty file, the act memory reading one as no memory, an empty `.tmp` promoted).
+
+**Verifier (one pass, handled once).** No blocker, and no way found to lose an SOS beyond the open items held privately. Two major and three minor findings were proof gaps (safety lines removable with every test green) and one double branch kinder than native; all fixed with tests and shown red by removal; one runbook sentence reworded. Not re-inspected (NO-LOOP).
+
+**Still open.** Held in the private batch record until the release.
+
+---
+
+## 2026-11-27 · PRISE-EN-CHARGE-1 — DEPLOYED and MERGED
+
+**Founder.** « Release all four » (2026-11-27 00:42 UTC, in the project chat, on the batch report), which named for Séra: put the logistics service live from the branch, check that it is the right version, then merge (which publishes the rider app).
+
+**Deploy first, from the designated branch at `839dd0f`.** logistics-deploy 38 (id 45918597553): all logistics keys uploaded; « PROVENANCE OK — live logistics Worker is `839dd0f…` speaking canon 3.21.0 ».
+
+**Merge.** main re-checked unchanged at `66ec261`; PR #6 merged as `5163e32` (merge commit, the branch shas kept). On main: ci 228 green · expo-preview 163 (rider app) green.
+
+**Deploy note, as reported.** A course offered before the deploy shows no codes until it is accepted and the supplier confirms; a course already in custody keeps its seals. Riders are not on the live app yet.
+
+**Still open.** As named in the slice entry below. Other open items for this slice are held in the private batch record until their fixes deploy.
+
+---
+
 ## 2026-11-26 · PRISE-EN-CHARGE-1 — only the rider who accepted, after the supplier confirms, gets the custody codes; an ended course's code is replaced at custody; a shift does not end on a course in hand; a repeated « Accepter » is answered as accepted · lane S8 · on the branch, NOT merged, NOT deployed
 
 **Founder.** « Start batch 1 » (2026-11-26 22:03 UTC, decision card on the batch plan). Lane S, integrated on `claude/project-thread-jqj97g` (lane commits `25e586d`, `67abc22`; merges `07e8d28`, `9b8cda3`; coordinator comment-only `09772d8`).

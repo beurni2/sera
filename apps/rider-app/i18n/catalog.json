@@ -1201,7 +1201,7 @@
   },
   {
     "key": "sos.reached_hint",
-    "fr": "Restez où vous êtes si c'est sûr.",
+    "fr": "Restez où vous êtes si c'est sûr. Si vous pouvez, appelez aussi Séra.",
     "register": "neutral",
     "screenClass": "instruction"
   },

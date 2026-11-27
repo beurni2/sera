@@ -27,13 +27,13 @@ import { t } from './src/i18n';
 import { COURSE_BACK_STEPS, JOURNEY, START, type Screen } from './src/journey';
 import { attemptReturnHandover } from './src/two-key-return';
 import { mintCommandId } from './src/offline/commandId';
-import { appendSosRaise } from './src/offline/sos';
+import { appendSosRaise, SOS_RAISE_KIND, type SosRaiseIntent } from './src/offline/sos';
 import { appendEvidence } from './src/offline/evidence';
-import { createDocumentActMemoryStore, createDocumentOutboxStore } from './src/offline/documentStore';
+import { createDocumentActMemoryStore, createDocumentOutboxStore, onFileKeptAside } from './src/offline/documentStore';
 import { createManualConnectivity, type Connectivity } from './src/offline/connectivity';
 import { bindDeviceConnectivity } from './src/offline/expoConnectivity';
 import { pendingCount, drainOnReconnect, stillPending } from './src/offline/backlog';
-import type { FlushOutcome } from './src/offline/outbox';
+import type { FlushOutcome, OutboxEntry } from './src/offline/outbox';
 import {
   acceptInspection,
   acknowledgeCourse,
@@ -2176,13 +2176,46 @@ export default function App() {
       unbind();
     };
   }, [net]);
+  /**
+   * A FILE KEPT ASIDE STAYS SAID. The device store moved bytes it could not
+   * read out of the way and started a fresh file; whatever they held was never
+   * sent, so an empty drain later must not clear the notice.
+   */
+  const keptAside = useRef(false);
+  useEffect(
+    () =>
+      onFileKeptAside(() => {
+        keptAside.current = true;
+        setPersistFailed(true);
+      }),
+    [],
+  );
+  /**
+   * ⚠ AN SOS THE PHONE COULD NOT SAVE IS STILL OWED. Saving is the safety net,
+   * never the gate: a refused save sends the alert anyway, and until Séra has
+   * it, it is held here — in memory, since the disk said no — and sent again on
+   * every reconnect with the same command_id.
+   */
+  const unsavedSos = useRef<OutboxEntry[]>([]);
+  /** The SOS the open sheet speaks for. An older alert's late answer never
+   *  speaks for a newer one. */
+  const sosShown = useRef<string | null>(null);
   // Reconnect → flush the durable outbox, the banner clears with the backlog; offline
   // just re-counts what is queued (queued = pending, never done — SE-I06 family).
   useEffect(() => {
     if (connectivity === 'online') {
+      // Beside the drain, never behind it: a drain that fails must not hold back
+      // an alert that was never saved.
+      for (const entry of unsavedSos.current) {
+        void reconnectSender(entry).then((outcome) => {
+          if (outcome !== 'collision-refused') {
+            unsavedSos.current = unsavedSos.current.filter((e) => e.commandId !== entry.commandId);
+          }
+        });
+      }
       void drainOnReconnect(outboxStore, reconnectSender).then((remaining) => {
         setBacklog(remaining);
-        if (remaining === 0) setPersistFailed(false);
+        if (remaining === 0 && unsavedSos.current.length === 0 && !keptAside.current) setPersistFailed(false);
       });
     } else {
       refreshBacklog();
@@ -2284,6 +2317,7 @@ export default function App() {
   // requires a deliberate HOLD (neither accidental nor missable).
   const openSos = useCallback(() => {
     setSosDelivered(null);
+    sosShown.current = null;
     setSos('confirm');
   }, []);
   const cancelSos = useCallback(() => {
@@ -2333,16 +2367,18 @@ export default function App() {
       hours: SANDBOX_DISPATCH_HOURS,
     });
     setWorld({ ...world });
-    // SERA-S4: the S3-named `.catch` hardening lands here — a background-persist
-    // failure routes to the banner surface (persistFailed); success refreshes the
-    // real backlog count. The safety incident already showed instantly regardless.
-    void appendSosRaise(outboxStore, commandId, {
+    sosShown.current = commandId;
+    const sosIntent: SosRaiseIntent = {
       riderId: sosRiderId,
       hours: SANDBOX_DISPATCH_HOURS,
       onShift: sosOnShift,
       activeCourseId: sosCourseId,
       raisedAt: raised.raisedAt,
-    })
+    };
+    // SERA-S4: the S3-named `.catch` hardening lands here — a background-persist
+    // failure routes to the banner surface (persistFailed); success refreshes the
+    // real backlog count. The safety incident already showed instantly regardless.
+    void appendSosRaise(outboxStore, commandId, sosIntent)
       .then(async () => {
         /**
          * ⚠ VERIFIER BLOCKER A4 — THE ALERT WAS NOT SENT WHEN IT WAS RAISED.
@@ -2360,9 +2396,20 @@ export default function App() {
         if (connectivity === 'online') await drainOnReconnect(outboxStore, reconnectSender);
         // Delivered = the outbox no longer owes it. Never inferred from « the
         // request did not throw ».
-        setSosDelivered((await stillPending(outboxStore, commandId)) ? 'owed' : 'reached');
+        const owed = await stillPending(outboxStore, commandId);
+        if (sosShown.current === commandId) setSosDelivered(owed ? 'owed' : 'reached');
         await refreshBacklog();
-      }, () => setPersistFailed(true));
+      }, async () => {
+        setPersistFailed(true);
+        // The disk refused it: send it as is, and hold it in memory until Séra has it.
+        const entry: OutboxEntry = { commandId, kind: SOS_RAISE_KIND, payload: sosIntent, status: 'pending' };
+        unsavedSos.current = [...unsavedSos.current, entry];
+        const outcome: FlushOutcome = connectivity === 'online' ? await reconnectSender(entry) : 'collision-refused';
+        if (outcome !== 'collision-refused') {
+          unsavedSos.current = unsavedSos.current.filter((e) => e.commandId !== commandId);
+        }
+        if (sosShown.current === commandId) setSosDelivered(outcome === 'collision-refused' ? 'owed' : 'reached');
+      });
     const status = raised.status;
     if (status === 'queued') setSos('queued');
     else if (status === 'escalated') setSos('escalated');
