@@ -74,14 +74,18 @@ export function inLane<T>(store: object, work: () => Promise<T>): Promise<T> {
 const inFlight = new WeakMap<object, Set<string>>();
 
 /**
- * Read the queue. Bytes that are not a list — half a file, or the old shared
- * shape — are DAMAGED: kept aside, never parsed as truth, and a fresh list
- * starts, so the next save works instead of failing for ever. Call it only
- * inside the lane.
+ * Read the queue. Bytes that are not a list — half a file, the old shared
+ * shape, or a file that exists with zero bytes — are DAMAGED: kept aside, never
+ * parsed as truth, and a fresh list starts, so the next save works instead of
+ * failing for ever. Call it only inside the lane.
+ *
+ * Zero bytes is never something this outbox writes (an empty list is « [] »):
+ * it is what a dead in-place write or a power loss right after a move leaves,
+ * and whatever SOS it held is gone. Only NO file at all is a new phone.
  */
 async function readQueue(store: OutboxStore): Promise<OutboxEntry[]> {
   const raw = await store.read();
-  if (raw === null || raw === '') return [];
+  if (raw === null) return [];
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);

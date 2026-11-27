@@ -67,7 +67,9 @@ function documentFile(name: string): OutboxStore {
   const promote = async (): Promise<void> => {
     const real = main();
     const pending = tmp();
-    if (!real.exists && pending.exists) await pending.move(real);
+    // A zero-byte `.tmp` with no real file is a first write that was refused or
+    // died before any byte: it never held a list, so it is not promoted.
+    if (!real.exists && pending.exists && (await pending.text()) !== '') await pending.move(real);
   };
   return {
     async read(): Promise<string | null> {
