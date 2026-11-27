@@ -3,6 +3,43 @@ Continuity ledger per CTO charter §6/§6bis. Every entry is evidence-grounded.
 
 Format per entry:
 
+## 2026-11-27 · LOIS-PARTOUT-1 — every tracked file refuses the retired names; an earner's balance is caught as a whole word or with its currency · lane O4 · on the branch, NOT merged
+
+**Founder.** « after everything is released, you can start the next batch 3 » (2026-11-27 04:21 UTC, project chat). The plan he approved says « every repository checks for the retired names ».
+
+**Lane.** Lane O, slice O4 (lane commits `a8dcd05`, `88966e7`). Integrated on `claude/project-thread-jqj97g` as one commit, `92f4893`.
+
+**Spec.**
+- CLAUDE.md §4: « every invariant gate + the copy-lint + the contracts drift-check live from the first PR in every repo … A gate added later is a gate that already let something through. »
+- CLAUDE.md §3: Law 10 (the retired names) and Law 2 (« No wallet/balance module exists anywhere »).
+
+**What changed.** Gate files only: no app code, catalog, workflow or dependency.
+
+*The retired-names gate.*
+- It is the same file in all five repositories, and the board pins its sha256 (`cdfd9208…02dd`).
+- It reads every tracked file except a printed list: the 12 canon files by name, `design-reference/`, CLAUDE.md, AGENTS.md, JOURNAL.md, `_review/`, the gate itself, the roster, and its own negative fixtures. A throwaway-repository probe pins both edges of that list.
+- It refuses the two names whatever separates the words: white space, an escaped space or an HTML entity. It still refuses them right after an escape that ends in a letter, and it refuses « Mon shop » in lowercase. « ma boutique », « mon Shop+ » and « mon shopping » stay legal.
+- It has seven negative fixtures, each also run alone, and one legal fixture. The roster holds its six patterns, and the coverage gate proves each one load-bearing.
+
+*The wallet gate.* Its earner-balance pattern now refuses the balance of a seller, a supplier, a rider and the other earners, as a whole word or with its currency. It comes with its roster entry, the English fixture `earner-balance-forms.ts` (also run alone), and one French line in `solde-vendeur.fr.ts`.
+
+*The board.* The retired-names steps sit above the coverage comment, and the English earner-balance steps sit beside the wallet negative. No existing board line was removed.
+
+*Coordinator change at integration.* The left-out reason for the canon said the canon « states Law 10 itself ». It does not. It now reads « product truth, changed only by a canon slice », and the hash was re-pinned on all five boards.
+
+**Evidence.**
+- Full board on `92f4893` after the custody bundle and `pnpm build` (`TURBO_CONCURRENCY=1`): « ALL GATES GREEN », exit 0.
+- Red first, by the lane: a planted retired name and an earner's balance pass main `5e1c51b` and fail the branch.
+- Mutations. The lane ran ten (three at the first build, seven at the fix): each anchor matched once, each turned the board red, and each file was restored byte-identical. The coordinator re-ran two on `92f4893`. With the earner tail reverted, its fixture passes alone and coverage exits 1. With the word gap back to a plain space, the escaped-space fixture passes alone and coverage exits 1. Both were restored, and `git status` was empty.
+
+**Independent review.** One fresh-context pass, handled once: 0 blocker, 2 major, 6 minor, 6 notes. Every major and minor was fixed in this build. The notes were fixed, or kept in the private batch record.
+
+**Still open.** Follow-ons for the gates are held in the private batch record.
+
+**Where it stands.** On the branch, not merged. Gate files only: merging is the whole release, and there is no deploy.
+
+---
+
 ## 2026-11-27 · SOS-GARDE-1 — MERGED
 
 **Founder.** « Release all three » (2026-11-27 04:19 UTC, decision card on the batch report), which named for Séra: merge, which publishes the rider app. No server change.
