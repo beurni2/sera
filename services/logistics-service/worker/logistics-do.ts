@@ -1040,6 +1040,47 @@ export class LogisticsDO {
   }
 
   /**
+   * Before a door ends an ACCEPTED course: did the rider already check the
+   * goods at the stall, with no courier ever sealed? That check spent the
+   * order's only pickup code, so ending the course there leaves the parcel
+   * with no road out (SE-I05, « package never unowned »). Custody's own word,
+   * read fresh per article; silence fails closed, never a guess. `null` = the
+   * door may go on.
+   */
+  private async refusSiVerifieNonScelle(orderIds: readonly string[]): Promise<Response | null> {
+    const custody = this.env.CUSTODY;
+    const key = this.env.SERA_PRODUCE_SECRET ?? '';
+    const muet = (): Response => Response.json({ ok: false, reason: 'custody_unverifiable' }, { status: 503 });
+    if (custody === undefined || key === '') return muet();
+    const verifies: string[] = [];
+    for (const orderId of orderIds) {
+      try {
+        const res = await custody.fetch(
+          new Request(`https://custody/produce/custodian?orderId=${encodeURIComponent(orderId)}`, {
+            method: 'GET',
+            headers: { Authorization: `Bearer ${key}` },
+            signal: AbortSignal.timeout(CUSTODY_READ_TIMEOUT_MS),
+          }),
+        );
+        const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+        if (!res.ok || body === null || body['ok'] !== true) return muet();
+        // No file yet: nothing was checked, nothing can be stranded.
+        if (body['open'] === false) continue;
+        if (body['open'] !== true) return muet();
+        const verifiePar = body['pickupVerifiedBy'];
+        const scelle = body['custodyBegun'];
+        // A custody that does not say both (one deploy behind) is not read as « not checked ».
+        if (typeof scelle !== 'boolean' || !(typeof verifiePar === 'string' || verifiePar === null)) return muet();
+        if (typeof verifiePar === 'string' && !scelle) verifies.push(orderId);
+      } catch {
+        return muet();
+      }
+    }
+    if (verifies.length === 0) return null;
+    return Response.json({ ok: false, reason: 'pickup_verified_not_sealed', orderIds: verifies }, { status: 409 });
+  }
+
+  /**
    * The live courses whose buyer's code custody says is locked after five
    * wrong tries — custody's word, read fresh, never stored here. One row per
    * course with its locked articles. Bounded (see CUSTODY_CALLS_PER_BOARD),
@@ -1244,6 +1285,8 @@ export class LogisticsDO {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
             body: JSON.stringify({ orderId, command_id: `arm-retour-${suffix}-${assignmentId}`, kind, secret }),
+            // Same alarm as the pickup road: a stall here would hold it too.
+            signal: AbortSignal.timeout(CUSTODY_READ_TIMEOUT_MS),
           }));
           return res.ok;
         } catch {
@@ -1321,6 +1364,10 @@ export class LogisticsDO {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
             body: JSON.stringify(body),
+            // The reads' bound fits these writes too (same binding, same hop): a
+            // post cut off here is « not ok », retried on backoff, and custody
+            // replays a write that did land, so nothing is doubled.
+            signal: AbortSignal.timeout(CUSTODY_READ_TIMEOUT_MS),
           }));
           if (!res.ok) refus = ((await res.json().catch(() => null)) as Record<string, unknown> | null)?.['reason'];
           return res.ok;
@@ -1347,7 +1394,9 @@ export class LogisticsDO {
         });
         if (opened) next.phase = 'arm';
       }
-      if (next.phase === 'arm') {
+      // The row was replaced or left while the open was answered: arming now
+      // would send the ended course's code. The guards below settle the row.
+      if (next.phase === 'arm' && this.custodyOutbox[orderId] === row) {
         const armed = await post('/produce/secrets/arm', {
           orderId,
           command_id: next.armId ?? `arm-pickup-${next.assignmentId}`,
@@ -2237,6 +2286,12 @@ export class LogisticsDO {
         }
         if (ferme !== undefined) return Response.json({ ok: false, reason: 'not_active' }, { status: 409 });
       }
+      // Only an accepted course can hold a checked pickup: the code reaches no one before.
+      const enCours = this.book.get((body['assignmentId'] as string).trim());
+      if (enCours !== undefined && enCours.status === 'acknowledged') {
+        const refus = await this.refusSiVerifieNonScelle(this.ordresDeCourse(enCours));
+        if (refus !== null) return refus;
+      }
       const outcome = await this.dispatch.takeBack(
         (body['assignmentId'] as string).trim(),
         ((body['dispatcherId'] as string | undefined) ?? 'fondateur').trim(),
@@ -2359,6 +2414,13 @@ export class LogisticsDO {
           );
         }
         aRetirer = [demande];
+      }
+      // The take-back's rule, on its scope: an order on an accepted course is not cleared while its goods sit checked and unsealed.
+      for (const orderId of aRetirer) {
+        const course = this.courseDe(orderId);
+        if (course === undefined || course.status !== 'acknowledged') continue;
+        const refus = await this.refusSiVerifieNonScelle(this.ordresDeCourse(course));
+        if (refus !== null) return refus;
       }
       const removed = { tasks: 0, assignments: 0, leases: 0, briefs: 0, ramassage: 0, codesVerification: 0, custodyOutbox: 0, funding: 0, readiness: 0 };
       let quelqueChose = false;

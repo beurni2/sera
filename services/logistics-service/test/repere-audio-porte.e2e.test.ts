@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Miniflare } from 'miniflare';
 import { afterEach, describe, expect, it } from 'vitest';
+import { custodyReelle, PRODUCE_KEY_REEL } from './custody-reelle';
 import { createManualConnectivity } from '../../../apps/rider-app/src/offline/connectivity';
 import { httpShiftActs } from '../../../apps/rider-app/src/net/shift-acts';
 import { mediaAudioStandIn, type MediaAudioStandIn } from './doubles/media-audio';
@@ -59,8 +60,9 @@ function spawn(media: MediaAudioStandIn): Miniflare {
     scriptPath: 'dist-worker/worker.mjs',
     durableObjects: { LOGISTICS: 'LogisticsDO' },
     durableObjectsPersist: mkdtempSync(join(tmpdir(), 'repere-audio-')),
-    serviceBindings: { MEDIA_AUDIO: media.fetch as never },
-    bindings: { SERA_OPS_SECRET: OPS, SERA_INTAKE_SECRET: INTAKE, SERA_RIDER_VERIFY_SECRET: VERIFY, SERA_COURSE_LIVREE_SECRET: LIVREE },
+    // Taking back an accepted course asks custody first: the real one answers.
+    serviceBindings: { MEDIA_AUDIO: media.fetch as never, CUSTODY: custodyReelle(live) as never },
+    bindings: { SERA_OPS_SECRET: OPS, SERA_INTAKE_SECRET: INTAKE, SERA_RIDER_VERIFY_SECRET: VERIFY, SERA_COURSE_LIVREE_SECRET: LIVREE, SERA_PRODUCE_SECRET: PRODUCE_KEY_REEL },
   });
   live.push(mf);
   return mf;

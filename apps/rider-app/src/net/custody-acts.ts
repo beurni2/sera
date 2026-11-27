@@ -51,9 +51,14 @@ import type { PolicyCheckId } from '../custody-flow';
  * `command_id` ONCE, at the gesture, and every retry within the session reuses
  * it — held in memory by the caller, never written down. That covers the two
  * cases that actually happen: the rider taps twice, and the answer is lost on
- * a bad connection. It does not survive an app kill, and it does not need to:
- * an act that never reached custody left no custody record, so re-doing it
- * from the top is correct.
+ * a bad connection. It does not survive an app kill. An act that never reached
+ * custody left no record, so re-doing it from the top is correct; an act that
+ * DID reach custody and lost only its answer is sent again under a fresh id,
+ * and custody answers the check or seal it already recorded from this same
+ * rider (his own code and the same check answers, or the same seal while he
+ * holds the parcel) as that record, with `duplicate: true`, spending and
+ * writing nothing. Different answers, or anyone else, still get custody's
+ * refusal.
  *
  * ⚠ `at` IS NEVER SENT. Custody stamps its own clock when the field is absent,
  * so a rider's phone clock — wrong by hours on a cheap handset, and settable

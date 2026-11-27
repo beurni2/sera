@@ -416,6 +416,15 @@ capture copy-lint-administrative fail pnpm exec copy-lint gates/fixtures/negativ
 log "gate: French Voice copy-lint — NEGATIVE FIXTURE (banned words in every form, F-90 — must fail)"
 capture copy-lint-inflections fail pnpm exec copy-lint gates/fixtures/negative/catalog.inflections.json
 
+# ACCENTS-INVISIBLES-1 (2026-11-27) — the banned words without their accent or
+# with a hidden character. The canon lint now compares both sides folded
+# (accents and invisible format characters removed; platform-contracts
+# 34c1569). This fixture's ONLY violations are spellings the earlier pin lets
+# through (measured against cfff2c5: 0 violations) — so a pin regression turns
+# the board red, the way the F-90 fixture above guards F-90.
+log "gate: French Voice copy-lint — NEGATIVE FIXTURE (no accent, hidden characters — must fail)"
+capture copy-lint-accents fail pnpm exec copy-lint gates/fixtures/negative/catalog.accents.json
+
 log "gate: French Voice copy-lint — NEGATIVE FIXTURE (veuillez/séquestre + marketing-in-money + Mooré-in-instruction, must fail)"
 capture copy-lint-negative fail pnpm exec copy-lint gates/fixtures/negative/catalog.negative.json
 
