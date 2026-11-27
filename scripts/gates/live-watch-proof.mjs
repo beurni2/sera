@@ -17,7 +17,8 @@ import { join, resolve } from 'node:path';
  *         are identical to main's (only an unrelated file changed since);
  * red   — an older release with a difference in the inputs; « dev »; no
  *         release; a release that is no commit here; /health not 200;
- *         no address configured.
+ *         no address configured; an input that is not in main (a typo, a
+ *         renamed folder), even when live is main's newest.
  * And on every case: the output never carries the /health body (a marker
  * field in the fake body must never be printed). Exit 0 when every case
  * answers as it must, 1 otherwise, 2 when the proof could not set itself up.
@@ -47,6 +48,8 @@ const commit = (file, text, msg) => {
   git([...ident, 'commit', '-q', '-m', msg]);
   return git(['rev-parse', 'HEAD']);
 };
+// Every input the cases pass exists in this repository's main.
+commit('pnpm-lock.yaml', "lockfileVersion: '9.0'\n", 'lock file');
 const before = commit('services/svc/index.ts', 'export const v = 1;\n', 'service v1');
 const changed = commit('services/svc/index.ts', 'export const v = 2;\n', 'service v2');
 const tip = commit('README.md', 'unrelated\n', 'docs only');
@@ -62,13 +65,14 @@ await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
 const base = `http://127.0.0.1:${server.address().port}`;
 
 const MARKER = 'BODY-MARKER-never-printed';
-const run = (release, { code = 200, address = base, extra = {} } = {}) => {
+const INPUTS = ['services/svc', 'pnpm-lock.yaml'];
+const run = (release, { code = 200, address = base, extra = {}, inputs = INPUTS } = {}) => {
   status = code;
   const fields = { ok: true, canon: '3.28.0', marker: MARKER, ...extra };
   if (release !== undefined) fields.release = release;
   body = JSON.stringify(fields);
   return new Promise((done) => {
-    const child = spawn('bash', [script, 'svc', address, 'services/svc', 'pnpm-lock.yaml'], {
+    const child = spawn('bash', [script, 'svc', address, ...inputs], {
       cwd: repo,
       env: { PATH: process.env.PATH, HOME: process.env.HOME ?? work, WATCH_MAIN: 'main' },
     });
@@ -101,6 +105,8 @@ await expect('a release that is no commit here → red', run('0123456789abcdef01
 await expect('a release that is not a commit name → red', run('not a sha; echo hi'), 1, 'not a commit');
 await expect('/health not 200 → red', run(tip, { code: 503 }), 1, '/health answered 503');
 await expect('no address configured → red', run(tip, { address: '' }), 1, 'not configured');
+await expect('a misspelled input, live = main → red', run(tip, { inputs: ['services/svc-typo', 'pnpm-lock.yaml'] }), 1, 'input services/svc-typo is not in main');
+await expect('a misspelled input beside real ones, a release that differs → red for the input', run(before, { inputs: [...INPUTS, 'tsconfig.base.jsn'] }), 1, 'input tsconfig.base.jsn is not in main');
 await expect('free text in the canon is never printed', run(tip, { extra: { canon: `${MARKER} x` } }), 0, 'canon=?');
 
 server.close();

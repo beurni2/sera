@@ -16,9 +16,10 @@
 #     published instead — but only if its own newest finished ci run is
 #     green AND a push run on it is green. If its ci is still running or red,
 #     nothing is published now: its own run, when it finishes green, starts
-#     the publish. (GitHub keeps one pending run per concurrency group and
+#     the publish. (GitHub keeps one pending job per concurrency group and
 #     cancels the older pending one, so « skip when not newest » alone could
-#     lose the newest publish.)
+#     lose the newest publish. The group sits on the publishing job, not the
+#     workflow: a run whose job is skipped by its if: never joins it.)
 #   · started by hand (workflow_dispatch): only on main, and the same green
 #     check on main's newest — refused loudly otherwise, since a person is
 #     watching.

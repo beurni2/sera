@@ -12,8 +12,16 @@ name: rollback
 #     current one;
 #   · rollback ticked, version given   → back to that version.
 #
+# KEYS GO BACK WITH THE VERSION. A Worker's keys (its secrets) belong to
+# each version: going back to an older version puts back the key values that
+# version had. When a key changed since, Cloudflare first refuses (code
+# 10220); outside a terminal wrangler answers its own question with « yes »
+# and rolls back anyway, older key values included. This run does not try to
+# stop that: after the rollback it names each key that went back (names only,
+# as wrangler prints them) and says how to write today's value again.
+#
 # WHAT IT CANNOT DO, stated so nobody counts on it: it does not roll back
-# data (stored orders, custody records, keys), and Cloudflare refuses a
+# data (stored orders, custody records, accounts), and Cloudflare refuses a
 # rollback across a change of Durable Object classes or migrations, or to a
 # version whose bindings were since deleted. Then the road is forward: revert
 # on main and deploy again. The page docs/runbooks/ROLLBACK.md says all of it
@@ -124,7 +132,26 @@ jobs:
             exit 0
           fi
           START=$(date +%s)
-          pnpm exec wrangler rollback ${VERSION:+"$VERSION"} --message "rollback from GitHub run $GITHUB_RUN_ID" --yes 2>&1 | quiet
+          rearm() {
+            case "$SERVICE:$1" in
+            custody-service:SHOP_PROGRESS_SECRET) echo "run custody-deploy on main with « write_shop_progress_secret » ticked" ;;
+            custody-service:*) echo "run custody-deploy on main (it writes this key on every run)" ;;
+            logistics-service:*) echo "run logistics-deploy on main (it writes this key on every run)" ;;
+              *) echo "run this service's deploy on main, or put it again the way it was first set" ;;
+            esac
+          }
+          RB="$(mktemp)"
+          pnpm exec wrangler rollback ${VERSION:+"$VERSION"} --message "rollback from GitHub run $GITHUB_RUN_ID" --yes 2>&1 | quiet | tee "$RB"
+          # The keys that went back with the version: wrangler lists their
+          # names (never values) under « The following secrets have changed ».
+          if grep -q 'secrets have changed' "$RB"; then
+            KEYS="$(awk '/secrets have changed/ { f = 1; next } f && /^[[:space:]]*\*[[:space:]]/ { print $2; next } f { f = 0 }' "$RB" | tr -cd 'A-Za-z0-9_\n')"
+            [ -n "$KEYS" ] || echo "::warning title=Keys went back with the version::the deploy tool said keys changed since that version but named none here. Run this service's deploy on main to write its keys again."
+            for K in $KEYS; do
+              echo "::warning title=Key $K went back with the version::$K now holds the value it had in that older version. To put today's value back: $(rearm "$K")."
+            done
+          fi
+          rm -f "$RB"
           # Cloudflare reports the switch, not the rollout: read /health for up to a minute.
           for attempt in $(seq 1 12); do sleep 5; health "live after ($attempt)"; done
           echo "rollback done in $(( $(date +%s) - START )) s — compare the release above with the one before."

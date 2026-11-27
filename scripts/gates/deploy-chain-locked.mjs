@@ -19,21 +19,25 @@ import { basename, join } from 'node:path';
  *   3. a workflow with no top-level `permissions:` block;
  *   4. a `${{ secrets.… }}` written inside a `run:` script — a secret reaches
  *      a shell only through that step's `env:`, never pasted into its text;
- *   5. a workflow that holds CLOUDFLARE_API_TOKEN whose first `run:` step is
- *      not `bash scripts/release-guard.sh` — except an app publish (rule 7, which starts with
+ *   5. a workflow that holds CLOUDFLARE_API_TOKEN with a job whose first `run:`
+ *      step is not `bash scripts/release-guard.sh` — except an app publish (rule 7, which starts with
  *      its own decision) and the one rollback workflow (rule 8), by name;
  *      and an unnamed workflow that publishes an app (EXPO_TOKEN, a Pages
  *      upload): every publish is one of the files rule 7 names.
  * And the release rules on the files this repository names:
- *   6. SERVICE RELEASES (custody-deploy, logistics-deploy): the guard first,
+ *   6. SERVICE RELEASES (custody-deploy, logistics-deploy): the guard first in every job,
  *      `environment: production` on every job, `actions: read` in the
  *      permissions (and `pull-requests: read`), never `cancel-in-progress: true`;
  *   7. APP PUBLISHES (expo-preview): started by a finished `ci` run on
  *      main (`workflow_run`, types completed, branches main) or a dispatch,
  *      never by a push; the job runs only when that run concluded success
- *      and was a push run, or when dispatched on main; first `run:` step
- *      `bash scripts/publish-decision.sh`; a concurrency group that never
- *      cancels a publish in flight;
+ *      and was a push run, or when dispatched on main — all three read in
+ *      that job's own `if:`; its first `run:` step `bash scripts/publish-decision.sh`;
+ *      everything that publishes obeys it (Expo: the step holding EXPO_TOKEN
+ *      and every later one run only on the decision's yes, directly or through
+ *      a token check that requires it; a site: every job but `decide` needs it
+ *      and runs only on its yes); concurrency only on the publishing jobs,
+ *      one group each, never cancelling — never for the whole workflow;
  *   8. ROLLBACK (rollback.yml): dispatch only, on main only,
  *      `environment: production` on every job, and it never builds,
  *      bundles or uploads code — it only points the service back at a
@@ -42,6 +46,8 @@ import { basename, join } from 'node:path';
  *      the live Worker only when the person dispatching asks for it — a
  *      boolean input, default false — never on every run;
  *  10. ci.yml re-runs the board on a daily `schedule:`, not only on a push.
+ * And the deploy tool: the custody and logistics manifests pin wrangler to
+ * one exact version, the same in both (the workflows call it from the lock file).
  * Scanning `.github/workflows` (the default), every file rules 6–10 name must
  * exist. A fixture folder or file is scanned for what it holds.
  *
@@ -73,7 +79,16 @@ const CONFIG = {
     "input": "write_shop_progress_secret"
   },
   "ciSchedule": true,
-  "pins": []
+  "pins": [
+    [
+      "services/custody-service/package.json",
+      "wrangler"
+    ],
+    [
+      "services/logistics-service/package.json",
+      "wrangler"
+    ]
+  ]
 };
 
 const arg = process.argv[2];
@@ -138,6 +153,53 @@ function stepsOf(job) {
   return steps;
 }
 
+/** The first `run:` command of a job (the first line of a block). */
+function firstRunOf(job) {
+  for (const [i, l] of job.lines.entries()) {
+    const m = l.match(/^\s*(?:-\s+)?run:\s*(.*)$/);
+    if (!m) continue;
+    const v = m[1].trim();
+    if (/^[|>][-+]?$/.test(v)) return job.lines.slice(i + 1).find((x) => x.trim() !== '')?.trim() ?? '';
+    return v;
+  }
+  return null;
+}
+
+/** A job's own key (`    if:`, `    needs:`), value and block. */
+function jobBlock(job, key) {
+  const at = job.lines.findIndex((l) => new RegExp(`^ {4}${key}:`).test(l));
+  if (at < 0) return null;
+  const out = [job.lines[at]];
+  for (const l of job.lines.slice(at + 1)) {
+    if (l.trim() !== '' && indentOf(l) <= 4) break;
+    out.push(l);
+  }
+  return out;
+}
+const jobKey = (job, key) => jobBlock(job, key)?.[0].replace(new RegExp(`^ {4}${key}:`), '').trim() ?? null;
+function needsOf(job) {
+  const block = jobBlock(job, 'needs');
+  if (block === null) return [];
+  const v = block[0].replace(/^ {4}needs:/, '').trim();
+  if (v !== '') return v.replace(/^\[|\]$/g, '').split(',').map((s) => s.trim()).filter(Boolean);
+  return block.slice(1).map((l) => l.match(/^\s+-\s+(\S+)/)?.[1]).filter(Boolean);
+}
+
+/** A step's own key (`if`, `id`, `name`), never one nested under env:/with:. */
+function stepKey(step, key) {
+  const item = indentOf(step[0]);
+  const first = step[0].match(new RegExp(`^\\s*-\\s+${key}:\\s*(.*)$`));
+  if (first) return first[1].trim();
+  for (const l of step.slice(1)) {
+    if (indentOf(l) !== item + 2) continue;
+    const m = l.match(new RegExp(`^\\s*${key}:\\s*(.*)$`));
+    if (m) return m[1].trim();
+  }
+  return null;
+}
+/** An `if:` expression without its optional `${{ }}`. */
+const bare = (expr) => (expr ?? '').trim().replace(/^\$\{\{\s*([\s\S]*?)\s*\}\}$/, '$1').trim();
+
 const hasLine = (block, re) => (block ?? []).some((l) => re.test(l));
 const has = (lines, re) => lines.some((l) => re.test(strip(l)));
 
@@ -147,7 +209,6 @@ for (const file of files) {
   const allowedNpx = CONFIG.npxAllowed[name] ?? [];
   let hasPermissions = false;
   let runIndent = -1; // >= 0 while inside a `run: |` block
-  let firstRun = null;
   let holdsDeployToken = false;
   const npxOk = (text) => {
     const calls = text.match(/(^|[\s;|&(])npx\s+\S+/g) ?? [];
@@ -176,9 +237,7 @@ for (const file of files) {
       const value = run[2].trim();
       if (/^[|>][-+]?$/.test(value)) {
         runIndent = run[1].length;
-        if (firstRun === null) firstRun = raw.slice(i + 1).find((l) => l.trim() !== '')?.trim() ?? '';
       } else {
-        if (firstRun === null) firstRun = value;
         if (/\$\{\{\s*secrets\./.test(value)) refused.push(`${at} a secret is pasted into a run: script (pass it through env:)`);
         if (!npxOk(value)) refused.push(`${at} npx in a run: script (use the lockfile's tool)`);
       }
@@ -195,8 +254,11 @@ for (const file of files) {
   const conc = topBlock(raw, 'concurrency');
   const jobs = jobsOf(raw);
 
-  if (holdsDeployToken && !isPublish && !isRollback && firstRun !== CONFIG.guard) {
-    refused.push(`${file} deploys but its first run: step is not \`${CONFIG.guard}\` (found: ${firstRun ?? 'none'})`);
+  if (holdsDeployToken && !isPublish && !isRollback && !isService) {
+    for (const job of jobs) {
+      const first = firstRunOf(job);
+      if (first !== CONFIG.guard) refused.push(`${file} job ${job.name} deploys but its first run: step is not \`${CONFIG.guard}\` (found: ${first ?? 'none'})`);
+    }
   }
   if (publishesApp && !isPublish && !isRollback && !isService) {
     refused.push(`${file} publishes an app but is not one of the app publishes this gate knows (${CONFIG.publishes.join(', ') || 'none'})`);
@@ -206,7 +268,10 @@ for (const file of files) {
   }
 
   if (isService) {
-    if (firstRun !== CONFIG.guard) refused.push(`${file} is a service release whose first run: step is not \`${CONFIG.guard}\` (found: ${firstRun ?? 'none'})`);
+    for (const job of jobs) {
+      const first = firstRunOf(job);
+      if (first !== CONFIG.guard) refused.push(`${file} job ${job.name} is a service release whose first run: step is not \`${CONFIG.guard}\` (found: ${first ?? 'none'})`);
+    }
     for (const need of CONFIG.servicePermissions) {
       if (!hasLine(perms, new RegExp(`^\\s+${need}:\\s*read\\s*$`))) refused.push(`${file} is a service release without \`${need}: read\` (its guard reads ci through the job's own token)`);
     }
@@ -222,12 +287,73 @@ for (const file of files) {
       refused.push(`${file} is an app publish not started by a finished ci run on main (on: workflow_run: workflows: [ci], types: [completed], branches: [main])`);
     }
     if (hasLine(on, /^ {2}push:/)) refused.push(`${file} is an app publish started by a push, before ci has finished`);
-    if (!has(raw, /github\.event\.workflow_run\.conclusion\s*==\s*'success'/)) refused.push(`${file} is an app publish that does not require the ci run to have succeeded (github.event.workflow_run.conclusion == 'success')`);
-    if (!has(raw, /github\.event\.workflow_run\.event\s*==\s*'push'/)) refused.push(`${file} is an app publish that does not require main's own push run (github.event.workflow_run.event == 'push')`);
-    if (!has(raw, /github\.ref\s*==\s*'refs\/heads\/main'/)) refused.push(`${file} is an app publish whose dispatch is not held to main (github.ref == 'refs/heads/main')`);
-    if (firstRun !== 'bash scripts/publish-decision.sh') refused.push(`${file} is an app publish whose first run: step is not \`bash scripts/publish-decision.sh\` (found: ${firstRun ?? 'none'})`);
-    if (conc === null || !hasLine(conc, /^\s+cancel-in-progress:\s*false\s*$/)) refused.push(`${file} is an app publish without a concurrency group that never cancels (cancel-in-progress: false)`);
     if (!hasLine(perms, /^\s+actions:\s*read\s*$/)) refused.push(`${file} is an app publish without \`actions: read\` (its decision reads ci through the job's own token)`);
+    // A workflow-level group is joined when the run is created, before any
+    // job's if: is read: a run whose jobs all skip would still take the one
+    // waiting place and cancel the waiting good publish. Job-level groups are
+    // joined only by a job that runs.
+    if (conc !== null) refused.push(`${file} is an app publish with a workflow-level concurrency: group (a run that skips would still take the one waiting place); put it on the publishing jobs`);
+    const decideJob = jobs.find((j) => j.name === 'decide');
+    const entry = decideJob ?? jobs[0];
+    if (entry === undefined) refused.push(`${file} is an app publish with no job`);
+    else {
+      const gate = bare(jobKey(entry, 'if'));
+      if (!/github\.event\.workflow_run\.conclusion\s*==\s*'success'/.test(gate)) refused.push(`${file} is an app publish whose job ${entry.name} if: does not require the ci run to have succeeded (github.event.workflow_run.conclusion == 'success')`);
+      if (!/github\.event\.workflow_run\.event\s*==\s*'push'/.test(gate)) refused.push(`${file} is an app publish whose job ${entry.name} if: does not require main's own push run (github.event.workflow_run.event == 'push')`);
+      if (!/github\.ref\s*==\s*'refs\/heads\/main'/.test(gate)) refused.push(`${file} is an app publish whose job ${entry.name} if: does not hold a dispatch to main (github.ref == 'refs/heads/main')`);
+      const first = firstRunOf(entry);
+      if (first !== 'bash scripts/publish-decision.sh') refused.push(`${file} is an app publish whose job ${entry.name} first run: step is not \`bash scripts/publish-decision.sh\` (found: ${first ?? 'none'})`);
+    }
+    const publishing = decideJob ? jobs.filter((j) => j !== decideJob) : jobs;
+    if (decideJob && jobBlock(decideJob, 'concurrency') !== null) refused.push(`${file} job decide sits in a concurrency group (only the publishing jobs queue)`);
+    const groups = new Map();
+    for (const job of publishing) {
+      const c = jobBlock(job, 'concurrency');
+      if (c === null || !hasLine(c, /^\s+cancel-in-progress:\s*false\s*$/)) refused.push(`${file} job ${job.name} publishes without its own concurrency group that never cancels (job-level concurrency:, cancel-in-progress: false)`);
+      const g = c?.map((l) => l.match(/^\s+group:\s*(\S.*)$/)?.[1].trim()).find(Boolean);
+      if (g !== undefined) {
+        if (groups.has(g)) refused.push(`${file} jobs ${groups.get(g)} and ${job.name} share the concurrency group ${g} (a later run's waiting job would cancel this run's waiting one)`);
+        else groups.set(g, job.name);
+      }
+    }
+    if (decideJob) {
+      // Every job but decide needs decide and runs only on its yes: directly,
+      // or with no if: of its own behind jobs that do (a skipped need skips it).
+      const D = "needs.decide.outputs.publish == 'true'";
+      const obeys = (job, seen) => {
+        if (seen.includes(job.name)) return false;
+        const needs = needsOf(job);
+        const own = jobKey(job, 'if');
+        if (own !== null) return bare(own) === D && needs.includes('decide');
+        return needs.length > 0 && needs.every((n) => {
+          const dep = jobs.find((j) => j.name === n);
+          return dep !== undefined && dep !== decideJob && obeys(dep, [...seen, job.name]);
+        });
+      };
+      for (const job of publishing) {
+        if (!obeys(job, [])) refused.push(`${file} job ${job.name} does not sit behind the decision (needs: decide and if: ${D}, directly or through the jobs it needs)`);
+      }
+    } else {
+      // From the first step that holds EXPO_TOKEN on, every step runs only on
+      // the decision's yes: directly, or through the token check that itself
+      // requires it.
+      const D = "steps.decide.outputs.publish == 'true'";
+      const T = "steps.token.outputs.present == 'true'";
+      for (const job of publishing) {
+        const steps = stepsOf(job);
+        const tokenStep = steps.find((s) => stepKey(s, 'id') === 'token');
+        const tokenObeys = tokenStep !== undefined && bare(stepKey(tokenStep, 'if')) === D;
+        const from = steps.findIndex((s) => has(s, /secrets\.EXPO_TOKEN\b/));
+        if (from < 0) { refused.push(`${file} job ${job.name} is an app publish with no step holding secrets.EXPO_TOKEN`); continue; }
+        for (const s of steps.slice(from)) {
+          const c = bare(stepKey(s, 'if'));
+          if (c !== D && !(c === T && tokenObeys)) {
+            const label = stepKey(s, 'name') ?? stepKey(s, 'uses') ?? s[0].trim();
+            refused.push(`${file} job ${job.name} step « ${label} » runs without the decision (if: ${D}, or ${T} on a token check that itself requires it)`);
+          }
+        }
+      }
+    }
   }
 
   if (isRollback) {
@@ -291,4 +417,4 @@ if (refused.length > 0) {
   for (const r of refused) console.error(`  - ${r}`);
   process.exit(1);
 }
-console.log(`deploy-chain-locked OK — ${files.length} workflow(s): actions SHA-pinned, no npx beyond the named exact one, permissions declared, no secret in a script, every service release starts with its guard, every app publish follows a green ci on main and never cancels, the rollback only rolls back${CONFIG.keyWrite ? ', the delivery key is written only when asked' : ''}${CONFIG.ciSchedule ? ', the board runs daily' : ''}${wranglers.size ? `; wrangler ${[...wranglers][0]} pinned exactly` : ''}`);
+console.log(`deploy-chain-locked OK — ${files.length} workflow(s): actions SHA-pinned, no npx beyond the named exact one, permissions declared, no secret in a script, every service release starts with its guard, every app publish follows a green ci on main, obeys its decision and never cancels, the rollback only rolls back${CONFIG.keyWrite ? ', the delivery key is written only when asked' : ''}${CONFIG.ciSchedule ? ', the board runs daily' : ''}${wranglers.size ? `; wrangler ${[...wranglers][0]} pinned exactly` : ''}`);

@@ -11,8 +11,11 @@
 # clients (which publish after the merge) never reach phones ahead of the
 # Worker they need. So a release goes ahead only when ALL hold:
 #   1. ci has a successful run on this exact commit;
-#   2. the NEWEST finished ci run on this commit is green — a later red run
-#      (a re-run, or the daily board) stops it;
+#   2. the most recently CREATED ci run on this commit that has finished is
+#      green — so a red daily board, or any newer red run, stops it. A re-run
+#      keeps the place of the run it repeats (a red re-run of an older run
+#      does not outrank a newer green one), and a run being re-run right now
+#      is not finished, so it is not counted until it ends;
 #   3. the commit is main's newest commit, or the head of an open pull request
 #      into main from a branch of THIS repository (a fork's head is refused).
 #

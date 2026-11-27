@@ -22,14 +22,15 @@ permissions:
   contents: read
   actions: read
 
-# Queue, never cancel: a publish in flight always finishes. GitHub keeps only
-# one waiting run here, which is why the decision always ships main's newest.
-concurrency:
-  group: expo-preview
-  cancel-in-progress: false
-
 jobs:
   publish-preview:
+    # Queue, never cancel: a publish in flight always finishes. GitHub keeps
+    # only one waiting job here, which is why the decision always ships main's
+    # newest. The group is on the job, not the workflow: a run whose if: below
+    # skips never joins it, so it cannot push out the waiting good publish.
+    concurrency:
+      group: expo-preview
+      cancel-in-progress: false
     # Only a SUCCESSFUL ci run started by a push to main, or a dispatch on
     # main. The decision step checks the same again from GitHub itself.
     if: (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')

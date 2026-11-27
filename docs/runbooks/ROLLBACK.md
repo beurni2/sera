@@ -2,7 +2,7 @@
 
 This page says how to put a live part of Séra back to how it was before a release, in plain words. Read it before you need it.
 
-**The one rule first.** A rollback puts back the *code*. It never puts back *data*: orders, custody records, accounts, keys and photos stay as they are now. If a release wrote bad data, a rollback does not undo it.
+**The one rule first.** A rollback puts back the *code*, and with it the service's *keys* as they were in that version. It never puts back *data*: orders, custody records, accounts and photos stay as they are now. If a release wrote bad data, a rollback does not undo it.
 
 ---
 
@@ -22,6 +22,17 @@ Cloudflare keeps the last 100 versions of each service. Rolling back points the 
 ### The other road: the Cloudflare dashboard
 
 Cloudflare dashboard → **Workers & Pages** → the service → **Deployments** → **Version history** → on the older version, **Deploy**. Then open the service's `/health` page and check the `release` it names.
+
+### The keys go back too
+
+Each version of a service carries its own keys (its secrets). Going back to an older version puts back the key values that version had. If a key was changed since, Cloudflare first asks to confirm; the workflow cannot answer, so the answer is « yes » and the rollback goes ahead with the older keys. The dashboard asks you the same question.
+
+So after a rollback, read the run's yellow warnings: each one names a key that went back (the name only, never the value) and says how to write today's value again:
+
+- `custody-service`: `SERA_CUSTODY_OPS_SECRET`, `SERA_RIDER_VERIFY_SECRET`, `SERA_PRODUCE_SECRET`, `SHOP_ARM_SECRET`, `SERA_COURSE_LIVREE_SECRET`: run **custody-deploy** on `main` (it writes them on every run). `SHOP_PROGRESS_SECRET` (the delivery key): run **custody-deploy** with **write_shop_progress_secret** ticked.
+- `logistics-service`: `SERA_OPS_SECRET`, `SERA_INTAKE_SECRET`, `SERA_INTAKE_SHOP_SECRET`, `SERA_INTAKE_BOUTIK_SECRET`, `SERA_RIDER_VERIFY_SECRET`, `SERA_PRODUCE_SECRET`, `SERA_COURSE_LIVREE_SECRET`: run **logistics-deploy** on `main`.
+
+Until that is done, whatever relies on that key (another service, the console, a phone) can be refused.
 
 ### When Cloudflare refuses
 

@@ -6,8 +6,11 @@ name: live-watch
 # proved it built main. This asks each live Worker which commit it was built
 # from (the `release` its /health answers, stamped at bundle time) and goes red
 # unless main has changed nothing that service is built from since: its
-# folder, the packages it builds from, the lock file and the workspace
-# manifests. Red does not mean broken code: it means a deploy is owed (or the
+# folder, the packages it builds from, the lock file, the workspace
+# manifests, the shared TypeScript base (tsconfig.base.json, which every
+# service and package config extends) and the build plan (turbo.json, read
+# by the deploy's `pnpm build`). An input missing from main is red too, so a
+# renamed folder or a typo here cannot read « OK » forever. Red does not mean broken code: it means a deploy is owed (or the
 # live service was built outside the pipeline, or its address is not set).
 #
 # The log is public: it prints only the service name, the canon, the two short
@@ -40,9 +43,9 @@ jobs:
         if: ${{ !cancelled() }}
         env:
           BASE: ${{ vars.CUSTODY_BASE }}
-        run: bash scripts/live-watch.sh custody "$BASE" services/custody-service packages/observability pnpm-lock.yaml pnpm-workspace.yaml package.json
+        run: bash scripts/live-watch.sh custody "$BASE" services/custody-service packages/observability pnpm-lock.yaml pnpm-workspace.yaml package.json tsconfig.base.json turbo.json
       - name: Does the live logistics service still run main?
         if: ${{ !cancelled() }}
         env:
           BASE: ${{ vars.LOGISTICS_BASE }}
-        run: bash scripts/live-watch.sh logistics "$BASE" services/logistics-service packages/observability pnpm-lock.yaml pnpm-workspace.yaml package.json
+        run: bash scripts/live-watch.sh logistics "$BASE" services/logistics-service packages/observability pnpm-lock.yaml pnpm-workspace.yaml package.json tsconfig.base.json turbo.json

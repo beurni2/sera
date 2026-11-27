@@ -7,7 +7,8 @@
 # was built from (`release` on /health, stamped at bundle time) and goes red
 # unless that commit and main have NO difference in what the service is built
 # from (the inputs passed here: its folder, the packages it builds from, the
-# lock file, the workspace manifests). A release that is not a known commit,
+# lock file, the workspace manifests, the shared TypeScript base, the build
+# plan) — each must exist in main, or the watch is red. A release that is not a known commit,
 # or « dev » (built outside the pipeline), is red too.
 #
 # Prints only the service name, the canon, the two short commits and the
@@ -23,6 +24,11 @@ shift 2 || true
 MAIN_REF="${WATCH_MAIN:-origin/main}"
 MAIN="$(git rev-parse --verify --quiet "${MAIN_REF}^{commit}")" || { echo "$SERVICE: RED — cannot read $MAIN_REF here"; exit 1; }
 red() { echo "$SERVICE: canon=${CANON:-?} live=${LIVE_SHORT:-?} main=${MAIN:0:7} — RED: $1"; exit 1; }
+# A path in neither commit has no difference, so a misspelled or renamed input
+# would read « OK » forever: every input must exist in main.
+for p in "$@"; do
+  git cat-file -e "$MAIN:$p" 2>/dev/null || red "input $p is not in main"
+done
 
 [ -n "$BASE" ] || red "its address is not configured, so nobody can say what runs live"
 BODY="$(mktemp)"
