@@ -1,0 +1,26 @@
+[
+  {
+    "key": "negative.accents.sans_accent",
+    "fr": "Votre argent est en sequestre.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "negative.accents.trait_cache",
+    "fr": "Argent en sé­questre.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "negative.accents.espace_zero",
+    "fr": "Paiement en es​crow.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
+    "key": "negative.accents.administratif",
+    "fr": "Confirmation de la transaction en cours.",
+    "register": "neutral",
+    "screenClass": "status"
+  }
+]
