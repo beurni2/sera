@@ -10,10 +10,10 @@ import type { Route } from '../rendu';
  * (assign, accept, supplier confirms) and requires the same fields to be null
  * or present at each one. The bound it serves is the Worker's: the ramassage
  * code only on an accepted course, the custody code and the seals only on an
- * accepted course the supplier confirmed; her landmark, directions and voice
- * note only on an accepted course (the area alone before). A walk that sets the codes before
- * the confirmation still sees them withheld until both are true — this
- * stand-in can never be kinder than the Worker.
+ * accepted course the supplier confirmed; her landmark, directions and
+ * voice note only on an accepted course (the area alone before). A walk
+ * that sets the codes before the confirmation still sees them withheld until
+ * both are true — this stand-in can never be kinder than the Worker.
  *
  * Its bound, like every double here: it says nothing about appearance.
  */

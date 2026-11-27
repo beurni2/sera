@@ -173,6 +173,7 @@ describe('an offered course shows the area only; her place and voice come with Â
     const morceau = await ecouter(mf, code, { Range: 'bytes=0-1', Cookie: 'ne-passe-pas=1' });
     expect(morceau.status).toBe(206);
     expect(morceau.headers.get('Content-Range')).toBe(`bytes 0-1/${SON.byteLength}`);
+    expect(morceau.headers.get('Content-Length'), 'the length of the range served').toBe('2');
     expect(morceau.headers.get('Accept-Ranges')).toBe('bytes');
     expect(morceau.headers.get('Cache-Control')).toBe('private, no-store');
     expect(new Uint8Array(await morceau.arrayBuffer())).toEqual(SON.slice(0, 2));

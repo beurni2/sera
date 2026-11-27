@@ -777,8 +777,10 @@ export default function App() {
    *
    * FOUNDER ORDER (2026-08-09): the buyer's repère voice note and the
    * supplier's readiness photos now ride the course (Séra's task brief), and
-   * this is where they surface. Pointers become URLs only against the app's
-   * OWN media base — nothing the server says can point this phone elsewhere.
+   * this is where they surface. Photo pointers become URLs only against the
+   * app's OWN media base — nothing the server says can point this phone
+   * elsewhere. The voice note is heard through Séra's rider door, on his code,
+   * once he accepted (below).
    */
   const repereAudio = useMemo(() => resolveRepereAudio(), []);
   /**
@@ -840,9 +842,15 @@ export default function App() {
    * was written for. The predicate mirrors that ladder, so the rule it encodes
    * is unchanged — the note stops when the control that governs it leaves the
    * screen.
+   *
+   * ⚠ AND THE ROW LIVES ONLY ON AN ACCEPTED COURSE (her voice comes with
+   * « Accepter »). A course taken back and replaced by an OFFERED one inside
+   * one poll leaves `liveAssignment` non-null with no voice row on screen, so
+   * the status is part of the predicate too.
    */
   const repereVisible =
     liveAssignment !== null &&
+    liveAssignment.status === 'acknowledged' &&
     liveSession !== null &&
     liveSession.certified &&
     liveSession.privacyAckOk &&
@@ -2747,9 +2755,10 @@ export default function App() {
                  * custody act. Until now the wired arm dropped a rider
                  * straight onto the verification checklist of a course they
                  * had never said yes to, and the book's five-minute ack
-                 * window ran out unanswered. The place leads (landmark
-                 * first); the deadline is stated; the one primary action is
-                 * the acceptance.
+                 * window ran out unanswered. The area and one sentence say
+                 * where (her exact place comes with the acceptance); the
+                 * deadline is stated; the one primary action is the
+                 * acceptance.
                  */
                 <>
                   <FasoPosterTitle>{t('course.proposee_titre')}</FasoPosterTitle>

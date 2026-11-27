@@ -80,7 +80,7 @@ describe('the proposal shows the area; her place and voice come with « Accepter
     s.unmount();
   });
 
-  it('the door answers 404: the honest « can’t play » line, the retry, and the course goes on', async () => {
+  it('the note never loads (a refused door, silent on the phone): the honest « can’t play » line, the retry, and the course goes on', async () => {
     // A refused note never loads: on iOS, nothing ever arrives.
     __modeChargement('silence');
     const s = await signedIn([avecPin(freshCourse())]);
@@ -91,6 +91,39 @@ describe('the proposal shows the area; her place and voice come with « Accepter
     expect(s.shows('La note ne se lit pas. Vérifiez le réseau et réessayez.'), JSON.stringify(s.texts())).toBe(true);
     expect(s.canPress('Écouter le repère'), 'the retry is offered').toBe(true);
     expect(s.canPress('Oui'), 'the pickup check-up is still his next step').toBe(true);
+    s.unmount();
+  });
+
+  it('a note playing on course A stops when the next poll brings course B offered — no voice over a proposal', async () => {
+    const state = freshCourse();
+    let course = 'as-A';
+    const base = avecPin(state);
+    const deuxCourses: Route = (path, body) => {
+      const answer = base(path, body);
+      if (path === '/rider/moi' && answer !== null) {
+        const assignment = ((answer.json as Record<string, unknown>)['rider'] as Record<string, unknown>)['assignment'] as Record<string, unknown>;
+        assignment['assignmentId'] = course;
+      }
+      return answer;
+    };
+    const s = await signedIn([deuxCourses]);
+    await s.press('Accepter la course');
+    await s.press('Écouter le repère');
+    expect(s.shows('Pause'), 'the note plays').toBe(true);
+
+    // The desk takes A back and offers him B inside one poll.
+    course = 'as-B';
+    state.status = 'active_unacknowledged';
+    await s.poll();
+    expect(s.shows('Une course pour vous'), JSON.stringify(s.texts())).toBe(true);
+
+    // Accepting B: the row is back at rest (A's player was stopped, never
+    // left running), and listening makes a new player.
+    await s.press('Accepter la course');
+    expect(s.canPress('Écouter le repère'), 'the row is at rest — A’s note was stopped').toBe(true);
+    expect(s.shows('Pause')).toBe(false);
+    await s.press('Écouter le repère');
+    expect(__sources(), 'a new player for B').toEqual([PORTE, PORTE]);
     s.unmount();
   });
 

@@ -3404,22 +3404,6 @@ export class LogisticsDO {
         return Response.json({ ok: true, rider: this.riderView(riderId) });
       }
       /**
-       * ⚠ SE-LIVE-4d — THE SOS WIRE (founder order, 2026-08-07). Until this
-       * route existed the rider app's SOS reached NOTHING: the raise went to
-       * the app's own demo store and the screen said « Alerte envoyée ». This
-       * is where it actually arrives.
-       *
-       * THE RIDER IS THE ONE WHO RAISES, and their own code is what proves it
-       * — `riderId` comes from `resolveCode` above, never from the body, so an
-       * alert can never be filed under someone else's name. The app's minted
-       * `command_id` makes one press one incident however many times the
-       * outbox retries it.
-       *
-       * NO SHIFT CHECK, DELIBERATELY. A rider in danger off-shift is still a
-       * rider in danger. `onShift` is recorded as context for the dispatcher,
-       * never as a condition of being heard.
-       */
-      /**
        * The buyer's voice note, for HER accepted rider only (Séra Build Spec
        * §1: courier access to her location is just-in-time, task-scoped,
        * expiring). Nothing in the request names the note: it is the brief of
@@ -3452,6 +3436,22 @@ export class LogisticsDO {
         }
         return new Response(answer.body, { status: answer.status, headers });
       }
+      /**
+       * ⚠ SE-LIVE-4d — THE SOS WIRE (founder order, 2026-08-07). Until this
+       * route existed the rider app's SOS reached NOTHING: the raise went to
+       * the app's own demo store and the screen said « Alerte envoyée ». This
+       * is where it actually arrives.
+       *
+       * THE RIDER IS THE ONE WHO RAISES, and their own code is what proves it
+       * — `riderId` comes from `resolveCode` above, never from the body, so an
+       * alert can never be filed under someone else's name. The app's minted
+       * `command_id` makes one press one incident however many times the
+       * outbox retries it.
+       *
+       * NO SHIFT CHECK, DELIBERATELY. A rider in danger off-shift is still a
+       * rider in danger. `onShift` is recorded as context for the dispatcher,
+       * never as a condition of being heard.
+       */
       if (request.method === 'POST' && pathname === '/rider/sos') {
         const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
         const incident = raiseFromBody({ ...(body ?? {}), riderId }, now);
@@ -3782,8 +3782,10 @@ export class LogisticsDO {
               /**
                * COURSE-BRIEF — the founder's order: « nowhere to listen the
                * repère audio … it has to carry as well the proof photos ».
-               * Pointers only; the app fetches them from its own media base,
-               * so this read stays small on a 2G connection. A course
+               * Pointers only, so this read stays small on a 2G connection:
+               * the app fetches the photos from its own media base, and the
+               * voice note — sent only once he accepted — through this
+               * Worker's rider door on his code (/rider/repere-audio). A course
                * composed before this existed answers an honest empty brief,
                * never a fabricated one.
                */
