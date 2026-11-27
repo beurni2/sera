@@ -1,0 +1,14 @@
+[
+  {
+    "key": "partage.vitrine",
+    "fr": "«\u202fMon Shop\u202f», votre vitrine",
+    "register": "selling",
+    "screenClass": "label"
+  },
+  {
+    "key": "accueil.bonjour",
+    "fr": "Bonjour !\nMa Boutique vous attend",
+    "register": "selling",
+    "screenClass": "label"
+  }
+]
