@@ -7,13 +7,15 @@
  * screens), and whether Hermes on a given Android build formats `fr-FR` with
  * `timeZone: 'Africa/Ouagadougou'` depends on the ICU data that build ships —
  * not something the app can rely on. Ouagadougou is UTC+0 all year, with no
- * summer time, so its clock is the UTC clock.
+ * summer time, so its clock is the UTC clock. The day and month names are
+ * words he reads, so they live in the catalog like every other word.
  */
+import { t } from './i18n';
 
-const JOURS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'] as const;
+const JOURS = ['jour.dimanche', 'jour.lundi', 'jour.mardi', 'jour.mercredi', 'jour.jeudi', 'jour.vendredi', 'jour.samedi'] as const;
 const MOIS = [
-  'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
-  'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre',
+  'mois.janvier', 'mois.fevrier', 'mois.mars', 'mois.avril', 'mois.mai', 'mois.juin',
+  'mois.juillet', 'mois.aout', 'mois.septembre', 'mois.octobre', 'mois.novembre', 'mois.decembre',
 ] as const;
 
 const deux = (n: number): string => String(n).padStart(2, '0');
@@ -25,5 +27,5 @@ export function heureOuaga(d: Date): string {
 
 /** « lundi 23 novembre » — the day in Ouagadougou. */
 export function jourOuaga(d: Date): string {
-  return `${JOURS[d.getUTCDay()]!} ${d.getUTCDate()} ${MOIS[d.getUTCMonth()]!}`;
+  return `${t(JOURS[d.getUTCDay()]!)} ${d.getUTCDate()} ${t(MOIS[d.getUTCMonth()]!)}`;
 }

@@ -27,6 +27,11 @@ import { freshCourse, logistiqueCourse, type CourseState } from './doubles/logis
  *   · logistics unreachable is custody's 503, never a 401;
  *   · delivery evidence for a course nobody holds yet is refused
  *     `custody_not_with_courier` (409), as `custody-do` refuses it;
+ *   · custody remembers every act it recorded by its command id: the same id
+ *     with the same content is replayed (`duplicate: true`), the same id with
+ *     other content is refused `command_id_reused_with_other_content` (409) —
+ *     only `command_id` and `at` are left out of the comparison, as
+ *     `custody-do` does — and an act answered 5xx was never recorded;
  *   · `/rider/moi` serves the codes only on an accepted course the supplier
  *     confirmed (`logistiqueCourse`, certified by its own e2e).
  * Only `globalThis.fetch` is doubled. Like every double here, they say nothing
@@ -52,7 +57,34 @@ afterEach(() => {
 
 /** Custody, per order: the seal makes the rider its holder; evidence for an
  *  order he does not hold is refused as the Worker refuses it. */
-function custody(held: Set<string>, hooks: { onVerify?: () => void; seal503?: () => boolean } = {}): Route {
+function custody(
+  held: Set<string>,
+  hooks: { onVerify?: () => void; seal503?: () => boolean; inspection503?: () => boolean; recorded?: string[] } = {},
+): Route {
+  const byId = new Map<string, { content: string; answer: { status: number; json: Record<string, unknown> } }>();
+  const content = (path: string, body: Record<string, unknown> | null): string => {
+    const { command_id: _id, at: _at, ...rest } = body ?? {};
+    return JSON.stringify([path, rest]);
+  };
+  const inner = acte(held, hooks);
+  return (path, body) => {
+    const id = body?.['command_id'];
+    const prior = typeof id === 'string' ? byId.get(id) : undefined;
+    if (prior !== undefined) {
+      return prior.content === content(path, body)
+        ? { status: prior.answer.status, json: { ...prior.answer.json, duplicate: true } }
+        : { status: 409, json: { ok: false, reason: 'command_id_reused_with_other_content' } };
+    }
+    const answer = inner(path, body);
+    if (answer !== null && answer.status < 500 && typeof id === 'string') {
+      byId.set(id, { content: content(path, body), answer });
+      hooks.recorded?.push(path);
+    }
+    return answer;
+  };
+}
+
+function acte(held: Set<string>, hooks: { onVerify?: () => void; seal503?: () => boolean; inspection503?: () => boolean }): Route {
   return (path, body) => {
     const bundle = body?.['bundle'] as Record<string, unknown> | undefined;
     const order = String(body?.['orderId'] ?? bundle?.['orderId'] ?? '');
@@ -72,7 +104,10 @@ function custody(held: Set<string>, hooks: { onVerify?: () => void; seal503?: ()
         ? { status: 200, json: { ok: true, status: 'evidence_recorded' } }
         : { status: 409, json: { ok: false, reason: 'custody_not_with_courier' } };
     }
-    if (path === '/rider/door/inspection') return { status: 200, json: { ok: true, kind: 'accepted' } };
+    if (path === '/rider/door/inspection') {
+      if (hooks.inspection503?.() === true) return { status: 503, json: { ok: false, reason: 'rider_directory_unavailable' } };
+      return { status: 200, json: { ok: true, kind: 'accepted' } };
+    }
     if (path === '/rider/delivery/drop') {
       held.delete(order);
       return { status: 200, json: { ok: true, status: 'custody_with_customer' } };
@@ -110,6 +145,14 @@ function avec(route: Route, extra: Record<string, unknown>): Route {
 interface Gate {
   live: string;
   readonly sent: { path: string; code: string }[];
+  /**
+   * Keep the NEXT request to `path` in flight until `release` resolves — the
+   * slow network a late answer comes from. `judged: 'sent'` answers as the
+   * service did when it left (a read that succeeded under a code that is dead
+   * by the time it lands); `judged: 'landed'` answers as the service does
+   * when it lands (an act whose code was replaced while it travelled).
+   */
+  hold?: { path: string; judged: 'sent' | 'landed'; release: Promise<void> };
 }
 function gated(gate: Gate): void {
   const inner = globalThis.fetch;
@@ -119,11 +162,30 @@ function gated(gate: Gate): void {
     const auth = headers['Authorization'] ?? '';
     const code = auth.startsWith('Bearer ') ? auth.slice('Bearer '.length) : '';
     gate.sent.push({ path, code });
-    if (path.startsWith('/rider/') && code !== gate.live) {
-      return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+    const held = gate.hold?.path === path ? gate.hold : undefined;
+    if (held !== undefined) delete gate.hold;
+    const answer = async (): Promise<Response> =>
+      path.startsWith('/rider/') && code !== gate.live
+        ? new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } })
+        : inner(input, init);
+    if (held === undefined) return answer();
+    if (held.judged === 'landed') {
+      await held.release;
+      return answer();
     }
-    return inner(input, init);
+    const r = await answer();
+    await held.release;
+    return r;
   };
+}
+
+/** A promise the test resolves by hand. */
+function verrou(): { release: Promise<void>; open: () => void } {
+  let open = (): void => undefined;
+  const release = new Promise<void>((r) => {
+    open = r;
+  });
+  return { release, open };
 }
 
 async function signIn(s: Screen, code: string): Promise<void> {
@@ -212,6 +274,150 @@ describe('the time the buyer looks at her parcel is the time the door was open',
     expect(Math.abs(started - opened), 'it starts when the door screen opened').toBeLessThanOrEqual(5_000);
     expect(Math.abs(completed - sentAt), 'it ends when it was sent').toBeLessThanOrEqual(1_000);
     expect(s.shows('Le code de la cliente'), 'the buyer’s code comes next').toBe(true);
+    s.unmount();
+  }, 20_000);
+});
+
+describe('the door’s two times travel with the act, unchanged, until custody has it', () => {
+  it('Séra is down when he sends her accord, two minutes pass, he tries again: the same act with the same two times, recorded once', async () => {
+    const state = confirmee();
+    let down = true;
+    const recorded: string[] = [];
+    const w = wire([
+      avec(logistiqueCourse(state, 'ord-rejeu'), { paymentMode: PORTE, chaine: { taskId: 'task-1', packageId: 'pkg-1' } }),
+      custody(new Set(), { inspection503: () => down, recorded }),
+    ]);
+    const s = await mountRider();
+    await signIn(s, CODE_A);
+    await s.press('Accepter la course');
+    await verifier(s);
+    await s.press('En route');
+    await s.press('Je suis arrivé');
+    await s.poll(3); // one minute with the buyer
+    await s.press("La cliente est d'accord");
+    expect(s.shows('Le code de la cliente'), 'nothing was recorded yet').toBe(false);
+
+    await s.poll(6); // two minutes before Séra answers again
+    down = false;
+    await s.press(s.canPress('Réessayer') ? 'Réessayer' : "La cliente est d'accord");
+
+    const sent = calls(w, '/rider/door/inspection').map((c) => c.body as Record<string, unknown>);
+    expect(sent, 'the first send and the retry').toHaveLength(2);
+    expect(sent[1]!['command_id'], 'the same act').toBe(sent[0]!['command_id']);
+    expect(sent[1]!['startedAt'], 'the same start, byte for byte').toBe(sent[0]!['startedAt']);
+    expect(sent[1]!['completedAt'], 'the same end, byte for byte').toBe(sent[0]!['completedAt']);
+    expect(recorded.filter((p) => p === '/rider/door/inspection'), 'custody recorded it once').toHaveLength(1);
+    const secondes = (Date.parse(String(sent[0]!['completedAt'])) - Date.parse(String(sent[0]!['startedAt']))) / 1000;
+    expect(secondes, 'one minute with the buyer, not the wait for Séra').toBeGreaterThanOrEqual(55);
+    expect(secondes).toBeLessThanOrEqual(65);
+    expect(s.shows('Le code de la cliente'), JSON.stringify(s.texts())).toBe(true);
+    s.unmount();
+  }, 20_000);
+});
+
+describe('a new code typed in the middle of the check does not restart its clock', () => {
+  it('two minutes under code A, A replaced, code B, one more minute: Séra is told about the whole check', async () => {
+    const gate: Gate = { live: CODE_A, sent: [] };
+    const state = confirmee();
+    const w = wire([logistiqueCourse(state, 'ord-horloge'), custody(new Set())]);
+    gated(gate);
+    const s = await mountRider();
+    await signIn(s, CODE_A);
+    await s.press('Accepter la course');
+    expect(s.shows('Vérifier le colis'), JSON.stringify(s.texts())).toBe(true);
+    await s.poll(6); // two minutes checking under A
+
+    gate.live = CODE_B;
+    await s.poll(1);
+    expect(fields(s), JSON.stringify(s.texts())).toBe(1);
+    await signIn(s, CODE_B);
+    await s.poll(3); // one more minute
+    await verifier(s);
+
+    const v = calls(w, '/rider/verification');
+    expect(v).toHaveLength(1);
+    const dwell = Number(v[0]!.body?.['dwellSec']);
+    expect(dwell, 'the check began under A and is still the same check').toBeGreaterThanOrEqual(190);
+    expect(dwell).toBeLessThanOrEqual(215);
+    s.unmount();
+  }, 20_000);
+});
+
+describe('a late answer under a replaced code changes nothing', () => {
+  it('« En route » leaves under A, A is replaced, code B signs in, then the 401 for A lands: he stays signed in under B', async () => {
+    const gate: Gate = { live: CODE_A, sent: [] };
+    const state = confirmee();
+    wire([logistiqueCourse(state, 'ord-tard'), custody(new Set())]);
+    gated(gate);
+    const s = await mountRider();
+    await signIn(s, CODE_A);
+    await s.press('Accepter la course');
+    await verifier(s);
+    const lent = verrou();
+    gate.hold = { path: '/rider/transit/depart', judged: 'landed', release: lent.release };
+    await s.press('En route');
+
+    gate.live = CODE_B;
+    await s.poll(1);
+    expect(fields(s), JSON.stringify(s.texts())).toBe(1);
+    await signIn(s, CODE_B);
+    await s.settle();
+    expect(fields(s), JSON.stringify(s.texts())).toBe(0);
+
+    lent.open();
+    for (let i = 0; i < 4; i += 1) await s.settle();
+    expect(gate.sent.some((c) => c.path === '/rider/transit/depart' && c.code === CODE_A), 'the act under A did leave').toBe(true);
+    expect(fields(s), `the 401 for A sent him back to the field. On screen: ${JSON.stringify(s.texts())}`).toBe(0);
+    await s.poll(1);
+    expect(gate.sent.filter((c) => c.path === '/rider/moi').at(-1)?.code, 'still signed in under B').toBe(CODE_B);
+    expect(fields(s)).toBe(0);
+    s.unmount();
+  }, 20_000);
+
+  it('a session read that succeeded under A lands after the refusal: the code field stays', async () => {
+    const gate: Gate = { live: CODE_A, sent: [] };
+    const state = confirmee();
+    wire([logistiqueCourse(state, 'ord-tard-lu')]);
+    gated(gate);
+    const s = await mountRider();
+    await signIn(s, CODE_A);
+    await s.press('Accepter la course');
+    const lent = verrou();
+    gate.hold = { path: '/rider/moi', judged: 'sent', release: lent.release };
+    await s.poll(1); // this read succeeds under A, and is slow to land
+
+    gate.live = CODE_B;
+    await s.poll(1);
+    expect(fields(s), JSON.stringify(s.texts())).toBe(1);
+    lent.open();
+    for (let i = 0; i < 4; i += 1) await s.settle();
+    expect(fields(s), `a late read under a dead code signed him back in. On screen: ${JSON.stringify(s.texts())}`).toBe(1);
+    expect(s.shows('Ce code ne marche pas.')).toBe(true);
+    s.unmount();
+  }, 20_000);
+
+  it('a session read that succeeded under A lands after code B signed in: he stays signed in under B', async () => {
+    const gate: Gate = { live: CODE_A, sent: [] };
+    const state = confirmee();
+    wire([logistiqueCourse(state, 'ord-tard-lu-b')]);
+    gated(gate);
+    const s = await mountRider();
+    await signIn(s, CODE_A);
+    await s.press('Accepter la course');
+    const lent = verrou();
+    gate.hold = { path: '/rider/moi', judged: 'sent', release: lent.release };
+    await s.poll(1);
+
+    gate.live = CODE_B;
+    await s.poll(1);
+    expect(fields(s), JSON.stringify(s.texts())).toBe(1);
+    await signIn(s, CODE_B);
+    await s.settle();
+    lent.open();
+    for (let i = 0; i < 4; i += 1) await s.settle();
+    await s.poll(1);
+    expect(gate.sent.filter((c) => c.path === '/rider/moi').at(-1)?.code, 'the late read under A replaced B').toBe(CODE_B);
+    expect(fields(s), JSON.stringify(s.texts())).toBe(0);
     s.unmount();
   }, 20_000);
 });

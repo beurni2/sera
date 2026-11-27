@@ -454,8 +454,10 @@ export default function App() {
    * the code field, whose sentences already say what to do, and types the new
    * one. Only the code that heard the 401 is dropped — an answer landing after
    * he signed in again under a new code changes nothing. The act memory on the
-   * phone and the attempts in memory are untouched, so the new code resumes
-   * the same step under the same command ids.
+   * phone is untouched, so the new code resumes the remembered step. A step
+   * that was refused under the old code was never recorded, so it may go again
+   * as a new attempt: after a mismatch check the course reset clears the
+   * difference photo, and he takes it again under the new code.
    */
   const codeMort = useCallback((code: string) => {
     setSignInState((prev) => (prev.kind === 'signed_in' && prev.code === code ? { kind: 'refused', why: 'bad_code' } : prev));
@@ -978,11 +980,15 @@ export default function App() {
   }, [preuveUrls]);
   const dwellOrderId = liveAssignment?.orderId ?? null;
   const codeRemis = (liveAssignment?.codeVerification ?? null) !== null;
+  const horlogePour = useRef<string | null>(null);
   useEffect(() => {
-    // Keyed on the ORDER and the handover: a second course starts its own
-    // clock, and later reads of the same code do NOT restart it under a rider
-    // who is mid-inspection.
-    if (dwellOrderId !== null && codeRemis) dwellStart.current = Date.now();
+    // Started ONCE per order, at the read that hands over its code: a second
+    // course starts its own clock, while later reads — or a new rider code
+    // typed mid-check, which empties the course for a moment — do NOT restart
+    // it under a rider who is mid-inspection.
+    if (dwellOrderId === null || !codeRemis || horlogePour.current === dwellOrderId) return;
+    horlogePour.current = dwellOrderId;
+    dwellStart.current = Date.now();
   }, [dwellOrderId, codeRemis]);
   /**
    * ⚠ THE ACT PHASES BELONG TO ONE COURSE. They were never reset when the
@@ -1426,20 +1432,17 @@ export default function App() {
    * How long the buyer looked at her parcel (Spec l.63: « buyer inspection
    * (category rules, dwell 2–4 min) »). Every door inspection used to carry
    * one frozen instant as both its start and its end, so custody recorded 0 s
-   * for every buyer. The door becomes reachable the moment this order's
-   * evidence is held, so that is the start; the send is the end. Both are
-   * frozen with the attempt (custody fingerprints them), and after a relaunch
-   * the start is that run's first held evidence — never an earlier instant
-   * this phone cannot know.
+   * for every buyer. The start is the moment the door screen opens for THIS
+   * visit — it opens again on a 2e passage, when the buyer comes back after an
+   * absence, or on a new try inside the window, and the wait before it is not
+   * her inspection (`porteOuverte`, below). The send is the end. Both are
+   * frozen with the attempt (custody fingerprints them), so a resend carries
+   * the same two times; after a relaunch the start is that run's opening —
+   * never an earlier instant this phone cannot know.
    */
-  const porteOuverteA = useRef<{ orderId: string; at: string } | null>(null);
+  const porteOuverteA = useRef<{ orderId: string; passage: number; at: string } | null>(null);
   const ordreCourant = useRef<string | null>(null);
   ordreCourant.current = dwellOrderId;
-  const porteAtteinte = evidenceIsHeld(evidencePhase);
-  useEffect(() => {
-    if (dwellOrderId === null || !porteAtteinte) return;
-    if (porteOuverteA.current?.orderId !== dwellOrderId) porteOuverteA.current = { orderId: dwellOrderId, at: new Date().toISOString() };
-  }, [dwellOrderId, porteAtteinte]);
   const debutPorteFor = useRef(new Map<string, string>());
   const bornesPorte = useCallback((attemptId: string): { startedAt: string; completedAt: string } => {
     const completedAt = capturedAtFor.current.get(attemptId) ?? new Date().toISOString();
@@ -1639,6 +1642,27 @@ export default function App() {
     !(rescheduleDue(expirePhase, remembered, passageCourant) && !clientRevenu) &&
     !(windowIsOpen(refusalPhase) && !reessaiEnCours && passageCourant < 2) &&
     !raisonOuverte;
+  /** The door screen is the rider's screen — the package's articles, or the
+   *  single order's inspection — once none of the arms the course screen puts
+   *  before it (the ladder's window and poster, the road home) holds the
+   *  screen. « Un souci ? » opened and closed again is the same visit. */
+  const porteOuverte =
+    dwellOrderId !== null &&
+    evidenceIsHeld(evidencePhase) &&
+    !(rescheduleDue(expirePhase, remembered, passageCourant) && !clientRevenu) &&
+    !(windowIsOpen(refusalPhase) && !reessaiEnCours && passageCourant < 2) &&
+    (colis !== null
+      ? colisPorteDue && !refusedFinalDue(expirePhase, remembered) && !retourDecide
+      : !returnDone(handoverPhase) &&
+        !returnRoadOpen(returnOpenPhase, liveAssignment?.codeRetour ?? null, remembered) &&
+        !(refusedFinalDue(expirePhase, remembered) || validRejectionDue(inspectionPhase, remembered) || retourDecide));
+  useEffect(() => {
+    const ouverte = porteOuverteA.current;
+    if (!porteOuverte || dwellOrderId === null) porteOuverteA.current = null;
+    else if (ouverte === null || ouverte.orderId !== dwellOrderId || ouverte.passage !== passageCourant) {
+      porteOuverteA.current = { orderId: dwellOrderId, passage: passageCourant, at: new Date().toISOString() };
+    }
+  }, [porteOuverte, dwellOrderId, passageCourant]);
   const sendOpenReturn = useCallback(() => {
     if (riderCode === null || liveAssignment === null || scelleRetour === null) return;
     // COLIS-FOURNISSEUR-1 — a bag going home whole (the ladder ended on
@@ -2109,7 +2133,9 @@ export default function App() {
     void submitSignIn(sessionPort, riderCode).then((next) => {
       // Only a full session replaces the session — offline or Séra down must
       // not sign the rider out mid-repair; the act's own sentence stands.
-      if (next.kind === 'signed_in') setSignInState(next);
+      // A read that lands after the code changed — refused, or a new one typed
+      // — speaks for a code that is no longer his: it changes nothing.
+      if (next.kind === 'signed_in') setSignInState((prev) => (prev.kind === 'signed_in' && prev.code === riderCode ? next : prev));
       // …but a 401 is final for this code (see `codeMort`): back to the field.
       else if (next.kind === 'refused' && next.why === 'bad_code') codeMort(riderCode);
     }, () => void 0);
