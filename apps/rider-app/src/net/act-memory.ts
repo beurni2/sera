@@ -84,13 +84,14 @@ export interface ActMemoryStore {
 
 /**
  * The parsed root, or `null` when there is none. Bytes that do not parse as a
- * JSON object or array are DAMAGED: kept aside, never overwritten, and a fresh
- * memory starts — a damaged memory is no memory, never a guessed stage. Call it
- * only inside the lane.
+ * JSON object or array are DAMAGED — zero bytes from a file that exists among
+ * them, since this memory never writes them (an empty memory is « {} ») — so
+ * they are kept aside, never overwritten, and a fresh memory starts: a damaged
+ * memory is no memory, never a guessed stage. Call it only inside the lane.
  */
 async function readRoot(store: ActMemoryStore): Promise<Record<string, unknown> | null> {
   const raw = await store.read();
-  if (raw === null || raw === '') return null;
+  if (raw === null) return null;
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);

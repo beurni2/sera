@@ -239,6 +239,48 @@ describe('⚠ a file that does not read is kept aside, never trusted, never dele
     expect(told).toBe(1);
   });
 
+  it('an outbox file that exists but holds zero bytes is damaged too: kept, a fresh list starts, and the rider is told', async () => {
+    // The app never writes zero bytes (an empty list is « [] »): an existing
+    // empty file is what a dead in-place write or a power loss right after a
+    // move leaves, and the SOS it held is gone. That must be said, not hidden.
+    __seed('sera-outbox.json', '');
+    let told = 0;
+    const stop = onFileKeptAside(() => {
+      told += 1;
+    });
+    expect(await restore(createDocumentOutboxStore())).toEqual([]);
+    stop();
+    const aside = Object.entries(__files()).filter(([name]) => /^sera-outbox\.damaged-\d+\.json$/.test(name));
+    expect(aside.map(([, b]) => b), 'the empty file was read as an empty list, in silence').toEqual(['']);
+    expect(__files()['sera-outbox.json']).toBe('[]');
+    expect(told, 'the rider was not told').toBe(1);
+  });
+
+  it('no outbox file at all is simply a new phone: nothing is kept aside and nobody is told', async () => {
+    let told = 0;
+    const stop = onFileKeptAside(() => {
+      told += 1;
+    });
+    expect(await restore(createDocumentOutboxStore())).toEqual([]);
+    stop();
+    expect(Object.keys(__files()).filter((n) => n.includes('.damaged-'))).toEqual([]);
+    expect(told).toBe(0);
+  });
+
+  it('an act-memory file that exists but holds zero bytes is damaged too: kept, a fresh memory starts, and the rider is told', async () => {
+    __seed('sera-act-memory.json', '');
+    let told = 0;
+    const stop = onFileKeptAside(() => {
+      told += 1;
+    });
+    expect(await loadActMemory(createDocumentActMemoryStore(), 'ord-1')).toBeNull();
+    stop();
+    const aside = Object.entries(__files()).filter(([n]) => /^sera-act-memory\.damaged-\d+\.json$/.test(n));
+    expect(aside.map(([, b]) => b), 'the empty memory was read as no memory, in silence').toEqual(['']);
+    expect(__files()['sera-act-memory.json']).toBe('{}');
+    expect(told, 'the rider was not told').toBe(1);
+  });
+
   it('half an act-memory file: its bytes are kept, never overwritten, and the new stage is remembered', async () => {
     const HALF_MEMORY = '{"custody-act-memory.v1":{"orderId":"ord-1","sta';
     __seed('sera-act-memory.json', HALF_MEMORY);
@@ -281,6 +323,24 @@ describe('⚠ a phone that dies while saving keeps its list', () => {
     __dieAt({ at: 'move-after-delete', name: 'sera-outbox.json' });
     await expect(append(createDocumentOutboxStore(), sos(next)), 'there was no move step at all').rejects.toThrow(PhoneDied);
     expect(await afterRelaunch()).toEqual([before, next]);
+  });
+
+  it('a first save refused before any byte leaves an empty .tmp: it is not a list, nothing is kept aside, and the next save works', async () => {
+    // A full disk on a new phone: `create` succeeds and the truncating write
+    // is refused, so an empty `.tmp` and no list are all that is left.
+    __seed('sera-outbox.json.tmp', '');
+    let told = 0;
+    const stop = onFileKeptAside(() => {
+      told += 1;
+    });
+    const store = createDocumentOutboxStore();
+    expect(await store.read(), 'an empty .tmp was moved into place as if it were a list').toBeNull();
+    expect(await restore(store)).toEqual([]);
+    expect(Object.keys(__files()).filter((n) => n.includes('.damaged-')), 'an empty .tmp was kept aside as a damaged list').toEqual([]);
+    expect(told, 'the rider was told a list was damaged when none ever existed').toBe(0);
+    stop();
+    await append(store, sos(next));
+    expect(await afterRelaunch()).toEqual([next]);
   });
 
   it('after a death inside the move, the next save cannot destroy the only good copy', async () => {

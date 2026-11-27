@@ -305,6 +305,14 @@ describe('⚠ the « not saved » warning stays while something is still owed', 
     expect(Object.entries(disk.__files()).filter(([n]) => n.startsWith('sera-outbox.damaged-')).map(([, b]) => b)).toEqual([HALF]);
   }, 20_000);
 
+  it('an empty outbox file on the phone before the app opens: the rider is told', async () => {
+    // Zero bytes is never something the app writes; it is a list that was lost.
+    disk.__seed('sera-outbox.json', '');
+    const { s } = await onCourse([logistiqueCourse(freshCourse(), ORDER)]);
+    expect(s.shows(NOTICE), `the empty file was read as an empty list, in silence. On screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    expect(Object.entries(disk.__files()).filter(([n]) => n.startsWith('sera-outbox.damaged-')).map(([, b]) => b)).toEqual(['']);
+  }, 20_000);
+
   it('a file set aside, then an empty drain: the warning stays, because what it held was never sent', async () => {
     disk.__seed('sera-outbox.json', HALF);
     const { s } = await onCourse([logistiqueCourse(freshCourse(), ORDER)]);
