@@ -3,6 +3,20 @@ Continuity ledger per CTO charter §6/§6bis. Every entry is evidence-grounded.
 
 Format per entry:
 
+## 2026-11-27 · PRISE-EN-CHARGE-1 — DEPLOYED and MERGED
+
+**Founder.** « Release all four » (2026-11-27 00:42 UTC, in the project chat, on the batch report), which named for Séra: put the logistics service live from the branch, check that it is the right version, then merge (which publishes the rider app).
+
+**Deploy first, from the designated branch at `839dd0f`.** logistics-deploy 38 (id 45918597553): all logistics keys uploaded; « PROVENANCE OK — live logistics Worker is `839dd0f…` speaking canon 3.21.0 ».
+
+**Merge.** main re-checked unchanged at `66ec261`; PR #6 merged as `5163e32` (merge commit, the branch shas kept). On main: ci 228 green · expo-preview 163 (rider app) green.
+
+**Deploy note, as reported.** A course offered before the deploy shows no codes until it is accepted and the supplier confirms; a course already in custody keeps its seals. Riders are not on the live app yet.
+
+**Still open.** As named in the slice entry below. Other open items for this slice are held in the private batch record until their fixes deploy.
+
+---
+
 ## 2026-11-26 · PRISE-EN-CHARGE-1 — only the rider who accepted, after the supplier confirms, gets the custody codes; an ended course's code is replaced at custody; a shift does not end on a course in hand; a repeated « Accepter » is answered as accepted · lane S8 · on the branch, NOT merged, NOT deployed
 
 **Founder.** « Start batch 1 » (2026-11-26 22:03 UTC, decision card on the batch plan). Lane S, integrated on `claude/project-thread-jqj97g` (lane commits `25e586d`, `67abc22`; merges `07e8d28`, `9b8cda3`; coordinator comment-only `09772d8`).
