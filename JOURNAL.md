@@ -3,6 +3,48 @@ Continuity ledger per CTO charter §6/§6bis. Every entry is evidence-grounded.
 
 Format per entry:
 
+## 2026-11-27 · VIE-PRIVÉE-COURSE-1 — the buyer's exact place and voice note reach her rider once he accepts; he hears the note through Séra's door, on his code · lane S11 · on the branch, NOT merged, NOT deployed
+
+**Founder.** « Now you can start the next batch » (2026-11-27 11:31 UTC), the buyer-privacy batch of the approved plan. On the buyer's sentence he chose « Séra team, rider, his maps app » (11:44 UTC, decision card): the rider's « Itinéraire » link stays as it is.
+
+**Lane.** Lane S, slice S11. Lane commits `0ec5da4`, `b3f4924` (the review's fixes) on main `efc51ed`. Integrated on `claude/project-thread-jqj97g` as one commit, `ea8e1b8` (its diff is the lane's diff byte for byte).
+
+**Spec.** Sera-Build-Spec §1: « Courier access to customer phone/location MUST be just-in-time, task-scoped, expiring. »
+
+**What changed.**
+- *The rider's read* (`/rider/moi`): until the course is accepted (`status === 'acknowledged'`, positive; a pending offline acceptance is not one), the location is the area alone (`{zone}`) and the voice-note ref is null. Pin, landmark, directions, relay and the ref come with the acceptance. Nothing stored is deleted: the dispatcher's board keeps the whole location.
+- *A new rider door*, `GET /rider/repere-audio`, behind the same uniform 401: his own active course, accepted, its brief's note ref, through the `MEDIA_AUDIO` service binding (entrypoint `AudioRead` of the Boutik+ media service; no new secret). Only `Range` is passed on; only 200, 206 and 416 pass back, with `Content-Type`, `Content-Range`, `Accept-Ranges` and `Cache-Control: private, no-store`. Nothing in the request names the note; every other case is `404 {ok:false, reason:"not_found"}`.
+- *Rider app*: the proposal shows the area, « Vous voyez le quartier. Le lieu exact arrive quand vous acceptez. » (`course.lieu_apres_accord`, neutral, status), the deadline and « Accepter ». The note plays from Séra's door with his code in a header; a resume is keyed on the course and the note; the note stops when an offered course replaces the accepted one. « Itinéraire » unchanged.
+- `wrangler.toml`: the `MEDIA_AUDIO` service block.
+
+**Evidence.**
+- Lane: seam test on the real logistics Worker with a contract-bound media stand-in, 8 tests (offered, accepted with full and ranged reads, another rider, no note, media 404, declined, expired, taken back, delivered); the rider-app stand-in re-certified against the real Worker; screen walk 5 tests; 7 mutations red, one named survivor (the voice row put back on the proposal renders nothing because the Worker sends no ref before acceptance).
+- Coordinator, re-run: rider app 541/541, logistics e2e files 76/76, both typechecks clean; mutation dropping the stop rule's acceptance check turns the new walk red.
+- Coordinator, cross-repo: this door bound to the REAL Boutik+ media bundle on workerd (Boutik+ lane head `1df58da`): offered 404; accepted 200 `audio/webm` no-store with `Accept-Ranges`; a range 206 with `Content-Range` and `Content-Length: 2`; out of range 416; a ref naming a photo 404.
+- Coordinator, full board on `ea8e1b8` (custody bundle, `pnpm build`, `TURBO_CONCURRENCY=1`): ALL GATES GREEN — rider app 541, logistics 364, custody 280, dispatch console 97.
+
+**Verifier.** One pass on `0ec5da4`: 0 blocker, 0 major, 2 minor, 8 notes. Fixed once in `b3f4924`: the stop rule now needs an accepted course (walk written red first); the SOS route's comment back above its route; stale comments; the silent-load walk retitled; `Content-Length` asserted on the 206. Journalled, not changed:
+- `course.proposee_aide` « Regardez le lieu, puis acceptez. » now sits under the new sentence: the founder's copy, flagged, left as is.
+- Five older walks' own stand-ins (rendu-colis, rendu-manifeste, rendu-porte, rendu-profil-publie, rendu-retour) still serve the full location on an offered course; no assertion depends on it. Certifying them is a follow-on.
+- A course turned for return stays accepted, so her details stay on his view until it closes (matches the order).
+- The pending offline acceptance cannot be driven through any Worker door; the rule holds by construction.
+
+**Release order.** The Boutik+ media service (with `AudioRead`) deploys before logistics-deploy (the binding names its entrypoint). Between the two, an installed rider app cannot play a note; riders are not live.
+
+**Open.** How long her phone, pin and voice are kept is the founder's open decision (⏳); nothing here deletes or shortens anything.
+
+## 2026-11-27 · COLIS-PERDU-1 — MERGED and DEPLOYED
+
+**Founder.** « Release all four » (2026-11-27 10:54 UTC, decision card, on the lost-parcel batch report), which named for Séra: put the custody service live, then the logistics service, from the branch, then merge. Shop+'s shop service went live first, so Shop+ was listening before Séra could speak.
+
+**Deployed from the branch at `0429259`.** custody-deploy 29 green, then logistics-deploy 39 green; each asserts that the live Worker is the bundle it built and that its keys are armed.
+
+**Merge.** PR #9 merged as `efc51ed` (merge commit, the branch shas kept). On main: ci 235 green. expo-preview 166 (rider app preview) red on both attempts at Expo's own publish step (« Service Unavailable », a GraphQL request refused by Expo), after the export and both bundles built; the rider app's only change in this batch is the canon pin. The preview stays on the previous build until it is re-run.
+
+**Still open.** As named in the slice entry below. Other open items for this slice are held in the private batch record until their fixes deploy.
+
+---
+
 ## 2026-11-27 · COLIS-PERDU-1 — the founder declares a parcel lost on the road: custody moves to Séra's lost terminal, a liability claim is filed at his amount, Shop+ is told, the rider is freed · lane S10 · on the branch, NOT merged, NOT deployed
 
 **Founder.** « Yes, on my Boutik+ console » (2026-11-27 08:35 UTC, decision card). Only he declares it, from his console, and only while a rider holds the parcel. It is final.

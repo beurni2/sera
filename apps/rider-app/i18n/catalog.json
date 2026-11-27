@@ -1542,6 +1542,12 @@
     "screenClass": "instruction"
   },
   {
+    "key": "course.lieu_apres_accord",
+    "fr": "Vous voyez le quartier. Le lieu exact arrive quand vous acceptez.",
+    "register": "neutral",
+    "screenClass": "status"
+  },
+  {
     "key": "course.accepter",
     "fr": "Accepter la course",
     "register": "neutral",

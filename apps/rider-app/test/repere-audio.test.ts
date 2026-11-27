@@ -30,6 +30,7 @@ type FakeStatus = { currentTime?: number; playing?: boolean; didJustFinish?: boo
 
 interface FakePlayerRec {
   url: string;
+  source: string | { uri: string; headers: Record<string, string> };
   calls: string[];
   emit(status: FakeStatus): void;
   removed: boolean;
@@ -76,10 +77,12 @@ function fakeModule() {
   const made: FakePlayerRec[] = [];
   return {
     made,
-    createAudioPlayer(url: string) {
+    // The installed `AudioSource` (`Audio.types.d.ts` l.16-35): a URL, or `{ uri, headers }`.
+    createAudioPlayer(source: string | { uri: string; headers: Record<string, string> }) {
       let listener: ((s: FakeStatus) => void) | null = null;
       const rec: FakePlayerRec = {
-        url,
+        url: typeof source === 'string' ? source : source.uri,
+        source,
         calls: [],
         removed: false,
         mort: false,
@@ -156,6 +159,26 @@ describe('COURSE-BRIEF — the buyer’s repère plays on the rider’s screen',
     expect(mod.made).toHaveLength(2);
     expect(mod.made[0]?.calls).toContain('remove');
     expect(mod.made[1]?.calls).toEqual(['play']);
+  });
+
+  it('headers ride the player source — his code in a header, never in the URL', async () => {
+    const mod = fakeModule();
+    const port = repereAudioOver(mod);
+    await port.play('https://sera.example/rider/repere-audio', { Authorization: 'Bearer SR-1' }, 'as-1');
+    expect(mod.made[0]?.source).toEqual({ uri: 'https://sera.example/rider/repere-audio', headers: { Authorization: 'Bearer SR-1' } });
+  });
+
+  it('the same door for another course is a NEW player, never a resume of the last note', async () => {
+    const mod = fakeModule();
+    const port = repereAudioOver(mod);
+    const porte = 'https://sera.example/rider/repere-audio';
+    await port.play(porte, { Authorization: 'Bearer SR-1' }, 'as-1');
+    port.pause();
+    await port.play(porte, { Authorization: 'Bearer SR-1' }, 'as-1');
+    expect(mod.made, 'the same course resumes').toHaveLength(1);
+    await port.play(porte, { Authorization: 'Bearer SR-1' }, 'as-2');
+    expect(mod.made, 'another course rebuilds').toHaveLength(2);
+    expect(mod.made[0]?.calls).toContain('release');
   });
 
   it('stop() releases, so leaving the screen never leaks a voice', async () => {
