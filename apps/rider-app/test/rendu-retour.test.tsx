@@ -275,8 +275,8 @@ describe('⚠ RETOUR-VIVANT — the buyer-fault ladder, whole, then the road hom
 
     // The window is an honest, usable state: the ledger's hour, two ways out.
     expect(s.shows('On attend un peu.'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
-    const hour = new Date(WINDOW_END).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    expect(s.shows(`Nouvel essai avant : ${hour}`), 'the hour must be the LEDGER’s windowExpiresAt').toBe(true);
+    // 09:15 in Ouagadougou (UTC+0), in French, whatever the phone is set to.
+    expect(s.shows('Nouvel essai avant : 09:15'), 'the hour must be the LEDGER’s windowExpiresAt').toBe(true);
     expect(s.canPress('Réessayer')).toBe(true);
     expect(s.canPress('Le temps est passé')).toBe(true);
 
@@ -289,7 +289,7 @@ describe('⚠ RETOUR-VIVANT — the buyer-fault ladder, whole, then the road hom
     // rendu-porte walks it) — the retry inside the window is a real drop.
     await s.type(DROP);
     expect(s.canPress('Confirmer la remise')).toBe(true);
-    expect(s.shows(`Nouvel essai avant : ${hour}`)).toBe(true);
+    expect(s.shows('Nouvel essai avant : 09:15')).toBe(true);
     expect(s.canPress('Le temps est passé')).toBe(true);
     expect(s.shows('Un souci ?')).toBe(false);
 
@@ -571,11 +571,8 @@ describe('⚠ RETOUR-VIVANT — the buyer’s VALID refusal at a pay-at-door ins
  *  then carries, exactly as logistics-do's riderView says it. */
 const PASSAGE_2 = { start: '2026-09-18T10:00:00.000Z', end: '2026-09-18T12:00:00.000Z' };
 const CHAINE = { taskId: 'task-retour-1', packageId: `pkg-${ORDER}` };
-const fenetreAttendue = (): string => {
-  const jour = new Date(PASSAGE_2.start).toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
-  const h = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  return `Prochain passage : ${jour}, ${h(PASSAGE_2.start)}–${h(PASSAGE_2.end)}`;
-};
+/** In French and Ouagadougou time (UTC+0), whatever the phone is set to. */
+const fenetreAttendue = (): string => 'Prochain passage : vendredi 18 septembre, 10:00–12:00';
 const passageFixe = (state: CourseState): void => {
   state.passage = 2;
   state.window = PASSAGE_2;

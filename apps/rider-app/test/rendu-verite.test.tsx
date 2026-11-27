@@ -34,7 +34,7 @@ import { freshCourse, logistiqueCourse, type CourseState } from './doubles/logis
  */
 
 const CODE_A = 'SR-ABCD-EFGH-JKMN';
-const CODE_B = 'SR-PQRS-TUVW-XYZ2';
+const CODE_B = 'SR-PQRS-TVWX-YZ23';
 const PICKUP = 'K7M-9PQ';
 const SEAL = 'SC-4K7M-9PQR';
 const PORTE = 'DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR';
@@ -72,7 +72,7 @@ function custody(held: Set<string>, hooks: { onVerify?: () => void; seal503?: ()
         ? { status: 200, json: { ok: true, status: 'evidence_recorded' } }
         : { status: 409, json: { ok: false, reason: 'custody_not_with_courier' } };
     }
-    if (path === '/rider/door/inspection') return { status: 200, json: { ok: true, status: 'inspection_recorded', buyerAccepts: true } };
+    if (path === '/rider/door/inspection') return { status: 200, json: { ok: true, kind: 'accepted' } };
     if (path === '/rider/delivery/drop') {
       held.delete(order);
       return { status: 200, json: { ok: true, status: 'custody_with_customer' } };

@@ -411,14 +411,27 @@ describe('⚠ PORTE-SANS-PHOTO — arrival goes straight to the buyer’s code',
      * used to answer 401 once and then 200 under the same old code, which no
      * Séra Worker ever does, so the walk proved a retry that cannot succeed.)
      */
-    const NEW_CODE = 'SR-PQRS-TUVW-XYZ2';
+    const NEW_CODE = 'SR-PQRS-TVWX-YZ23';
     const state = freshCourse();
     state.ramassageConfirmeAt = '2026-08-10T10:00:00.000Z';
     state.codeVerification = PICKUP;
     state.codeScelle = SEAL;
     let live = CODE;
     const sent: { path: string; code: string }[] = [];
-    wire([logistiqueCourse(state, ORDER), custody()]);
+    const logistique = logistiqueCourse(state, ORDER);
+    wire([
+      (path, body) => {
+        const r = logistique(path, body);
+        // The chain logistics opened custody with rides every read (its
+        // `riderView` `chaine`): after the new code the in-memory seal answer
+        // is gone and the door's evidence names the chain from the session.
+        if (r !== null && path === '/rider/moi') {
+          (r.json['rider'] as { assignment: Record<string, unknown> }).assignment['chaine'] = { taskId: 'task-1', packageId: 'pkg-1' };
+        }
+        return r;
+      },
+      custody(),
+    ]);
     const inner = globalThis.fetch;
     (globalThis as { fetch: unknown }).fetch = async (input: string, init?: RequestInit) => {
       const path = new URL(input, 'http://sera.test').pathname;
