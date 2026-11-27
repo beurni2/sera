@@ -741,6 +741,12 @@ export default function App() {
   /** The package's door is still the rider's screen: an article to show, or kept ones to hand over. */
   const colisPorteDue = colis !== null && (articlesIndecis.length > 0 || aRemettreIds.length > 0);
   const assignmentLines = liveAssignment === null ? null : landmarkLines(liveAssignment.location);
+  /** The area alone — what an offered course carries of her place. */
+  const zoneProposee = ((): string | null => {
+    const l = liveAssignment?.location;
+    const zone = l !== null && typeof l === 'object' ? (l as Record<string, unknown>)['zone'] : undefined;
+    return typeof zone === 'string' && zone.trim() !== '' ? zone.trim() : null;
+  })();
   /**
    * GEO-SERA-1 (founder, 2026-08-31) — the buyer's confirmed point becomes
    * the ONE « Itinéraire » act on the landmark card: it opens the phone's
@@ -771,8 +777,10 @@ export default function App() {
    *
    * FOUNDER ORDER (2026-08-09): the buyer's repère voice note and the
    * supplier's readiness photos now ride the course (Séra's task brief), and
-   * this is where they surface. Pointers become URLs only against the app's
-   * OWN media base — nothing the server says can point this phone elsewhere.
+   * this is where they surface. Photo pointers become URLs only against the
+   * app's OWN media base — nothing the server says can point this phone
+   * elsewhere. The voice note is heard through Séra's rider door, on his code,
+   * once he accepted (below).
    */
   const repereAudio = useMemo(() => resolveRepereAudio(), []);
   /**
@@ -793,10 +801,18 @@ export default function App() {
   // and remounted the <Image> subtree — on a 1 GB Android over 2G.
   const repereRef = liveAssignment?.repereAudioRef ?? null;
   const preuveKey = (liveAssignment?.preuvePhotoRefs ?? []).join('|');
-  const repereUrl = useMemo(
-    () => mediaUrl(process.env.EXPO_PUBLIC_SERA_MEDIA_BASE ?? null, repereRef),
-    [repereRef],
-  );
+  /**
+   * The buyer's voice is heard through Séra's own door, on HIS code, in a
+   * header — never an open link, never a code in a URL. Logistics sends the
+   * ref only on a course he accepted; the door answers only that course's
+   * note. The ref here says « there is a note »; it never builds the URL.
+   */
+  const repereUrl = useMemo(() => {
+    const base = process.env.EXPO_PUBLIC_SERA_LOGISTICS_BASE;
+    if (repereRef === null || base === undefined || base === '' || riderCode === null) return null;
+    return `${base.replace(/\/+$/, '')}/rider/repere-audio`;
+  }, [repereRef, riderCode]);
+  const repereCle = liveAssignment === null ? null : `${liveAssignment.assignmentId}|${repereRef ?? ''}`;
   const preuveUrls = useMemo(
     () =>
       (preuveKey === '' ? [] : preuveKey.split('|'))
@@ -826,9 +842,15 @@ export default function App() {
    * was written for. The predicate mirrors that ladder, so the rule it encodes
    * is unchanged — the note stops when the control that governs it leaves the
    * screen.
+   *
+   * ⚠ AND THE ROW LIVES ONLY ON AN ACCEPTED COURSE (her voice comes with
+   * « Accepter »). A course taken back and replaced by an OFFERED one inside
+   * one poll leaves `liveAssignment` non-null with no voice row on screen, so
+   * the status is part of the predicate too.
    */
   const repereVisible =
     liveAssignment !== null &&
+    liveAssignment.status === 'acknowledged' &&
     liveSession !== null &&
     liveSession.certified &&
     liveSession.privacyAckOk &&
@@ -886,7 +908,9 @@ export default function App() {
             repereAudio.pause();
             return;
           }
-          void repereAudio.play(repereUrl).catch(() => repereAudio.stop());
+          void repereAudio
+            .play(repereUrl, { Authorization: `Bearer ${riderCode ?? ''}` }, repereCle ?? repereUrl)
+            .catch(() => repereAudio.stop());
         }}
       />
       {/* VOIX-MUETTE — the player NAMED a failure (bad ref, dead network):
@@ -895,7 +919,7 @@ export default function App() {
       {repereEtat.echec ? <FasoBody>{t('repere.voix_echec')}</FasoBody> : null}
     </>
     );
-  }, [repereUrl, repereAudio, repereEtat]);
+  }, [repereUrl, repereAudio, repereEtat, riderCode, repereCle]);
 
   /** The supplier's readiness photos — what the check-up is answered against. */
   const PreuvePhotos = useCallback((): React.JSX.Element | null => {
@@ -2731,9 +2755,10 @@ export default function App() {
                  * custody act. Until now the wired arm dropped a rider
                  * straight onto the verification checklist of a course they
                  * had never said yes to, and the book's five-minute ack
-                 * window ran out unanswered. The place leads (landmark
-                 * first); the deadline is stated; the one primary action is
-                 * the acceptance.
+                 * window ran out unanswered. The area and one sentence say
+                 * where (her exact place comes with the acceptance); the
+                 * deadline is stated; the one primary action is the
+                 * acceptance.
                  */
                 <>
                   <FasoPosterTitle>{t('course.proposee_titre')}</FasoPosterTitle>
@@ -2741,22 +2766,13 @@ export default function App() {
                   {colis !== null ? (
                     <FasoStatusChip tone="accent" label={`${t('colis.un_colis')} ${colis.articles.length} ${t('colis.articles')}`} />
                   ) : null}
-                  {assignmentLines !== null ? (
-                    <FasoLandmarkCard
-                      zone={assignmentLines[2]}
-                      lines={assignmentLines}
-                      repereLabel={t('assignment.landmark_label')}
-                      indicationsLabel={t('repere.indications')}
-                      itineraire={itineraireCourse}
-                    />
-                  ) : (
-                    <FasoCard>
-                      <ProofLine label={t('assignment.no_landmark')} />
-                    </FasoCard>
-                  )}
-                  {/* COURSE-BRIEF: the buyer's own voice, where someone is
-                      actually looking for the door. */}
-                  {RepereVoix()}
+                  {/* Her exact place, her landmark, « Itinéraire » and her voice
+                      come with « Accepter » (Séra Build Spec §1: just-in-time
+                      access). Before, the area is enough to decide. */}
+                  <FasoCard>
+                    {zoneProposee !== null ? <FasoBody>{zoneProposee}</FasoBody> : null}
+                    <FasoBody>{t('course.lieu_apres_accord')}</FasoBody>
+                  </FasoCard>
                   <PreuvePhotos />
                   {liveAssignment.ackDeadline !== null ? (
                     <FasoBody>

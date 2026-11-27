@@ -113,7 +113,7 @@ async function stuckWorld(mf: Miniflare) {
 describe('⚠ the founder’s loop: take back the briefless course, re-compose WITH the brief, same rider', () => {
   it('acknowledged course → take-back → the rider’s screen clears → the order re-composes with audio+photos → they reach the rider', async () => {
     const mf = spawn();
-    const { session, code, oldTaskId, assignmentId } = await stuckWorld(mf);
+    const { acts, session, code, oldTaskId, assignmentId } = await stuckWorld(mf);
 
     // The stuck state, seen from the rider's own read: carrying, empty brief.
     const stuck = await session.signIn(code);
@@ -181,6 +181,8 @@ describe('⚠ the founder’s loop: take back the briefless course, re-compose W
     // screen both pointers. This sentence is the founder's report, answered.
     const regranted = await ops(mf, '/ops/assign', { command_id: 'cmd-new-a', taskId: newTaskId, riderId: 'rider-boss' });
     expect(regranted['ok'], JSON.stringify(regranted)).toBe(true);
+    // Her voice note comes with his acceptance (just-in-time access).
+    expect((await acts.accepterCourse(code, (regranted['assignment'] as Record<string, unknown>)['assignmentId'] as string)).ok).toBe(true);
     const fresh = await session.signIn(code);
     if (!fresh.ok) throw new Error('fresh sign-in refused');
     expect(fresh.session.assignment?.repereAudioRef, 'the voice note must reach the rider').toBe(AUDIO);

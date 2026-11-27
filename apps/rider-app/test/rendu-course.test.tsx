@@ -95,21 +95,17 @@ describe('⚠ ÉCRAN BLANC — the accept tap, driven', () => {
     expect(s.shows('Une course pour vous'), JSON.stringify(s.texts())).toBe(true);
 
     /**
-     * ⚠ THE PRECONDITION THE FOUNDER MET WITHOUT THINKING ABOUT IT: he
-     * listened to the buyer's repère before accepting. No player, no crash —
-     * which is why relaunching the app appeared to « fix » it, and why the
-     * bug looked intermittent.
-     *
-     * ⚠ AND SINCE 2026-08-15 THE ACCEPT NO LONGER FIRES THE STOP EFFECT — the
-     * row follows the rider onto the road, so `repereVisible` stays true across
-     * this tap. This walk therefore still proves what its title says (the tap
-     * does not blank the tree) but no longer exercises the passive effect that
-     * caused it. « The voice stops when the row leaves the screen », below,
-     * is the walk that drives that effect now.
+     * The founder's original precondition — listening to the buyer's repère
+     * BEFORE accepting — can no longer happen: her voice now comes with the
+     * acceptance (just-in-time access), so the proposal has no voice row.
+     * This walk sets up what can: accept, then listen on the accepted course,
+     * and the tree must survive both taps. « The voice stops when the row
+     * leaves the screen », below, drives the stop effect that caused the
+     * original crash.
      */
-    await s.press('Écouter le repère');
-
+    expect(s.shows('Écouter le repère'), 'no voice before « Accepter »').toBe(false);
     await s.press('Accepter la course');
+    await s.press('Écouter le repère');
 
     /**
      * THE ASSERTION THAT WAS MISSING ALL DAY. The crash was a throw inside a
@@ -646,6 +642,8 @@ describe('⚠ VOIX-MUETTE-2 — a repère that cannot load is not an eternal « 
     __modeChargement('silence');
     const state = freshCourse();
     const { s } = await signedIn([logistiqueCourse(state, ORDER), custody()]);
+    // Her voice comes with the acceptance (just-in-time access).
+    await s.press('Accepter la course');
 
     await s.press('Écouter le repère');
     // Nothing has arrived and nothing ever will — but ten seconds have not
@@ -684,12 +682,12 @@ describe('⚠ VOIX-MUETTE-2 — a repère that cannot load is not an eternal « 
 describe('GEO-SERA-1 — the Itinéraire act on the landmark card', () => {
   /** The standing fixture plus the pin — the exact bytes the boutik+ relay
    *  now sends (contract: logistics stores {lat, lng} and serves the stored
-   *  location whole on /rider/moi). */
+   *  location whole on /rider/moi once he ACCEPTED; the area alone before). */
   function logisticsAvecPin(state: CourseState): Route {
     const base = logistiqueCourse(state, ORDER);
     return (path, body) => {
       const answer = base(path, body);
-      if (path === '/rider/moi' && answer !== null) {
+      if (path === '/rider/moi' && answer !== null && state.status === 'acknowledged') {
         const rider = (answer.json as Record<string, unknown>)['rider'] as Record<string, unknown>;
         const assignment = rider['assignment'] as Record<string, unknown>;
         assignment['location'] = {
@@ -706,6 +704,9 @@ describe('GEO-SERA-1 — the Itinéraire act on the landmark card', () => {
     const avant = Linking.opened.length;
     const { s } = await signedIn([logisticsAvecPin(state), custody()]);
     expect(s.shows('Une course pour vous'), JSON.stringify(s.texts())).toBe(true);
+    // Her point comes with the acceptance (just-in-time access).
+    expect(s.shows('Itinéraire — ouvrir le GPS'), 'no Itinéraire on the proposal').toBe(false);
+    await s.press('Accepter la course');
 
     // Well displayed: the act and its plain-words aide, together.
     expect(s.shows('Itinéraire — ouvrir le GPS'), 'the act must be on the card').toBe(true);

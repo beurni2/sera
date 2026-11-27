@@ -193,6 +193,8 @@ describe('⚠ the whole ladder, through the app’s own ports, judged by the BOA
     if (!(await acts.startShift(code)).ok) throw new Error('start refused');
     const granted = await ops(mf, '/ops/assign', { command_id: 'cmd-brief-a1', taskId, riderId: 'rider-boss' });
     expect(granted['ok'], JSON.stringify(granted)).toBe(true);
+    // Her voice note comes with his acceptance (just-in-time access).
+    expect((await acts.accepterCourse(code, (granted['assignment'] as Record<string, unknown>)['assignmentId'] as string)).ok).toBe(true);
 
     // ⚠ THE WHOLE POINT: the app's OWN parser hands the screen both pointers.
     const arrived = await session.signIn(code);

@@ -10,9 +10,10 @@ import type { Route } from '../rendu';
  * (assign, accept, supplier confirms) and requires the same fields to be null
  * or present at each one. The bound it serves is the Worker's: the ramassage
  * code only on an accepted course, the custody code and the seals only on an
- * accepted course the supplier confirmed. A walk that sets the codes before
- * the confirmation still sees them withheld until both are true — this
- * stand-in can never be kinder than the Worker.
+ * accepted course the supplier confirmed; her landmark, directions and
+ * voice note only on an accepted course (the area alone before). A walk
+ * that sets the codes before the confirmation still sees them withheld until
+ * both are true — this stand-in can never be kinder than the Worker.
  *
  * Its bound, like every double here: it says nothing about appearance.
  */
@@ -50,8 +51,12 @@ export function logistiqueCourse(state: CourseState, order: string): Route {
             assignment: {
               assignmentId: 'as-1', taskId: 'task-1', orderId: order, status: state.status,
               ackDeadline: null,
-              location: { landmark: 'La pharmacie du marché', directions: 'Après le carrefour', zone: 'Gounghin, Ouagadougou' },
-              preuvePhotoRefs: [], repereAudioRef: 'media/11111111-2222-4333-8444-555555555555',
+              // Her place and her voice only on an accepted course: before,
+              // the area alone (the Worker's `riderView`, same bound).
+              location: acceptee
+                ? { landmark: 'La pharmacie du marché', directions: 'Après le carrefour', zone: 'Gounghin, Ouagadougou' }
+                : { zone: 'Gounghin, Ouagadougou' },
+              preuvePhotoRefs: [], repereAudioRef: acceptee ? 'media/11111111-2222-4333-8444-555555555555' : null,
               codeRamassage: acceptee ? CODE_RAMASSAGE : null,
               ramassageConfirmeAt: state.ramassageConfirmeAt,
               codeVerification: remis ? state.codeVerification : null,

@@ -62,10 +62,24 @@ export function __modeChargement(mode: 'silence' | 'idle' | null): void {
   modeChargement = mode;
 }
 
+/** The subset of the installed `AudioSource` (`Audio.types.d.ts` l.16-35) a
+ *  remote note can use: a URL string, or `{ uri, headers }`. */
+type Source = string | { uri?: string; headers?: Record<string, string> };
+
+/** Every source a player was created with, in order — the walk asks what the
+ *  app handed the player, never what the player did with it. */
+const sources: Source[] = [];
+export function __sources(): readonly Source[] {
+  return sources;
+}
+export function __resetSources(): void {
+  sources.length = 0;
+}
+
 class AudioPlayer {
   private dead = false;
   private listener: ((s: Status) => void) | null = null;
-  constructor(readonly source: string) {}
+  constructor(readonly source: Source) {}
 
   private native(name: string): void {
     if (this.dead) {
@@ -109,7 +123,8 @@ class AudioPlayer {
   }
 }
 
-export function createAudioPlayer(source: string): AudioPlayer {
+export function createAudioPlayer(source: Source): AudioPlayer {
+  sources.push(source);
   return new AudioPlayer(source);
 }
 

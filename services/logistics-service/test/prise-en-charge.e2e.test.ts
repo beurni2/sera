@@ -182,10 +182,10 @@ async function rider(hold: Hold, riderId: string): Promise<string> {
   return code;
 }
 
-async function commande(hold: Hold, orderId: string, prefix: string): Promise<string> {
+async function commande(hold: Hold, orderId: string, prefix: string, brief: Json = {}): Promise<string> {
   await intake(hold, '/intake/funding', { orderId, status: 'funded', paymentMode: 'FULL_PREPAY', asOf: T });
   await intake(hold, '/intake/readiness', { orderId, ready: true, asOf: T, supplierRef: SUPPLIER });
-  const composed = await ops(hold, '/ops/task', { command_id: `${prefix}-t`, orderId, location: LOC, window: WIN });
+  const composed = await ops(hold, '/ops/task', { command_id: `${prefix}-t`, orderId, location: LOC, window: WIN, ...brief });
   expect(composed.json['ok'], JSON.stringify(composed.json)).toBe(true);
   return composed.json['taskId'] as string;
 }
@@ -632,7 +632,7 @@ describe('the rider app\'s logistics stand-in serves what the real Worker serves
   it('assign, accept, supplier confirms: at each step the same fields are null or present on both', async () => {
     const hold = both('certif');
     const O = 'ord-prise-certif';
-    const taskId = await commande(hold, O, 'pce');
+    const taskId = await commande(hold, O, 'pce', { repereAudioRef: 'media/11111111-2222-4333-8444-555555555555' });
     const code = await rider(hold, 'rider-prise-certif');
     const as = await confier(hold, taskId, 'rider-prise-certif', 'pce-a');
     await chaineOuverte(hold, O);
@@ -640,7 +640,12 @@ describe('the rider app\'s logistics stand-in serves what the real Worker serves
     const state = freshCourse();
     const standIn = logistiqueCourse(state, O);
     const champs = ['codeRamassage', 'ramassageConfirmeAt', 'codeVerification', 'codeScelle'] as const;
-    const forme = (a: Json | null | undefined) => Object.fromEntries(champs.map((c) => [c, a?.[c] === null || a?.[c] === undefined ? 'absent' : 'present']));
+    const forme = (a: Json | null | undefined) => ({
+      ...Object.fromEntries(champs.map((c) => [c, a?.[c] === null || a?.[c] === undefined ? 'absent' : 'present'])),
+      repereAudioRef: a?.['repereAudioRef'] === null || a?.['repereAudioRef'] === undefined ? 'absent' : 'present',
+      // Her place: the area alone, or the whole location.
+      location: Object.keys((a?.['location'] as Json | null | undefined) ?? {}).join(',') === 'zone' ? 'zone_seule' : 'entiere',
+    });
     const reel = async () => {
       const res = await hold.logistics!.dispatchFetch('http://logistics/rider/moi', { headers: { Authorization: `Bearer ${code}` } });
       return forme(((await res.json()) as { rider: Json }).rider['assignment'] as Json);

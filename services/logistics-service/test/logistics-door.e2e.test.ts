@@ -630,6 +630,11 @@ describe('SE-LIVE-2c — the founder composes the task, and the gate still gover
     });
     expect(granted.status).toBe(200);
     const mint = await call(mf, 'POST', '/ops/rider-code/mint', opsAuth, { riderId: 'r-itineraire' });
+    // Her pin reaches him once he accepts the course (just-in-time access).
+    const ack = await call(mf, 'POST', '/rider/assignment/ack', codeAuth(mint.json['code'] as string), {
+      assignmentId: (granted.json['assignment'] as Json)['assignmentId'],
+    });
+    expect(ack.status).toBe(200);
     const moi = await call(mf, 'GET', '/rider/moi', codeAuth(mint.json['code'] as string));
     const assignment = (moi.json['rider'] as Json)['assignment'] as Json;
     expect(assignment).not.toBeNull();
@@ -792,6 +797,12 @@ describe('SE-LIVE-2c verifier round — no id hijack, no second task for one ord
     expect((codes.json['codes'] as Json[]).some((c) => c['riderId'] === 'r-hijack')).toBe(true);
     // Re-mint to read the rider's own view (the first code was consumed by prep).
     const mint = await call(mf, 'POST', '/ops/rider-code/mint', opsAuth, { riderId: 'r-hijack' });
+    const offert = (await call(mf, 'GET', '/rider/moi', codeAuth(mint.json['code'] as string))).json['rider'] as Json;
+    // Her place reaches him once he accepts the course (just-in-time access).
+    const ack = await call(mf, 'POST', '/rider/assignment/ack', codeAuth(mint.json['code'] as string), {
+      assignmentId: (offert['assignment'] as Json)['assignmentId'],
+    });
+    expect(ack.status).toBe(200);
     const moi = await call(mf, 'GET', '/rider/moi', codeAuth(mint.json['code'] as string));
     const assignment = (moi.json['rider'] as Json)['assignment'] as Json;
     expect(assignment['taskId']).toBe(victimTaskId);
@@ -1027,11 +1038,9 @@ describe('RB-2 — the founder dispatches from Boutik+: compose → assign → t
     expect(mission).not.toBeNull();
     expect(mission['taskId']).toBe(taskId);
     expect(mission['orderId']).toBe(ORDER);
-    expect(mission['location']).toMatchObject({
-      zone: 'Gounghin',
-      landmark: 'Face à la pharmacie du marché',
-      directions: 'Deuxième porte bleue après le kiosque',
-    });
+    // Offered: the area only — her landmark and directions come with his
+    // acceptance (just-in-time access), checked verbatim at the end below.
+    expect(mission['location']).toEqual({ zone: 'Gounghin' });
 
     // ── the fold's double-tap on « Confier »: the SAME deterministic command
     //     replays as duplicate — one grant, however many taps ─────────────
@@ -1071,5 +1080,24 @@ describe('RB-2 — the founder dispatches from Boutik+: compose → assign → t
       'expiry frees the rider — no task ever strands behind a dead grant').toBe(true);
     expect((boardAfter['queued'] as Json[]).some((q) => q['taskId'] === taskId),
       'the task is back in the queue, offerable again').toBe(true);
+
+    // ── offered again and ACCEPTED: the founder's address reaches the
+    //     rider's own read VERBATIM ─────────────────────────────────────────
+    const again2 = await call(mf, 'POST', '/ops/assign', opsAuth, {
+      command_id: `cmd-boutik-confier-${taskId}-rider-rb2-boutik-2`,
+      taskId,
+      riderId: 'rider-rb2-boutik',
+    });
+    expect(again2.status, JSON.stringify(again2.json)).toBe(200);
+    const ack = await call(mf, 'POST', '/rider/assignment/ack', codeAuth(code), {
+      assignmentId: (again2.json['assignment'] as Json)['assignmentId'],
+    });
+    expect(ack.status).toBe(200);
+    const acceptee = ((await call(mf, 'GET', '/rider/moi', codeAuth(code))).json['rider'] as Json)['assignment'] as Json;
+    expect(acceptee['location']).toMatchObject({
+      zone: 'Gounghin',
+      landmark: 'Face à la pharmacie du marché',
+      directions: 'Deuxième porte bleue après le kiosque',
+    });
   }, 60_000);
 });

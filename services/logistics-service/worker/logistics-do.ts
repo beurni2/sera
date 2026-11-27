@@ -507,6 +507,12 @@ function malformed(): Response {
 
 const ACTIVE_ASSIGNMENT_STATUSES = ['active_unacknowledged', 'ack_pending_offline', 'acknowledged'];
 
+/** The area of a stored location, and nothing else of it. */
+function zoneSeule(location: unknown): { zone: string } | null {
+  const zone = location !== null && typeof location === 'object' ? (location as Record<string, unknown>)['zone'] : undefined;
+  return typeof zone === 'string' ? { zone } : null;
+}
+
 /**
  * COURSE-BRIEF — the media the rider is briefed with, per task.
  * `preuvePhotoRefs` is what the supplier photographed at readiness; the
@@ -575,6 +581,10 @@ export interface LogisticsObjectEnv {
   /** The key to custody's `/produce/*` door; `wrangler secret put`, the
    *  founder's alone. Unset ⇒ the outbox rests honestly, nothing is lost. */
   readonly SERA_PRODUCE_SECRET?: string;
+  /** The media Worker's audio door (`AudioRead`), reachable only through this
+   *  binding: the buyer's voice note is served to her accepted rider through
+   *  `/rider/repere-audio`, never from an open link. Unbound ⇒ that door 404s. */
+  readonly MEDIA_AUDIO?: { fetch(request: Request): Promise<Response> };
 }
 
 export class LogisticsDO {
@@ -3394,6 +3404,39 @@ export class LogisticsDO {
         return Response.json({ ok: true, rider: this.riderView(riderId) });
       }
       /**
+       * The buyer's voice note, for HER accepted rider only (Séra Build Spec
+       * §1: courier access to her location is just-in-time, task-scoped,
+       * expiring). Nothing in the request names the note: it is the brief of
+       * HIS course while that course is accepted. Every other case — no
+       * course, offered or pending offline, no note, the course ended, the
+       * media door refusing — is the one uniform 404, so his code learns
+       * nothing about any other course. Never cached: it is her voice.
+       */
+      if (request.method === 'GET' && pathname === '/rider/repere-audio') {
+        const absent = Response.json({ ok: false, reason: 'not_found' }, { status: 404 });
+        const course = this.book
+          .snapshot()
+          .assignments.map(([, r]) => r)
+          .find((r) => r.riderId === riderId && ACTIVE_ASSIGNMENT_STATUSES.includes(r.status));
+        const ref = course?.status === 'acknowledged' ? this.briefs[course.taskId]?.repereAudioRef : undefined;
+        const media = this.env.MEDIA_AUDIO;
+        if (ref === undefined || !isMediaRef(ref) || media === undefined) return absent;
+        const range = request.headers.get('Range');
+        let answer: Response;
+        try {
+          answer = await media.fetch(new Request(`https://media/${ref}`, { method: 'GET', headers: range === null ? {} : { Range: range } }));
+        } catch {
+          return absent;
+        }
+        if (answer.status !== 200 && answer.status !== 206 && answer.status !== 416) return absent;
+        const headers = new Headers({ 'Cache-Control': 'private, no-store' });
+        for (const name of ['Content-Type', 'Content-Range', 'Accept-Ranges']) {
+          const value = answer.headers.get(name);
+          if (value !== null) headers.set(name, value);
+        }
+        return new Response(answer.body, { status: answer.status, headers });
+      }
+      /**
        * ⚠ SE-LIVE-4d — THE SOS WIRE (founder order, 2026-08-07). Until this
        * route existed the rider app's SOS reached NOTHING: the raise went to
        * the app's own demo store and the screen said « Alerte envoyée ». This
@@ -3728,16 +3771,25 @@ export class LogisticsDO {
               status: assignment.status,
               ackDeadline: assignment.ackDeadline,
               window: queued?.task.window ?? null,
-              location: queued?.task.location ?? null,
+              /**
+               * Her place reaches him just in time (Séra Build Spec §1, SE4:
+               * « access expires »): on an offered course — and on a pending
+               * offline ack, which is never an acceptance (Law 7) — the area
+               * alone, so he can decide; the pin, landmark, directions and
+               * relay once he accepted. Nothing is removed from storage.
+               */
+              location: acceptee ? (queued?.task.location ?? null) : zoneSeule(queued?.task.location),
               /**
                * COURSE-BRIEF — the founder's order: « nowhere to listen the
                * repère audio … it has to carry as well the proof photos ».
-               * Pointers only; the app fetches them from its own media base,
-               * so this read stays small on a 2G connection. A course
+               * Pointers only, so this read stays small on a 2G connection:
+               * the app fetches the photos from its own media base, and the
+               * voice note — sent only once he accepted — through this
+               * Worker's rider door on his code (/rider/repere-audio). A course
                * composed before this existed answers an honest empty brief,
                * never a fabricated one.
                */
-              repereAudioRef: this.briefs[assignment.taskId]?.repereAudioRef ?? null,
+              repereAudioRef: acceptee ? (this.briefs[assignment.taskId]?.repereAudioRef ?? null) : null,
               preuvePhotoRefs: this.briefs[assignment.taskId]?.preuvePhotoRefs ?? [],
               /** RAMASSAGE — shown to its OWN rider, said to the supplier. */
               codeRamassage: acceptee ? (this.ramassage[assignment.assignmentId]?.code ?? null) : null,
