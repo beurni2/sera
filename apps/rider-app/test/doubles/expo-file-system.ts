@@ -17,7 +17,9 @@
  *   · `move(dest, { overwrite: true })` DELETES THE DESTINATION FIRST, then
  *     renames — a phone that dies between the two leaves no destination and a
  *     whole source. Without `overwrite` it throws when the destination exists.
- *     A missing source throws.
+ *     A missing source throws, and only AFTER the destination was prepared:
+ *     with `overwrite` the destination is already gone (`CopyMoveStrategy`
+ *     `prepareAsDestination` runs `deleteRecursively()` before any rename).
  *   · `text()` is asynchronous and throws on a missing file.
  *   · `rename` is not modelled: nothing in the app calls it.
  *
@@ -84,16 +86,16 @@ export class File {
   }
   async move(dest: File, options?: { overwrite?: boolean }): Promise<void> {
     const name = nameOf(this.uri);
-    const held = files.get(this.uri);
     if (death !== null && name.startsWith(death.name) && death.at === 'move-before') {
       death = null;
       throw new PhoneDied('move-before');
     }
-    if (held === undefined) throw new Error(`UnableToMoveException: no source at ${this.uri}`);
     if (files.has(dest.uri)) {
       if (options?.overwrite !== true) throw new Error('DestinationAlreadyExistsException');
       files.delete(dest.uri);
     }
+    const held = files.get(this.uri);
+    if (held === undefined) throw new Error(`UnableToMoveException: no source at ${this.uri}`);
     if (death !== null && name.startsWith(death.name) && death.at === 'move-after-delete') {
       death = null;
       throw new PhoneDied('move-after-delete');

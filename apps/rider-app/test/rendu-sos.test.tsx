@@ -1,4 +1,5 @@
-import { act, type ReactTestInstance } from 'react-test-renderer';
+import React from 'react';
+import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mountRider, wire, wiredEnv, type Route, type Screen } from './rendu';
 import { __modeChargement } from './doubles/expo-audio';
@@ -21,6 +22,7 @@ const RECEIVED = "Séra a reçu l'alerte.";
 const CALL_TOO = "Restez où vous êtes si c'est sûr. Si vous pouvez, appelez aussi Séra.";
 const NOT_YET = 'Alerte pas encore partie.';
 const SENDING = "Alerte en cours d'envoi…";
+const NOTICE = "Un envoi n'a pas pu être enregistré.";
 
 /** The file-system double the mounted app imports — fetched AFTER the module
  *  reset, so the disk this test fills is the disk the app writes to. */
@@ -206,5 +208,188 @@ describe('⚠ a slow first alert never answers for the second one', () => {
     expect([...board.incidents.keys()], 'only the first alert reached Séra').toEqual([firstId]);
     expect(s.shows(RECEIVED), 'the second alert was refused; the sheet must not say Séra has it').toBe(false);
     expect(s.shows(NOT_YET)).toBe(true);
+  }, 20_000);
+});
+
+describe('⚠ the escalated sheet has its way out too', () => {
+  it('on a wired build (no stand-in ack) the escalated sheet offers « Fermer », pressable, and it closes the sheet', async () => {
+    // A wired build never reaches « escalated » today (the dispatch hours are a
+    // fixed in-hours value), so the REAL sheet is mounted in that state.
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const { SosSheet } = await import('../src/ui/faso-sos');
+    const { t } = await import('../src/i18n');
+    const label = (k: string): string => `«${k}»`;
+    const strings = {
+      title: label('title'), confirmHint: label('confirmHint'), hold: label('hold'), cancel: label('cancel'),
+      holdNote: label('holdNote'), queued: label('queued'), queuedHint: label('queuedHint'), raised: label('raised'),
+      raisedHint: label('raisedHint'), escalated: label('escalated'), escalatedHint: label('escalatedHint'),
+      transportPending: label('transportPending'), acknowledged: label('acknowledged'),
+      acknowledgedHint: label('acknowledgedHint'), previewAck: label('previewAck'),
+      previewAckEscalated: label('previewAckEscalated'), safe: label('safe'), over: label('over'),
+      overHint: label('overHint'), close: t('sos.close'),
+    };
+    let cancelled = 0;
+    const sheet = (sandbox: boolean) =>
+      React.createElement(SosSheet, {
+        state: 'escalated',
+        strings,
+        onHoldStart: () => undefined,
+        onHoldEnd: () => undefined,
+        onCancel: () => {
+          cancelled += 1;
+        },
+        ...(sandbox ? { onSandboxAck: () => undefined } : {}),
+        onSafe: () => undefined,
+        onClose: () => undefined,
+      });
+    const closers = (tree: ReactTestRenderer) =>
+      tree.root.findAll(
+        (n) => typeof n.type === 'string' && typeof n.props['onPress'] === 'function' && textOf(n) === t('sos.close'),
+      );
+
+    let wired!: ReactTestRenderer;
+    await act(async () => {
+      wired = create(sheet(false));
+    });
+    expect(closers(wired), `exactly one « ${t('sos.close')} ». On screen: ${JSON.stringify(wired.root.findAllByType('Text' as never).map(textOf))}`).toHaveLength(1);
+    const close = closers(wired)[0]!;
+    for (let n: ReactTestInstance | null = close; n !== null; n = (n.parent as ReactTestInstance | null) ?? null) {
+      expect(n.props['pointerEvents'], '« Fermer » is rendered but unreachable').not.toBe('none');
+    }
+    expect(close.props['disabled']).not.toBe(true);
+    await act(async () => {
+      (close.props['onPress'] as () => void)();
+    });
+    expect(cancelled, '« Fermer » is wired to nothing').toBe(1);
+
+    // The demo, which has its stand-in ack, is unchanged: no « Fermer » there.
+    let demo!: ReactTestRenderer;
+    await act(async () => {
+      demo = create(sheet(true));
+    });
+    expect(closers(demo)).toHaveLength(0);
+    act(() => {
+      wired.unmount();
+      demo.unmount();
+    });
+  }, 20_000);
+});
+
+describe('⚠ the « not saved » warning stays while something is still owed', () => {
+  it('a refused save that Séra also refused: an empty drain later does not clear the warning', async () => {
+    const board: Board = { incidents: new Map(), refuse: () => true };
+    const { s, w } = await onCourse([logistiqueCourse(freshCourse(), ORDER), sosBoard(board)]);
+
+    disk.__refuseWrites('sera-outbox');
+    await s.press('SOS');
+    await holdSos(s);
+    expect(s.shows(NOT_YET), JSON.stringify(s.texts())).toBe(true);
+    expect(s.shows(NOTICE), 'the rider was not told the alert could not be saved').toBe(true);
+
+    // The next poll drains an outbox that owes nothing — but the alert that was
+    // never saved is still owed, and Séra refuses it again.
+    await s.poll();
+    const ids = sosCalls(w).map((c) => c.body?.['command_id']);
+    expect(ids.length, 'the unsaved alert was not sent again').toBeGreaterThanOrEqual(2);
+    expect(new Set(ids).size).toBe(1);
+    expect(board.incidents.size).toBe(0);
+    expect(s.shows(NOTICE), 'an empty drain cleared the warning while the alert is still owed').toBe(true);
+  }, 20_000);
+
+  const HALF = '[{"commandId":"7d0c5e1a-0000-4000-8000-000000000001","kind":"sos.raise","payload":{"riderId":"rid';
+
+  it('half an outbox file on the phone before the app opens: the rider is told', async () => {
+    disk.__seed('sera-outbox.json', HALF);
+    const { s } = await onCourse([logistiqueCourse(freshCourse(), ORDER)]);
+    expect(s.shows(NOTICE), `the damaged file was set aside in silence. On screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    expect(Object.entries(disk.__files()).filter(([n]) => n.startsWith('sera-outbox.damaged-')).map(([, b]) => b)).toEqual([HALF]);
+  }, 20_000);
+
+  it('a file set aside, then an empty drain: the warning stays, because what it held was never sent', async () => {
+    disk.__seed('sera-outbox.json', HALF);
+    const { s } = await onCourse([logistiqueCourse(freshCourse(), ORDER)]);
+    await s.poll();
+    expect(s.shows(NOTICE), 'an empty drain cleared the warning over a file set aside').toBe(true);
+  }, 20_000);
+});
+
+describe('⚠ an older alert never speaks for the sheet of a newer one', () => {
+  it('an unsaved first alert’s late 200 does not mark the second, refused, alert « reçue »', async () => {
+    // Nothing can be saved; the first alert's POST hangs until we let it go;
+    // Séra takes that first alert and refuses every other one.
+    const gate: { open?: () => void } = {};
+    let firstId: string | null = null;
+    const board: Board = { incidents: new Map(), refuse: (id) => id !== firstId };
+    const slowFirst = (inner: typeof fetch): typeof fetch =>
+      (async (input: string, init?: RequestInit): Promise<Response> => {
+        if (firstId === null && String(input).endsWith('/rider/sos')) {
+          firstId = JSON.parse(String(init?.body))['command_id'] as string;
+          await new Promise<void>((r) => {
+            gate.open = r;
+          });
+        }
+        return inner(input, init);
+      }) as typeof fetch;
+    const { s, w } = await onCourse([logistiqueCourse(freshCourse(), ORDER), sosBoard(board)], slowFirst);
+
+    disk.__refuseWrites('sera-outbox');
+    await s.press('SOS');
+    await holdSos(s);
+    expect(gate.open, 'the first, unsaved alert is on the wire').toBeDefined();
+    expect(s.shows(SENDING)).toBe(true);
+    await s.press('Fermer');
+
+    await s.press('SOS');
+    await holdSos(s);
+    expect(sosCalls(w).filter((c) => c.body?.['command_id'] !== firstId), 'the second alert was sent').toHaveLength(1);
+    expect(s.shows(NOT_YET), JSON.stringify(s.texts())).toBe(true);
+
+    gate.open!();
+    for (let i = 0; i < 8; i += 1) await s.settle();
+    expect([...board.incidents.keys()]).toEqual([firstId]);
+    expect(s.shows(RECEIVED), 'the first alert’s late 200 marked the refused second one « reçue »').toBe(false);
+    expect(s.shows(NOT_YET)).toBe(true);
+  }, 20_000);
+
+  it('an old alert’s 200 landing while the next one is being confirmed does not carry « reçue » onto it', async () => {
+    // Every alert's POST waits until we let it go, one by one.
+    const held = new Map<string, () => void>();
+    const holdEach = (inner: typeof fetch): typeof fetch =>
+      (async (input: string, init?: RequestInit): Promise<Response> => {
+        if (String(input).endsWith('/rider/sos')) {
+          const id = JSON.parse(String(init?.body))['command_id'] as string;
+          await new Promise<void>((r) => {
+            held.set(id, r);
+          });
+        }
+        return inner(input, init);
+      }) as typeof fetch;
+    const board: Board = { incidents: new Map(), refuse: () => false };
+    const { s } = await onCourse([logistiqueCourse(freshCourse(), ORDER), sosBoard(board)], holdEach);
+
+    await s.press('SOS');
+    await holdSos(s);
+    const [first] = [...held.keys()];
+    expect(first, 'the first alert is on the wire').toBeDefined();
+    await s.press('Fermer');
+
+    // The rider opens the sheet again; while he is still to hold, the first
+    // alert's 200 lands.
+    await s.press('SOS');
+    expect(s.shows(HOLD)).toBe(true);
+    held.get(first!)!();
+    for (let i = 0; i < 8; i += 1) await s.settle();
+    expect([...board.incidents.keys()]).toEqual([first]);
+
+    await holdSos(s);
+    const second = [...held.keys()].find((id) => id !== first);
+    expect(second, 'the second alert is on the wire').toBeDefined();
+    expect(s.shows(RECEIVED), 'the second alert is still in the air; « reçue » was carried over from the first').toBe(false);
+    expect(s.shows(SENDING)).toBe(true);
+
+    held.get(second!)!();
+    for (let i = 0; i < 8; i += 1) await s.settle();
+    expect(board.incidents.size).toBe(2);
+    expect(s.shows(RECEIVED)).toBe(true);
   }, 20_000);
 });

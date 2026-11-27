@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { __dieAt, __files, __resetFiles, __seed, PhoneDied } from './doubles/expo-file-system';
+import { __dieAt, __files, __resetFiles, __seed, File, Paths, PhoneDied } from './doubles/expo-file-system';
 import { createDocumentActMemoryStore, createDocumentOutboxStore, onFileKeptAside } from '../src/offline/documentStore';
 import { append, flush, restore, type FlushOutcome, type OutboxEntry } from '../src/offline/outbox';
 import { appendSosRaise, SOS_RAISE_KIND, type SosRaiseIntent } from '../src/offline/sos';
 import { drainOnReconnect, stillPending } from '../src/offline/backlog';
 import { httpSosSender } from '../src/net/sos-wire';
 import { mintCommandId } from '../src/offline/commandId';
-import { loadActMemory, rememberAct } from '../src/net/act-memory';
+import { forgetActs, loadActMemory, rememberAct, type ActMemoryStore } from '../src/net/act-memory';
 
 /**
  * ═══ A RIDER'S SOS IS NEVER LOST ON THE PHONE ═══
@@ -158,6 +158,32 @@ describe('⚠ a second SOS saved while the first is still being sent is never wi
     expect(await restore(createDocumentOutboxStore())).toEqual([]);
   });
 
+  it('a second SOS saved just as the first one’s 200 is being settled is kept, however close the two are', async () => {
+    // The drain's removal re-reads the file and writes it back. If that ran
+    // outside the one-at-a-time lane, a save landing in the few steps between
+    // its read and its write would be erased. Every distance is tried.
+    for (let k = 0; k <= 40; k += 1) {
+      __resetFiles();
+      const store = createDocumentOutboxStore();
+      const first = mintCommandId();
+      const second = mintCommandId();
+      await appendSosRaise(store, first, intent);
+      const answer: { now?: () => void } = {};
+      const fetchFn = (): Promise<Response> =>
+        new Promise((resolve) => {
+          answer.now = () => resolve(okBody());
+        });
+      const draining = flush(store, httpSosSender('http://logistics.test', CODE, fetchFn));
+      await until(() => answer.now !== undefined, 'the first SOS is on the wire');
+      answer.now!();
+      for (let i = 0; i < k; i += 1) await Promise.resolve();
+      await appendSosRaise(store, second, intent);
+      expect(await draining).toEqual([{ commandId: first, outcome: 'applied' }]);
+      expect(await stillPending(store, second), `the second SOS, saved ${k} steps after the first one’s 200, was wiped`).toBe(true);
+      expect(await stillPending(store, first)).toBe(false);
+    }
+  });
+
   it('two SOS saved in the same instant are both kept', async () => {
     const store = createDocumentOutboxStore();
     const a = mintCommandId();
@@ -264,5 +290,74 @@ describe('⚠ a phone that dies while saving keeps its list', () => {
     __dieAt({ at: 'write-half', name: 'sera-outbox.json' });
     await expect(append(createDocumentOutboxStore(), sos(next))).rejects.toThrow(PhoneDied);
     expect(await afterRelaunch()).toEqual([before]);
+  });
+});
+
+describe('⚠ one store object per file, for the life of the app', () => {
+  it('each device factory hands back the same object on every call, and the two files never share one', () => {
+    expect(createDocumentOutboxStore(), 'a second outbox object would get a lane of its own').toBe(createDocumentOutboxStore());
+    expect(createDocumentActMemoryStore(), 'a second act-memory object would get a lane of its own').toBe(createDocumentActMemoryStore());
+    expect(createDocumentOutboxStore()).not.toBe(createDocumentActMemoryStore());
+  });
+
+  it('two saves made through two calls of the factory, in the same instant, are both kept', async () => {
+    const a = mintCommandId();
+    const b = mintCommandId();
+    await Promise.all([appendSosRaise(createDocumentOutboxStore(), a, intent), appendSosRaise(createDocumentOutboxStore(), b, intent)]);
+    expect((await restore(createDocumentOutboxStore())).map((e) => e.commandId).sort()).toEqual([a, b].sort());
+  });
+});
+
+describe('⚠ the act memory reads and writes one at a time too', () => {
+  /** A memory whose every read and write takes a few turns, and says when it
+   *  starts — so two calls started together really can overlap. */
+  function slowMemory(): ActMemoryStore & { readonly log: string[] } {
+    let held: string | null = null;
+    const log: string[] = [];
+    const turns = async (): Promise<void> => {
+      for (let i = 0; i < 5; i += 1) await Promise.resolve();
+    };
+    return {
+      log,
+      async read() {
+        log.push('read');
+        await turns();
+        return held;
+      },
+      async write(s: string) {
+        log.push('write');
+        await turns();
+        held = s;
+      },
+      async keepAside() {
+        log.push('keepAside');
+      },
+    };
+  }
+
+  it('a stage remembered and a load started in the same instant: the load sees the stage', async () => {
+    const memory = slowMemory();
+    const [, loaded] = await Promise.all([
+      rememberAct(memory, { orderId: 'ord-1', stage: 'custody_taken' }),
+      loadActMemory(memory, 'ord-1'),
+    ]);
+    expect(memory.log, 'the load read the memory in the middle of the save').toEqual(['read', 'write', 'read']);
+    expect(loaded?.stage).toBe('custody_taken');
+  });
+
+  it('a stage remembered and a sign-out started in the same instant: the memory is forgotten', async () => {
+    const memory = slowMemory();
+    await Promise.all([rememberAct(memory, { orderId: 'ord-1', stage: 'custody_taken' }), forgetActs(memory)]);
+    expect(memory.log, 'the sign-out read the memory in the middle of the save').toEqual(['read', 'write', 'read', 'write']);
+    expect(await loadActMemory(memory, 'ord-1'), 'a stage survived the sign-out').toBeNull();
+  });
+});
+
+describe('⚠ the stand-in phone is never kinder than the real one', () => {
+  it('a move with overwrite whose source is missing has already deleted its destination when it fails', async () => {
+    __seed('sera-outbox.json', '[]');
+    const missing = new File(Paths.document, 'sera-outbox.json.tmp');
+    await expect(missing.move(new File(Paths.document, 'sera-outbox.json'), { overwrite: true })).rejects.toThrow(/no source/);
+    expect(Object.keys(__files()), 'the native code deletes the destination before it looks for the source').not.toContain('sera-outbox.json');
   });
 });

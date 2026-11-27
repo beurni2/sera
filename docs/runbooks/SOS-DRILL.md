@@ -22,7 +22,7 @@
 
 Both paths exist in code and both must be exercised in the drill.
 
-> **Where the live SOS is seen (correction, 2026-11-27).** A rider's real SOS is recorded by the logistics service and is seen on the **founder's Boutik+ console**, once that console's SOS desk is released. The SOS shown on the **dispatch console** is a **practice** one: it is never the rider's real alert. Until the Boutik+ desk is live, nobody is woken at night, so the rider's « reçue » sheet also tells him to call Séra.
+> **Where the live SOS is seen (correction, 2026-11-27).** A rider's real SOS is recorded by the logistics service and is seen on the **founder's Boutik+ console**, once that console's SOS desk is released. The SOS shown on the **dispatch console** is a **practice** one: it is never the rider's real alert. Night alerts by SMS come later; until then the rider's « reçue » sheet also asks him to call Séra.
 
 ---
 
