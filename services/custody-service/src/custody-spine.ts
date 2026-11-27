@@ -1129,6 +1129,8 @@ export class CustodySpine {
   fileCustodyLiabilityClaim(raw: unknown, at: string):
     | { ok: true; claim: CustodyLiabilityClaim; event: PlatformEvent }
     | { ok: false; reason: SpineRefusal | 'claim_not_canonical' } {
+    // A parcel declared lost already carries its one claim.
+    if (this.lostDeclared) return { ok: false, reason: 'colis_declare_perdu' };
     if (this.returnFlow === null) return { ok: false, reason: 'return_not_open' };
     const parsed = CustodyLiabilityClaimSchema.safeParse(raw);
     if (!parsed.success) return { ok: false, reason: 'claim_not_canonical' };

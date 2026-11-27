@@ -91,15 +91,19 @@ interface Hold {
   custody?: Miniflare;
   logistics?: Miniflare;
   shop: ShopDoor;
+  /** Test-code binding: this article's first lost relay answers 503, once. */
+  failRelayOnceFor?: string;
+  /** Every lost relay logistics sent, by article. */
+  relays: string[];
 }
 
-function spawnCustody(hold: Hold): Miniflare {
-  const mf = new Miniflare({
+function custodyOptions(hold: Hold, persist: string, withShopKey: boolean) {
+  return {
     modules: [{ type: 'ESModule', path: 'custody-worker.mjs', contents: readFileSync(CUSTODY_SCRIPT, 'utf8') }],
     compatibilityDate: '2025-07-05',
     compatibilityFlags: ['nodejs_compat'],
     durableObjects: { CUSTODY: 'CustodyDO', PACKAGE_CLAIM: 'PackageClaimDO' },
-    durableObjectsPersist: mkdtempSync(join(tmpdir(), 'perdu-custody-')),
+    durableObjectsPersist: persist,
     serviceBindings: {
       LOGISTICS: (request: Request) => hold.logistics!.dispatchFetch(request.url, request as never) as never,
       SHOP_PROGRESS: ((request: Request) => shopStandIn(hold.shop, request)) as never,
@@ -110,9 +114,13 @@ function spawnCustody(hold: Hold): Miniflare {
       SHOP_ARM_SECRET: SHOP_ARM_KEY,
       SERA_RIDER_VERIFY_SECRET: VERIFY,
       SERA_COURSE_LIVREE_SECRET: LIVREE_KEY,
-      SHOP_PROGRESS_SECRET: SERA_PROGRESS,
+      ...(withShopKey ? { SHOP_PROGRESS_SECRET: SERA_PROGRESS } : {}),
     },
-  });
+  };
+}
+
+function spawnCustody(hold: Hold, persist = mkdtempSync(join(tmpdir(), 'perdu-custody-')), withShopKey = true): Miniflare {
+  const mf = new Miniflare(custodyOptions(hold, persist, withShopKey) as never);
   live.push(mf);
   hold.custody = mf;
   return mf;
@@ -125,7 +133,18 @@ function spawnLogistics(hold: Hold): Miniflare {
     durableObjects: { LOGISTICS: 'LogisticsDO' },
     durableObjectsPersist: mkdtempSync(join(tmpdir(), 'perdu-logistics-')),
     serviceBindings: {
-      CUSTODY: ((request: Request) => hold.custody!.dispatchFetch(request.url, request as never)) as never,
+      CUSTODY: (async (request: Request) => {
+        if (new URL(request.url).pathname === '/produce/colis/perdu') {
+          const body = (await request.clone().json().catch(() => null)) as Json | null;
+          const id = String(body?.['orderId']);
+          hold.relays.push(id);
+          if (hold.failRelayOnceFor === id) {
+            hold.failRelayOnceFor = undefined;
+            return Response.json({ ok: false, reason: 'unavailable' }, { status: 503 });
+          }
+        }
+        return hold.custody!.dispatchFetch(request.url, request as never);
+      }) as never,
     },
     bindings: {
       SERA_OPS_SECRET: OPS,
@@ -140,11 +159,12 @@ function spawnLogistics(hold: Hold): Miniflare {
   return mf;
 }
 
-function both(known: string[]): { logistics: Miniflare; custody: Miniflare; shop: ShopDoor } {
-  const hold: Hold = { shop: shopDoor(known) };
+function both(known: string[], opts: { withShopKey?: boolean } = {}) {
+  const hold: Hold = { shop: shopDoor(known), relays: [] };
+  const persist = mkdtempSync(join(tmpdir(), 'perdu-custody-'));
   spawnLogistics(hold);
-  spawnCustody(hold);
-  return { logistics: hold.logistics!, custody: hold.custody!, shop: hold.shop };
+  spawnCustody(hold, persist, opts.withShopKey ?? true);
+  return { logistics: hold.logistics!, custody: hold.custody!, shop: hold.shop, hold, persist };
 }
 
 async function ops(mf: Miniflare, path: string, body?: unknown): Promise<{ status: number; json: Json }> {
@@ -455,4 +475,97 @@ describe('the founder declares a parcel lost on the road — both real Workers',
     expect(await custodian(custody, O)).toBe('lost:sera');
     await attendre(async () => shop.accepted.filter((e) => (e['payload'] as Json)['orderId'] === O).length, (n) => n === 1, 'package.lost.v1 never reached Shop+');
   }, 120_000);
+
+  it('custody is silent once on the second article: the first is lost, the second still with the rider, the course still his, Shop+ hears only the first — the same-id retry completes it, one claim and one event each', async () => {
+    const A = 'ord-perdu-mi-a';
+    const B = 'ord-perdu-mi-b';
+    const RIDER = 'rider-perdu-mi';
+    const { logistics, custody, shop, hold } = both([A, B]);
+    const { code, assignmentId } = await colisConfie(logistics, [A, B], RIDER, 'pm');
+    await prisEnCharge(custody, logistics, [A, B], code);
+    hold.failRelayOnceFor = B;
+    const corps = { command_id: 'perdu-mi', orderId: A, montants: [{ orderId: A, amount: 3_000 }, { orderId: B, amount: 4_000 }] };
+    expect(await perdu(logistics, corps)).toEqual({ status: 503, json: { ok: false, reason: 'custody_unreachable' } });
+    expect(await custodian(custody, A)).toBe('lost:sera');
+    expect(await custodian(custody, B)).toBe(`courier:${RIDER}`);
+    expect(await moi(logistics, code)).toMatchObject({ assignmentId });
+    await attendre(async () => shop.accepted.length, (n) => n === 1, 'package.lost.v1 for the first article never reached Shop+');
+    await new Promise((r) => setTimeout(r, 1_000));
+    expect(shop.accepted.map((e) => (e['payload'] as Json)['orderId'])).toEqual([A]);
+
+    expect(await perdu(logistics, corps)).toEqual({ status: 200, json: { ok: true, status: 'declare' } });
+    for (const o of [A, B]) expect(await custodian(custody, o), o).toBe('lost:sera');
+    expect(await claims(custody, A)).toHaveLength(1);
+    expect(await claims(custody, B)).toHaveLength(1);
+    expect(await moi(logistics, code)).toBeNull();
+    await attendre(async () => shop.accepted.length, (n) => n === 2, 'package.lost.v1 for the second article never reached Shop+');
+    await new Promise((r) => setTimeout(r, 1_000));
+    expect(shop.accepted.map((e) => (e['payload'] as Json)['orderId']).sort()).toEqual([A, B]);
+  }, 60_000);
+
+  it('the same declaration sent twice at once: both answered 200, one claim and one event per order', async () => {
+    const A = 'ord-perdu-dbl-a';
+    const B = 'ord-perdu-dbl-b';
+    const { logistics, custody, shop } = both([A, B]);
+    const { code } = await colisConfie(logistics, [A, B], 'rider-perdu-dbl', 'pdb');
+    await prisEnCharge(custody, logistics, [A, B], code);
+    const corps = { command_id: 'perdu-dbl', orderId: A, montants: [{ orderId: A, amount: 3_000 }, { orderId: B, amount: 4_000 }] };
+    const [un, deux] = await Promise.all([perdu(logistics, corps), perdu(logistics, corps)]);
+    for (const r of [un, deux]) {
+      expect(r.status, JSON.stringify(r.json)).toBe(200);
+      expect(['declare', 'deja_declare']).toContain(r.json['status']);
+    }
+    for (const o of [A, B]) {
+      expect(await custodian(custody, o), o).toBe('lost:sera');
+      expect(await claims(custody, o), o).toHaveLength(1);
+    }
+    await attendre(async () => shop.accepted.length, (n) => n === 2, 'package.lost.v1 never reached Shop+');
+    await new Promise((r) => setTimeout(r, 1_000));
+    expect(shop.accepted.map((e) => (e['payload'] as Json)['orderId']).sort()).toEqual([A, B]);
+  }, 60_000);
+
+  it('a lost message resting unsent for want of Shop+\'s key wakes on the founder\'s retry: the archive answers deja_declare, the relay reaches custody, custody\'s deja_declare revives the row', async () => {
+    const O = 'ord-perdu-repos';
+    const { logistics, custody, shop, hold, persist } = both([O], { withShopKey: false });
+    const { code } = await colisConfie(logistics, [O], 'rider-perdu-repos', 'prp');
+    await prisEnCharge(custody, logistics, [O], code);
+    const corps = { command_id: 'perdu-repos', orderId: O, montants: [{ orderId: O, amount: 2_500 }] };
+    expect(await perdu(logistics, corps)).toEqual({ status: 200, json: { ok: true, status: 'declare' } });
+    await new Promise((r) => setTimeout(r, 1_500));
+    expect(shop.calls, 'no key: nothing is sent').toEqual([]);
+    // The founder sets the key (the same storage, the Worker restarted with it).
+    await custody.setOptions(custodyOptions(hold, persist, true) as never);
+    hold.relays.length = 0;
+    expect(await perdu(logistics, { ...corps, command_id: 'perdu-repos-2' })).toEqual({ status: 200, json: { ok: true, status: 'deja_declare' } });
+    expect(hold.relays, 'the retry reached custody').toEqual([O]);
+    await attendre(async () => shop.accepted.length, (n) => n === 1, 'the rested row never woke');
+    expect(await claims(custody, O)).toHaveLength(1);
+    // Amounts that do not name the archived articles: answered the same, nothing relayed.
+    hold.relays.length = 0;
+    expect(await perdu(logistics, { command_id: 'perdu-repos-3', orderId: O, montants: [{ orderId: 'ord-autre', amount: 1 }] }))
+      .toEqual({ status: 200, json: { ok: true, status: 'deja_declare' } });
+    expect(hold.relays).toEqual([]);
+  }, 60_000);
+
+  it('the lost declaration is never a rider\'s act nor Shop+\'s: rider door 404, Shop+ arm key 404, a rider code on logistics\' founder door 401', async () => {
+    const O = 'ord-perdu-portes';
+    const { logistics, custody } = both([O]);
+    const { code } = await colisConfie(logistics, [O], 'rider-perdu-portes', 'ppo');
+    await prisEnCharge(custody, logistics, [O], code);
+    const rider = await riderCustody(custody, '/rider/colis/perdu', code, { orderId: O, command_id: 'r-perdu', amount: 1_000 });
+    expect(rider).toEqual({ status: 404, json: { ok: false, reason: 'not_found' } });
+    const shopKey = await custody.dispatchFetch('http://custody/produce-shop/colis/perdu', {
+      method: 'POST', headers: { Authorization: `Bearer ${SHOP_ARM_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderId: O, command_id: 's-perdu', amount: 1_000 }),
+    });
+    expect({ status: shopKey.status, json: await shopKey.json() }).toEqual({ status: 404, json: { ok: false, reason: 'not_found' } });
+    const riderOnLogistics = await logistics.dispatchFetch('http://logistics/ops/colis/perdu', {
+      method: 'POST', headers: { Authorization: `Bearer ${code}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command_id: 'l-perdu', orderId: O, montants: [{ orderId: O, amount: 1_000 }] }),
+    });
+    expect(riderOnLogistics.status).toBe(401);
+    await riderOnLogistics.text();
+    expect(await custodian(custody, O)).toMatch(/^courier:/);
+    expect(await claims(custody, O)).toEqual([]);
+  }, 60_000);
 });

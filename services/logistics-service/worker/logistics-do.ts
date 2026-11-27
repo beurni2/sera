@@ -3213,20 +3213,47 @@ export class LogisticsDO {
       }
       const commandId = (body['command_id'] as string).trim();
       const orderId = (body['orderId'] as string).trim();
-      const active = this.courseDe(orderId);
-      if (active === undefined) {
-        const archive = await this.archiveDeCourse(orderId);
-        if (archive?.assignments.some((a) => a.status === 'lost') === true) return Response.json({ ok: true, status: 'deja_declare' });
-        return Response.json({ ok: false, reason: 'no_active_course' }, { status: 409 });
-      }
-      const articles = this.ordresDeCourse(active);
       const montantDe = new Map<string, number>();
       for (const m of montants as { orderId: string; amount: number }[]) montantDe.set(m.orderId.trim(), m.amount);
-      if (montantDe.size !== montants.length || montantDe.size !== articles.length || !articles.every((id) => montantDe.has(id))) {
-        return Response.json({ ok: false, reason: 'montants_incomplets' }, { status: 400 });
-      }
+      const couvre = (ids: readonly string[]): boolean =>
+        montantDe.size === montants.length && montantDe.size === ids.length && ids.every((id) => montantDe.has(id));
       const custody = this.env.CUSTODY;
       const key = this.env.SERA_PRODUCE_SECRET ?? '';
+      const relayer = (id: string): Promise<Response> => custody!.fetch(new Request('https://custody/produce/colis/perdu', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+        body: JSON.stringify({ orderId: id, command_id: `perdu-${commandId}`, amount: montantDe.get(id), at: now }),
+      }));
+      /**
+       * Already closed lost: the archive is the answer. Each article's file is
+       * still told again, best effort, so a lost-parcel message resting
+       * unsent (its key was missing) wakes on the founder's retry; each file
+       * answers `deja_declare` and files nothing.
+       */
+      const dejaDeclare = async (): Promise<Response | null> => {
+        const closed = await this.archiveDeCourse(orderId);
+        const perdue = closed?.assignments.find((a) => a.status === 'lost');
+        if (closed === undefined || perdue === undefined) return null;
+        const membres = closed.colisCourses[perdue.assignmentId]?.orderIds ?? [perdue.orderId];
+        if (custody !== undefined && key !== '' && couvre(membres)) {
+          for (const id of membres) {
+            try {
+              await (await relayer(id)).text();
+            } catch {
+              // Best effort: the archive already says the course is lost.
+            }
+          }
+        }
+        return Response.json({ ok: true, status: 'deja_declare' });
+      };
+      const active = this.courseDe(orderId);
+      if (active === undefined) {
+        return (await dejaDeclare()) ?? Response.json({ ok: false, reason: 'no_active_course' }, { status: 409 });
+      }
+      const articles = this.ordresDeCourse(active);
+      if (!couvre(articles)) {
+        return Response.json({ ok: false, reason: 'montants_incomplets' }, { status: 400 });
+      }
       if (custody === undefined || key === '') return Response.json({ ok: false, reason: 'custody_non_relie' }, { status: 503 });
       for (const id of articles) {
         if ((await this.readCustodian(id, now)) === 'unknown') {
@@ -3242,11 +3269,7 @@ export class LogisticsDO {
       for (const id of articles) {
         let res: Response;
         try {
-          res = await custody.fetch(new Request('https://custody/produce/colis/perdu', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-            body: JSON.stringify({ orderId: id, command_id: `perdu-${commandId}`, amount: montantDe.get(id), at: now }),
-          }));
+          res = await relayer(id);
         } catch {
           return Response.json({ ok: false, reason: 'custody_unreachable' }, { status: 503 });
         }
@@ -3258,9 +3281,11 @@ export class LogisticsDO {
         }
         if (answer?.['status'] === 'declare') declare = true;
       }
-      // The course closed and moved while custody answered: nothing is written over it.
+      // The course closed while custody answered — by the same declaration
+      // arriving twice, or otherwise: nothing is written over it.
       if (this.courseDe(orderId)?.assignmentId !== active.assignmentId) {
-        return Response.json({ ok: false, reason: 'no_active_course' }, { status: 409 });
+        if (this.book.get(active.assignmentId)?.status === 'lost') return Response.json({ ok: true, status: 'deja_declare' });
+        return (await dejaDeclare()) ?? Response.json({ ok: false, reason: 'no_active_course' }, { status: 409 });
       }
       const outcome = await this.dispatch.declareLost(active.orderId, now);
       if (outcome.ok && !outcome.duplicate) this.archiverCourse(outcome.assignment, now);

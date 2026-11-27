@@ -75,6 +75,17 @@ describe('the founder declares a parcel lost on the road — the custody spine',
     expect(spine.ledger.currentCustodian(CHAIN.package_id)).toBe('lost:sera');
   });
 
+  it('a liability claim on a file already lost:sera is refused colis_declare_perdu — the declaration carries its one claim', () => {
+    const spine = sealed();
+    expect(spine.recordDoorRefusal('insufficient_balance', T).ok).toBe(true);
+    expect(spine.escalateExpiredWindow('2026-11-27T09:20:00.000Z').ok).toBe(true);
+    expect(spine.openReturn({ returnSealId: 'rs-1', at: T2 }).ok).toBe(true);
+    expect(spine.declareLost(8_000, T2)).toEqual({ ok: true, already: false });
+    const claim = { orderId: CHAIN.order_id, cause: 'sera_loss', amount: 8_000, evidenceBundleId: 'sans-photo', state: 'opened' };
+    expect(spine.fileCustodyLiabilityClaim(claim, T2)).toEqual({ ok: false, reason: 'colis_declare_perdu' });
+    expect(spine.allLiabilityClaims()).toHaveLength(1);
+  });
+
   it('an amount the canon claim refuses is refused and moves nothing', () => {
     const spine = sealed();
     expect(spine.declareLost(12.5, T2)).toEqual({ ok: false, reason: 'claim_not_canonical' });
