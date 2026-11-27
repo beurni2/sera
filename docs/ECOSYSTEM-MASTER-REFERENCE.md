@@ -22,12 +22,12 @@ The ecosystem resolves all four problems at once:
 |---|---|---|---|---|
 | 1 | **Boutik+ supplier app** | `boutik-plus` | Suppliers | Part 4 |
 | 2 | **Shop+ reseller app** | `shop-plus` | Resellers | Part 5 |
-| 3 | **The client PWA** *(no install, no account)* | `shop-plus` | **Buyers** | **Part 6** |
+| 3 | **The client PWA** *(no install; an account offered, never required)* | `shop-plus` | **Buyers** | **Part 6** |
 | 4 | **Séra rider app** | `sera` | Riders | Part 7 |
 | 5 | **The dispatch console** | `sera` | **Dispatchers** | **Part 8** |
 | 6 | **The platform Ops console** | ⚠ *no home yet — decision open* | **Ops, risk, finance, moderation** | **Part 9** |
 
-**The client and the two internal surfaces are not afterthoughts.** The client is the only participant with no account and no relationship with the platform — she must be won cold, in five seconds. And the dispatcher and the ops operator are the two humans standing between a clean ledger and a silent disaster.
+**The client and the two internal surfaces are not afterthoughts.** The client is the only participant who needs no account and no relationship with the platform — she must be won cold, in five seconds. *(Amended 2026-09-24, founder: she may keep an account of her own, offered at her boutique's door and never required.)* And the dispatcher and the ops operator are the two humans standing between a clean ledger and a silent disaster.
 
 **The chain, compressed:** Boutik+ holds the product truth → Shop+ turns it into a reseller's offer and a buyer's checkout → the buyer pays through a licensed provider → Séra verifies at pickup, seals, carries, and hands over only after payment is authoritatively confirmed → the buyer's drop code closes the loop → the ledger settles everyone.
 
@@ -144,7 +144,7 @@ She sees **2 000 FCFA**, never "2 500 FCFA gross (minus fees)". Gross-first disp
 
 | Secret | Held by | Proves |
 |---|---|---|
-| **Readiness challenge** | Supplier → server | The package is genuinely prepared |
+| **Readiness challenge** | Server → supplier's app → server (never displayed) | The « prêt » is one fresh act, not a replay — the photo shows the package; one challenge per package |
 | **Pickup verification** | Rider, at the supplier | The goods objectively match the locked order |
 | **`HandoffAuthorization`** | the signed handoff authorization (Option B door confirmation / break-glass) | never substitutable — a rider's word is not payment truth |
 | **`buyerDropCode`** | The buyer alone | The buyer actually received it |
@@ -241,7 +241,7 @@ The supplier sets **B** and **C**, and sees the whole waterfall before committin
 
 ## B+6 — Fulfillment & package readiness *(the first secret)*
 
-**Flow:** funded order arrives → supplier prepares → **confirms "Produit prêt"** with readiness evidence (photo + challenge response) → the order becomes dispatchable.
+**Flow:** funded order arrives → supplier prepares → **confirms "Produit prêt"** with readiness evidence (the photo, sent with the server's single-use readiness challenge — never displayed or typed; one per package) → the order becomes dispatchable.
 
 **B+I-06:** Séra is **not** called until readiness is confirmed. A rider sent to a supplier who hasn't packed is a wasted trip charged to nobody — so it must not happen.
 **The forbidden shortcut:** readiness evidence **must never contain the `buyerDropCode`**.
@@ -283,7 +283,7 @@ Every product card leads with **her net earning**, not the price.
 > Robe wax · Prix client **11 500 FCFA** · **Vous gagnez 2 000 FCFA net**
 
 **Options per product:** choose it · adjust markup (M) · see the seller's tier and reliability · see stock · see delivery eligibility.
-**SP-I05 (amended 2026-09-17, founder):** **no cross-reseller discovery** — a buyer reaches a store only through that reseller's signed link or QR; no buyer surface lists, searches, or ranks stores or products across resellers. The platform never turns her customers into a commodity pool other resellers can fish in, and never lets a buyer she brought shop around for a cheaper markup.
+**SP-I05 (amended 2026-09-17, founder):** **no cross-reseller discovery** — a buyer reaches a store only through that reseller's signed link or QR; no buyer surface lists, searches, or ranks stores or products across resellers. The platform never turns her customers into a commodity pool other resellers can fish in, and never lets a buyer she brought shop around for a cheaper markup. *(Founder ruling 2026-09-25: a signed-in buyer's own « Mon compte » may show the articles she kept or liked in boutiques she entered through their links, by boutique and never with a price — her own shelf, not discovery; Shop+ Build Spec SP-I05, §7 SP6.)*
 **SP-I03:** she sees a *product*, never the supplier's identity or contact. (One bounded exception exists — the diaspora **Enseigne** trust projection — and it is out of scope for now.)
 
 ### SP3 — Listing & storefront *(« Ma vitrine »)*
@@ -326,7 +326,7 @@ The buyer PWA (**SP6**) ships from the `shop-plus` repo — but it is not a sub-
 Every other participant has an account, an app, and a relationship with the platform. **The client has none of those.** She has a relationship with *Aïcha*. She arrives cold, from a WhatsApp status, on a borrowed-feeling web page, about to consider giving money to a stranger's link in a country where that is how people get robbed.
 
 **Everything about this surface follows from that fact:**
-- **No install wall. No account wall.** She can buy without ever creating anything.
+- **No install wall. No account wall.** She can buy without ever creating anything. *(Founder ruling 2026-09-24: an account is OFFERED — a boutique link opens on « create an account · sign in · continue without one » — and never required; continuing without one is a full road, never a whisper.)*
 - **Trust must be earned in seconds, cold, with no history.** The reseller's name, « Livré par Séra », « Paiement protégé » — visible before anything is asked of her.
 - **The reseller is the face; the platform is the guarantee behind her.** Never the reverse (SP-I03).
 
@@ -398,7 +398,7 @@ Receipt · *(gated)* **« Laisser un avis vérifié »** — proof that **only a
 4. **Never asked for a street address** you don't have.
 5. **Your number is never given to a stranger** — masked relay, both directions.
 6. **You never see, and never pay, a hidden commission** — the price is the price.
-7. **No account, no install, no trap** — buy and leave.
+7. **No account required, no install, no trap** — buy and leave.
 8. **Your data belongs to the relationship you chose** — consent-scoped to Aïcha; invisible to other resellers (SP-I07).
 
 ## 6.4 The refusal ladder (the one place the client faces consequences)

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { PackageLostEventSchema } from '@platform/contracts';
 import { CustodySpine, type ChainIds } from '../src/custody-spine.js';
 import { ACTIVE_PICKUP_VERIFICATION_POLICY, type VerificationInput } from '../src/pickup-verification-policy.js';
 import type { DoorInspectionInput } from '../src/door-flow.js';
@@ -271,6 +272,22 @@ const COURSE_RETOURNEE_OUTBOX_KEY = 'custody:course-retournee-outbox:v1';
  * deterministic), revived by a replayed `/door/expire`.
  */
 const REPROGRAMMATION_OUTBOX_KEY = 'custody:reprogrammation-outbox:v1';
+
+/**
+ * A parcel lost on the road (founder ruling 2026-11-27) — the EIGHTH wire:
+ * `package.lost.v1` to Shop+'s progress door, which refunds that order in
+ * full. The refusal wire's exact terms: its own key, armed in the commit's
+ * one put, at-least-once, alarm-driven, `res.ok` alone decides (a 4xx is a
+ * producer bug and stays loud on both sides), `unsendable_no_config` an
+ * honest rest revived by a replayed declaration. The event is the canon one,
+ * strict-parsed whole before it is queued.
+ */
+interface LostOutbox {
+  status: 'pending' | 'delivered' | 'unsendable_no_config';
+  attempts: number;
+  event: unknown;
+}
+const LOST_OUTBOX_KEY = 'custody:lost-outbox:v1';
 
 interface CustodyHead {
   /**
@@ -553,6 +570,18 @@ export type CustodyCommand =
   | {
       kind: 'unlock_drop_code';
       command_id: string;
+      attribution: 'founder_attested';
+      at: string;
+    }
+  /**
+   * The founder declares the parcel lost on the road (ruling 2026-11-27),
+   * relayed by logistics from his console. `amount` is HIS typed amount for
+   * this order; Séra computes none. Produce door only.
+   */
+  | {
+      kind: 'declare_lost';
+      command_id: string;
+      amount: number;
       attribution: 'founder_attested';
       at: string;
     };
@@ -1024,6 +1053,8 @@ export class CustodyDO {
         return spine.applyDispatcherReturn(cmd.at);
       case 'unlock_drop_code':
         return { ok: spine.unlockDropCode() };
+      case 'declare_lost':
+        return spine.declareLost(cmd.amount, cmd.at);
     }
   }
 
@@ -1127,7 +1158,8 @@ export class CustodyDO {
     const retourneePending = await this.flushLogisticsWire(COURSE_RETOURNEE_OUTBOX_KEY, '/produce/course-retournee');
     // REPROGRAMMATION-1 — the seventh wire, same terms.
     const reprogPending = await this.flushLogisticsWire(REPROGRAMMATION_OUTBOX_KEY, '/produce/reprogrammation');
-    const attempts = Math.max(eligibilityPending, transitPending, livreePending, refusPending, retourOuvertPending, retourneePending, reprogPending);
+    const lostPending = await this.flushLost();
+    const attempts = Math.max(eligibilityPending, transitPending, livreePending, refusPending, retourOuvertPending, retourneePending, reprogPending, lostPending);
     if (attempts > 0) {
       const backoffMs = Math.min(30_000 * 2 ** Math.min(attempts, 7), 3_600_000);
       await this.state.storage.setAlarm(Date.now() + backoffMs).catch(() => undefined);
@@ -1219,6 +1251,45 @@ export class CustodyDO {
       attempts,
     } satisfies RefusOutbox);
     return attempts;
+  }
+
+  /** The lost-parcel wire, on `flushRefus`'s exact discipline. */
+  private async flushLost(): Promise<number> {
+    const outbox = await this.state.storage.get<LostOutbox>(LOST_OUTBOX_KEY);
+    if (outbox === undefined || outbox.status !== 'pending') return 0;
+    const shop = this.env.SHOP_PROGRESS;
+    const secret = this.env.SHOP_PROGRESS_SECRET ?? '';
+    if (shop === undefined || secret === '') {
+      await this.state.storage.put(LOST_OUTBOX_KEY, { ...outbox, status: 'unsendable_no_config' } satisfies LostOutbox);
+      return 0;
+    }
+    let delivered = false;
+    try {
+      const res = await shop.fetch(new Request('https://shop/fulfillment/progress', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${secret}` },
+        body: JSON.stringify(outbox.event),
+      }));
+      delivered = res.ok;
+    } catch {
+      delivered = false;
+    }
+    const attempts = outbox.attempts + 1;
+    await this.state.storage.put(LOST_OUTBOX_KEY, { ...outbox, status: delivered ? 'delivered' : 'pending', attempts } satisfies LostOutbox);
+    return delivered ? 0 : attempts;
+  }
+
+  /** A replayed declaration revives a lost row resting without config, and
+   *  re-arms an alarm a pending row lost. */
+  private async reviveLostRow(): Promise<void> {
+    const row = await this.state.storage.get<LostOutbox>(LOST_OUTBOX_KEY);
+    if (row === undefined || row.status === 'delivered') return;
+    if (row.status === 'unsendable_no_config') {
+      await this.state.storage.put(LOST_OUTBOX_KEY, { ...row, status: 'pending' } satisfies LostOutbox);
+    }
+    if ((await this.state.storage.getAlarm()) === null) {
+      await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
+    }
   }
 
   /** The transit wire — each stage row drained independently; a 404 from
@@ -1584,6 +1655,17 @@ export class CustodyDO {
      * the same derivation rebuilds a row that is missing; one that exists is
      * left to `reviveDropOutboxRows`' rule.
      */
+    /**
+     * The lost-parcel wire arms IN THE SAME PUT as the declaration, from the
+     * spine's own event, parsed whole against the canon artifact first: a
+     * body Shop+ would refuse is never queued.
+     */
+    let armLost = false;
+    const lostEvent = this.spine?.allEvents().find((e) => e.name === 'package.lost.v1');
+    if (lostEvent !== undefined && (await this.state.storage.get<LostOutbox>(LOST_OUTBOX_KEY)) === undefined) {
+      puts[LOST_OUTBOX_KEY] = { status: 'pending', attempts: 0, event: PackageLostEventSchema.parse(lostEvent) } satisfies LostOutbox;
+      armLost = true;
+    }
     let armDrop = false;
     if (cmd.kind === 'confirm_drop') {
       const dropRows = await this.absentDropRows(next);
@@ -1592,7 +1674,7 @@ export class CustodyDO {
     }
     await this.state.storage.put(puts);
     this.log = next;
-    if (armRefus || armRetour || armDrop) await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
+    if (armRefus || armRetour || armDrop || armLost) await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
   }
 
   /** The head implied by a given log, with the CURRENT rebuilt ledger. */
@@ -3150,6 +3232,61 @@ export class CustodyDO {
       const recorded: RecordedOutcome = { httpStatus: 200, body: { ok: true, status: 'debloque' } };
       await this.commit(cmd, recorded);
       return Response.json(recorded.body, { status: recorded.httpStatus });
+    }
+
+    /**
+     * A parcel lost on the road (founder ruling 2026-11-27): the founder's
+     * console act, relayed by logistics on its produce key for each article.
+     * Never a rider's act, never Shop+'s. Final: once declared, any later
+     * declaration answers `deja_declare` with no new row and no new claim.
+     */
+    if (request.method === 'POST' && pathname === '/colis/perdu') {
+      if (request.headers.get('X-Rider-Authenticated') !== null) {
+        return Response.json({ ok: false, reason: 'not_founder_door' }, { status: 409 });
+      }
+      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      const amount = body?.['amount'];
+      if (
+        body === null ||
+        !isBoundedStr(body['command_id'], MAX_ID) ||
+        typeof amount !== 'number' || !Number.isSafeInteger(amount) || amount <= 0 ||
+        (body['at'] !== undefined && !isIso(body['at']))
+      ) {
+        return malformed();
+      }
+      const cmd: CustodyCommand = {
+        kind: 'declare_lost',
+        command_id: (body['command_id'] as string).trim(),
+        amount,
+        attribution: 'founder_attested',
+        at: (body['at'] as string | undefined) ?? new Date().toISOString(),
+      };
+      const prior = this.priorFor(cmd);
+      if (prior.kind === 'duplicate') {
+        await this.reviveLostRow();
+        return this.replayOutcome(prior.outcome, cmd);
+      }
+      if (prior.kind === 'conflict') {
+        return Response.json({ ok: false, reason: 'command_id_reused_with_other_content' }, { status: 409 });
+      }
+      if (this.spine.isLostDeclared()) {
+        await this.reviveLostRow();
+        return Response.json({ ok: true, status: 'deja_declare' });
+      }
+      if (this.tooLargeToCommit(cmd)) {
+        return Response.json({ ok: false, reason: 'command_too_large' }, { status: 413 });
+      }
+      const applied = this.apply(this.spine, cmd) as { ok: true; already: boolean } | { ok: false; reason: string };
+      const recorded: RecordedOutcome = applied.ok
+        ? { httpStatus: 200, body: { ok: true, status: 'declare' } }
+        : { httpStatus: 409, body: { ok: false, reason: applied.reason } };
+      await this.commit(cmd, recorded);
+      return Response.json(recorded.body, { status: recorded.httpStatus });
+    }
+
+    /** The liability claims this file holds — the founder's read, ops door only. */
+    if (request.method === 'GET' && pathname === '/liability-claims') {
+      return Response.json({ ok: true, claims: this.spine.allLiabilityClaims() });
     }
 
     /**
