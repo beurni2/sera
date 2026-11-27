@@ -3,6 +3,20 @@ Continuity ledger per CTO charter §6/§6bis. Every entry is evidence-grounded.
 
 Format per entry:
 
+## 2026-11-27 · SOS-GARDE-1 — MERGED
+
+**Founder.** « Release all three » (2026-11-27 04:19 UTC, decision card on the batch report), which named for Séra: merge, which publishes the rider app. No server change.
+
+**Merge.** main re-checked unchanged at `5163e32`; PR #7 merged as `5e1c51b` (merge commit, the branch shas kept). On main: ci 231 green · expo-preview 164 (rider app) green.
+
+**Not deployed.** No Worker: this slice changed only the rider app and one runbook line.
+
+**Deploy note, as reported.** Riders are not on the live app yet. The Boutik+ console shows a rider's open SOS on every screen from the same release (Boutik+ SOS-DESK-1).
+
+**Still open.** As named in the slice entry below. Other open items for this slice are held in the private batch record until their fixes deploy.
+
+---
+
 ## 2026-11-27 · SOS-GARDE-1 — every rider SOS stays on the phone until Séra has it; the sent SOS sheet can be closed; the « reçue » sheet also asks him to call Séra · lane S9 · on the branch, NOT merged, NOT deployed
 
 **Founder.** « You can start the next batch » (2026-11-27 01:21 UTC, in the project chat, on the batch plan). At 01:31 UTC he chose his Boutik+ console as the place a rider's real SOS is seen. Lane S, carried onto `claude/project-thread-jqj97g` as one squashed commit `474499c` (tree equal to the lane branch's head apart from this journal).
