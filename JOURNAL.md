@@ -3,6 +3,22 @@ Continuity ledger per CTO charter §6/§6bis. Every entry is evidence-grounded.
 
 Format per entry:
 
+## 2026-11-27 · PRISE-QUI-TOURNE-MAL-1 — DEPLOYED and MERGED
+
+**Founder.** « Release all five » (2026-11-27 17:59 UTC, decision card, on the batch 5 report), which named for Séra: the custody service, then the logistics service, from the branch, then the merge. Custody first: a logistics Worker facing the previous custody refuses take-backs of acknowledged courses with 503.
+
+**Deployed from the branch at `1200330`.**
+- custody-deploy 30 (id 46046149056) green: every key armed as on the previous deploy; the first health read still showed the previous release, the next one « PROVENANCE OK — live custody Worker is 1200330 speaking canon 3.28.0 ».
+- logistics-deploy 41 (id 46046387351) green, after custody: every key armed as on the previous deploy, and « PROVENANCE OK — live logistics Worker is 1200330 speaking canon 3.28.0 ».
+
+**Merge.** platform-contracts PR #4 merged first (`dcf9740`). main re-checked unchanged at `a7c9fa4`; PR #11 merged as `b9b36a2` (merge commit, the branch shas kept). On main: ci 239 green · expo-preview 168 (rider app preview) green, both on their first attempt.
+
+**Not checked.** The live services were not called from here. The first real pickup is the check: a take-back between the check and the seal should be refused with its reason.
+
+**Still open.** As named in the slice entry below. Other open items are held in the private batch record until their fixes deploy.
+
+---
+
 ## 2026-11-27 · PRISE-QUI-TOURNE-MAL-1 — a slow handoff, a course checked but not sealed, a phone that lost Séra's answer at the stall · lane S12 · on the branch, NOT merged, NOT deployed
 
 **Founder.** « Now you start working on the next batch » (2026-11-27 15:13 UTC), batch 5 of the plan he approved: « A slow handoff no longer sends the old rider's code. A course taken back after the goods were checked, but before the seal, stays usable. A phone that died mid-pickup can carry on. » Two choices, both on decision cards, both the recommended option: « No, refuse the take-back » (15:23 UTC) and « Answer the repeat as recorded » — « If the same rider sends the same check or seal again with his code, Séra answers with what it already recorded. No new road. » (15:24 UTC).
