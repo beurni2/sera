@@ -310,6 +310,13 @@ type Calls = ReturnType<typeof wire>['calls'];
 /** The requests one custody act made, and which order each named. */
 const actes = (calls: Calls, path: string) => calls.filter((c) => c.path === path).map((c) => ({ orderId: c.body?.['orderId'], id: c.body?.['command_id'], body: c.body }));
 
+/** How long she looked at one article, as its door inspection tells custody. */
+function secondesALaPorte(w: ReturnType<typeof wire>, orderId: string): number {
+  const sent = actes(w.calls, '/rider/door/inspection').filter((f) => f.orderId === orderId).at(-1)?.body;
+  expect(sent, `no door inspection for ${orderId}`).toBeDefined();
+  return (Date.parse(String(sent?.['completedAt'])) - Date.parse(String(sent?.['startedAt']))) / 1000;
+}
+
 async function toTheDoor(state: CourseState, world: World) {
   const w = wire([logistics(state), custody(world, state.paymentMode)]);
   const s = await mountRider();
@@ -350,8 +357,11 @@ describe('COLIS-FOURNISSEUR-1 — the rider carries one package of several order
     expect(s.shows('Article 1 sur 2')).toBe(true);
     expect(s.shows('Le pagne wax')).toBe(true);
     expect(s.canPress('Un souci ?'), 'before any choice, the whole-bag ladder is still reachable').toBe(true);
+    await s.poll(6); // two minutes on the pagne
     await s.press('La cliente le garde');
     expect(world.ledgers[A]!.inspection).toBe('accepted');
+    expect(secondesALaPorte(w, A), 'the pagne: the two minutes she looked').toBeGreaterThanOrEqual(115);
+    expect(secondesALaPorte(w, A)).toBeLessThanOrEqual(125);
 
     expect(s.shows('Article 2 sur 2'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
     expect(s.shows('Les sandales')).toBe(true);
@@ -364,8 +374,11 @@ describe('COLIS-FOURNISSEUR-1 — the rider carries one package of several order
     await s.press('L’article a un problème');
     // Then the seal question.
     expect(s.shows('Le scellé Séra est-il intact ?')).toBe(true);
+    await s.poll(3); // one more minute on the sandals
     await s.press('Oui, intact');
     expect(world.ledgers[B]!.inspection, 'her refusal is on the SANDALS’ ledger').toBe('valid_rejection');
+    expect(secondesALaPorte(w, B), 'the sandals: the whole time since the bag was opened').toBeGreaterThanOrEqual(175);
+    expect(secondesALaPorte(w, B)).toBeLessThanOrEqual(185);
     expect(world.ledgers[B]!.returnOpen, 'and they are re-sealed for home at once').toBe(true);
     expect(world.ledgers[A]!.returnOpen, 'the pagne never went into the return bag').toBe(false);
 

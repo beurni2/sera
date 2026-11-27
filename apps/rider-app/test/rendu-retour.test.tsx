@@ -251,6 +251,14 @@ async function toTheDoor(routes: readonly Route[]) {
   return { s, w };
 }
 
+/** How long the buyer looked, as the LAST door inspection sent tells custody. */
+function secondesALaPorte(w: ReturnType<typeof wire>): number {
+  const sent = w.calls.filter((c) => c.path === '/rider/door/inspection');
+  const last = sent.at(-1)?.body;
+  expect(last, 'no door inspection was sent').toBeDefined();
+  return (Date.parse(String(last?.['completedAt'])) - Date.parse(String(last?.['startedAt']))) / 1000;
+}
+
 describe('⚠ RETOUR-VIVANT — the buyer-fault ladder, whole, then the road home on two machine-carried keys', () => {
   it('« Un souci ? » → a reason → the live window → retry at the door → expiry refused by the clock, then landed → « Préparer le retour » → the keys arrive on the session → both open the handover → « Colis rendu » → back in service', async () => {
     const state = courseInMode('FULL_PREPAY');
@@ -275,8 +283,8 @@ describe('⚠ RETOUR-VIVANT — the buyer-fault ladder, whole, then the road hom
 
     // The window is an honest, usable state: the ledger's hour, two ways out.
     expect(s.shows('On attend un peu.'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
-    const hour = new Date(WINDOW_END).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    expect(s.shows(`Nouvel essai avant : ${hour}`), 'the hour must be the LEDGER’s windowExpiresAt').toBe(true);
+    // 09:15 in Ouagadougou (UTC+0), in French, whatever the phone is set to.
+    expect(s.shows('Nouvel essai avant : 09:15'), 'the hour must be the LEDGER’s windowExpiresAt').toBe(true);
     expect(s.canPress('Réessayer')).toBe(true);
     expect(s.canPress('Le temps est passé')).toBe(true);
 
@@ -289,7 +297,7 @@ describe('⚠ RETOUR-VIVANT — the buyer-fault ladder, whole, then the road hom
     // rendu-porte walks it) — the retry inside the window is a real drop.
     await s.type(DROP);
     expect(s.canPress('Confirmer la remise')).toBe(true);
-    expect(s.shows(`Nouvel essai avant : ${hour}`)).toBe(true);
+    expect(s.shows('Nouvel essai avant : 09:15')).toBe(true);
     expect(s.canPress('Le temps est passé')).toBe(true);
     expect(s.shows('Un souci ?')).toBe(false);
 
@@ -521,6 +529,7 @@ describe('⚠ RETOUR-VIVANT — the buyer’s VALID refusal at a pay-at-door ins
     expect(s.canPress('La cliente refuse le colis'), 'her refusal must be as reachable as her accord').toBe(true);
     expect(s.canPress('Un souci ?')).toBe(true);
 
+    await s.poll(6); // two minutes while she looks
     await s.press('La cliente refuse le colis');
     expect(s.shows('Le scellé Séra est-il intact ?'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
     expect(s.canPress('Oui, intact')).toBe(true);
@@ -529,6 +538,8 @@ describe('⚠ RETOUR-VIVANT — the buyer’s VALID refusal at a pay-at-door ins
     await s.press('Non, abîmé');
     const act = w.calls.find((c) => c.path === '/rider/door/inspection');
     expect(act, 'the inspection act was never called on the refusal road').toBeDefined();
+    expect(secondesALaPorte(w), 'her refusal carries the two minutes she looked').toBeGreaterThanOrEqual(115);
+    expect(secondesALaPorte(w)).toBeLessThanOrEqual(125);
     expect(act?.body).toMatchObject({
       orderId: ORDER,
       inspectionCategory: 'uncategorised_conservative',
@@ -571,11 +582,8 @@ describe('⚠ RETOUR-VIVANT — the buyer’s VALID refusal at a pay-at-door ins
  *  then carries, exactly as logistics-do's riderView says it. */
 const PASSAGE_2 = { start: '2026-09-18T10:00:00.000Z', end: '2026-09-18T12:00:00.000Z' };
 const CHAINE = { taskId: 'task-retour-1', packageId: `pkg-${ORDER}` };
-const fenetreAttendue = (): string => {
-  const jour = new Date(PASSAGE_2.start).toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
-  const h = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  return `Prochain passage : ${jour}, ${h(PASSAGE_2.start)}–${h(PASSAGE_2.end)}`;
-};
+/** In French and Ouagadougou time (UTC+0), whatever the phone is set to. */
+const fenetreAttendue = (): string => 'Prochain passage : vendredi 18 septembre, 10:00–12:00';
 const passageFixe = (state: CourseState): void => {
   state.passage = 2;
   state.window = PASSAGE_2;
@@ -651,8 +659,9 @@ describe('⚠ REPROGRAMMATION-1 — the 2e passage reaches the rider’s phone, 
   it('door mode: the buyer was absent, so no accord was recorded at passage 1 — at the 2e passage her accord is asked again, her VALID refusal stays reachable, the ladder is not, and the accord opens the code card', async () => {
     const state = courseInMode('DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR');
     const world = freshWorld();
-    const { s } = await toTheDoor([logistics(state), custody(world)]);
+    const { s, w } = await toTheDoor([logistics(state), custody(world)]);
     expect(s.shows('La cliente regarde le colis.'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    await s.poll(30); // ten minutes waiting for a buyer who never comes
     await s.press('Un souci ?');
     await s.press('Client absent');
     world.expired = true;
@@ -661,6 +670,7 @@ describe('⚠ REPROGRAMMATION-1 — the 2e passage reaches the rider’s phone, 
     passageFixe(state);
     await s.poll();
     expect(s.shows('2e passage'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    await s.poll(3); // one minute with her, at the 2e passage
     // The §6.3 stage, again: her accord is the one primary action; her valid
     // refusal is the inspection's road and stays; the ladder does not.
     expect(s.canPress("La cliente est d'accord")).toBe(true);
@@ -669,6 +679,8 @@ describe('⚠ REPROGRAMMATION-1 — the 2e passage reaches the rider’s phone, 
     expect(s.shows('Encore un souci ? Appelez Séra.')).toBe(true);
     await s.press("La cliente est d'accord");
     expect(s.shows('Le code de la cliente'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    expect(secondesALaPorte(w), 'the 2e passage’s minute with her, not the first day’s wait').toBeGreaterThanOrEqual(55);
+    expect(secondesALaPorte(w)).toBeLessThanOrEqual(65);
   });
 
   it('a session that carries NO chain ids after a relaunch keeps the honest card — nothing is guessed', async () => {
@@ -794,7 +806,8 @@ describe('⚠ REPROGRAMMATION-2 — « Le client est là »: the buyer comes bac
   it('door mode: the buyer came back — her accord is asked again before the code card, her valid refusal stays reachable', async () => {
     const state = courseInMode('DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR');
     const world = freshWorld();
-    const { s } = await toTheDoor([logistics(state), custody(world)]);
+    const { s, w } = await toTheDoor([logistics(state), custody(world)]);
+    await s.poll(30); // ten minutes waiting for her
     await s.press('Un souci ?');
     await s.press('Client absent');
     world.expired = true;
@@ -803,8 +816,28 @@ describe('⚠ REPROGRAMMATION-2 — « Le client est là »: the buyer comes bac
     expect(s.canPress("La cliente est d'accord"), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
     expect(s.canPress('La cliente refuse le colis')).toBe(true);
     expect(s.canPress('Un souci ?')).toBe(false);
+    await s.poll(3); // one minute with her once she is back
     await s.press("La cliente est d'accord");
     expect(s.shows('Le code de la cliente'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    expect(secondesALaPorte(w), 'her minute at the door, not the wait for her').toBeGreaterThanOrEqual(55);
+    expect(secondesALaPorte(w)).toBeLessThanOrEqual(65);
+  });
+
+  it('door mode: « Réessayer » inside the window, and she opens: the inspection counts from the new try, not from the first knock', async () => {
+    const state = courseInMode('DELIVERY_FEE_PREPAID_PRODUCT_AT_DOOR');
+    const world = freshWorld();
+    const { s, w } = await toTheDoor([logistics(state), custody(world)]);
+    await s.poll(30); // ten minutes knocking
+    await s.press('Un souci ?');
+    await s.press('Client absent');
+    await s.poll(6); // two minutes of the window
+    await s.press('Réessayer');
+    expect(s.canPress("La cliente est d'accord"), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    await s.poll(3); // one minute with her
+    await s.press("La cliente est d'accord");
+    expect(s.shows('Le code de la cliente'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    expect(secondesALaPorte(w), 'the new try’s minute with her').toBeGreaterThanOrEqual(55);
+    expect(secondesALaPorte(w)).toBeLessThanOrEqual(65);
   });
 });
 

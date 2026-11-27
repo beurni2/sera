@@ -27,6 +27,8 @@
  * franc. No screen.
  */
 
+import { heureOuaga, jourOuaga } from '../heure-fr';
+
 /** The rider's ONE live assignment, projected by logistics' `/rider/moi`
  *  (`riderView`): the fields the card renders, nothing the app recomputes.
  *  `window` and `location` are opaque here — the screen owns their shape. */
@@ -239,15 +241,14 @@ function chaineOrNull(v: unknown): { readonly taskId: string; readonly packageId
 }
 
 /**
- * The window in the rider's own words: the day, then the two hours — read in
- * the phone's locale, never composed by hand. Pure, so the screen stays thin.
+ * The window in the rider's own words: the day, then the two hours — in
+ * French and Ouagadougou time whatever the phone is set to (`heure-fr`).
+ * Pure, so the screen stays thin.
  */
 export function fenetreLisible(fenetre: { readonly start: string; readonly end: string }): string {
   const start = new Date(fenetre.start);
   const end = new Date(fenetre.end);
-  const jour = start.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
-  const heure = (d: Date) => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  return `${jour}, ${heure(start)}–${heure(end)}`;
+  return `${jourOuaga(start)}, ${heureOuaga(start)}–${heureOuaga(end)}`;
 }
 
 /** The two canon payment modes (§5.5) — the closed set this parser admits. */

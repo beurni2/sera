@@ -3,6 +3,82 @@ Continuity ledger per CTO charter §6/§6bis. Every entry is evidence-grounded.
 
 Format per entry:
 
+## 2026-11-27 · SORTIES-SURES-1 — a service goes live only from a green commit, with the founder's approval; the rider app publishes only after green checks; the delivery key is written only when asked; a rollback page; the board and a live check every day · lane O5 · on the branch, NOT merged, NOT deployed
+
+**Founder.** « Go on for batch 6 » (2026-11-27 19:38 UTC), batch 6 of the plan he approved: « A service goes live only after its checks passed on that exact version, with your approval in front of it. Apps publish only after green checks. The delivery-key step stops rewriting the key blind. One page per app says how to roll back, and we practise it once. The boards run every day, not only when someone pushes. A daily watch checks that the live services run `main`. » His card on the GitHub approval is still open; this is built on its recommended answer (service releases wait for his approval; app updates need green checks only).
+
+**Lane.** Lane O5 (all five repositories), Séra commits `e95baae`, `5f55546` and the review's fixes `855c17d` on `b9b36a2`. Integrated on `claude/project-thread-jqj97g` as `278e6df`, on top of COURSE-VRAIE-1 (below). Files byte-identical to the lane's.
+
+**Spec.** Execution Contract §7.1 (« promotion rules … Required approvals on money/custody/attribution releases ») and §11 (« secrets management · key rotation »); this repository's order of release: the Workers from the branch first, then the merge, then the rider app.
+
+**What changed.**
+- *Service releases* (`custody-deploy`, `logistics-deploy`): the first step is `scripts/release-guard.sh` (ci passed on the exact commit, its most recently created finished ci run green, and the commit is main's newest or the head of an open pull request into main from this repository; read with the job's own token, no secret, no input). Every release job names `environment: production`, unchanged and not limited to main.
+- *The delivery key.* `custody-deploy` writes `SHOP_PROGRESS_SECRET` onto the live custody Worker only when the person dispatching ticks `write_shop_progress_secret` (a boolean, default off, whose description says it overwrites the live value). Otherwise the live value is left alone and the log says so.
+- *The rider app* (`expo-preview`): starts when a ci run on main finishes (a successful push run, or a dispatch on main); `scripts/publish-decision.sh` ships main's newest commit only when its ci is green, else skips; the publishing job queues and never cancels; the Expo token is held only by the steps that need it.
+- *Workflows brought to the house pattern:* every action pinned to the commit SHA the other repositories already use, a top-level `permissions: contents: read` on ci, and the platform-contracts read grant scoped to the install step (a temporary git config, the token through `env:`, deleted after).
+- *Rollback.* A `rollback` workflow (dispatch on main only, `production`): lists the newest versions of custody or logistics and points one back at the previous or a named version, rebuilding nothing; it names each key that went back with the version and how to write it again. `docs/runbooks/ROLLBACK.md` in plain words, with the rider app's Expo channel.
+- *Every day.* ci at 05:00 UTC. A new `live-watch` at 05:30 UTC asks each live Worker which commit it was built from and goes red unless main has changed nothing it is built from (its folder, `packages/observability`, the lock file, the workspace files, `tsconfig.base.json`, `turbo.json`); a missing input, an unknown release or « dev » is red. It prints only the service, the canon, two short commits and the verdict.
+- *The gate.* `scripts/gates/deploy-chain-locked.mjs` (the Boutik+ rules, extended to these releases, the key input and the rollback) with its fixtures, and three proofs that drive the real scripts against a local repository and a stand-in `gh`: `release-guard-proof`, `publish-decision-proof`, `live-watch-proof`. wrangler is pin-checked in custody and logistics.
+
+**Evidence.** Lane: each new gate and proof red on main for the right reason, then green; mutations (including the key write without its input) each red, restored byte-identical. Coordinator: every workflow and script change read; the gate and proofs re-run at both lane heads; each watch input checked present on main; the guard mutations red in the shared script. Full board on `278e6df` after install and `pnpm build`, turbo forced: ALL GATES GREEN (rider app 559, custody 280, logistics 382, dispatch console 97).
+
+**Verifier.** One fresh-context pass across the five repositories, handled once: the publish queue moved onto the publishing job; the gate now checks the publish obeys the decision and every deploying job starts with its guard; the watch refuses an input missing from main and lists the shared TypeScript base and the build plan; the rollback page says keys go back with the version; wrangler pinned in the gate.
+
+**Release.** custody-deploy and logistics-deploy from the branch through the new guard and his approval (the delivery key unticked: the live value stays), then the merge, which publishes the rider app.
+
+**Still open.** Held in the private batch record until their fixes deploy.
+
+---
+
+## 2026-11-27 · COURSE-VRAIE-1 — the rider's screen tells the truth: the check-up time starts at the stall, a new code can be typed mid-course, dates are French and in Ouagadougou time · lane S13 · on the branch, NOT merged, NOT deployed
+
+**Founder.** « Go on for batch 6 » (2026-11-27 19:38 UTC), batch 6 of the plan he approved: « The time spent checking the goods is measured from the real start. A new course right after the last one no longer fires an old step. A new code from you can be typed in mid-course. Dates are always in French and in Ouagadougou time. » No choice card for this part.
+
+**Lane.** Lane S, slice S13. Lane commits `3de5017` (red walks), `c8f3b06` (the change) and `0b714f6` (the review's fixes) on `b9b36a2`. Integrated as `c7bb34c` on `1f9eabe`, one commit, files byte-identical to the lane's.
+
+**Spec.**
+- Sera-Build-Spec §6.1 (l.109): « **Target dwell ≈ 2–4 min**; over-target is an ops signal. » Boundary line (l.63): « arrival + **buyer inspection (category rules, dwell 2–4 min)** ».
+- Founder ruling D20 (this journal): « dwell is RECORDED and console-surfaced only; no enforcement fields exist anywhere in canon. » A recorded number must be true; this changes when the clock starts, never what it is judged against.
+- Execution Contract §10.5; CLAUDE.md Laws 3, 6 and 7; the 2026-08-10 order's four questions.
+
+**What changed — `apps/rider-app` only.**
+- *The check-up clock at the stall* starts once per order, on the first session read that carries this order's pickup code (logistics serves it only after the supplier confirmed the handover), and stays frozen with the attempt. After a relaunch it restarts at that first read; it never invents an earlier start.
+- *The door inspection* records `startedAt` when the door screen opens for this visit (evidence held, no waiting or return screen in front of it) and `completedAt` at the send, frozen per attempt id. It restarts on a new passage, when the buyer arrives after a wait, or on a new try inside the window, never for a resend of the same attempt. The package roads (« garde », « refus ») and the single-order refusal carry the same times.
+- *A new code mid-course.* Any custody act answered `unauthorized`, or a 401 on the session read, takes the rider back to the code field with the existing sentences. Only the code that heard the 401 is dropped (a late 401 for an old code never signs out a newer one, and a late successful read under an old code is ignored). The act memory and the attempts stay, so the new code resumes the same step under the same command ids. Offline and 5xx never sign him out.
+- *Dates and hours* a rider reads (the window, the retry hour, the offer's « avant », the demo preview) are French and UTC+0 whatever the phone's language and zone, written by hand in `src/heure-fr.ts` (the phone's own date formatting is not relied on); the 7 day and 12 month names are 19 new catalog entries (neutral, label).
+- *The next course straight after the last* was already closed by earlier releases (the seal is withheld on an offer not accepted; a take-back between check and seal is refused). No code change; a two-course walk guards it.
+
+**Evidence.**
+- Red first through the real screen (`test/rendu.tsx`, only the network and native boundaries doubled), then green: the clock after a 25-minute ride (1 580 s → about 60 s); the door's recorded time equals the minute with the buyer (0 → 55–65 s; also on the second passage, after « Le client est là » and after « Réessayer »); after a 401 the code field is there, code B is accepted, the seal goes once under B, « En route » is pressable; dates under an English locale and another zone read the French Ouagadougou text.
+- The custody stand-in in the walk now answers as custody does: the same command id replays, other content under it is `409 command_id_reused_with_other_content`, a revoked code is refused for good.
+- Lane: rider app 559/559, typecheck 0, board green. Mutations (clock back to the offer, restarted when the order returns, door start at the send, kept through a closed door, the two 401 returns, the late-401 and late-read guards, the door end unfrozen, the phone's zone, the phone's locale, the guard walk), each red, restored byte-identical; two survivors explained (the clock's code condition is carried by its keys; the door start's freeze is not observable within one visit).
+- Changed expectations, only where this order changes them: the rotated-code walk (its stand-in revived a revoked code); two hour and window strings computed with the phone's locale; a source count of the code's presence check (4 → 5); the door walk's « startedAt equals completedAt ».
+- Coordinator re-runs: rider app 559/559, typecheck 0, copy-lint clean; mutations (the once-per-order guard removed, the door reopening reset removed) red, restored. Full board: see SORTIES-SURES-1 above (same head).
+
+**Verifier.** One fresh-context pass: 1 blocker, 4 should-fix, 4 notes, handled once. Fixed: the door start was keyed on the order only (a second passage counted the wait); a new code mid-check restarted the clock; the late-401 guard and the door time freeze had no test and the stand-in did not replay by command id; the day and month names moved into the catalog.
+
+**Release.** The merge publishes the rider app. No Worker change.
+
+**Still open.** A code replaced while the buyer is looking restarts the door start when the rider signs in again; a code replaced during a mismatch check retakes the photo as a new attempt. Both rare, both shorter than the truth, never longer.
+
+---
+
+## 2026-11-27 · PRISE-QUI-TOURNE-MAL-1 — DEPLOYED and MERGED
+
+**Founder.** « Release all five » (2026-11-27 17:59 UTC, decision card, on the batch 5 report), which named for Séra: the custody service, then the logistics service, from the branch, then the merge. Custody first: a logistics Worker facing the previous custody refuses take-backs of acknowledged courses with 503.
+
+**Deployed from the branch at `1200330`.**
+- custody-deploy 30 (id 46046149056) green: every key armed as on the previous deploy; the first health read still showed the previous release, the next one « PROVENANCE OK — live custody Worker is 1200330 speaking canon 3.28.0 ».
+- logistics-deploy 41 (id 46046387351) green, after custody: every key armed as on the previous deploy, and « PROVENANCE OK — live logistics Worker is 1200330 speaking canon 3.28.0 ».
+
+**Merge.** platform-contracts PR #4 merged first (`dcf9740`). main re-checked unchanged at `a7c9fa4`; PR #11 merged as `b9b36a2` (merge commit, the branch shas kept). On main: ci 239 green · expo-preview 168 (rider app preview) green, both on their first attempt.
+
+**Not checked.** The live services were not called from here. The first real pickup is the check: a take-back between the check and the seal should be refused with its reason.
+
+**Still open.** As named in the slice entry below. Other open items are held in the private batch record until their fixes deploy.
+
+---
+
 ## 2026-11-27 · PRISE-QUI-TOURNE-MAL-1 — a slow handoff, a course checked but not sealed, a phone that lost Séra's answer at the stall · lane S12 · on the branch, NOT merged, NOT deployed
 
 **Founder.** « Now you start working on the next batch » (2026-11-27 15:13 UTC), batch 5 of the plan he approved: « A slow handoff no longer sends the old rider's code. A course taken back after the goods were checked, but before the seal, stays usable. A phone that died mid-pickup can carry on. » Two choices, both on decision cards, both the recommended option: « No, refuse the take-back » (15:23 UTC) and « Answer the repeat as recorded » — « If the same rider sends the same check or seal again with his code, Séra answers with what it already recorded. No new road. » (15:24 UTC).

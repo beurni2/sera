@@ -206,6 +206,7 @@ describe('⚠ PORTE-CUSTODY — the door course walks: accord → wait for the p
     expect(s.tree.root.findAllByType(LandmarkCard), 'the written repère, once').toHaveLength(1);
     expect(s.canPress('Écouter le repère'), 'the buyer’s voice, at her own door').toBe(true);
 
+    await s.poll(3); // one minute while she looks
     await s.press("La cliente est d'accord");
 
     // The port was CALLED (the question source scans cannot answer), with
@@ -222,7 +223,12 @@ describe('⚠ PORTE-CUSTODY — the door course walks: accord → wait for the p
       buyerAccepts: true,
       evidenceBundleId: `sans-photo-porte-${ORDER}`,
     });
-    expect(act?.body?.['startedAt']).toBe(act?.body?.['completedAt']);
+    // EXPECTATION CHANGED: the door used to send one instant as both times,
+    // so custody recorded 0 s for every buyer. Now the start is the door
+    // opening and the end is the send — the minute she spent looking.
+    const secondes = (Date.parse(String(act?.body?.['completedAt'])) - Date.parse(String(act?.body?.['startedAt']))) / 1000;
+    expect(secondes, 'the minute she looked, never zero').toBeGreaterThanOrEqual(55);
+    expect(secondes).toBeLessThanOrEqual(65);
     expect(Object.keys(act?.body ?? {})).not.toContain('refusalColumn');
 
     // The held accord opens the code entry — the next step is REACHED.
