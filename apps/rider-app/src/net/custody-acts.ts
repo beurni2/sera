@@ -55,8 +55,10 @@ import type { PolicyCheckId } from '../custody-flow';
  * custody left no record, so re-doing it from the top is correct; an act that
  * DID reach custody and lost only its answer is sent again under a fresh id,
  * and custody answers the check or seal it already recorded from this same
- * rider (his own code, the same seal) as that record, with `duplicate: true`,
- * spending and writing nothing. Anyone else still gets custody's refusal.
+ * rider (his own code and the same check answers, or the same seal while he
+ * holds the parcel) as that record, with `duplicate: true`, spending and
+ * writing nothing. Different answers, or anyone else, still get custody's
+ * refusal.
  *
  * ⚠ `at` IS NEVER SENT. Custody stamps its own clock when the field is absent,
  * so a rider's phone clock — wrong by hours on a cheap handset, and settable

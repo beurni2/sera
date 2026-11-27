@@ -24,6 +24,7 @@ const SUPPLIER = 'sup-cust-0001';
 const RIDER = 'rider-cust-0001';
 const PICKUP_CODE = 'PICKUP-CUST-0001';
 const SEAL_CODE = 'SEAL-CUST-0001';
+const DROP_CODE = 'DROP-CUST-0001';
 const T = '2026-09-18T09:00:00.000Z';
 const ALL_PASS = { produit_conforme: true, quantite_complete: true, emballage_intact: true };
 
@@ -69,7 +70,7 @@ describe('GET /produce/custodian — who holds the package, said by the ledger',
     for (const key of [OPS, 'wrong', null]) expect((await custodian(key)).status, String(key)).toBe(401);
   });
 
-  it('opened, verified and sealed: the custodian is the courier, by the ledger’s own name; before the seal it was the seller', async () => {
+  it('opened, verified, sealed and delivered: the custodian is the courier, by the ledger’s own name, and custody says whether the goods were checked and whether a courier ever sealed them', async () => {
     expect((await ops('/ops/order/open', { orderId: ORDER, taskId: `task-${ORDER}`, packageId: PKG, correlationId: `corr-${ORDER}`, supplierId: SUPPLIER })).status).toBe(200);
     for (const [kind, secret] of [['pickup_verification_code', PICKUP_CODE], ['custody_seal', SEAL_CODE]] as const) {
       expect((await ops('/ops/secrets/arm', { orderId: ORDER, command_id: `arm-${kind}`, kind, secret })).status).toBe(200);
@@ -77,12 +78,26 @@ describe('GET /produce/custodian — who holds the package, said by the ledger',
     const opened = await custodian(PRODUCE);
     expect(opened.json).toMatchObject({ ok: true, open: true, packageId: PKG });
     expect(opened.json['currentCustodian']).not.toBe(`courier:${RIDER}`);
+    expect(opened.json, 'nothing checked, no courier ever sealed').toMatchObject({ pickupVerifiedBy: null, custodyBegun: false });
     expect((await ops('/ops/verification', {
       orderId: ORDER, command_id: 'verify-1', riderId: RIDER, presentedPickupCode: PICKUP_CODE, evidenceBundleId: 'ev-1', dwellSec: 150, checkResults: ALL_PASS, at: T,
     })).status).toBe(200);
+    expect((await custodian(PRODUCE)).json, 'checked, not sealed').toMatchObject({ pickupVerifiedBy: RIDER, custodyBegun: false });
     expect((await ops('/ops/custody/begin', { orderId: ORDER, command_id: 'begin-1', riderId: RIDER, custodySealId: SEAL_CODE, sealPhotoRefs: [], at: T })).status).toBe(200);
     const held = await custodian(PRODUCE);
     // Who checked the goods is said too: logistics reads it before ending a course.
-    expect(held.json).toEqual({ ok: true, open: true, packageId: PKG, currentCustodian: `courier:${RIDER}`, pickupVerifiedBy: RIDER });
+    expect(held.json).toEqual({ ok: true, open: true, packageId: PKG, currentCustodian: `courier:${RIDER}`, pickupVerifiedBy: RIDER, custodyBegun: true });
+    // Delivered: the holder is the buyer now, and the seal still happened — a later stage, never « not sealed ».
+    expect((await ops('/ops/secrets/arm', { orderId: ORDER, command_id: 'arm-drop', kind: 'buyer_drop_code', secret: DROP_CODE })).status).toBe(200);
+    const preuve = await ops('/ops/delivery/evidence', {
+      orderId: ORDER, command_id: 'evidence-1', at: T,
+      bundle: { taskId: `task-${ORDER}`, packageId: PKG, custodySealId: SEAL_CODE, artifacts: [], capturedAt: T },
+    });
+    expect(preuve.status, JSON.stringify(preuve.json)).toBe(200);
+    const remis = await ops('/ops/delivery/drop', { orderId: ORDER, command_id: 'drop-1', dropCode: DROP_CODE, at: T });
+    expect(remis.json, JSON.stringify(remis.json)).toMatchObject({ ok: true, status: 'custody_with_customer' });
+    const livre = await custodian(PRODUCE);
+    expect(livre.json).toMatchObject({ open: true, pickupVerifiedBy: RIDER, custodyBegun: true });
+    expect(livre.json['currentCustodian']).not.toMatch(/^courier:/);
   });
 });

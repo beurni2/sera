@@ -32,8 +32,12 @@ import type { CommandId } from '../../../apps/rider-app/src/offline/commandId';
  * and command log and of the board, never of an answer alone. The only thing
  * between the two Workers is a wire that can HOLD one named call (a real
  * binding allows exactly that: an outbound call never holds the dispatch
- * object's input gate) or answer like a custody that is down (503). It never
- * answers in custody's place with a success.
+ * object's input gate) or answer like a custody that is down (503), or — for
+ * one case — hand back custody's real custodian answer with only the fields
+ * the previous custody release answered ({ ok, open, packageId,
+ * currentCustodian }), as a custody one deploy behind would. It never
+ * answers in custody's place with a success. Custody's own call back to
+ * logistics (« course livrée ») can be held off, as a slow network would.
  *
  * The repeated check and seal (3) are custody's rules, yet they live here, not
  * beside the custody Worker: custody's rider door asks logistics who the rider
@@ -60,12 +64,16 @@ interface Wire {
   retenir: (match: (path: string, corps: string) => boolean) => { arrivee: () => Promise<void>; lacher: () => void };
   /** While set, a call this names is answered as a custody that is down. */
   enPanne?: (path: string) => boolean;
+  /** While set, the custodian read carries only the previous release's fields. */
+  ancienne?: boolean;
 }
 
 interface Hold {
   custody?: Miniflare;
   logistics?: Miniflare;
   wire: Wire;
+  /** While set, custody's « course livrée » never reaches logistics (it retries later). */
+  sansLivree?: boolean;
 }
 
 let live: Miniflare[] = [];
@@ -81,7 +89,12 @@ function spawnCustody(hold: Hold): void {
     compatibilityFlags: ['nodejs_compat'],
     durableObjects: { CUSTODY: 'CustodyDO', PACKAGE_CLAIM: 'PackageClaimDO' },
     durableObjectsPersist: mkdtempSync(join(tmpdir(), 'tourne-custody-')),
-    serviceBindings: { LOGISTICS: ((request: Request) => hold.logistics!.dispatchFetch(request.url, request as never)) as never },
+    serviceBindings: {
+      LOGISTICS: ((request: Request) =>
+        hold.sansLivree === true && new URL(request.url).pathname === '/produce/course-livree'
+          ? Promise.resolve(new Response('unreachable', { status: 503 }))
+          : hold.logistics!.dispatchFetch(request.url, request as never)) as never,
+    },
     bindings: {
       SERA_CUSTODY_OPS_SECRET: CUSTODY_OPS,
       SERA_PRODUCE_SECRET: PRODUCE_KEY,
@@ -110,7 +123,12 @@ function wire(hold: Hold): { wire: Wire; binding: (request: Request) => Promise<
       arrive();
       await attente;
     }
-    return hold.custody!.dispatchFetch(request.url, request as never) as never;
+    const res = (await hold.custody!.dispatchFetch(request.url, request as never)) as unknown as Response;
+    if (w.ancienne === true && url.pathname === '/produce/custodian') {
+      const b = (await res.json()) as Json;
+      return Response.json({ ok: b['ok'], open: b['open'], packageId: b['packageId'], currentCustodian: b['currentCustodian'] }, { status: res.status });
+    }
+    return res as never;
   };
   w.retenir = (match) => {
     let lacher = (): void => undefined;
@@ -255,9 +273,9 @@ async function accepteEtConfirme(hold: Hold, code: string, assignmentId: string,
   return apres!;
 }
 
-const verifier = (hold: Hold, code: string, orderId: string, pickup: string, tag: string) =>
+const verifier = (hold: Hold, code: string, orderId: string, pickup: string, tag: string, checkResults: Record<string, boolean> = ALL_PASS) =>
   appPorts(hold).custody.verifyPickup(
-    { commandId: id(`v-${tag}`), orderId, presentedPickupCode: pickup, evidenceBundleId: `ev-${tag}`, dwellSec: 150, checkResults: ALL_PASS },
+    { commandId: id(`v-${tag}`), orderId, presentedPickupCode: pickup, evidenceBundleId: `ev-${tag}`, dwellSec: 150, checkResults },
     code,
   );
 
@@ -265,6 +283,22 @@ const sceller = (hold: Hold, code: string, orderId: string, seal: string, tag: s
   appPorts(hold).custody.beginCustody({ commandId: id(`b-${tag}`), orderId, custodySealId: seal, sealPhotoRefs: [] }, code);
 
 const courant = async (hold: Hold, orderId: string) => (await custodyOps(hold, `/ops/ledger?orderId=${orderId}`)).json['currentCustodian'];
+
+/** Sealed goods handed over: the buyer's code armed (Shop+'s door), the handoff evidence, the drop. */
+async function livrer(hold: Hold, code: string, orderId: string, scelle: string, chain: Json, tag: string): Promise<void> {
+  const arme = await hold.custody!.dispatchFetch('http://custody/produce-shop/secrets/arm', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${SHOP_ARM_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ orderId, command_id: `arm-remise-${tag}`, kind: 'buyer_drop_code', secret: `DROP-${tag}` }),
+  });
+  expect(arme.status, await arme.text()).toBe(200);
+  const { custody } = appPorts(hold);
+  expect(await custody.submitDeliveryEvidence(
+    { commandId: id(`e-${tag}`), orderId, custodySealId: scelle, taskId: chain['task_id'] as string, packageId: chain['package_id'] as string, artifacts: [], capturedAt: T },
+    code,
+  )).toMatchObject({ kind: 'recorded' });
+  expect(await custody.confirmDrop({ commandId: id(`d-${tag}`), orderId, dropCode: `DROP-${tag}` }, code)).toMatchObject({ kind: 'recorded', body: { status: 'custody_with_customer' } });
+}
 
 /** A course accepted, confirmed and checked at the stall; not sealed. */
 async function verifieeNonScellee(hold: Hold, orderId: string, riderId: string) {
@@ -399,10 +433,14 @@ describe('checked and not sealed: the course cannot be taken back or cleared', (
   it('clearing the order from the board is refused the same way', async () => {
     const hold = both();
     const O = 'ord-verifiee-retrait';
-    const { assignmentId } = await verifieeNonScellee(hold, O, 'rider-verifiee-r');
+    const { code, assignmentId, scelle } = await verifieeNonScellee(hold, O, 'rider-verifiee-r');
     const retrait = await ops(hold, '/ops/order/retirer', { command_id: 'ret-v', orderId: O });
     expect(retrait).toEqual({ status: 409, json: { ok: false, reason: 'pickup_verified_not_sealed', orderIds: [O] } });
     expect(JSON.stringify((await ops(hold, '/ops/board')).json)).toContain(assignmentId);
+    expect((await vue(hold, code))?.['assignmentId']).toBe(assignmentId);
+    const sceau = await sceller(hold, code, O, scelle, 'vr');
+    expect(sceau.kind === 'recorded' && sceau.body['status'], JSON.stringify(sceau)).toBe('custody_with_courier');
+    expect(await courant(hold, O)).toBe('courier:rider-verifiee-r');
   }, LONG);
 
   it('custody down: take-back and clearing fail closed, nothing changes', async () => {
@@ -429,6 +467,86 @@ describe('checked and not sealed: the course cannot be taken back or cleared', (
     expect(await ops(hold, '/ops/assignment/take-back', { command_id: 'tb-sf', assignmentId, custodyNotBegun: true })).toEqual({ status: 503, json: { ok: false, reason: 'custody_unverifiable' } });
     expect(await ops(hold, '/ops/order/retirer', { command_id: 'ret-sf', orderId: O })).toEqual({ status: 503, json: { ok: false, reason: 'custody_unverifiable' } });
   }, LONG);
+
+  it('a custodian read that never answers gives up at the time limit and fails closed', async () => {
+    const hold = both();
+    const O = 'ord-lecture-pendue';
+    const { code, assignmentId } = await verifieeNonScellee(hold, O, 'rider-lecture-pendue');
+    const tenue = hold.wire.retenir((path) => path === '/produce/custodian');
+    try {
+      const repris = await ops(hold, '/ops/assignment/take-back', { command_id: 'tb-lp', assignmentId, custodyNotBegun: true });
+      expect(repris).toEqual({ status: 503, json: { ok: false, reason: 'custody_unverifiable' } });
+    } finally {
+      tenue.lacher();
+    }
+    expect((await vue(hold, code))?.['assignmentId']).toBe(assignmentId);
+  }, LONG);
+
+  it('a custody one release behind (no word on the check or the seal) fails closed; the course stays the rider\'s', async () => {
+    const hold = both();
+    const O = 'ord-ancienne';
+    const { code, assignmentId } = await verifieeNonScellee(hold, O, 'rider-ancienne');
+    hold.wire.ancienne = true;
+    expect(await ops(hold, '/ops/assignment/take-back', { command_id: 'tb-anc', assignmentId, custodyNotBegun: true })).toEqual({ status: 503, json: { ok: false, reason: 'custody_unverifiable' } });
+    expect(await ops(hold, '/ops/order/retirer', { command_id: 'ret-anc', orderId: O })).toEqual({ status: 503, json: { ok: false, reason: 'custody_unverifiable' } });
+    expect((await vue(hold, code))?.['assignmentId']).toBe(assignmentId);
+    expect(JSON.stringify((await ops(hold, '/ops/board')).json)).toContain(assignmentId);
+  }, LONG);
+
+  it('delivered on custody while logistics has not heard yet: the course is taken back as today', async () => {
+    const hold = both();
+    const O = 'ord-livree-pas-entendu';
+    const { code, assignmentId, scelle } = await verifieeNonScellee(hold, O, 'rider-livree-pe');
+    const sceau = await sceller(hold, code, O, scelle, 'lpe');
+    expect(sceau.kind).toBe('recorded');
+    hold.sansLivree = true;
+    await livrer(hold, code, O, scelle, (sceau as { body: Json }).body['chain'] as Json, 'lpe');
+    expect(String(await courant(hold, O))).not.toMatch(/^courier:/);
+    expect((await vue(hold, code))?.['assignmentId'], 'logistics still has the course').toBe(assignmentId);
+    const repris = await ops(hold, '/ops/assignment/take-back', { command_id: 'tb-lpe', assignmentId, custodyNotBegun: true });
+    expect(repris.status, JSON.stringify(repris.json)).toBe(200);
+  }, LONG);
+
+  for (const porte of ['take-back', 'retirer colisEntier'] as const) {
+    it(`a package with one article delivered and the other still riding: ${porte} goes through as today`, async () => {
+      const hold = both();
+      const A = `ord-colis-${porte === 'take-back' ? 'tb' : 'ret'}-a`;
+      const B = `ord-colis-${porte === 'take-back' ? 'tb' : 'ret'}-b`;
+      const COLIS = { packageId: `col-${A}`, orderIds: [A, B] };
+      for (const o of [A, B]) {
+        await intake(hold, '/intake/funding', { orderId: o, status: 'funded', paymentMode: 'FULL_PREPAY', asOf: T, package: COLIS });
+        await intake(hold, '/intake/readiness', { orderId: o, ready: true, asOf: T, supplierRef: SUPPLIER });
+      }
+      const composed = await ops(hold, '/ops/task', {
+        command_id: `t-${A}`, orderId: A, location: LOC, window: WIN,
+        articles: [{ orderId: A, libelle: 'Le pagne wax' }, { orderId: B, libelle: 'Les sandales' }],
+      });
+      expect(composed.json['ok'], JSON.stringify(composed.json)).toBe(true);
+      const riderId = `rider-${A}`;
+      const code = await rider(hold, riderId);
+      const assignmentId = await confier(hold, composed.json['taskId'] as string, riderId, `a-${A}`);
+      await pickupArme(hold, assignmentId);
+      const a = await accepteEtConfirme(hold, code, assignmentId, A, A);
+      const chaines: Record<string, Json> = {};
+      for (const o of [A, B]) {
+        expect((await verifier(hold, code, o, a['codeVerification'] as string, o)).kind).toBe('recorded');
+        const sceau = await sceller(hold, code, o, a['codeScelle'] as string, o);
+        expect(sceau.kind === 'recorded' && sceau.body['status'], JSON.stringify(sceau)).toBe('custody_with_courier');
+        chaines[o] = (sceau as { body: Json }).body['chain'] as Json;
+      }
+      await livrer(hold, code, A, a['codeScelle'] as string, chaines[A]!, A);
+      await attendre(
+        () => vue(hold, code),
+        (x) => (x?.['colis'] as { articles: Json[] } | undefined)?.articles[0]?.['etat'] === 'livree',
+        'course-livree(A) never reached the package',
+      );
+      expect((await vue(hold, code))?.['assignmentId'], 'B still rides: the course is open').toBe(assignmentId);
+      const fin = porte === 'take-back'
+        ? await ops(hold, '/ops/assignment/take-back', { command_id: `tb-${A}`, assignmentId, custodyNotBegun: true })
+        : await ops(hold, '/ops/order/retirer', { command_id: `ret-${A}`, orderId: A, colisEntier: true });
+      expect(fin.status, JSON.stringify(fin.json)).toBe(200);
+    }, LONG);
+  }
 
   it('a course not yet accepted, or already sealed, is taken back exactly as today', async () => {
     const hold = both();
@@ -484,6 +602,40 @@ describe('the same rider sending again after a lost answer gets what custody rec
     // And he seals and carries on.
     expect((await sceller(hold, code, O, a['codeScelle'] as string, 'repete')).kind).toBe('recorded');
     expect(await courant(hold, O)).toBe('courier:rider-repete');
+  }, LONG);
+
+  it('check: a repeat whose answers differ (« Non » now) is not the same check — today\'s refusal, nothing written, no custody begins', async () => {
+    const hold = both();
+    const O = 'ord-repete-non';
+    const taskId = await commande(hold, O);
+    const code = await rider(hold, 'rider-repete-non');
+    const assignmentId = await confier(hold, taskId, 'rider-repete-non', 'a-repete-non');
+    await pickupArme(hold, assignmentId);
+    const a = await accepteEtConfirme(hold, code, assignmentId, O, 'repete-non');
+    const pickup = a['codeVerification'] as string;
+    expect((await verifier(hold, code, O, pickup, 'rn-1')).kind).toBe('recorded');
+    const avant = await compte(hold, O);
+    // The same answers in another order are still the same check.
+    const memes = await verifier(hold, code, O, pickup, 'rn-ordre', { emballage_intact: true, quantite_complete: true, produit_conforme: true });
+    expect(memes.kind === 'recorded' ? { kind: memes.body['kind'], duplicate: memes.duplicate } : memes).toEqual({ kind: 'accepted', duplicate: true });
+    const non = await verifier(hold, code, O, pickup, 'rn-2', { ...ALL_PASS, emballage_intact: false });
+    expect(non).toEqual({ kind: 'refused', reason: 'pickup_code_refused' });
+    const apres = await compte(hold, O);
+    expect({ entries: apres.entries, seals: apres.seals, custodian: apres.custodian }, 'nothing written on the ledger, no seal').toEqual({ entries: avant.entries, seals: avant.seals, custodian: avant.custodian });
+    expect(String(await courant(hold, O))).not.toMatch(/^courier:/);
+  }, LONG);
+
+  it('seal: after the drop, the same rider sending his seal again hears today\'s seal_already_used', async () => {
+    const hold = both();
+    const O = 'ord-sceau-apres-remise';
+    const { code, scelle } = await verifieeNonScellee(hold, O, 'rider-sceau-ar');
+    const sceau = await sceller(hold, code, O, scelle, 'sar-1');
+    expect(sceau.kind).toBe('recorded');
+    await livrer(hold, code, O, scelle, (sceau as { body: Json }).body['chain'] as Json, 'sar');
+    const avant = await compte(hold, O);
+    expect(await sceller(hold, code, O, scelle, 'sar-2')).toEqual({ kind: 'refused', reason: 'seal_already_used' });
+    const apres = await compte(hold, O);
+    expect({ entries: apres.entries, custodian: apres.custodian }, 'the ledger is untouched').toEqual({ entries: avant.entries, custodian: avant.custodian });
   }, LONG);
 
   it('seal: a repeat from the custodian with the same seal answers custody_with_courier and writes nothing', async () => {

@@ -857,6 +857,12 @@ export class CustodyDO {
     );
   }
 
+  /** The same check answers: the same names with the same values, in any order. */
+  private static memesReponses(a: Readonly<Record<string, boolean>>, b: Readonly<Record<string, boolean>>): boolean {
+    const noms = Object.keys(a);
+    return noms.length === Object.keys(b).length && noms.every((n) => Object.prototype.hasOwnProperty.call(b, n) && b[n] === a[n]);
+  }
+
   /** Two digests of this door, compared in constant time (both are sha256 hex, one length). */
   private static memeEmpreinte(a: string, b: string): boolean {
     const x = new TextEncoder().encode(a);
@@ -868,8 +874,10 @@ export class CustodyDO {
    * The answer a phone lost, asked again under a fresh id (an app killed
    * after the act reached here no longer holds the first id). Only the
    * rider's own door, only the rider this file's accepted check names, only
-   * with the code he presented then: his recorded acceptance. Anything else
-   * is `null` and takes today's path, refusal included.
+   * with the code he presented then and the same check answers (a « Non »
+   * now is a different check — the rider refusing the goods): his recorded
+   * acceptance. Anything else is `null` and takes today's path, refusal
+   * included.
    */
   private repeatedAcceptedCheck(cmd: Extract<CustodyCommand, { kind: 'verify_pickup' }>): RecordedOutcome | null {
     if (cmd.attribution !== 'rider_authenticated') return null;
@@ -879,6 +887,7 @@ export class CustodyDO {
     if (first === undefined) return null;
     const accepted = first.cmd as Extract<CustodyCommand, { kind: 'verify_pickup' }>;
     if (accepted.input.riderId !== cmd.input.riderId) return null;
+    if (!CustodyDO.memesReponses(accepted.input.checkResults, cmd.input.checkResults)) return null;
     return CustodyDO.memeEmpreinte(accepted.presentedPickupCodeDigest, cmd.presentedPickupCodeDigest) ? first.outcome : null;
   }
 
@@ -2115,6 +2124,10 @@ export class CustodyDO {
         // no courier holding yet, logistics must not end the course (the check
         // spent the only pickup code). A read — it moves nothing.
         pickupVerifiedBy: this.acceptedVerificationRider(),
+        // Has a courier ever taken it under seal (delivered, returned or lost
+        // all come after one)? The ledger's own word, so logistics never has
+        // to guess the stage from the holder's name.
+        custodyBegun: this.roadHand() !== undefined,
       });
     }
 

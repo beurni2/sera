@@ -462,7 +462,7 @@ describe('a course that ends before custody leaves its old code dead at custody'
     expect((await ledger(hold, O)).json['currentCustodian'] ?? null).toBeNull();
   }, 60_000);
 
-  it('take-back after the code was used at the stall: refused until the seal; after it, the re-arm comes to rest, the old code stays refused, and the next course arms at once', async () => {
+  it('take-back after the code was used at the stall: refused until the seal; after it, the re-arm comes to rest, his own spent code only replays his recorded check, and the next course arms at once', async () => {
     const hold = both('use');
     const O = 'ord-prise-use';
     const RIDER = 'rider-prise-use';
@@ -488,7 +488,7 @@ describe('a course that ends before custody leaves its old code dead at custody'
     // His own spent code, sent again by him, answers his recorded check and writes nothing; it never verifies anew.
     const avant = ((await ledger(hold, O)).json['entries'] as unknown[]).length;
     const vieux = await verifier(hold, code, O, old, 'pu-vieux');
-    expect(vieux.kind === 'recorded' ? { kind: vieux.body['kind'], duplicate: vieux.duplicate } : vieux, 'a used code never verifies again').toEqual({ kind: 'accepted', duplicate: true });
+    expect(vieux.kind === 'recorded' ? { kind: vieux.body['kind'], duplicate: vieux.duplicate } : vieux, 'his spent code replays his recorded check, it never verifies anew').toEqual({ kind: 'accepted', duplicate: true });
     expect(((await ledger(hold, O)).json['entries'] as unknown[]).length, 'nothing written by the repeat').toBe(avant);
     expect((await ledger(hold, O)).json['currentCustodian'], 'the sealed parcel stays his on the ledger').toBe(`courier:${RIDER}`);
 

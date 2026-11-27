@@ -1041,7 +1041,7 @@ export class LogisticsDO {
 
   /**
    * Before a door ends an ACCEPTED course: did the rider already check the
-   * goods at the stall, with nobody holding them yet? That check spent the
+   * goods at the stall, with no courier ever sealed? That check spent the
    * order's only pickup code, so ending the course there leaves the parcel
    * with no road out (SE-I05, « package never unowned »). Custody's own word,
    * read fresh per article; silence fails closed, never a guess. `null` = the
@@ -1064,10 +1064,14 @@ export class LogisticsDO {
         );
         const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
         if (!res.ok || body === null || body['ok'] !== true) return muet();
-        const holder = body['currentCustodian'];
-        if (typeof body['pickupVerifiedBy'] === 'string' && !(typeof holder === 'string' && holder.startsWith('courier:'))) {
-          verifies.push(orderId);
-        }
+        // No file yet: nothing was checked, nothing can be stranded.
+        if (body['open'] === false) continue;
+        if (body['open'] !== true) return muet();
+        const verifiePar = body['pickupVerifiedBy'];
+        const scelle = body['custodyBegun'];
+        // A custody that does not say both (one deploy behind) is not read as « not checked ».
+        if (typeof scelle !== 'boolean' || !(typeof verifiePar === 'string' || verifiePar === null)) return muet();
+        if (typeof verifiePar === 'string' && !scelle) verifies.push(orderId);
       } catch {
         return muet();
       }

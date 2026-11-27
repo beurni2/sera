@@ -17,8 +17,9 @@ import { freshCourse, logistiqueCourse } from './doubles/logistique-course';
  * drives the real custody Worker through the same acts and requires exactly
  * these answers: a command id custody already holds replays its first answer
  * with `duplicate: true`; a NEW id from the same rider with his own code, on
- * a check custody accepted from him, answers that acceptance with
- * `duplicate: true` and writes nothing; a NEW id from the custodian with the
+ * a check custody accepted from him and with the same check answers, answers
+ * that acceptance with `duplicate: true` and writes nothing (different
+ * answers — a « Non » now — get today's `pickup_code_refused`); a NEW id from the custodian with the
  * same seal answers `custody_with_courier` with `duplicate: true`; a wrong
  * code answers `pickup_code_refused`, another seal `seal_already_used`.
  * It records every act it answers before the answer can be lost, as the
@@ -48,6 +49,8 @@ afterEach(() => {
 interface Grand {
   verifiee: boolean;
   scellee: boolean;
+  /** The check answers custody accepted. */
+  reponses?: Record<string, unknown>;
   /** command id → the answer custody recorded for it. */
   readonly vus: Map<string, { status: number; json: Record<string, unknown> }>;
 }
@@ -64,10 +67,14 @@ function custody(g: Grand): Route {
     };
     if (path === '/rider/verification') {
       const juste = body?.['presentedPickupCode'] === PICKUP;
-      // The same rider (there is one on this phone), his own code, a check already accepted: the recorded acceptance, nothing new.
-      if (g.verifiee && juste) return { status: 200, json: { ok: true, kind: 'accepted', ledgerSeq: 1, chainValid: true, duplicate: true } };
+      const reponses = (body?.['checkResults'] ?? {}) as Record<string, unknown>;
+      const memes = g.reponses !== undefined && Object.keys(g.reponses).length === Object.keys(reponses).length
+        && Object.keys(g.reponses).every((k) => reponses[k] === g.reponses![k]);
+      // The same rider (there is one on this phone), his own code, the same answers, a check already accepted: the recorded acceptance, nothing new.
+      if (g.verifiee && juste && memes) return { status: 200, json: { ok: true, kind: 'accepted', ledgerSeq: 1, chainValid: true, duplicate: true } };
       if (g.verifiee || !juste) return commit({ status: 409, json: { ok: false, kind: 'invalid', reason: 'pickup_code_refused', detail: 'secret_already_used' } });
       g.verifiee = true;
+      g.reponses = reponses;
       return commit({ status: 200, json: { ok: true, kind: 'accepted', ledgerSeq: 1, chainValid: true } });
     }
     if (path === '/rider/custody/begin') {
@@ -146,6 +153,36 @@ describe('a lost answer at the stall never strands the rider', () => {
     expect(s2.canPress('En route'), JSON.stringify(s2.texts())).toBe(true);
     await s2.press('En route');
     expect(w.calls.some((c) => c.path === '/rider/transit/depart')).toBe(true);
+    s2.unmount();
+  });
+
+  it('the check reached Séra, its answer was lost, the phone was killed: answering « Non » this time seals nothing, and the screen leaves him a way on', async () => {
+    const state = course();
+    const g: Grand = { verifiee: false, scellee: false, vus: new Map() };
+    const w = wire([logistiqueCourse(state, ORDER), custody(g)]);
+    perdre('/rider/verification');
+    const s = await ouvrir();
+    await s.press('Accepter la course');
+    await verifier(s);
+    expect(g.verifiee, 'custody recorded the check').toBe(true);
+    s.unmount();
+
+    const s2 = await ouvrir();
+    expect(s2.texts().length, 'the tree survived the relaunch').toBeGreaterThan(0);
+    await s2.press('Oui', 2);
+    await s2.press('Oui', 1);
+    await s2.press('Non', 0);
+    await s2.press('Envoyer la vérification');
+    expect(s2.texts().length, 'the tree survived the tap').toBeGreaterThan(0);
+    const checks = w.calls.filter((c) => c.path === '/rider/verification');
+    expect(checks.length, 'the « Non » went to Séra').toBe(2);
+    expect(w.calls.some((c) => c.path === '/rider/custody/begin'), 'no seal over goods he just refused').toBe(false);
+    expect(g.scellee).toBe(false);
+    expect(s2.canPress('En route'), 'no road').toBe(false);
+    // Séra's refusal is said, and something on screen can still be pressed.
+    const texte = JSON.stringify(s2.texts());
+    expect(s2.shows('Séra a refusé.'), `on screen: ${texte}`).toBe(true);
+    expect(s2.canPress('SOS') && s2.canPress('Envoyer la vérification'), `a way out — call for help or check again: ${texte}`).toBe(true);
     s2.unmount();
   });
 

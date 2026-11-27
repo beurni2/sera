@@ -324,7 +324,10 @@ describe('the buyer\'s code locks after five wrong tries, and the founder unlock
         if (orderId === failOne) return Response.json({ ok: false, reason: 'unavailable' }, { status: 503 });
         return Response.json({ ok: true, locked: true, since: T });
       }
-      if (url.pathname === '/produce/custodian') return Response.json({ ok: true, custodian: null });
+      // The real answer for an opened file nobody has checked or sealed yet.
+      if (url.pathname === '/produce/custodian') {
+        return Response.json({ ok: true, open: true, packageId: `pkg-${orderId}`, currentCustodian: null, pickupVerifiedBy: null, custodyBegun: false });
+      }
       return Response.json({ ok: true, status: 'recorded' });
     };
     spawnLogistics(hold);
