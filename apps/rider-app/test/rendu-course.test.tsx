@@ -402,37 +402,61 @@ describe('⚠ PORTE-SANS-PHOTO — arrival goes straight to the buyer’s code',
   });
 
 
-  it('⚠ a ROTATED rider code at the door is not a dead end — the verifier’s blocker, driven', async () => {
-    const state = freshCourse();
-    let evidences = 0;
-    const { s, w } = await toTheDoor(
-      [
-        logistiqueCourse(state, ORDER),
-        custody({
-          onEvidence: () => {
-            evidences += 1;
-            // The console rotated their code between the road and the door.
-            return evidences === 1
-              ? { status: 401, json: { error: 'unauthorized' } }
-              : { status: 200, json: { ok: true, status: 'evidence_recorded' } };
-          },
-        }),
-      ],
-      state,
-    );
-
+  it('⚠ a ROTATED rider code at the door is not a dead end — the new code is typed and the door opens', async () => {
     /**
-     * Before the fix the retry rendered on `tone === 'waiting'` only, so a 401
-     * — tone `refused` — left the rider with a sentence and no control, and
-     * the effect could never re-fire. Signing back in changed nothing. The
-     * delivery could not be completed on that phone.
+     * The founder replaced the rider's code while he rode to the door. Like
+     * the real service — logistics deletes the old code when it mints the new
+     * one, and every rider door asks logistics — the OLD code is refused with
+     * 401 for ever, on every route; only the new one is let in. (This stand-in
+     * used to answer 401 once and then 200 under the same old code, which no
+     * Séra Worker ever does, so the walk proved a retry that cannot succeed.)
      */
-    expect(s.shows('Ce code ne marche pas.')).toBe(true);
-    await s.press('Réessayer');
+    const NEW_CODE = 'SR-PQRS-TUVW-XYZ2';
+    const state = freshCourse();
+    state.ramassageConfirmeAt = '2026-08-10T10:00:00.000Z';
+    state.codeVerification = PICKUP;
+    state.codeScelle = SEAL;
+    let live = CODE;
+    const sent: { path: string; code: string }[] = [];
+    wire([logistiqueCourse(state, ORDER), custody()]);
+    const inner = globalThis.fetch;
+    (globalThis as { fetch: unknown }).fetch = async (input: string, init?: RequestInit) => {
+      const path = new URL(input, 'http://sera.test').pathname;
+      const auth = ((init?.headers ?? {}) as Record<string, string>)['Authorization'] ?? '';
+      const code = auth.startsWith('Bearer ') ? auth.slice('Bearer '.length) : '';
+      sent.push({ path, code });
+      if (path.startsWith('/rider/') && code !== live) {
+        return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+      }
+      const res = await inner(input, init);
+      // The arrival is the last act the old code carried.
+      if (path === '/rider/transit/arrive') live = NEW_CODE;
+      return res;
+    };
+    const s = await mountRider();
+    await s.type(CODE);
+    await s.press('Entrer');
+    await s.press('Accepter la course');
+    await s.press('Oui', 2);
+    await s.press('Oui', 1);
+    await s.press('Oui', 0);
+    await s.press('Envoyer la vérification');
+    await s.press('En route');
+    await s.press('Je suis arrivé');
 
-    expect(w.calls.filter((c) => c.path === '/rider/delivery/evidence')).toHaveLength(2);
-    expect(s.shows('Le code de la cliente'), 'the retry must open the code screen').toBe(true);
-  });
+    // The door's evidence went by itself under the old code and was refused.
+    expect(sent.filter((c) => c.path === '/rider/delivery/evidence' && c.code === CODE)).toHaveLength(1);
+    expect(s.shows('Ce code ne marche pas.')).toBe(true);
+    expect(s.tree.root.findAllByType('TextInput' as never), `a field for the new code. On screen: ${JSON.stringify(s.texts())}`).toHaveLength(1);
+
+    await s.type(NEW_CODE);
+    await s.press('Entrer');
+    expect(sent.filter((c) => c.path === '/rider/delivery/evidence' && c.code === NEW_CODE), 'the evidence goes once under the new code').toHaveLength(1);
+    expect(s.shows('Le code de la cliente'), `on screen: ${JSON.stringify(s.texts())}`).toBe(true);
+    await s.type(DROP);
+    await s.press('Confirmer la remise');
+    expect(s.shows('Livré. Merci.')).toBe(true);
+  }, 20_000);
 });
 
 /**
