@@ -43,6 +43,10 @@ export const PATTERNS = [
     /* UNAMBIGUOUS — no innocent reading in this product. */
     { name: 'wallet', regex: /wallet/i },
     { name: 'balance (english money sense)', regex: /(?<!insufficient_)(?<![a-zA-ZÀ-ÿ])balances?\s*[:=][^=]|\.\s*balances?\b|(seller|user|account|client|vendeur|compte|wallet|cash|credit|fund|payout|ledger|running)Balances?\b|\b(seller|user|account|client|vendeur|compte)_balances?\b/i },
+    /* An earner's balance named with its currency (sellerBalanceFcfa,
+       seller_balance_xof). `fund` is left out on purpose: the Protection
+       Fund's own book is canon (ProtectionFundSchema.balance). */
+    { name: 'balance of an earner, with its unit', regex: /(seller|reseller|supplier|rider|courier|vendor|merchant|user|account|client)[_-]?balances?[_-]?(fcfa|xof|amount|cfa)/i },
     { name: 'holdFunds/captureFunds/releaseFunds', regex: /(hold|capture|release)[_-]?funds/i },
     { name: 'escrowAccount', regex: /escrow[_-]?account/i },
     { name: 'topUp', regex: /top[_-]?up\b/i },

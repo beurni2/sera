@@ -283,6 +283,23 @@ capture single-level-legal-parrainage pass node scripts/gates/single-level.mjs g
 # fixture red anyway, because siblings still fired. CI would not have noticed
 # the law being un-enforced. This gate fails if ANY pattern stops being
 # exercised by a fixture line.
+# ── THE RETIRED NAMES (Ten Laws #10) ────────────────────────────────────────
+# The same gate file, byte for byte, in every repository. The log lines here
+# never spell the names: this script is one of the files it reads.
+log "gate: retired-names — every tracked file, the left-out paths printed (must pass)"
+capture retired-names-positive pass node scripts/gates/retired-names.mjs
+
+log "gate: retired-names — NEGATIVE FIXTURE (the retired names as words, a catalog line, identifiers, must fail)"
+capture retired-names-negative fail node scripts/gates/retired-names.mjs gates/fixtures/negative/retired-names
+
+for fx in retired-words.ts catalog.retired-line.json retired-identifier.ts; do
+  log "gate: retired-names — NEGATIVE FIXTURE ALONE ($fx, must fail)"
+  capture "retired-names-negative-$fx" fail node scripts/gates/retired-names.mjs "gates/fixtures/negative/retired-names/$fx"
+done
+
+log "gate: retired-names — POSITIVE FIXTURE (ordinary French with a small b, the canon name with a possessive, must pass)"
+capture retired-names-legal pass node scripts/gates/retired-names.mjs gates/fixtures/retired-names-legal
+
 log "gate: fr-pattern-coverage — every banned pattern is exercised by a fixture (must pass)"
 capture fr-pattern-coverage pass node scripts/gates/fr-pattern-coverage.mjs
 
@@ -332,6 +349,9 @@ trap - EXIT
 # French precisely so no English pattern can be what makes it fail.
 log "gate: no-wallet-no-funds — FRENCH FIXTURE ALONE (soldeVendeur/crediter, must fail)"
 capture no-wallet-no-funds-negative-fr fail node scripts/gates/no-wallet-no-funds.mjs gates/fixtures/negative/no-wallet-no-funds/solde-vendeur.fr.ts
+
+log "gate: no-wallet-no-funds — an earner's balance named with its currency, ALONE (must fail)"
+capture no-wallet-no-funds-negative-balance-with-unit fail node scripts/gates/no-wallet-no-funds.mjs gates/fixtures/negative/no-wallet-no-funds/earner-balance-with-unit.ts
 
 log "gate: single-level — FRENCH FIXTURE ALONE (second level in French, must fail)"
 capture single-level-negative-fr fail node scripts/gates/single-level.mjs gates/fixtures/negative/single-level/reseau-multi-niveau.fr.ts

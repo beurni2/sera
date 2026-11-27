@@ -29,6 +29,7 @@ const GATES = [
   { gate: 'no-seller-deposit', fixtures: 'gates/fixtures/negative/no-seller-deposit' },
   { gate: 'no-seller-debit', fixtures: 'gates/fixtures/negative/no-seller-debit' },
   { gate: 'single-level', fixtures: 'gates/fixtures/negative/single-level' },
+  { gate: 'retired-names', fixtures: 'gates/fixtures/negative/retired-names' },
 ];
 const ROSTER_PATH = 'gates/pattern-roster.json';
 
