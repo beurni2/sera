@@ -48,8 +48,13 @@ export interface RepereAudioEtat {
 }
 
 export interface RepereAudioPort {
-  /** Start (or restart) the note. Resolves when playback has been asked for. */
-  play(url: string): Promise<void>;
+  /**
+   * Start (or resume) the note. Resolves when playback has been asked for.
+   * `headers` ride the request (his code, never in the URL); `cle` names the
+   * note — Séra's door has ONE URL for every course, so only the same key
+   * resumes, and a new course never picks up the last buyer's voice.
+   */
+  play(url: string, headers?: Record<string, string>, cle?: string): Promise<void>;
   /** Pause where we are — the note keeps its position, a second tap resumes. */
   pause(): void;
   /** Stop and release — called when the screen leaves, always. */
@@ -103,7 +108,7 @@ type PlayerLike = {
  */
 const GARDE_CHARGEMENT_MS = 10_000;
 type AudioModule = {
-  createAudioPlayer: (source: string) => PlayerLike;
+  createAudioPlayer: (source: string | { uri: string; headers: Record<string, string> }) => PlayerLike;
   /** The real `expo-audio` export (build/ExpoAudio.js); absent on the web stub. */
   setAudioModeAsync?: (mode: { playsInSilentMode: boolean }) => Promise<void>;
 };
@@ -259,7 +264,7 @@ export function repereAudioOver(mod: AudioModule): RepereAudioPort {
     }, GARDE_CHARGEMENT_MS);
   };
   return {
-    async play(url: string): Promise<void> {
+    async play(url: string, headers?: Record<string, string>, cle: string = url): Promise<void> {
       if (!modeRegle) {
         modeRegle = true;
         await mod.setAudioModeAsync?.({ playsInSilentMode: true }).catch(() => {
@@ -274,7 +279,7 @@ export function repereAudioOver(mod: AudioModule): RepereAudioPort {
       const avaitEchoue = echec;
       echec = false;
       try {
-        if (player !== null && current === url && !avaitEchoue) {
+        if (player !== null && current === cle && !avaitEchoue) {
           // ⚠ RESUME, NEVER RESTART. Tapping « Pause » then tapping again must
           // continue where the buyer's sentence was cut, not replay it from the
           // top — a rider re-listening to « portail bleu » should not have to
@@ -305,9 +310,9 @@ export function repereAudioOver(mod: AudioModule): RepereAudioPort {
         // because a rider's phone is a 1 GB Android and a leaked player is a
         // crash three courses later.
         detach();
-        const cree = mod.createAudioPlayer(url);
+        const cree = mod.createAudioPlayer(headers === undefined ? url : { uri: url, headers });
         player = cree;
-        current = url;
+        current = cle;
         finished = false;
         charge = false;
         vuActif = false;

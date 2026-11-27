@@ -34,6 +34,14 @@ new_sqlite_classes = ["LogisticsDO"]
 binding = "CUSTODY"
 service = "custody-service"
 
+# The buyer's voice note, for her accepted rider only: the media Worker's audio
+# door, reachable only through this binding (no URL, no new secret). Logistics
+# asks it for the note of the rider's OWN accepted course at /rider/repere-audio.
+[[services]]
+binding = "MEDIA_AUDIO"
+service = "media-service"
+entrypoint = "AudioRead"
+
 # COURSE-LIVRÉE (founder, 2026-08-13) — ONE NEW SECRET, no new binding:
 #   · SERA_COURSE_LIVREE_SECRET — the CUSTODY Worker's key to THIS Worker's
 #     /produce/course-livree door (the drop-confirmation wire that closes a

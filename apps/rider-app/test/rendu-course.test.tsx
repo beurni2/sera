@@ -107,9 +107,11 @@ describe('⚠ ÉCRAN BLANC — the accept tap, driven', () => {
      * caused it. « The voice stops when the row leaves the screen », below,
      * is the walk that drives that effect now.
      */
-    await s.press('Écouter le repère');
-
+    // Her voice now comes with the acceptance (just-in-time access): it is
+    // not on the proposal, so he listens on the accepted course.
+    expect(s.shows('Écouter le repère'), 'no voice before « Accepter »').toBe(false);
     await s.press('Accepter la course');
+    await s.press('Écouter le repère');
 
     /**
      * THE ASSERTION THAT WAS MISSING ALL DAY. The crash was a throw inside a
@@ -646,6 +648,8 @@ describe('⚠ VOIX-MUETTE-2 — a repère that cannot load is not an eternal « 
     __modeChargement('silence');
     const state = freshCourse();
     const { s } = await signedIn([logistiqueCourse(state, ORDER), custody()]);
+    // Her voice comes with the acceptance (just-in-time access).
+    await s.press('Accepter la course');
 
     await s.press('Écouter le repère');
     // Nothing has arrived and nothing ever will — but ten seconds have not
@@ -684,12 +688,12 @@ describe('⚠ VOIX-MUETTE-2 — a repère that cannot load is not an eternal « 
 describe('GEO-SERA-1 — the Itinéraire act on the landmark card', () => {
   /** The standing fixture plus the pin — the exact bytes the boutik+ relay
    *  now sends (contract: logistics stores {lat, lng} and serves the stored
-   *  location whole on /rider/moi). */
+   *  location whole on /rider/moi once he ACCEPTED; the area alone before). */
   function logisticsAvecPin(state: CourseState): Route {
     const base = logistiqueCourse(state, ORDER);
     return (path, body) => {
       const answer = base(path, body);
-      if (path === '/rider/moi' && answer !== null) {
+      if (path === '/rider/moi' && answer !== null && state.status === 'acknowledged') {
         const rider = (answer.json as Record<string, unknown>)['rider'] as Record<string, unknown>;
         const assignment = rider['assignment'] as Record<string, unknown>;
         assignment['location'] = {
@@ -706,6 +710,9 @@ describe('GEO-SERA-1 — the Itinéraire act on the landmark card', () => {
     const avant = Linking.opened.length;
     const { s } = await signedIn([logisticsAvecPin(state), custody()]);
     expect(s.shows('Une course pour vous'), JSON.stringify(s.texts())).toBe(true);
+    // Her point comes with the acceptance (just-in-time access).
+    expect(s.shows('Itinéraire — ouvrir le GPS'), 'no Itinéraire on the proposal').toBe(false);
+    await s.press('Accepter la course');
 
     // Well displayed: the act and its plain-words aide, together.
     expect(s.shows('Itinéraire — ouvrir le GPS'), 'the act must be on the card').toBe(true);
