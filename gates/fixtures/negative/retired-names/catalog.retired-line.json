@@ -1,0 +1,14 @@
+[
+  {
+    "key": "accueil.titre",
+    "fr": "Bienvenue sur Ma Boutique",
+    "register": "selling",
+    "screenClass": "label"
+  },
+  {
+    "key": "accueil.sous_titre",
+    "fr": "MA BOUTIQUE, partout avec vous",
+    "register": "selling",
+    "screenClass": "label"
+  }
+]

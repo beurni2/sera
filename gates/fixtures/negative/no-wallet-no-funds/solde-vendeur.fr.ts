@@ -35,3 +35,4 @@ export const porteMonnaie = 0; // interdit
 export interface Compte2 { vendeurPortefeuille: number; solde: number }
 export const lu = compte['solde'] = 0;
 export const payloadInterdit = '{"vendeur": {"solde": 125000}}'; // interdit : clé JSON
+export const soldeFournisseur = 0, solde_livreur = 0; // interdit : le solde d'un fournisseur ou d'un livreur
