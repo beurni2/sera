@@ -3,6 +3,18 @@ Continuity ledger per CTO charter §6/§6bis. Every entry is evidence-grounded.
 
 Format per entry:
 
+## 2026-11-27 · COLIS-PERDU-1 — MERGED and DEPLOYED
+
+**Founder.** « Release all four » (2026-11-27 10:54 UTC, decision card, on the lost-parcel batch report), which named for Séra: put the custody service live, then the logistics service, from the branch, then merge. Shop+'s shop service went live first, so Shop+ was listening before Séra could speak.
+
+**Deployed from the branch at `0429259`.** custody-deploy 29 green, then logistics-deploy 39 green; each asserts that the live Worker is the bundle it built and that its keys are armed.
+
+**Merge.** PR #9 merged as `efc51ed` (merge commit, the branch shas kept). On main: ci 235 green. expo-preview 166 (rider app preview) red on both attempts at Expo's own publish step (« Service Unavailable », a GraphQL request refused by Expo), after the export and both bundles built; the rider app's only change in this batch is the canon pin. The preview stays on the previous build until it is re-run.
+
+**Still open.** As named in the slice entry below. Other open items for this slice are held in the private batch record until their fixes deploy.
+
+---
+
 ## 2026-11-27 · COLIS-PERDU-1 — the founder declares a parcel lost on the road: custody moves to Séra's lost terminal, a liability claim is filed at his amount, Shop+ is told, the rider is freed · lane S10 · on the branch, NOT merged, NOT deployed
 
 **Founder.** « Yes, on my Boutik+ console » (2026-11-27 08:35 UTC, decision card). Only he declares it, from his console, and only while a rider holds the parcel. It is final.
