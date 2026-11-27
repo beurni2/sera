@@ -34,9 +34,18 @@ name: custody-deploy
 
 on:
   workflow_dispatch:
+    inputs:
+      write_shop_progress_secret:
+        description: "Also write the delivery key (SHOP_PROGRESS_SECRET) onto the live custody Worker. This OVERWRITES the value the Worker holds now with this repository's secret; leave it unticked to keep the live value."
+        type: boolean
+        default: false
 
+# `actions: read` and `pull-requests: read` are for the first step alone: it asks
+# GitHub whether ci is green on this commit and which pull requests are open.
 permissions:
   contents: read
+  actions: read
+  pull-requests: read
 
 concurrency:
   group: custody-deploy
@@ -45,20 +54,45 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # Nothing goes live until the founder approves this run (and sees its commit).
+    environment: production
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      # Every action pinned to a commit SHA, the tag it resolves from kept
+      # beside it (the same pins Shop+ and Boutik+ run): a moving tag is code
+      # nobody here reviewed.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      # Only a commit ci has passed — and whose newest finished ci run is
+      # green — can go live. The reasons are in the script's header.
+      - name: Only a commit green in ci can go live
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/release-guard.sh
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0 (what the moving v4 resolves to)
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: pnpm
-      - name: Authorize read access to platform-contracts (CI-only)
-        run: git config --global url."https://x-access-token:${{ secrets.PLATFORM_CONTRACTS_READ_TOKEN }}@github.com/beurni2/platform-contracts".insteadOf "https://github.com/beurni2/platform-contracts"
-      - name: Authorize read access to platform-contracts (CI-only, SSH forms)
+      # The platform-contracts grant is SCOPED: a gitconfig under the runner's
+      # temp dir that only this step reads (GIT_CONFIG_GLOBAL), the token as
+      # env rather than in the script text, nothing written when the secret is
+      # unset (platform-contracts is public; the lockfile resolves it to a
+      # codeload tarball), and the file deleted when the install ends. Three URL
+      # forms, one tokened rewrite (pnpm records git deps in ssh/scp form on
+      # some resolve paths); --add, because url.<base>.insteadOf is single-valued.
+      - name: Install (frozen lockfile) with a scoped platform-contracts grant, discarded after
+        env:
+          GIT_CONFIG_GLOBAL: ${{ runner.temp }}/platform-contracts.gitconfig
+          PLATFORM_CONTRACTS_READ_TOKEN: ${{ secrets.PLATFORM_CONTRACTS_READ_TOKEN }}
         run: |
-          git config --global --add url."https://x-access-token:${{ secrets.PLATFORM_CONTRACTS_READ_TOKEN }}@github.com/beurni2/platform-contracts".insteadOf "git@github.com:beurni2/platform-contracts"
-          git config --global --add url."https://x-access-token:${{ secrets.PLATFORM_CONTRACTS_READ_TOKEN }}@github.com/beurni2/platform-contracts".insteadOf "ssh://git@github.com/beurni2/platform-contracts"
-      - run: pnpm install --frozen-lockfile
+          set -euo pipefail
+          if [ -n "${PLATFORM_CONTRACTS_READ_TOKEN}" ]; then
+            B="https://x-access-token:${PLATFORM_CONTRACTS_READ_TOKEN}@github.com/beurni2/platform-contracts"
+            git config --global url."$B".insteadOf "https://github.com/beurni2/platform-contracts"
+            git config --global --add url."$B".insteadOf "git@github.com:beurni2/platform-contracts"
+            git config --global --add url."$B".insteadOf "ssh://git@github.com/beurni2/platform-contracts"
+          fi
+          trap 'rm -f "$GIT_CONFIG_GLOBAL"' EXIT
+          pnpm install --frozen-lockfile
       - run: pnpm build
       - name: Resolve the provenance stamp
         run: |
@@ -172,9 +206,13 @@ jobs:
       # `PROGRESS_WRITE_SECRET`: that one now opens only Boutik+'s preparation
       # facts, so it is answered 403 `wrong_writer` here, and any other value
       # is a 401 — every attempt, the same class of silence as the media key.
-      # This step writes the repository secret onto the Worker on EVERY run,
-      # so a value set on the Worker by hand is replaced by the repository's.
-      - name: Arm SHOP_PROGRESS_SECRET (piped — skipped only if the repo secret is absent)
+      # This step used to write the repository secret onto the Worker on EVERY
+      # run, so a value set on the Worker by hand was silently replaced. It now
+      # writes only when the person dispatching ticks
+      # « write_shop_progress_secret »; otherwise the live value is left alone,
+      # and the next step says so in the log.
+      - name: Arm SHOP_PROGRESS_SECRET (piped — only when asked, skipped if the repo secret is absent)
+        if: inputs.write_shop_progress_secret
         working-directory: services/custody-service
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -185,6 +223,9 @@ jobs:
             exit 0
           fi
           printf '%s' "$PROGRESS_SECRET" | pnpm exec wrangler secret put SHOP_PROGRESS_SECRET
+      - name: The delivery key was left as it is
+        if: ${{ !inputs.write_shop_progress_secret }}
+        run: echo "::notice title=Clé de livraison inchangée::SHOP_PROGRESS_SECRET n'a pas été réécrite sur le Worker de garde — la valeur en place reste. Pour la réécrire avec celle du dépôt, relancer ce workflow en cochant write_shop_progress_secret."
 
       # ═══ The F9 assertion: the live Worker must BE the bundle this job built ═══
       - name: Assert the live custody Worker is the bundle this job built

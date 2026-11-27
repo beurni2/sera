@@ -58,8 +58,12 @@ name: logistics-deploy
 on:
   workflow_dispatch:
 
+# `actions: read` and `pull-requests: read` are for the first step alone: it asks
+# GitHub whether ci is green on this commit and which pull requests are open.
 permissions:
   contents: read
+  actions: read
+  pull-requests: read
 
 concurrency:
   group: logistics-deploy
@@ -68,21 +72,45 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # Nothing goes live until the founder approves this run (and sees its commit).
+    environment: production
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      # Every action pinned to a commit SHA, the tag it resolves from kept
+      # beside it (the same pins Shop+ and Boutik+ run): a moving tag is code
+      # nobody here reviewed.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      # Only a commit ci has passed — and whose newest finished ci run is
+      # green — can go live. The reasons are in the script's header.
+      - name: Only a commit green in ci can go live
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/release-guard.sh
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0 (what the moving v4 resolves to)
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: pnpm
-      - name: Authorize read access to platform-contracts (CI-only)
-        run: git config --global url."https://x-access-token:${{ secrets.PLATFORM_CONTRACTS_READ_TOKEN }}@github.com/beurni2/platform-contracts".insteadOf "https://github.com/beurni2/platform-contracts"
-      # Guard against pnpm re-mangling lockfile git-dep URLs to SSH forms (see ci.yml).
-      - name: Authorize read access to platform-contracts (CI-only, SSH forms)
+      # The platform-contracts grant is SCOPED: a gitconfig under the runner's
+      # temp dir that only this step reads (GIT_CONFIG_GLOBAL), the token as
+      # env rather than in the script text, nothing written when the secret is
+      # unset (platform-contracts is public; the lockfile resolves it to a
+      # codeload tarball), and the file deleted when the install ends. Three URL
+      # forms, one tokened rewrite (pnpm records git deps in ssh/scp form on
+      # some resolve paths); --add, because url.<base>.insteadOf is single-valued.
+      - name: Install (frozen lockfile) with a scoped platform-contracts grant, discarded after
+        env:
+          GIT_CONFIG_GLOBAL: ${{ runner.temp }}/platform-contracts.gitconfig
+          PLATFORM_CONTRACTS_READ_TOKEN: ${{ secrets.PLATFORM_CONTRACTS_READ_TOKEN }}
         run: |
-          git config --global --add url."https://x-access-token:${{ secrets.PLATFORM_CONTRACTS_READ_TOKEN }}@github.com/beurni2/platform-contracts".insteadOf "git@github.com:beurni2/platform-contracts"
-          git config --global --add url."https://x-access-token:${{ secrets.PLATFORM_CONTRACTS_READ_TOKEN }}@github.com/beurni2/platform-contracts".insteadOf "ssh://git@github.com/beurni2/platform-contracts"
-      - run: pnpm install --frozen-lockfile
+          set -euo pipefail
+          if [ -n "${PLATFORM_CONTRACTS_READ_TOKEN}" ]; then
+            B="https://x-access-token:${PLATFORM_CONTRACTS_READ_TOKEN}@github.com/beurni2/platform-contracts"
+            git config --global url."$B".insteadOf "https://github.com/beurni2/platform-contracts"
+            git config --global --add url."$B".insteadOf "git@github.com:beurni2/platform-contracts"
+            git config --global --add url."$B".insteadOf "ssh://git@github.com/beurni2/platform-contracts"
+          fi
+          trap 'rm -f "$GIT_CONFIG_GLOBAL"' EXIT
+          pnpm install --frozen-lockfile
       # Compile workspace packages FIRST (the trap that killed shop-plus's
       # first deploy: bundling before dist/ exists).
       - run: pnpm build
