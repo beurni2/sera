@@ -3,6 +3,38 @@ Continuity ledger per CTO charter §6/§6bis. Every entry is evidence-grounded.
 
 Format per entry:
 
+## 2026-11-27 · PRISE-QUI-TOURNE-MAL-1 — a slow handoff, a course checked but not sealed, a phone that lost Séra's answer at the stall · lane S12 · on the branch, NOT merged, NOT deployed
+
+**Founder.** « Now you start working on the next batch » (2026-11-27 15:13 UTC), batch 5 of the plan he approved: « A slow handoff no longer sends the old rider's code. A course taken back after the goods were checked, but before the seal, stays usable. A phone that died mid-pickup can carry on. » Two choices, both on decision cards, both the recommended option: « No, refuse the take-back » (15:23 UTC) and « Answer the repeat as recorded » — « If the same rider sends the same check or seal again with his code, Séra answers with what it already recorded. No new road. » (15:24 UTC).
+
+**Lane.** Lane S, slice S12. Lane commits `3b8fd32` and `ceb63a2` (the review's fixes) on main `a7c9fa4`. Integrated on `claude/project-thread-jqj97g` as one commit, `a26f036`, on the i18n pin `30b3c5e` (its product and test files are the lane's byte for byte).
+
+**Spec.**
+- Sera-Build-Spec SE-I05 (l.37): « Custody begins only after **rider pickup verification** (objective conformity) **AND** **custody-seal registration**. Pickup also requires assigned session + `pickupVerificationCode`. »
+- §6.5 (l.121): « …**no generic failed terminal; package never unowned**… ». §6.1 (l.109): « On mismatch/damage → **rider refuses custody, buyer refunded (never fund-gated)**… ».
+- Execution Contract §3 (l.91-92): « Every mock MUST: emit duplicates · … · simulate timeouts · simulate partial failures · reject invalid state transitions… »
+
+**What changed.**
+- *Logistics, the custody outbox.* After the slow « open » post, the arm is sent only if the outbox row is still the one that was waiting (`this.custodyOutbox[orderId] === row`); a row replaced meanwhile settles through the next flush. Every custody post, the return-key arm included, now gives up after `CUSTODY_READ_TIMEOUT_MS` (4 s, the reads' own limit).
+- *Custody, the custodian read* (`/produce/custodian`, open file) adds `pickupVerifiedBy` (who checked the goods, from the object's log) and `custodyBegun` (the ledger holds a move to a courier; delivered, returned and lost all come after one). A read; nothing is written.
+- *Logistics, before a take-back or a « retirer » of an order with an acknowledged course*, per article: no file yet → the door goes on; goods checked and `custodyBegun` false → `409 pickup_verified_not_sealed` with the order ids; custody unbound, unreachable past the limit, unreadable, or not saying both words → `503 custody_unverifiable`. After the seal nothing changes (the dispatcher's typed assertion as before). An order with no acknowledged course clears as before.
+- *Custody, a repeat.* On the rider's own door, the same rider whose check was accepted, with the same code (digests compared in constant time) and the same check answers (names and values, any order), hears his recorded acceptance with `duplicate: true`; the rider who holds the parcel (`courier:<him>`) sending the same seal hears his recorded custody-begun answer the same way. Nothing is spent or written. Another rider, a wrong code, different answers, a different seal, or the founder's door: today's refusals.
+- *Rider app*: the design note in `src/net/custody-acts.ts` only. No screen code changed.
+
+**Evidence.**
+- Lane: red first on the real Workers (the logistics Worker bound to the real custody Worker); seam file `prise-qui-tourne-mal.e2e` 18 tests; walk `rendu-reponse-perdue` 3 tests (a check answer lost, the app killed, sent again: the seal and « En route » are reached; the same for a lost seal answer; a « Non » after the relaunch: no seal goes out, « Séra a refusé. » with SOS and a fresh check pressable); ten mutations each red on its target.
+- Existing tests: setup bound to the real custody Worker, expectation unchanged — take-back, ramassage, retirer, repere-audio-porte, and code-bloque (its stand-in now answers the real shape of an opened, unchecked file). Expectation changed by this order — prise-en-charge (logistics), custodian.e2e and rider-path ROUTE-DIRECTE (custody).
+- Coordinator, re-run on fresh bundles: the seam file and the changed logistics files 60/60, custody 11/11, walk 3/3. Mutations re-run: the row guard removed → 2 red; the « never sealed » condition removed → 4 red; the same-answers check removed → 1 red; each anchor matched once, restored (diff empty).
+- Coordinator, full board on `a26f036` (custody bundle, `pnpm build`, `TURBO_CONCURRENCY=1`, turbo forced): ALL GATES GREEN, exit 0, 0 cached — rider app 544, logistics 382, custody 280, dispatch console 97; the accent fixture fails with 4 as required. The seam file unmutated, three runs in a row: 18/18 each (the lane saw one extra test red once in three of its ten mutation runs, under load; not reproduced).
+
+**Verifier.** One pass on `0bdcafe` (the first squash): 1 blocker, 2 should-fix, 2 minor, 4 notes, each re-read in the code and handed back once. Fixed in `ceb63a2`: the refusal also fired after the seal (delivered, returned or lost), now asked of custody's ledger instead; a custody answer of the previous shape let a take-back through, now 503; a repeat with different check answers was answered as accepted, now today's refusal (the founder's card says « the same check »); two guards without a test now have one each; two test labels corrected. Journalled, not changed: the consoles show the two new refusals as their generic failure, and take-back has no console screen. Other notes are held in the private batch record.
+
+**Release.** custody-deploy, then logistics-deploy, from the branch; then the merge (which publishes the rider app). Custody must go first: a logistics Worker facing the previous custody refuses take-backs of acknowledged courses with 503 until custody catches up.
+
+**Still open.** Held in the private batch record until their fixes deploy.
+
+---
+
 ## 2026-11-27 · VIE-PRIVÉE-COURSE-1 — DEPLOYED and MERGED
 
 **Founder.** « Release all four » (2026-11-27 14:34 UTC, decision card, on the buyer-privacy batch report), which named Séra last: its logistics service binds the Boutik+ media service's new private entrypoint, so the media service went live first.
