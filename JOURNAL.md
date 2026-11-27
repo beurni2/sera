@@ -3,6 +3,67 @@ Continuity ledger per CTO charter §6/§6bis. Every entry is evidence-grounded.
 
 Format per entry:
 
+## 2026-11-27 · COLIS-PERDU-1 — the founder declares a parcel lost on the road: custody moves to Séra's lost terminal, a liability claim is filed at his amount, Shop+ is told, the rider is freed · lane S10 · on the branch, NOT merged, NOT deployed
+
+**Founder.** « Yes, on my Boutik+ console » (2026-11-27 08:35 UTC, decision card). Only he declares it, from his console, and only while a rider holds the parcel. It is final.
+
+**Lane.** Lane S, slice S10. Lane commits:
+- `776b99f`: the coordinator's canon repin, 3.21.0 to 3.28.0, applied unchanged, tree `f048bb88…`;
+- `11a8fa3`;
+- `3b2215e`.
+
+Integrated on `claude/project-thread-jqj97g` as merge `7faa752`.
+
+**Spec.** Sera-Build-Spec §6.5 (canon 3.28.0): « only the founder declares it, from his Boutik+ console, and only while a courier is the current custodian; the declaration is final and covers the whole parcel. For each order the parcel carries … custody moves to a named lost terminal … Séra opens a `CustodyLiabilityClaim` (`sera_loss`) at the amount the founder types for that order … and Séra sends `package.lost.v1` — the order id and the instant, nothing else … The course closes and the rider is freed. »
+
+**What changed.**
+- *The founder's door on logistics*, `POST /ops/colis/perdu {command_id, orderId, montants[]}`:
+  - `montants` must name every article of the live course once, in whole francs above zero. Anything else is `montants_incomplets` or `malformed`, and nothing moves.
+  - Every article's custodian is read fresh before anything moves. An article that is not with the rider gets 409 `pas_chez_le_livreur`.
+  - Each article is then told to custody under one command id. Only when every file has answered does the course close with the new named terminal `lost`. The lease is released, the course is archived and the rider is free.
+  - A retry under the same id replays. A declaration that is already closed answers `deja_declare`, and each archived article's file is told again, best effort, so a lost message resting unsent wakes. A declaration that finds the course closed after custody answered also answers `deja_declare`.
+- *Custody* (`declare_lost`):
+  - The ledger moves from the courier to `lost:sera`, its one current custodian.
+  - A canon `CustodyLiabilityClaim` (`sera_loss`) is filed at the typed amount, naming the accepted pickup's recorded evidence id.
+  - `package.lost.v1 {orderId, at}` is queued on its own outbound wire in the same write, on the refusal wire's rules.
+  - Every later road act refuses by name. The window's expiry answers `colis_declare_perdu`, and so does a liability claim on a file already declared lost.
+  - The founder's ops door can read `GET /liability-claims`; the rider and produce keys cannot.
+
+**Evidence.**
+- The lane's evidence:
+  - Seam test on the real logistics and custody Workers (Miniflare), with a Shop+ stand-in held to Shop+'s real door: 9/9. It covers:
+    - a two-article parcel declared, with both ledgers at `lost:sera`, one claim and one message each, and the rider free and assigned his next course;
+    - custody silent on the second article once, then the same-id retry completing it;
+    - an article already dropped, so nothing moves;
+    - before the seal;
+    - a return already open;
+    - a resting message woken by the retry;
+    - the rider door, Shop+'s arm key and a rider code on the founder door, all refused.
+  - Spine 6/6, custody 280/280, logistics 356/356, typecheck clean.
+  - Mutations, each anchor matched once and each file restored byte-identical, each red: the custodian pre-read, the spine courier check, the replay guards on spine, custody and logistics, the archive relay and its amounts check, custody's revival, the spine claim guard, and the route on Shop+'s arm list.
+  - Two mutations stay green, and both are said plainly:
+    - The canon parse before the message is queued is an equivalent mutation: its inputs are already checked. `3b2215e` corrects the claim `11a8fa3` made about it, and the parse stays.
+    - The check after custody answers, for a declaration closed by its own twin, is not reached by the concurrent test, because the local runtime serves the two requests one after the other. It stays as the guard.
+- Coordinator, on the merged tree: full board on `7faa752` after the custody bundle and `pnpm build` (`TURBO_CONCURRENCY=1`): ALL GATES GREEN. The seam test passed 9/9 twice inside it, custody 280/280, logistics 356/356, the rider app 534/534 and the dispatch console 97/97.
+
+**Independent review.** One fresh-context pass, handled once: 0 blocker, 1 major, 5 minor, 4 notes. The major (the parse) was handled as above. Every minor was fixed in `3b2215e`, except the seam test's time limit above 60 s, which waits for the wire's real first backoff step. The notes and the remaining follow-ons are kept in the private batch record.
+
+**Release order.** Shop+'s door is live before custody's lost wire. Custody goes before logistics, and the Boutik+ console comes last.
+
+**Where it stands.** On the branch, not merged, not deployed.
+
+---
+
+## 2026-11-27 · LOIS-PARTOUT-1 — MERGED
+
+**Founder.** « Merge all four » (2026-11-27 09:50 UTC, decision card, on the rules-check report).
+
+**No deploy.** Gate files only.
+
+**Merge.** PR #8 merged as `e6d455c` (merge commit, the branch shas kept). On main: ci 233 green · expo-preview 165 (rider app, unchanged inside) green.
+
+---
+
 ## 2026-11-27 · LOIS-PARTOUT-1 — every tracked file refuses the retired names; an earner's balance is caught as a whole word or with its currency · lane O4 · on the branch, NOT merged
 
 **Founder.** « after everything is released, you can start the next batch 3 » (2026-11-27 04:21 UTC, project chat). The plan he approved says « every repository checks for the retired names ».
