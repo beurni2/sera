@@ -82,6 +82,7 @@ describe('GET /produce/custodian — who holds the package, said by the ledger',
     })).status).toBe(200);
     expect((await ops('/ops/custody/begin', { orderId: ORDER, command_id: 'begin-1', riderId: RIDER, custodySealId: SEAL_CODE, sealPhotoRefs: [], at: T })).status).toBe(200);
     const held = await custodian(PRODUCE);
-    expect(held.json).toEqual({ ok: true, open: true, packageId: PKG, currentCustodian: `courier:${RIDER}` });
+    // Who checked the goods is said too: logistics reads it before ending a course.
+    expect(held.json).toEqual({ ok: true, open: true, packageId: PKG, currentCustodian: `courier:${RIDER}`, pickupVerifiedBy: RIDER });
   });
 });

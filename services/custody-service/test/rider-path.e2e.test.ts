@@ -361,13 +361,17 @@ describe('⚠ THE RIDER TAKES CUSTODY — the app’s own ports, the real Worker
     expect(String(((await led.json()) as Record<string, unknown>)['currentCustodian'] ?? ''))
       .toBe(`courier:${RIDER}`);
 
-    // …and SE-I05's surviving half still bites: the seal is single-use, so a
-    // second course cannot ride this one.
+    // …and SE-I05's surviving half still bites: the seal is single-use. The
+    // same holder sending it again (a lost answer) hears his recorded seal
+    // and nothing is written — custody never begins twice.
+    const avant = ((await (await m2.dispatchFetch(`http://custody/ops/ledger?orderId=${O}`, { headers: { Authorization: `Bearer ${OPS}` } })).json()) as Record<string, unknown[]>)['entries']!.length;
     const again = await acts.beginCustody(
       { commandId: 'rd-seal-2', orderId: O, custodySealId: 'SC-4K7M-9PQR', sealPhotoRefs: [] },
       RIDER_CODE,
     );
-    expect(custodyBegan(again), 'a spent seal must not begin custody twice').toBe(false);
+    expect(again.kind === 'recorded' && again.duplicate, `a spent seal must not begin custody twice: ${JSON.stringify(again)}`).toBe(true);
+    const apres = ((await (await m2.dispatchFetch(`http://custody/ops/ledger?orderId=${O}`, { headers: { Authorization: `Bearer ${OPS}` } })).json()) as Record<string, unknown[]>)['entries']!.length;
+    expect(apres, 'nothing written by the repeat').toBe(avant);
 
     await m2.dispose();
   }, 30_000);

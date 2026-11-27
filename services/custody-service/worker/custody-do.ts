@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { PackageLostEventSchema } from '@platform/contracts';
 import { CustodySpine, type ChainIds } from '../src/custody-spine.js';
 import { ACTIVE_PICKUP_VERIFICATION_POLICY, type VerificationInput } from '../src/pickup-verification-policy.js';
@@ -855,6 +855,42 @@ export class CustodyDO {
       },
       { status: 409 },
     );
+  }
+
+  /** Two digests of this door, compared in constant time (both are sha256 hex, one length). */
+  private static memeEmpreinte(a: string, b: string): boolean {
+    const x = new TextEncoder().encode(a);
+    const y = new TextEncoder().encode(b);
+    return x.length === y.length && timingSafeEqual(x, y);
+  }
+
+  /**
+   * The answer a phone lost, asked again under a fresh id (an app killed
+   * after the act reached here no longer holds the first id). Only the
+   * rider's own door, only the rider this file's accepted check names, only
+   * with the code he presented then: his recorded acceptance. Anything else
+   * is `null` and takes today's path, refusal included.
+   */
+  private repeatedAcceptedCheck(cmd: Extract<CustodyCommand, { kind: 'verify_pickup' }>): RecordedOutcome | null {
+    if (cmd.attribution !== 'rider_authenticated') return null;
+    const first = this.log.find(
+      (row) => row.cmd.kind === 'verify_pickup' && row.outcome.httpStatus === 200 && row.outcome.body['kind'] === 'accepted',
+    );
+    if (first === undefined) return null;
+    const accepted = first.cmd as Extract<CustodyCommand, { kind: 'verify_pickup' }>;
+    if (accepted.input.riderId !== cmd.input.riderId) return null;
+    return CustodyDO.memeEmpreinte(accepted.presentedPickupCodeDigest, cmd.presentedPickupCodeDigest) ? first.outcome : null;
+  }
+
+  /** The same, for the seal: the courier the ledger names as holder, with the seal that began his custody. */
+  private repeatedSeal(cmd: Extract<CustodyCommand, { kind: 'begin_custody' }>): RecordedOutcome | null {
+    if (cmd.attribution !== 'rider_authenticated') return null;
+    if (this.spine!.ledger.currentCustodian(this.chain!.package_id) !== `courier:${cmd.riderId}`) return null;
+    const began = this.log.find((row) => row.cmd.kind === 'begin_custody' && row.outcome.httpStatus === 200);
+    if (began === undefined) return null;
+    const first = began.cmd as Extract<CustodyCommand, { kind: 'begin_custody' }>;
+    if (first.riderId !== cmd.riderId) return null;
+    return CustodyDO.memeEmpreinte(first.custodySealDigest, cmd.custodySealDigest) ? began.outcome : null;
   }
 
   /** WHO verified this pickup, from this object's own log — `null` when no
@@ -2075,6 +2111,10 @@ export class CustodyDO {
         open: true,
         packageId: this.chain.package_id,
         currentCustodian: this.spine.ledger.currentCustodian(this.chain.package_id) ?? null,
+        // Who checked the goods at the stall, from this object's own log: with
+        // no courier holding yet, logistics must not end the course (the check
+        // spent the only pickup code). A read — it moves nothing.
+        pickupVerifiedBy: this.acceptedVerificationRider(),
       });
     }
 
@@ -2254,6 +2294,9 @@ export class CustodyDO {
       if (prior.kind === 'conflict') {
         return Response.json({ ok: false, reason: 'command_id_reused_with_other_content' }, { status: 409 });
       }
+      // Spends nothing and logs nothing: the first, recorded answer stands.
+      const repete = this.repeatedAcceptedCheck(cmd);
+      if (repete !== null) return this.replayOutcome(repete, cmd);
       if (this.tooLargeToCommit(cmd)) {
         return Response.json({ ok: false, reason: 'command_too_large' }, { status: 413 });
       }
@@ -2432,6 +2475,8 @@ export class CustodyDO {
       if (prior.kind === 'conflict') {
         return Response.json({ ok: false, reason: 'command_id_reused_with_other_content' }, { status: 409 });
       }
+      const scelle = this.repeatedSeal(cmd);
+      if (scelle !== null) return this.replayOutcome(scelle, cmd);
       if (this.tooLargeToCommit(cmd)) {
         return Response.json({ ok: false, reason: 'command_too_large' }, { status: 413 });
       }

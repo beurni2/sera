@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Miniflare } from 'miniflare';
 import { afterEach, describe, expect, it } from 'vitest';
+import { custodyReelle, PRODUCE_KEY_REEL } from './custody-reelle';
 import { createManualConnectivity } from '../../../apps/rider-app/src/offline/connectivity';
 import { httpShiftActs } from '../../../apps/rider-app/src/net/shift-acts';
 import { httpRiderSession } from '../../../apps/rider-app/src/net/httpRiderSession';
@@ -43,7 +44,9 @@ function spawn(): Miniflare {
     scriptPath: 'dist-worker/worker.mjs',
     durableObjects: { LOGISTICS: 'LogisticsDO' },
     durableObjectsPersist: mkdtempSync(join(tmpdir(), 'ramassage-')),
-    bindings: { SERA_OPS_SECRET: OPS, SERA_INTAKE_SECRET: INTAKE, SERA_RIDER_VERIFY_SECRET: VERIFY },
+    // Taking back or clearing an accepted course asks custody first: the real one answers.
+    serviceBindings: { CUSTODY: custodyReelle(live) as never },
+    bindings: { SERA_OPS_SECRET: OPS, SERA_INTAKE_SECRET: INTAKE, SERA_RIDER_VERIFY_SECRET: VERIFY, SERA_PRODUCE_SECRET: PRODUCE_KEY_REEL },
   });
   live.push(mf);
   return mf;

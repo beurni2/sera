@@ -462,7 +462,7 @@ describe('a course that ends before custody leaves its old code dead at custody'
     expect((await ledger(hold, O)).json['currentCustodian'] ?? null).toBeNull();
   }, 60_000);
 
-  it('take-back after the code was used at the stall: the re-arm comes to rest, the old code stays refused, and the next course arms at once', async () => {
+  it('take-back after the code was used at the stall: refused until the seal; after it, the re-arm comes to rest, the old code stays refused, and the next course arms at once', async () => {
     const hold = both('use');
     const O = 'ord-prise-use';
     const RIDER = 'rider-prise-use';
@@ -474,14 +474,23 @@ describe('a course that ends before custody leaves its old code dead at custody'
     await fournisseurConfirme(hold, O, (await vue(hold, code))?.['codeRamassage'], 'pu-r');
     const held = await vue(hold, code);
     expect((await verifier(hold, code, O, held?.['codeVerification'], 'pu')).kind, 'the code is used at the stall').toBe('recorded');
+    // Checked and not sealed, the course cannot be taken back: the parcel would have no road out.
+    const tot = await ops(hold, '/ops/assignment/take-back', { command_id: 'pu-tb-tot', assignmentId: as, custodyNotBegun: true });
+    expect(tot).toEqual({ status: 409, json: { ok: false, reason: 'pickup_verified_not_sealed', orderIds: [O] } });
+    // Once sealed, the founder's own assertion still decides (unchanged), and the ending re-arms over the used code.
+    expect((await appPorts(hold).custody.beginCustody({ commandId: id('b-pu'), orderId: O, custodySealId: held?.['codeScelle'] as string, sealPhotoRefs: [] }, code)).kind).toBe('recorded');
     const back = await ops(hold, '/ops/assignment/take-back', { command_id: 'pu-tb', assignmentId: as, custodyNotBegun: true });
     expect(back.status, JSON.stringify(back.json)).toBe(200);
 
     // Custody refuses re-arming a used code for ever; the row must still come to rest.
     const old = await codeDeLaCourseFinie(hold, O, as);
     expect(old).toBe(held?.['codeVerification']);
-    expect((await verifier(hold, code, O, old, 'pu-vieux')).kind, 'a used code never verifies again').toBe('refused');
-    expect((await ledger(hold, O)).json['currentCustodian'] ?? null).toBeNull();
+    // His own spent code, sent again by him, answers his recorded check and writes nothing; it never verifies anew.
+    const avant = ((await ledger(hold, O)).json['entries'] as unknown[]).length;
+    const vieux = await verifier(hold, code, O, old, 'pu-vieux');
+    expect(vieux.kind === 'recorded' ? { kind: vieux.body['kind'], duplicate: vieux.duplicate } : vieux, 'a used code never verifies again').toEqual({ kind: 'accepted', duplicate: true });
+    expect(((await ledger(hold, O)).json['entries'] as unknown[]).length, 'nothing written by the repeat').toBe(avant);
+    expect((await ledger(hold, O)).json['currentCustodian'], 'the sealed parcel stays his on the ledger').toBe(`courier:${RIDER}`);
 
     // Another order's course arms and verifies straight away.
     const O2 = 'ord-prise-use-2';
