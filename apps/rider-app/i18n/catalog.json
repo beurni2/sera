@@ -2086,5 +2086,119 @@
     "fr": "La course se ferme dans un instant.",
     "register": "neutral",
     "screenClass": "status"
+  },
+  {
+    "key": "jour.dimanche",
+    "fr": "dimanche",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "jour.lundi",
+    "fr": "lundi",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "jour.mardi",
+    "fr": "mardi",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "jour.mercredi",
+    "fr": "mercredi",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "jour.jeudi",
+    "fr": "jeudi",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "jour.vendredi",
+    "fr": "vendredi",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "jour.samedi",
+    "fr": "samedi",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "mois.janvier",
+    "fr": "janvier",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "mois.fevrier",
+    "fr": "février",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "mois.mars",
+    "fr": "mars",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "mois.avril",
+    "fr": "avril",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "mois.mai",
+    "fr": "mai",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "mois.juin",
+    "fr": "juin",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "mois.juillet",
+    "fr": "juillet",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "mois.aout",
+    "fr": "août",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "mois.septembre",
+    "fr": "septembre",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "mois.octobre",
+    "fr": "octobre",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "mois.novembre",
+    "fr": "novembre",
+    "register": "neutral",
+    "screenClass": "label"
+  },
+  {
+    "key": "mois.decembre",
+    "fr": "décembre",
+    "register": "neutral",
+    "screenClass": "label"
   }
 ]

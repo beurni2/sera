@@ -131,9 +131,11 @@ import {
   validRejectionRecorded,
   changementAvisRecorded,
   windowExpiresAtOf,
+  type CustodyActsPort,
   type CustodyAnswer,
 } from './src/net/custody-acts';
 import { surChaqueArticle, TENU, tenuVerification } from './src/net/colis-acts';
+import { heureOuaga } from './src/heure-fr';
 import type { ArticleColis } from './src/net/rider-session';
 import {
   ACT_IDLE,
@@ -343,10 +345,7 @@ const HUBS: readonly Screen[] = ['service', 'courses'];
 /** WO-4.3 — the demo's answer window for a proposed course (« Réponds
  * avant : HH:MM »). ⚠ CTO safest default: reuses WO-1.2's founder-reviewed
  * ACK_DEADLINE_MS (5 min — assignment-lease-ttl.v1). */
-const proposalDeadlineHhmm = (): string => {
-  const until = new Date(Date.now() + 5 * 60_000);
-  return `${String(until.getHours()).padStart(2, '0')}:${String(until.getMinutes()).padStart(2, '0')}`;
-};
+const proposalDeadlineHhmm = (): string => heureOuaga(new Date(Date.now() + 5 * 60_000));
 
 /** A fixed demo rider identity for the SOS incident (obviously not real). */
 const DEMO_RIDER_ID = 'rider-moussa-demo';
@@ -448,7 +447,42 @@ export default function App() {
    * screen, and a rider who is quick is recorded as quick rather than padded
    * into looking compliant.
    */
-  const custodyActs = useMemo(() => resolveCustodyActs(net), [net]);
+  /**
+   * A 401 is final for the code that heard it: logistics deletes a code's hash
+   * when the founder mints the next one, and every rider door asks logistics
+   * (logistics down is custody's 503, never a 401). So the rider goes back to
+   * the code field, whose sentences already say what to do, and types the new
+   * one. Only the code that heard the 401 is dropped — an answer landing after
+   * he signed in again under a new code changes nothing. The act memory on the
+   * phone is untouched, so the new code resumes the remembered step. A step
+   * that was refused under the old code was never recorded, so it may go again
+   * as a new attempt: after a mismatch check the course reset clears the
+   * difference photo, and he takes it again under the new code.
+   */
+  const codeMort = useCallback((code: string) => {
+    setSignInState((prev) => (prev.kind === 'signed_in' && prev.code === code ? { kind: 'refused', why: 'bad_code' } : prev));
+  }, []);
+  const custodyActs = useMemo((): CustodyActsPort => {
+    const port = resolveCustodyActs(net);
+    const garde = (code: string, answer: Promise<CustodyAnswer>): Promise<CustodyAnswer> =>
+      answer.then((a) => {
+        if (a.kind === 'unauthorized') codeMort(code);
+        return a;
+      });
+    return {
+      verifyPickup: (act, code) => garde(code, port.verifyPickup(act, code)),
+      beginCustody: (act, code) => garde(code, port.beginCustody(act, code)),
+      depart: (code, orderId, commandId) => garde(code, port.depart(code, orderId, commandId)),
+      arrive: (code, orderId, commandId) => garde(code, port.arrive(code, orderId, commandId)),
+      submitDeliveryEvidence: (act, code) => garde(code, port.submitDeliveryEvidence(act, code)),
+      recordDoorInspection: (act, code) => garde(code, port.recordDoorInspection(act, code)),
+      confirmDrop: (act, code) => garde(code, port.confirmDrop(act, code)),
+      refuseAtDoor: (act, code) => garde(code, port.refuseAtDoor(act, code)),
+      expireWindow: (code, orderId, commandId) => garde(code, port.expireWindow(code, orderId, commandId)),
+      openReturn: (act, code) => garde(code, port.openReturn(act, code)),
+      completeReturn: (act, code) => garde(code, port.completeReturn(act, code)),
+    };
+  }, [net, codeMort]);
   const [verifyPhase, setVerifyPhase] = useState<ActPhase>(ACT_IDLE);
   const [sealPhase, setSealPhase] = useState<ActPhase>(ACT_IDLE);
   /** VRAI-ROUTE — the two transit facts' phases, same shape as every act:
@@ -639,10 +673,14 @@ export default function App() {
    * false` permanently against them; a relaunch just before verifying recorded
    * ~30 s. The number measured nothing, and it goes into a hash-chained ledger.
    *
-   * It now starts when the rider can first SEE the package — the verification
-   * screen becoming reachable — which is what a dwell is. Still frozen with the
-   * attempt, because it is part of custody's fingerprint and a moving number
-   * makes every retry a conflict.
+   * It then moved to the course's OFFER, which still counted the whole ride to
+   * the stall. It now starts on the first session read that hands this order's
+   * pickup code to the phone: logistics serves it only once the supplier
+   * confirmed the handover at the stall, so that is when the check becomes
+   * answerable. After a relaunch it starts again at that first read — never at
+   * an earlier instant the phone cannot know. Still frozen with the attempt,
+   * because it is part of custody's fingerprint and a moving number makes
+   * every retry a conflict.
    */
   const dwellStart = useRef<number>(Date.now());
   const attemptFor = useCallback((key: string) => {
@@ -941,11 +979,17 @@ export default function App() {
     );
   }, [preuveUrls]);
   const dwellOrderId = liveAssignment?.orderId ?? null;
+  const codeRemis = (liveAssignment?.codeVerification ?? null) !== null;
+  const horlogePour = useRef<string | null>(null);
   useEffect(() => {
-    // Keyed on the ORDER: a second course starts its own clock, and the clock
-    // does NOT restart under a rider who is mid-inspection of this one.
-    if (dwellOrderId !== null) dwellStart.current = Date.now();
-  }, [dwellOrderId]);
+    // Started ONCE per order, at the read that hands over its code: a second
+    // course starts its own clock, while later reads — or a new rider code
+    // typed mid-check, which empties the course for a moment — do NOT restart
+    // it under a rider who is mid-inspection.
+    if (dwellOrderId === null || !codeRemis || horlogePour.current === dwellOrderId) return;
+    horlogePour.current = dwellOrderId;
+    dwellStart.current = Date.now();
+  }, [dwellOrderId, codeRemis]);
   /**
    * ⚠ THE ACT PHASES BELONG TO ONE COURSE. They were never reset when the
    * assignment changed — tolerable while every act was a TAP, and not now that
@@ -1385,6 +1429,33 @@ export default function App() {
   }, [WIRED, preuveAuto, sendDeliveryEvidence]);
 
   /**
+   * How long the buyer looked at her parcel (Spec l.63: « buyer inspection
+   * (category rules, dwell 2–4 min) »). Every door inspection used to carry
+   * one frozen instant as both its start and its end, so custody recorded 0 s
+   * for every buyer. The start is the moment the door screen opens for THIS
+   * visit — it opens again on a 2e passage, when the buyer comes back after an
+   * absence, or on a new try inside the window, and the wait before it is not
+   * her inspection (`porteOuverte`, below). The send is the end. Both are
+   * frozen with the attempt (custody fingerprints them), so a resend carries
+   * the same two times; after a relaunch the start is that run's opening —
+   * never an earlier instant this phone cannot know.
+   */
+  const porteOuverteA = useRef<{ orderId: string; passage: number; at: string } | null>(null);
+  const ordreCourant = useRef<string | null>(null);
+  ordreCourant.current = dwellOrderId;
+  const debutPorteFor = useRef(new Map<string, string>());
+  const bornesPorte = useCallback((attemptId: string): { startedAt: string; completedAt: string } => {
+    const completedAt = capturedAtFor.current.get(attemptId) ?? new Date().toISOString();
+    capturedAtFor.current.set(attemptId, completedAt);
+    const ouverte = porteOuverteA.current;
+    const startedAt =
+      debutPorteFor.current.get(attemptId) ??
+      (ouverte !== null && ouverte.orderId === ordreCourant.current ? ouverte.at : completedAt);
+    debutPorteFor.current.set(attemptId, startedAt);
+    return { startedAt, completedAt };
+  }, []);
+
+  /**
    * ═══ PORTE-CUSTODY part C (founder-approved 2026-08-14) — THE §6.3 DOOR
    * STAGE, WIRED ═══
    *
@@ -1404,11 +1475,10 @@ export default function App() {
   const sendDoorInspection = useCallback(() => {
     if (riderCode === null || liveAssignment === null) return;
     const attempt = attemptFor(`door-inspection|${liveAssignment.orderId}`);
-    // The instant is FROZEN with the attempt — custody fingerprints the
+    // The instants are FROZEN with the attempt — custody fingerprints the
     // content, so a moving clock would turn every retry into
     // `409 command_id_reused_with_other_content` (the capturedAt law).
-    const held = capturedAtFor.current.get(attempt.id) ?? new Date().toISOString();
-    capturedAtFor.current.set(attempt.id, held);
+    const porte = bornesPorte(attempt.id);
     runAct(setInspectionPhase, () =>
       custodyActs.recordDoorInspection(
         {
@@ -1421,8 +1491,8 @@ export default function App() {
           manufacturerSealOpened: false,
           custodySealIntact: true,
           buyerAccepts: true,
-          startedAt: held,
-          completedAt: held,
+          startedAt: porte.startedAt,
+          completedAt: porte.completedAt,
           // No camera at the door (PORTE-SANS-PHOTO) — the value SAYS SO
           // (the `sans-photo` convention, A7's lesson) and is a pure
           // function of the order, so the attempt's content cannot drift.
@@ -1431,7 +1501,7 @@ export default function App() {
         riderCode,
       ),
     );
-  }, [custodyActs, riderCode, liveAssignment, runAct, attemptFor]);
+  }, [custodyActs, riderCode, liveAssignment, runAct, attemptFor, bornesPorte]);
 
   const sendDrop = useCallback(
     (dropCode: string) => {
@@ -1572,6 +1642,27 @@ export default function App() {
     !(rescheduleDue(expirePhase, remembered, passageCourant) && !clientRevenu) &&
     !(windowIsOpen(refusalPhase) && !reessaiEnCours && passageCourant < 2) &&
     !raisonOuverte;
+  /** The door screen is the rider's screen — the package's articles, or the
+   *  single order's inspection — once none of the arms the course screen puts
+   *  before it (the ladder's window and poster, the road home) holds the
+   *  screen. « Un souci ? » opened and closed again is the same visit. */
+  const porteOuverte =
+    dwellOrderId !== null &&
+    evidenceIsHeld(evidencePhase) &&
+    !(rescheduleDue(expirePhase, remembered, passageCourant) && !clientRevenu) &&
+    !(windowIsOpen(refusalPhase) && !reessaiEnCours && passageCourant < 2) &&
+    (colis !== null
+      ? colisPorteDue && !refusedFinalDue(expirePhase, remembered) && !retourDecide
+      : !returnDone(handoverPhase) &&
+        !returnRoadOpen(returnOpenPhase, liveAssignment?.codeRetour ?? null, remembered) &&
+        !(refusedFinalDue(expirePhase, remembered) || validRejectionDue(inspectionPhase, remembered) || retourDecide));
+  useEffect(() => {
+    const ouverte = porteOuverteA.current;
+    if (!porteOuverte || dwellOrderId === null) porteOuverteA.current = null;
+    else if (ouverte === null || ouverte.orderId !== dwellOrderId || ouverte.passage !== passageCourant) {
+      porteOuverteA.current = { orderId: dwellOrderId, passage: passageCourant, at: new Date().toISOString() };
+    }
+  }, [porteOuverte, dwellOrderId, passageCourant]);
   const sendOpenReturn = useCallback(() => {
     if (riderCode === null || liveAssignment === null || scelleRetour === null) return;
     // COLIS-FOURNISSEUR-1 — a bag going home whole (the ladder ended on
@@ -1601,8 +1692,7 @@ export default function App() {
     (orderId: string) => {
       if (riderCode === null) return;
       const attempt = attemptFor(`door-inspection|${orderId}|garde`);
-      const held = capturedAtFor.current.get(attempt.id) ?? new Date().toISOString();
-      capturedAtFor.current.set(attempt.id, held);
+      const porte = bornesPorte(attempt.id);
       const noter = (phase: ActPhase): void =>
         setPorteColis((p) => ({ ...p, [orderId]: { choix: 'garde', etape: 'inspection', phase } }));
       noter({ kind: 'working' });
@@ -1616,8 +1706,8 @@ export default function App() {
             manufacturerSealOpened: false,
             custodySealIntact: true,
             buyerAccepts: true,
-            startedAt: held,
-            completedAt: held,
+            startedAt: porte.startedAt,
+            completedAt: porte.completedAt,
             evidenceBundleId: `${SANS_PHOTO}-porte-${orderId}`,
           },
           riderCode,
@@ -1627,7 +1717,7 @@ export default function App() {
           () => noter({ kind: 'answered', answer: { kind: 'unreachable', reason: 'transport' } }),
         );
     },
-    [custodyActs, riderCode, attemptFor],
+    [custodyActs, riderCode, attemptFor, bornesPorte],
   );
 
   /**
@@ -1645,8 +1735,7 @@ export default function App() {
       const avis = motif === 'avis';
       const custodySealIntact = motif !== 'abime';
       const attempt = attemptFor(`door-inspection|${orderId}|${avis ? 'changement-avis' : `refus-valide|${motif}`}`);
-      const held = capturedAtFor.current.get(attempt.id) ?? new Date().toISOString();
-      capturedAtFor.current.set(attempt.id, held);
+      const porte = bornesPorte(attempt.id);
       const noter = (etape: 'inspection' | 'retour', phase: ActPhase): void =>
         setPorteColis((p) => ({ ...p, [orderId]: { choix: 'refuse', etape, phase } }));
       noter('inspection', { kind: 'working' });
@@ -1661,8 +1750,8 @@ export default function App() {
             custodySealIntact,
             buyerAccepts: false,
             ...(avis ? { refusalColumn: 'buyer_risk' as const, definitive: true as const } : { refusalColumn: 'valid' as const }),
-            startedAt: held,
-            completedAt: held,
+            startedAt: porte.startedAt,
+            completedAt: porte.completedAt,
             evidenceBundleId: `${SANS_PHOTO}-porte-${orderId}`,
           },
           riderCode,
@@ -1684,7 +1773,7 @@ export default function App() {
         noter('retour', { kind: 'answered', answer: ouverture });
       })().catch(() => noter('inspection', { kind: 'answered', answer: { kind: 'unreachable', reason: 'transport' } }));
     },
-    [custodyActs, riderCode, attemptFor, scelleRetour],
+    [custodyActs, riderCode, attemptFor, scelleRetour, bornesPorte],
   );
 
   /** Her refusal is on the ledger, the re-seal did not land: ONLY the re-seal
@@ -1750,8 +1839,7 @@ export default function App() {
       const attempt = attemptFor(
         `door-inspection|${liveAssignment.orderId}|refus-valide|${custodySealIntact ? 'intact' : 'abime'}`,
       );
-      const held = capturedAtFor.current.get(attempt.id) ?? new Date().toISOString();
-      capturedAtFor.current.set(attempt.id, held);
+      const porte = bornesPorte(attempt.id);
       setRefusValideOuvert(false);
       runAct(setInspectionPhase, () =>
         custodyActs.recordDoorInspection(
@@ -1764,15 +1852,15 @@ export default function App() {
             custodySealIntact,
             buyerAccepts: false,
             refusalColumn: 'valid',
-            startedAt: held,
-            completedAt: held,
+            startedAt: porte.startedAt,
+            completedAt: porte.completedAt,
             evidenceBundleId: `${SANS_PHOTO}-porte-${liveAssignment.orderId}`,
           },
           riderCode,
         ),
       );
     },
-    [custodyActs, riderCode, liveAssignment, runAct, attemptFor],
+    [custodyActs, riderCode, liveAssignment, runAct, attemptFor, bornesPorte],
   );
 
   /** The hour custody promised the buyer, from the ledger's answer — never
@@ -1780,7 +1868,7 @@ export default function App() {
   const fenetreJusqua = (() => {
     if (refusalPhase.kind !== 'answered') return null;
     const iso = windowExpiresAtOf(refusalPhase.answer);
-    return iso === null ? null : new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return iso === null ? null : heureOuaga(new Date(iso));
   })();
 
   /**
@@ -2043,11 +2131,15 @@ export default function App() {
   const refreshSession = useCallback(() => {
     if (riderCode === null) return;
     void submitSignIn(sessionPort, riderCode).then((next) => {
-      // Only a full session replaces the session — a transient refusal must
+      // Only a full session replaces the session — offline or Séra down must
       // not sign the rider out mid-repair; the act's own sentence stands.
-      if (next.kind === 'signed_in') setSignInState(next);
+      // A read that lands after the code changed — refused, or a new one typed
+      // — speaks for a code that is no longer his: it changes nothing.
+      if (next.kind === 'signed_in') setSignInState((prev) => (prev.kind === 'signed_in' && prev.code === riderCode ? next : prev));
+      // …but a 401 is final for this code (see `codeMort`): back to the field.
+      else if (next.kind === 'refused' && next.why === 'bad_code') codeMort(riderCode);
     }, () => void 0);
-  }, [sessionPort, riderCode]);
+  }, [sessionPort, riderCode, codeMort]);
   /**
    * ⚠ FOUNDER REPORT (2026-08-09): « I sent the coursier but nothing shows on
    * the sera app. » The session was fetched ONCE, at sign-in, and never again
@@ -2776,7 +2868,7 @@ export default function App() {
                   <PreuvePhotos />
                   {liveAssignment.ackDeadline !== null ? (
                     <FasoBody>
-                      {`${t('courses.before')} ${new Date(liveAssignment.ackDeadline).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
+                      {`${t('courses.before')} ${heureOuaga(new Date(liveAssignment.ackDeadline))}`}
                     </FasoBody>
                   ) : null}
                   <FasoBody>{t('course.proposee_aide')}</FasoBody>
@@ -4059,7 +4151,7 @@ export default function App() {
                     // windowExpiresAt arrives with the service outcome at
                     // assembly — the display is honest either way).
                     const until = new Date(Date.now() + 15 * 60_000);
-                    setWindowUntil(`${String(until.getHours()).padStart(2, '0')}:${String(until.getMinutes()).padStart(2, '0')}`);
+                    setWindowUntil(heureOuaga(until));
                     walk((w) => chooseFailureReason(w, active.id, id));
                   }}
                 />

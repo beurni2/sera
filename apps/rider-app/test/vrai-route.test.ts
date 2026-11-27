@@ -179,9 +179,11 @@ describe('VRAI-ROUTE — the typed pickup-code field is GONE, and the code is ne
     // Comments stripped, exactly as the shell inline-French scan does.
     const codeOnly = app.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
     const uses = codeOnly.match(/codeVerification/g) ?? [];
-    // The sourcing line carries two, the attempt key one, the act field one —
-    // any NEW occurrence (a render, a log, a persist) fails this count.
-    expect(uses).toHaveLength(4);
+    // The sourcing line carries two, the attempt key one, the act field one,
+    // and the check-up clock's start one (whether the code has arrived, a
+    // presence check) — any NEW occurrence (a render, a log, a persist) fails
+    // this count.
+    expect(uses).toHaveLength(5);
     // and it never wears a display component the way the ramassage code does.
     expect(codeOnly).not.toMatch(/FasoSealMark[^>]*codeVerification/);
     expect(codeOnly).not.toMatch(/\{liveAssignment\.codeVerification\}/);
