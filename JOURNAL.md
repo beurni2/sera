@@ -3,6 +3,18 @@ Continuity ledger per CTO charter §6/§6bis. Every entry is evidence-grounded.
 
 Format per entry:
 
+## 2026-11-27 · VIE-PRIVÉE-COURSE-1 — DEPLOYED and MERGED
+
+**Founder.** « Release all four » (2026-11-27 14:34 UTC, decision card, on the buyer-privacy batch report), which named Séra last: its logistics service binds the Boutik+ media service's new private entrypoint, so the media service went live first.
+
+**Deployed from the branch at `ea6c74b`.** logistics-deploy 40 (id 46020491957) green: the Worker binds `MEDIA_AUDIO (media-service#AudioRead)`, every key armed as on the previous deploy (the per-producer intake keys are still absent, a notice only), and « PROVENANCE OK — live logistics Worker is ea6c74b speaking canon 3.28.0 ». No custody deploy: the custody service did not change.
+
+**Merge.** PR #10 merged as `a7c9fa4` (merge commit, the branch shas kept). On main: ci 237 green on its first attempt · expo-preview 167 (rider app preview) green on its first attempt, so the preview now carries this batch and the previous one.
+
+**Still open.** As named in the slice entry below. Other open items for this slice are held in the private batch record until their fixes deploy.
+
+---
+
 ## 2026-11-27 · VIE-PRIVÉE-COURSE-1 — the buyer's exact place and voice note reach her rider once he accepts; he hears the note through Séra's door, on his code · lane S11 · on the branch, NOT merged, NOT deployed
 
 **Founder.** « Now you can start the next batch » (2026-11-27 11:31 UTC), the buyer-privacy batch of the approved plan. On the buyer's sentence he chose « Séra team, rider, his maps app » (11:44 UTC, decision card): the rider's « Itinéraire » link stays as it is.
