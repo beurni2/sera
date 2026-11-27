@@ -3,6 +3,25 @@ Continuity ledger per CTO charter §6/§6bis. Every entry is evidence-grounded.
 
 Format per entry:
 
+## 2026-11-27 · SORTIES-SURES-1 + COURSE-VRAIE-1 — MERGED; rider app PUBLISHED
+
+**Founder.** « Release all five » (2026-11-27 22:43 UTC, decision card, on the batch 6 report), which named for Séra: the merge only, which updates the rider app. Neither service changed in this batch, so custody-deploy and logistics-deploy were not run.
+
+**Merge.** platform-contracts PR #5 merged first (`b36e360`). PR #12 merged as `a686787` (merge commit, the branch shas kept; its tree is byte-identical to the PR head `7bf11cf`, green in ci 240).
+
+**On main.**
+- ci 241, first attempt RED: two real-Worker tests that this batch did not touch ran past vitest's 5 s default on a slow runner — custody « refuses every route that is not one of the two rider acts » (5003 ms) and logistics « a return-key arm still in flight when the course closes does not bring the return back » (8051 ms). 279 of 280 custody tests passed. expo-preview 169 was skipped, as designed: nothing ships from a red ci.
+- The failed job was re-run once (attempt 2): green.
+- expo-preview 170 (id 46079851741) green from that green ci: the decision step let main's newest commit ship, and the rider-app preview update was published with the message `main@a686787…`. A skipped run did not block the later one, as the publish concurrency was built to do.
+
+**Not checked.** The live services were not called from here. The rider app on a real phone is the check of COURSE-VRAIE-1.
+
+**Follow-on.** Those two tests get the explicit timeout their real-Worker siblings carry (as the 600-read storage test got in `b29cd7f`), so a slow runner cannot turn main red.
+
+**Still open.** As named in the slice entries below. Other open items are held in the private batch record until their fixes deploy.
+
+---
+
 ## 2026-11-27 · SORTIES-SURES-1 — a service goes live only from a green commit, with the founder's approval; the rider app publishes only after green checks; the delivery key is written only when asked; a rollback page; the board and a live check every day · lane O5 · on the branch, NOT merged, NOT deployed
 
 **Founder.** « Go on for batch 6 » (2026-11-27 19:38 UTC), batch 6 of the plan he approved: « A service goes live only after its checks passed on that exact version, with your approval in front of it. Apps publish only after green checks. The delivery-key step stops rewriting the key blind. One page per app says how to roll back, and we practise it once. The boards run every day, not only when someone pushes. A daily watch checks that the live services run `main`. » His card on the GitHub approval is still open; this is built on its recommended answer (service releases wait for his approval; app updates need green checks only).
