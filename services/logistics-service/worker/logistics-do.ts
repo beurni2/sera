@@ -3190,6 +3190,85 @@ export class LogisticsDO {
     }
 
     /**
+     * ═══ A PARCEL LOST ON THE ROAD (founder ruling 2026-11-27, §6.5) ═══
+     *
+     * Only the founder, from his console, only while a courier holds every
+     * article, final. `montants` names EVERY article of the live course once,
+     * each with the amount he typed: Séra splits, adds and computes nothing.
+     * Every article's custodian is read fresh FIRST, so a parcel that is not
+     * wholly with the rider moves nothing; then each article's own file moves
+     * to its lost custodian, files its claim and tells Shop+; only once all
+     * answered does the course close `lost` and the rider go free. A retry
+     * under the same command id re-sends to every article (each replays).
+     */
+    if (request.method === 'POST' && pathname === '/ops/colis/perdu') {
+      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      const montants = body?.['montants'];
+      if (
+        body === null || !isStr(body['command_id']) || !isStr(body['orderId']) || !Array.isArray(montants) ||
+        !montants.every((m) => m !== null && typeof m === 'object' && isStr((m as Record<string, unknown>)['orderId'])
+          && Number.isSafeInteger((m as Record<string, unknown>)['amount']) && ((m as Record<string, unknown>)['amount'] as number) > 0)
+      ) {
+        return malformed();
+      }
+      const commandId = (body['command_id'] as string).trim();
+      const orderId = (body['orderId'] as string).trim();
+      const active = this.courseDe(orderId);
+      if (active === undefined) {
+        const archive = await this.archiveDeCourse(orderId);
+        if (archive?.assignments.some((a) => a.status === 'lost') === true) return Response.json({ ok: true, status: 'deja_declare' });
+        return Response.json({ ok: false, reason: 'no_active_course' }, { status: 409 });
+      }
+      const articles = this.ordresDeCourse(active);
+      const montantDe = new Map<string, number>();
+      for (const m of montants as { orderId: string; amount: number }[]) montantDe.set(m.orderId.trim(), m.amount);
+      if (montantDe.size !== montants.length || montantDe.size !== articles.length || !articles.every((id) => montantDe.has(id))) {
+        return Response.json({ ok: false, reason: 'montants_incomplets' }, { status: 400 });
+      }
+      const custody = this.env.CUSTODY;
+      const key = this.env.SERA_PRODUCE_SECRET ?? '';
+      if (custody === undefined || key === '') return Response.json({ ok: false, reason: 'custody_non_relie' }, { status: 503 });
+      for (const id of articles) {
+        if ((await this.readCustodian(id, now)) === 'unknown') {
+          return Response.json({ ok: false, reason: 'custody_unreachable' }, { status: 503 });
+        }
+        const holder = this.custodyFacts[id]?.custodian ?? null;
+        if (holder !== 'lost:sera' && !(holder?.startsWith('courier:') ?? false)) {
+          await this.state.storage.put(SNAP_CUSTODY_FACTS, this.custodyFacts);
+          return Response.json({ ok: false, reason: 'pas_chez_le_livreur' }, { status: 409 });
+        }
+      }
+      let declare = false;
+      for (const id of articles) {
+        let res: Response;
+        try {
+          res = await custody.fetch(new Request('https://custody/produce/colis/perdu', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+            body: JSON.stringify({ orderId: id, command_id: `perdu-${commandId}`, amount: montantDe.get(id), at: now }),
+          }));
+        } catch {
+          return Response.json({ ok: false, reason: 'custody_unreachable' }, { status: 503 });
+        }
+        const answer = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+        if (res.status >= 500) return Response.json({ ok: false, reason: 'custody_unreachable' }, { status: 503 });
+        if (!res.ok) {
+          if (answer?.['reason'] === 'custody_not_with_courier') return Response.json({ ok: false, reason: 'pas_chez_le_livreur' }, { status: 409 });
+          return Response.json({ ok: false, reason: 'custody_refused', detail: typeof answer?.['reason'] === 'string' ? answer['reason'] : 'refused' }, { status: 409 });
+        }
+        if (answer?.['status'] === 'declare') declare = true;
+      }
+      // The course closed and moved while custody answered: nothing is written over it.
+      if (this.courseDe(orderId)?.assignmentId !== active.assignmentId) {
+        return Response.json({ ok: false, reason: 'no_active_course' }, { status: 409 });
+      }
+      const outcome = await this.dispatch.declareLost(active.orderId, now);
+      if (outcome.ok && !outcome.duplicate) this.archiverCourse(outcome.assignment, now);
+      await this.persist();
+      return Response.json({ ok: true, status: declare ? 'declare' : 'deja_declare' });
+    }
+
+    /**
      * ═══ REPROGRAMMATION-2 — THE DISPATCHER SENDS A RESCHEDULED COURSE HOME ═══
      *
      * §6.5: « dispatcher applies retry / reschedule / return ». The buyer was

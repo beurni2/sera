@@ -553,6 +553,23 @@ export class LeasedDispatch {
     return { ...outcome, leaseReleased: release.ok };
   }
 
+  /** `returnToSupplier`'s twin: the course closed because the founder
+   * declared the parcel lost and custody named its lost custodian. The lease
+   * releases so the rider can take the next course. */
+  async declareLost(orderId: string, at: string): Promise<DeliverOutcome & { leaseReleased: boolean }> {
+    const outcome = this.deps.book.declareLost(orderId, at);
+    if (!outcome.ok || outcome.duplicate) return { ...outcome, leaseReleased: false };
+    this.deps.reschedules.forgetOrder(orderId);
+    this.deps.witness.revoke(outcome.assignment.lease);
+    const release = await this.deps.authority.send({
+      kind: 'release',
+      command_id: `complete-${outcome.assignment.lease.taskId}`,
+      taskId: outcome.assignment.lease.taskId,
+      cause: 'completed',
+    });
+    return { ...outcome, leaseReleased: release.ok };
+  }
+
   /** Completion: the delivery closed — the lease releases with the honest
    * cause 'completed'. (No timestamp: the release command carries none by
    * design; the ledgered truth of WHEN lives with the custody records.) */
