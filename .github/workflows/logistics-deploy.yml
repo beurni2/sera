@@ -32,9 +32,17 @@ name: logistics-deploy
 #     handover verdicts; /intake/task-ready opens to neither.
 #     The changeover: set both here (and re-dispatch), put each value into
 #     its producer's SERA_INTAKE_SECRET and redeploy that producer, then
-#     delete SERA_INTAKE_SECRET from this repo AND from the Worker
-#     (`wrangler secret delete SERA_INTAKE_SECRET`) — until then the shared
-#     key still opens every intake door, so nothing is refused mid-swap.
+#     delete SERA_INTAKE_SECRET from this repo and re-dispatch: with both
+#     producer keys set and the shared one gone from the repo, this workflow
+#     deletes it from the Worker too — until then the shared key still opens
+#     every intake door, so nothing is refused mid-swap. /health answers
+#     `intakeSplit: true` once the swap is finished.
+#   · SERA_OPS_SECRET_NEXT / SERA_RIDER_VERIFY_SECRET_NEXT /
+#     SERA_COURSE_LIVREE_SECRET_NEXT / SERA_INTAKE_SHOP_SECRET_NEXT /
+#     SERA_INTAKE_BOUTIK_SECRET_NEXT (optional secrets — only during a key
+#     change): the new value of a key this Worker checks, accepted beside the
+#     old one until the change is finished. Delete it from the repo and
+#     re-dispatch to close the window. The shared SERA_INTAKE_SECRET has none.
 #   · LOGISTICS_BASE (variable, not secret — a public URL) — the deployed
 #     Worker's base URL (e.g. https://logistics-service.<account>.workers.dev),
 #     used by the provenance assertion below. On the FIRST dispatch this may
@@ -168,17 +176,12 @@ jobs:
             exit 0
           fi
           printf '%s' "$OPS_SECRET" | pnpm exec wrangler secret put SERA_OPS_SECRET
-      - name: Arm SERA_INTAKE_SECRET (piped — skipped only if the repo secret is absent)
-        working-directory: services/logistics-service
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          INTAKE_SECRET: ${{ secrets.SERA_INTAKE_SECRET }}
-        run: |
-          if [ -z "$INTAKE_SECRET" ]; then
-            echo "::warning title=Porte intake NON armée::SERA_INTAKE_SECRET absent — the intake door refuses everything (fail-closed) until the repo secret is set and this workflow re-dispatched."
-            exit 0
-          fi
-          printf '%s' "$INTAKE_SECRET" | pnpm exec wrangler secret put SERA_INTAKE_SECRET
+      # THE INTAKE KEY SWAP, IN ITS ORDER. Each producer's own key goes on
+      # first; only then is the shared key handled, so no step of the swap
+      # leaves a door with no key (step 1: both producer keys set here; step 2:
+      # each producer presents its own; step 3: the shared repo secret deleted
+      # and this run removes it from the Worker). Every outcome is a warning
+      # until the swap is finished, and /health says `intakeSplit` when it is.
       - name: Arm SERA_INTAKE_SHOP_SECRET and SERA_INTAKE_BOUTIK_SECRET (piped — each skipped while its repo secret is absent)
         working-directory: services/logistics-service
         env:
@@ -186,17 +189,50 @@ jobs:
           SHOP_KEY: ${{ secrets.SERA_INTAKE_SHOP_SECRET }}
           BOUTIK_KEY: ${{ secrets.SERA_INTAKE_BOUTIK_SECRET }}
         run: |
-          # CLES-PRODUCTEURS-1 — absent is the normal state until the founder
-          # mints them: the shared key keeps every intake door working.
+          set -euo pipefail
           if [ -z "$SHOP_KEY" ]; then
-            echo "::notice title=Clé intake Shop+ non posée::SERA_INTAKE_SHOP_SECRET absent — /intake/funding still opens to the shared SERA_INTAKE_SECRET only."
+            echo "::warning title=Clé intake Shop+ non posée::SERA_INTAKE_SHOP_SECRET absent — /intake/funding still opens to the shared SERA_INTAKE_SECRET only (step 1 of the key swap not done)."
           else
             printf '%s' "$SHOP_KEY" | pnpm exec wrangler secret put SERA_INTAKE_SHOP_SECRET
           fi
           if [ -z "$BOUTIK_KEY" ]; then
-            echo "::notice title=Clé intake Boutik+ non posée::SERA_INTAKE_BOUTIK_SECRET absent — Boutik+'s intake doors still open to the shared SERA_INTAKE_SECRET only."
+            echo "::warning title=Clé intake Boutik+ non posée::SERA_INTAKE_BOUTIK_SECRET absent — Boutik+'s intake doors still open to the shared SERA_INTAKE_SECRET only (step 1 of the key swap not done)."
           else
             printf '%s' "$BOUTIK_KEY" | pnpm exec wrangler secret put SERA_INTAKE_BOUTIK_SECRET
+          fi
+      - name: Arm or retire SERA_INTAKE_SECRET (piped — retired only once both producer keys are set)
+        working-directory: services/logistics-service
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          INTAKE_SECRET: ${{ secrets.SERA_INTAKE_SECRET }}
+          SHOP_KEY: ${{ secrets.SERA_INTAKE_SHOP_SECRET }}
+          BOUTIK_KEY: ${{ secrets.SERA_INTAKE_BOUTIK_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -n "$INTAKE_SECRET" ]; then
+            printf '%s' "$INTAKE_SECRET" | pnpm exec wrangler secret put SERA_INTAKE_SECRET
+            if [ -n "$SHOP_KEY" ] && [ -n "$BOUTIK_KEY" ]; then
+              echo "::warning title=Échange de clés : étape 3 à faire::Both producer keys are set, but the shared SERA_INTAKE_SECRET still opens every intake door. Once Shop+ and Boutik+ each present their own key, delete SERA_INTAKE_SECRET from this repository's secrets and run this workflow again."
+            else
+              echo "::warning title=Clé intake partagée::The shared SERA_INTAKE_SECRET opens every intake door (the key swap is not done)."
+            fi
+            exit 0
+          fi
+          if [ -z "$SHOP_KEY" ] || [ -z "$BOUTIK_KEY" ]; then
+            echo "::warning title=Porte intake NON armée::SERA_INTAKE_SECRET absent and a producer key is missing — that producer's intake doors refuse everything (fail-closed) until its key is set and this workflow re-dispatched."
+            exit 0
+          fi
+          # Step 3: both producers have their own key and the repository no
+          # longer holds the shared one, so the Worker must not either.
+          # `secret list` prints NAMES only, never a value.
+          # Captured first: under pipefail a grep that stops reading early could
+          # make the list look failed, and the shared key would be left in place.
+          LISTED=$(pnpm exec wrangler secret list)
+          if grep -q '"name": *"SERA_INTAKE_SECRET"' <<<"$LISTED"; then
+            printf 'y\n' | pnpm exec wrangler secret delete SERA_INTAKE_SECRET
+            echo "SERA_INTAKE_SECRET: deleted from the Worker's store — each producer now opens only its own intake doors"
+          else
+            echo "SERA_INTAKE_SECRET: already absent — each producer opens only its own intake doors"
           fi
 
       - name: Arm SERA_RIDER_VERIFY_SECRET (piped — skipped only if the repo secret is absent)
@@ -246,6 +282,37 @@ jobs:
           fi
           printf '%s' "$LIVREE_SECRET" | pnpm exec wrangler secret put SERA_COURSE_LIVREE_SECRET
 
+      # KEY CHANGE WINDOW (batch 8) — every key this Worker CHECKS also opens
+      # to its `_NEXT` value while one is set, so a sender can move to a new
+      # value before the old one stops working. A repo secret X_NEXT is put on
+      # the Worker here; once it is gone from the repo, this run deletes it
+      # from the Worker too, so a finished change never leaves an old value
+      # open. Runs AFTER every key above, so a promotion (X = the new value,
+      # X_NEXT deleted) never has a moment where only the old value opens.
+      # Names only are printed — never a value or a length.
+      - name: Arm or clear the next keys (X_NEXT — the window of a key change)
+        working-directory: services/logistics-service
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          SERA_OPS_SECRET_NEXT: ${{ secrets.SERA_OPS_SECRET_NEXT }}
+          SERA_RIDER_VERIFY_SECRET_NEXT: ${{ secrets.SERA_RIDER_VERIFY_SECRET_NEXT }}
+          SERA_COURSE_LIVREE_SECRET_NEXT: ${{ secrets.SERA_COURSE_LIVREE_SECRET_NEXT }}
+          SERA_INTAKE_SHOP_SECRET_NEXT: ${{ secrets.SERA_INTAKE_SHOP_SECRET_NEXT }}
+          SERA_INTAKE_BOUTIK_SECRET_NEXT: ${{ secrets.SERA_INTAKE_BOUTIK_SECRET_NEXT }}
+        run: |
+          set -euo pipefail
+          LISTED=$(pnpm exec wrangler secret list)
+          for NAME in SERA_OPS_SECRET_NEXT SERA_RIDER_VERIFY_SECRET_NEXT SERA_COURSE_LIVREE_SECRET_NEXT SERA_INTAKE_SHOP_SECRET_NEXT SERA_INTAKE_BOUTIK_SECRET_NEXT; do
+            VALUE="${!NAME:-}"
+            if [ -n "$VALUE" ]; then
+              printf '%s' "$VALUE" | pnpm exec wrangler secret put "$NAME"
+              echo "::warning title=Changement de clé en cours::$NAME is set — the old and the new value of ${NAME%_NEXT} both open its doors. To finish: once every sender presents the new value, put it in ${NAME%_NEXT}, delete $NAME from this repository's secrets, and run this workflow again."
+            elif grep -q "\"name\": *\"$NAME\"" <<<"$LISTED"; then
+              printf 'y\n' | pnpm exec wrangler secret delete "$NAME"
+              echo "$NAME: deleted from the Worker — only ${NAME%_NEXT} opens its doors now"
+            fi
+          done
+
       # ═══ The F9 assertion: the live Worker must BE the bundle this job built ═══
       # A Workers deploy PROPAGATES; it does not switch — poll up to 180s.
       - name: Assert the live logistics Worker is the bundle this job built
@@ -270,6 +337,14 @@ jobs:
               echo "health 200 — live canon=$LIVE_CANON release=$LIVE_RELEASE (want $SERA_CANON / $SERA_RELEASE)"
               if [ "$LIVE_CANON" = "$SERA_CANON" ] && [ "$LIVE_RELEASE" = "$SERA_RELEASE" ]; then
                 echo "PROVENANCE OK — live logistics Worker is $SERA_RELEASE speaking canon $SERA_CANON."
+                # The intake key swap's progress — a presence flag only, never a
+                # key, a length or which key is missing.
+                SPLIT=$(node -p "String(JSON.parse(require('fs').readFileSync('$OUT','utf8')).intakeSplit)" 2>/dev/null || echo '?')
+                if [ "$SPLIT" = "true" ]; then
+                  echo "Échange de clés des portes intake : TERMINÉ — chaque producteur n'ouvre que ses propres portes."
+                elif [ "$SPLIT" = "false" ]; then
+                  echo "::notice::Échange de clés des portes intake : pas encore terminé (la clé partagée existe encore, ou une clé producteur manque)."
+                fi
                 exit 0
               fi
             else
