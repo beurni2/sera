@@ -99,8 +99,10 @@ export function nextEvidenceEdge(width: number, height: number): Resize | null {
  * The first save that fits is returned — the bytes that leave are the bytes
  * that were measured.
  *
- * AT THE FLOOR THE LAST SAVE IS RETURNED ANYWAY. A save the caller cannot read
- * (`null`) ends the ladder there: no photo, as before.
+ * AT THE FLOOR THE LAST SAVE IS RETURNED ANYWAY, and so it is when a step
+ * cannot be made (the resize or its render fails): a byte budget never blocks
+ * the rider's act. A save that fails, or that the caller cannot read (`null`),
+ * ends the ladder there: no photo, as before.
  */
 export async function saveWithinEvidenceBudget<I extends { readonly width: number; readonly height: number }>(
   first: I,
@@ -118,6 +120,10 @@ export async function saveWithinEvidenceBudget<I extends { readonly width: numbe
     }
     const step = nextEvidenceEdge(image.width, image.height);
     if (step === null) return last;
-    image = await resize(image, step);
+    try {
+      image = await resize(image, step);
+    } catch {
+      return last;
+    }
   }
 }

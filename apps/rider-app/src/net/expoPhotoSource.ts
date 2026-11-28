@@ -95,44 +95,63 @@ export const expoPhotoSource: PhotoSource = {
     // decoded image is handed straight to the encode step (the Boutik+
     // precedent), which matters while a low-end phone is holding the bitmap.
     const { ImageManipulator, SaveFormat } = imageManipulator();
+    // A context keeps what it opened and what it rendered (on Android and iOS
+    // alike), so releasing only the images would let go of nothing: every
+    // context is released once it has rendered, or failed to. Release only
+    // drops the app's hold; the platform frees a bitmap when nothing holds it.
     const context = ImageManipulator.manipulate(asset.uri);
-    const resize = resizeForEvidence(asset.width, asset.height);
-    if (resize !== null) context.resize(resize);
-    const rendered = await context.renderAsync();
+    let rendered: Awaited<ReturnType<typeof context.renderAsync>>;
+    try {
+      const resize = resizeForEvidence(asset.width, asset.height);
+      if (resize !== null) context.resize(resize);
+      rendered = await context.renderAsync();
+    } finally {
+      context.release();
+    }
 
     // Evidence, not photography: it has to leave the stall on a bad network,
     // so it is saved lighter, then smaller, until it fits its budget — and at
     // the legibility floor it leaves anyway (`saveWithinEvidenceBudget`).
     let current = rendered;
-    const bytes = await saveWithinEvidenceBudget(
-      rendered,
-      async (image, compress) => {
-        const saved = await image.saveAsync({
-          compress,
-          // The manipulator decodes to a platform bitmap and re-encodes, so whatever
-          // the camera wrote — HEIC included — the bucket only ever sees JPEG.
-          format: SaveFormat.JPEG,
-          base64: true,
-        });
+    try {
+      return await saveWithinEvidenceBudget(
+        rendered,
+        async (image, compress) => {
+          const saved = await image.saveAsync({
+            compress,
+            // The manipulator decodes to a platform bitmap and re-encodes, so whatever
+            // the camera wrote — HEIC included — the bucket only ever sees JPEG.
+            format: SaveFormat.JPEG,
+            base64: true,
+          });
 
-        // A derivative that came back outside the bound is not proof we may send;
-        // the bucket would refuse it and the rider would be told to retake a photo
-        // that can never be accepted. Refusing here says something true instead.
-        if (saved.width > EVIDENCE_MAX_EDGE || saved.height > EVIDENCE_MAX_EDGE) return null;
+          // A derivative that came back outside the bound is not proof we may send;
+          // the bucket would refuse it and the rider would be told to retake a photo
+          // that can never be accepted. Refusing here says something true instead.
+          if (saved.width > EVIDENCE_MAX_EDGE || saved.height > EVIDENCE_MAX_EDGE) return null;
 
-        const encoded = saved.base64;
-        if (typeof encoded !== 'string' || encoded === '') return null;
-        return bytesFromBase64(encoded);
-      },
-      async (image, step) => {
-        const smaller = await ImageManipulator.manipulate(image).resize(step).renderAsync();
-        // Each native bitmap is freed once nothing will read it again, so a low-end phone never holds several.
-        image.release();
-        current = smaller;
-        return smaller;
-      },
-    );
-    current.release();
-    return bytes;
+          const encoded = saved.base64;
+          if (typeof encoded !== 'string' || encoded === '') return null;
+          return bytesFromBase64(encoded);
+        },
+        async (image, step) => {
+          // From the image already rendered, never the camera's original again.
+          const pas = ImageManipulator.manipulate(image);
+          let smaller: typeof image;
+          try {
+            smaller = await pas.resize(step).renderAsync();
+          } finally {
+            pas.release();
+          }
+          // Only once the step has landed: a step that fails leaves `current`
+          // as it was, and the ladder sends that image's last save.
+          current = smaller;
+          image.release();
+          return smaller;
+        },
+      );
+    } finally {
+      current.release();
+    }
   },
 };

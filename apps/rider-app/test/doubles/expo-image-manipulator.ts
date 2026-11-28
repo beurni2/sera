@@ -16,14 +16,21 @@
  *   none, and may never be used to claim what a photo looks like or whether a
  *   person can read it.
  * · UNARMED, `manipulate()` THROWS: no walk gets a photo it did not ask for.
- * · THE VERBS ARE ONLY THE ONES CERTIFIED HERE: `resize` and `renderAsync` on
- *   a context, `saveAsync` and `release` on a rendered image. Any other verb
- *   is absent, so a call to it throws the TypeError a missing method throws.
+ * · THE VERBS ARE ONLY THE ONES CERTIFIED HERE: `resize`, `renderAsync` and
+ *   `release` on a context, `saveAsync` and `release` on a rendered image. Any
+ *   other verb is absent, so a call to it throws the TypeError a missing
+ *   method throws.
  * · RESIZE IS ANDROID'S ARITHMETIC (`ResizeTransformer.kt` l.17-23 in 57.0.16):
  *   the named side is taken as asked and the other is `(side / ratio).toInt()`
  *   — truncated, never rounded up.
- * · A RELEASED IMAGE IS DEAD, as a native SharedObject is: every later call on
- *   it throws. A kinder double would hide a use-after-release.
+ * · A RELEASED IMAGE OR CONTEXT IS DEAD, as a native SharedObject is: every
+ *   later call on it throws. A kinder double would hide a use-after-release.
+ *   Both are SharedObjects; on Android a context keeps its rendered result,
+ *   and one opened on an image keeps that image too (`ImageManipulatorContext.kt`
+ *   l.42-91, `ImageManipulatorModule.kt` l.56-58), so each is journalled.
+ * · ONE RENDER CAN BE ARMED TO FAIL (`renduRefuse: n`, counted from 1): the
+ *   n-th `renderAsync` rejects, as a native render rethrows its task's error
+ *   (`ImageManipulatorContext.kt` l.34-39, l.64-66). Unarmed, no render fails.
  * · THE QUALITY IS ANDROID'S TOO (`ImageManipulatorModule.kt` l.116):
  *   `(compress * 100).toInt()`, and only a quality with a measured cell may be
  *   asked for — any other THROWS, so a drifted quality list cannot pass.
@@ -56,8 +63,9 @@
  * no place, no photo kept. Each cell is the LARGEST bits-per-pixel seen over
  * every frame, orientation and resize, rounded UP to the next 0.001. The
  * measured bytes sit in `test/manipulator-double.test.ts`, which fails if any
- * cell here prices a save below them. For scale: the hard frame at 1600×1200
- * weighed 358 056 B at 0.6, 298 873 B at 0.5, 250 687 B at 0.4.
+ * cell here prices a save below them. For scale, the hard frame at 0.6, 0.5
+ * and 0.4 weighed 353 948, 295 770 and 248 323 B in landscape (1600×1200),
+ * and 358 056, 298 873 and 250 687 B in portrait (1200×1600).
  *
  * WHAT IT DOES NOT KNOW: no real phone was measured (iOS maps quality on its
  * own scale), the frames are 4:3 only, and a real photograph can be busier
@@ -136,27 +144,41 @@ type Entree =
   | readonly ['resize', { readonly width?: number | null; readonly height?: number | null }]
   | readonly ['render', number, number]
   | readonly ['save', number, number, number, number]
-  | readonly ['release', number, number];
+  | readonly ['release', number, number]
+  | readonly ['release-context', number];
 
-let arme: { readonly source: { readonly width: number; readonly height: number }; readonly densite: number } | null = null;
+let arme: {
+  readonly source: { readonly width: number; readonly height: number };
+  readonly densite: number;
+  readonly renduRefuse: number | null;
+} | null = null;
 let journal: Entree[] = [];
 let sauvegardes: Uint8Array[] = [];
 let numero = 0;
+let contextes = 0;
+let rendus = 0;
 
 /**
  * Arm for one walk: `source` is the size of the picture the camera hands over
  * (what `manipulate(uri)` opens), `densite` how much busier than the hardest
- * measured frame it is. `null` disarms. Every arming clears the journal.
+ * measured frame it is, `renduRefuse` the one render (from 1) that fails.
+ * `null` disarms. Every arming clears the journal.
  */
 export function armerManipulateur(
-  options: { readonly source: { readonly width: number; readonly height: number }; readonly densite?: number } | null,
+  options: {
+    readonly source: { readonly width: number; readonly height: number };
+    readonly densite?: number;
+    readonly renduRefuse?: number;
+  } | null,
 ): void {
   const densite = options?.densite ?? 1;
   if (!(densite >= 1)) throw new Error(`densite ${densite} < 1 would be kinder than the measured encoder`);
-  arme = options === null ? null : { source: options.source, densite };
+  arme = options === null ? null : { source: options.source, densite, renduRefuse: options.renduRefuse ?? null };
   journal = [];
   sauvegardes = [];
   numero = 0;
+  contextes = 0;
+  rendus = 0;
 }
 
 /** The verbs the app asked for, in order, with their arguments and sizes. */
@@ -246,15 +268,31 @@ export const ImageManipulator = {
     } else {
       throw new TypeError('manipulate() takes a uri or an image it rendered');
     }
+    // Numbered in the order `manipulate` opened them, as the journal lists them.
+    const k = contextes;
+    contextes += 1;
+    let vivant = true;
+    const vif = (): void => {
+      if (!vivant) throw new Error('expo-image-manipulator double: this context was released — every native call on it throws');
+    };
     const contexte = {
       resize(size: { width?: number | null; height?: number | null }) {
+        vif();
         journal.push(['resize', { ...size }]);
         [w, h] = redimensionner(w, h, size);
         return contexte;
       },
       async renderAsync(): Promise<ImageRefDouble> {
+        vif();
         journal.push(['render', w, h]);
+        rendus += 1;
+        if (rendus === arme?.renduRefuse) throw new Error(`expo-image-manipulator double: render ${rendus} refused, as armed`);
         return new ImageRefDouble(w, h);
+      },
+      release(): void {
+        vif();
+        vivant = false;
+        journal.push(['release-context', k]);
       },
     };
     return contexte;

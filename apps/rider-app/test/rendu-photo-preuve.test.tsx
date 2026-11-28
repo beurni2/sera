@@ -165,6 +165,11 @@ async function aLEcart(): Promise<{ s: Screen; w: Wire; m: Media }> {
 
 const saves = (): (readonly [number, number, number, number])[] =>
   journalManipulateur().filter((e) => e[0] === 'save').map((e) => [e[1], e[2], e[3], e[4]] as const);
+const imagesLachees = (): string[] => journalManipulateur().filter((e) => e[0] === 'release').map((e) => `${e[1]}×${e[2]}`);
+const contextesLaches = (): number[] => journalManipulateur().flatMap((e) => (e[0] === 'release-context' ? [e[1]] : []));
+const ouverts = (): unknown[] => journalManipulateur().filter((e) => e[0] === 'manipulate').map((e) => e[1]);
+/** The uri the camera double hands for a walk's first shot. */
+const PREMIERE_PRISE = 'file:///data/user/0/cache/ImagePicker/shot-1.jpg';
 
 let ecran: Screen | null = null;
 
@@ -224,11 +229,37 @@ describe('PHOTOS LÉGÈRES — the proof photo that leaves the stall fits its bu
       '1440×1080@0.6', '1440×1080@0.5', '1440×1080@0.4',
       '1280×960@0.6', '1280×960@0.5', '1280×960@0.4',
     ]);
-    expect(
-      journalManipulateur().filter((e) => e[0] === 'release').map((e) => `${e[1]}×${e[2]}`),
-      'each bitmap is freed once stepped past, and the last once its save is kept: a low-end phone never holds three',
-    ).toEqual(['1600×1200', '1440×1080', '1280×960']);
+    expect(imagesLachees(), 'every image the ladder rendered is released, once each').toEqual(['1600×1200', '1440×1080', '1280×960']);
+    expect(ouverts(), 'the camera’s original is opened once; each step opens the image already rendered').toEqual([PREMIERE_PRISE, 'image', 'image']);
+    expect(contextesLaches(), 'every context it opened is released, once each').toEqual([0, 1, 2]);
     expect(s.canPress('Envoyer la vérification')).toBe(true);
+  }, 20_000);
+
+  it('A STEP THAT CANNOT BE MADE ends the ladder as the floor does: the last readable save leaves, is stored, and the act carries it', async () => {
+    armerAppareil({ width: 4000, height: 3000 });
+    // Too busy for every rung, and the second step's render (1440 → 1280) fails on the phone.
+    armerManipulateur({ source: { width: 4000, height: 3000 }, densite: 2, renduRefuse: 3 });
+    const { s, w, m } = await aLEcart();
+    ecran = s;
+    await s.press('Prendre la photo');
+    await jusqua(s, () => s.shows('Photo enregistrée.'), '« Photo enregistrée. »');
+
+    expect(saves().map(([sw, sh, q]) => `${sw}×${sh}@${q}`), 'nothing is tried after the failed step').toEqual([
+      '1600×1200@0.6', '1600×1200@0.5', '1600×1200@0.4',
+      '1440×1080@0.6', '1440×1080@0.5', '1440×1080@0.4',
+    ]);
+    expect(m.bodies, 'one upload').toHaveLength(1);
+    const body = m.bodies[0]!;
+    expect(Buffer.from(body).equals(Buffer.from(sauvegardesManipulateur()[5]!)), 'the last readable save is what leaves').toBe(true);
+    expect(sofDe(body)).toEqual({ width: 1440, height: 1080 });
+    expect(m.refs, 'the media service stored it').toHaveLength(1);
+    expect(imagesLachees(), 'every image rendered is released, once each').toEqual(['1600×1200', '1440×1080']);
+    expect(contextesLaches(), 'every context opened is released, the failed one too').toEqual([0, 1, 2]);
+
+    await s.press('Envoyer la vérification');
+    const verif = w.calls.filter((c) => c.path === '/rider/verification');
+    expect(verif.length, 'the next step was reached').toBeGreaterThan(0);
+    expect(verif[0]!.body?.['evidenceBundleId'], 'the act carries the photo the media service stored').toBe(m.refs[0]);
   }, 20_000);
 
   it('a photo that fits today leaves byte-identical to today: ONE save, at 0.6', async () => {

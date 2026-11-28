@@ -29,8 +29,8 @@ import {
 type Img = { readonly width: number; readonly height: number; readonly n: number };
 type Appel = readonly ['save', number, number, number] | readonly ['resize', Resize, number];
 
-/** A ladder run over a price list: `price(long, compress)` is a save's length. */
-async function gravir(start: { width: number; height: number }, price: (long: number, compress: number) => number | null) {
+/** A ladder run over a price list: `price(long, compress)` is a save's length; `pasRefuse`, every step fails. */
+async function gravir(start: { width: number; height: number }, price: (long: number, compress: number) => number | null, pasRefuse = false) {
   const appels: Appel[] = [];
   const faites: Uint8Array[] = [];
   let n = 0;
@@ -47,6 +47,7 @@ async function gravir(start: { width: number; height: number }, price: (long: nu
     },
     async (image, step) => {
       appels.push(['resize', step, image.n]);
+      if (pasRefuse) throw new Error('the step’s render failed');
       // Android's arithmetic: the named side as asked, the other truncated.
       const ratio = image.width / image.height;
       n += 1;
@@ -94,6 +95,7 @@ describe('nextEvidenceEdge — one step down, never under the floor, never under
   it('stops where the short side would fall under the media minimum (rounded DOWN, as the resize is)', () => {
     expect(nextEvidenceEdge(1600, 240)).toEqual({ width: 1440 }); // 216 left
     expect(nextEvidenceEdge(1440, 216)).toBeNull(); // 1280 would leave 192
+    expect(nextEvidenceEdge(1600, 222)).toBeNull(); // 1440 would leave 199.8, which the resize truncates to 199
   });
 
   it('answers nothing for a size that is not one', () => {
@@ -160,6 +162,18 @@ describe('saveWithinEvidenceBudget — every quality at an edge, then the next e
       expect(appels, `${w}×${h}`).toEqual([['save', w, h, 0.6], ['save', w, h, 0.5], ['save', w, h, 0.4]]);
       expect(out).toBe(faites[2]);
     }
+  });
+
+  it('a step that cannot be made ends the ladder as the floor does: the last readable save leaves, and nothing more is tried', async () => {
+    const { out, appels, faites } = await gravir({ width: 1600, height: 1200 }, () => TROP, true);
+    expect(appels).toEqual([
+      ['save', 1600, 1200, 0.6], ['save', 1600, 1200, 0.5], ['save', 1600, 1200, 0.4],
+      ['resize', { width: 1440 }, 0],
+    ]);
+    expect(out, 'the third save’s bytes: a byte budget never blocks the act').toBe(faites[2]);
+    // A SAVE that fails is not a step: it throws on, as before, and no photo leaves.
+    const echec = new Error('the save failed');
+    await expect(saveWithinEvidenceBudget<Img>({ width: 1600, height: 1200, n: 0 }, () => Promise.reject(echec), async (image) => image)).rejects.toBe(echec);
   });
 
   it('a save that cannot be read stops the ladder there: no photo, and nothing more is tried', async () => {
