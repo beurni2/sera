@@ -310,16 +310,13 @@ type AlerteOutbox = Omit<RetourOutbox, 'body'> & { body: PlatformEvent };
 /**
  * The proof's watch, written in the SAME put as an accepted evidence act and
  * closed in the same put as the validated decision. If no decision lands, the
- * alarm finds it open at `due` and raises the evidence alert. `avant` is what
- * the alarm slot held before the watch took it — present only when it did —
- * so a decision can put the slot back exactly as it was.
+ * alarm finds it open at `due` and raises the evidence alert.
  */
 interface VeillePreuve {
   orderId: string;
   taskId: string;
   submittedAt: string;
   due: number;
-  avant?: number | null;
   close?: true;
 }
 const VEILLE_PREUVE_KEY = 'custody:veille-preuve:v1';
@@ -1886,37 +1883,32 @@ export class CustodyDO {
      * decision closes it in ITS own put: a decision that never lands leaves
      * it open for the alarm. It takes the alarm slot only when the slot is
      * empty or later than its window — never pushing an earlier wake back.
+     * Closing it leaves the slot alone: by then the wake may carry a waiting
+     * wire's retry too, and a closed watch's wake fires once, harmlessly —
+     * the alarm drops the closed watch and flushes only what is pending.
      */
     const armsNow = armRefus || armRetour || armDrop || armLost;
+    let prendReveil = false;
     let veille: VeillePreuve | undefined;
     if (cmd.kind === 'delivery_evidence' && outcome.httpStatus === 200 && this.chain !== null) {
       const now = Date.now();
       const due = now + fenetrePreuveMs(this.env.EVIDENCE_AGING_MS);
       const slot = armsNow ? now : await this.state.storage.getAlarm();
-      veille = {
-        orderId: this.chain.order_id, taskId: this.chain.task_id, submittedAt: new Date(now).toISOString(), due,
-        ...(slot === null || slot > due ? { avant: slot } : {}),
-      };
+      veille = { orderId: this.chain.order_id, taskId: this.chain.task_id, submittedAt: new Date(now).toISOString(), due };
+      prendReveil = slot === null || slot > due;
       puts[VEILLE_PREUVE_KEY] = veille;
-      if (veille.avant !== undefined) puts[REVEIL_DETECTEUR_KEY] = due;
+      if (prendReveil) puts[REVEIL_DETECTEUR_KEY] = due;
     }
-    let veilleClose: VeillePreuve | undefined;
     if (cmd.kind === 'decide_validation' && outcome.httpStatus === 200 && outcome.body['result'] === 'validated') {
       const ouverte = await this.state.storage.get<VeillePreuve>(VEILLE_PREUVE_KEY);
       if (ouverte !== undefined && ouverte.close !== true) {
-        veilleClose = ouverte;
         puts[VEILLE_PREUVE_KEY] = { ...ouverte, close: true } satisfies VeillePreuve;
       }
     }
     await this.state.storage.put(puts);
     this.log = next;
     if (armRefus || armRetour || armDrop || armLost) await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
-    if (veille?.avant !== undefined) await this.state.storage.setAlarm(veille.due).catch(() => undefined);
-    // The slot still holds the watch's wake and nothing else since: put back what it held.
-    if (veilleClose?.avant !== undefined && (await this.state.storage.getAlarm()) === veilleClose.due) {
-      if (veilleClose.avant === null) await this.state.storage.deleteAlarm().catch(() => undefined);
-      else await this.state.storage.setAlarm(veilleClose.avant).catch(() => undefined);
-    }
+    if (prendReveil && veille !== undefined) await this.state.storage.setAlarm(veille.due).catch(() => undefined);
   }
 
   /** The head implied by a given log, with the CURRENT rebuilt ledger. */

@@ -78,6 +78,8 @@ interface World {
   alerte: 'accept' | 'outage';
   livree: 'accept' | 'outage';
   shop: Hit[];
+  /** How many departure messages Shop+ refuses (503) before it accepts. */
+  shopRefusEnRoute: number;
 }
 
 function logisticsStandIn(world: World) {
@@ -103,7 +105,12 @@ function logisticsStandIn(world: World) {
 
 function shopStandIn(world: World) {
   return async (request: Request): Promise<Response> => {
-    world.shop.push({ path: new URL(request.url).pathname, at: Date.now(), body: (await request.json().catch(() => ({}))) as Json });
+    const hit: Hit = { path: new URL(request.url).pathname, at: Date.now(), body: (await request.json().catch(() => ({}))) as Json };
+    world.shop.push(hit);
+    if (hit.body['stage'] === 'en_route' && world.shopRefusEnRoute > 0) {
+      world.shopRefusEnRoute -= 1;
+      return new Response('unavailable', { status: 503 });
+    }
     return Response.json({ ok: true });
   };
 }
@@ -253,7 +260,7 @@ function forgeInStoredCommands(dir: string, from: string, to: string): number {
   return forged;
 }
 
-const world = (over: Partial<World> = {}): World => ({ hits: [], alerte: 'accept', livree: 'accept', shop: [], ...over });
+const world = (over: Partial<World> = {}): World => ({ hits: [], alerte: 'accept', livree: 'accept', shop: [], shopRefusEnRoute: 0, ...over });
 
 describe('the detectors’ wire keeps the house rules', () => {
   it('a damaged file answers as before; its one alert is a canonical reconciliation alert; a refused send stays pending, counts its own attempt, and waits the same backoff', async () => {
@@ -379,6 +386,33 @@ describe('an alert beside an existing wire never slows it', () => {
     expect((await ops(mf, '/ops/transit/depart', { orderId: O, command_id: `dep2-${O}` })).json).toMatchObject({ ok: true, status: 'deja' });
     await waitFor('the departure message', () => w.shop.some((h) => h.body['stage'] === 'en_route'), 5_000);
     expect(w.shop.find((h) => h.body['stage'] === 'en_route')!.at - retap).toBeLessThan(5_000);
+  }, 60_000);
+
+  it('a decision that closes the proof’s watch leaves a waiting wire its wake', async () => {
+    const w = world({ shopRefusEnRoute: 1 });
+    const dir = freshDir('fermeture');
+    const O = 'ord-detect-fermeture';
+    const mf = boot(dir, w, { bindings: { EVIDENCE_AGING_MS: '20000' }, shop: true });
+    await sealed(mf, O);
+    await new Promise((r) => setTimeout(r, 800));
+    const evidenceAt = await evidenceUndecided(mf, O);
+    const enRoute = () => w.shop.filter((h) => h.body['stage'] === 'en_route');
+
+    // Shop+ refuses the departure's message once. Its own retry would come a
+    // minute later, so the alarm keeps the proof's earlier wake for both.
+    expect((await ops(mf, '/ops/transit/depart', { orderId: O, command_id: `dep-${O}` })).json).toMatchObject({ ok: true, status: 'departed' });
+    await waitFor('the refused departure message', () => enRoute().length === 1);
+    await new Promise((r) => setTimeout(r, 500));
+
+    // The founder validates inside the window: the watch closes, and the
+    // message still waiting is sent again.
+    expect((await ops(mf, '/ops/delivery/decide', { orderId: O, command_id: `dec-${O}` })).json).toMatchObject({ ok: true, result: 'validated' });
+    expect(Date.now() - evidenceAt, 'decided inside the window').toBeLessThan(20_000);
+    await waitFor('the refused departure message sent again', () => enRoute().length === 2, 30_000);
+    await new Promise((r) => setTimeout(r, 500));
+    await stop(mf);
+    expect((readRow(dir, TRANSIT_OUTBOX_KEY) as Json)['en_route']).toMatchObject({ status: 'delivered', attempts: 2 });
+    expect(readRow(dir, ALERTE_PREUVE_KEY), 'decided evidence leaves no alert').toBeUndefined();
   }, 60_000);
 });
 
