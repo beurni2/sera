@@ -18,8 +18,17 @@ import { fenetrePreuveMs } from '../worker/custody-do.js';
  * `/produce/` door. The seam itself (custody and logistics both real) is
  * proven in logistics' `alertes.e2e.test.ts`; this file holds the custody
  * Worker to the wire's terms with logistics stood in, answering exactly
- * what its `/produce/alerte` route answers (200 for a readable alert, a
- * repeat included; 400 for one it cannot read) or, here, an outage:
+ * what its `/produce/alerte` route answers — or, here, an outage. It reads
+ * an alert as logistics' `lireAlerte` does, rule for rule: a canonical event
+ * named `reconciliation.alert.v1` with an `order_id`; for
+ * `impossible_custody` no payload key but `scenario`, `order_id`,
+ * `package_id`, `task_id` and `detail`, a `detail` among the six reasons
+ * logistics accepts and an ISO `serverTime`; for
+ * `evidence_not_validated_aging` no payload key but `scenario`, `order_id`,
+ * `task_id`, `submitted_at` and `age_min`, an ISO `submitted_at` and a whole
+ * `age_min` of zero or more; every id non-blank and at most 256 characters.
+ * Anything else, and any other scenario, is its one 400; a readable alert is
+ * 200, a repeat included:
  *
  *   · a refused send is never marked delivered: the row stays pending, its
  *     attempts count its own sends, and the retry waits the same backoff
@@ -28,7 +37,9 @@ import { fenetrePreuveMs } from '../worker/custody-do.js';
  *     next attempt later — each row counts only its own sends, and the
  *     alarm is never later than the existing wire's own backoff;
  *   · while the alarm holds only a detector's wake, a recovery act still
- *     arms its wire at once.
+ *     arms its wire at once;
+ *   · an act that arms its wire while the alarm waits on an alert send keeps
+ *     its wake: the alarm never sets a later one over it.
  *
  * The time the alarm is set for is read from the object store after the
  * Worker stops (`metadata.sqlite`, `_cf_ALARM.scheduled_time`, nanoseconds).
@@ -60,6 +71,8 @@ function freshDir(tag: string): string {
 // Disposed after each test, passed or failed: a failed assertion must not leave workerd running.
 const live: Miniflare[] = [];
 afterEach(async () => {
+  hold = null;
+  release();
   await Promise.all(live.splice(0).map((m) => m.dispose()));
 });
 afterAll(() => {
@@ -82,6 +95,42 @@ interface World {
   shopRefusEnRoute: number;
 }
 
+/** Logistics' `RAISONS_GARDE`: the only details an impossible-custody alert may carry. */
+const RAISONS_GARDE = [
+  'existing_command_log_without_chain',
+  'head_missing_for_existing_record',
+  'chain_tampered',
+  'command_log_tampered',
+  'replay_diverged',
+  'chain_does_not_name_this_object',
+];
+
+/** Logistics' `lireAlerte`, rule for rule: true only for an alert it can read. */
+function alerteLisible(raw: unknown): boolean {
+  const parsed = PlatformEventSchema.safeParse(raw);
+  if (!parsed.success || parsed.data.name !== 'reconciliation.alert.v1') return false;
+  const p = parsed.data.payload;
+  const id = (v: unknown): boolean => typeof v === 'string' && v.trim().length > 0 && v.length <= 256;
+  const iso = (v: unknown): boolean => typeof v === 'string' && Number.isFinite(Date.parse(v));
+  const seules = (keys: readonly string[]): boolean => Object.keys(p).every((k) => keys.includes(k));
+  const facultatif = (k: string): boolean => p[k] === undefined || id(p[k]);
+  if (!id(p['order_id'])) return false;
+  if (p['scenario'] === 'impossible_custody') {
+    return seules(['scenario', 'order_id', 'package_id', 'task_id', 'detail']) && facultatif('package_id') && facultatif('task_id')
+      && typeof p['detail'] === 'string' && RAISONS_GARDE.includes(p['detail']) && iso(parsed.data.envelope.serverTime);
+  }
+  if (p['scenario'] === 'evidence_not_validated_aging') {
+    const age = p['age_min'];
+    return seules(['scenario', 'order_id', 'task_id', 'submitted_at', 'age_min']) && facultatif('task_id')
+      && iso(p['submitted_at']) && typeof age === 'number' && Number.isSafeInteger(age) && age >= 0;
+  }
+  return false;
+}
+
+/** Held open by a test, the alert send waits here — an alarm pass caught mid-send. */
+let hold: Promise<void> | null = null;
+let release: () => void = () => {};
+
 function logisticsStandIn(world: World) {
   return async (request: Request): Promise<Response> => {
     const path = new URL(request.url).pathname;
@@ -89,8 +138,9 @@ function logisticsStandIn(world: World) {
     const body = (await request.json().catch(() => null)) as Json | null;
     if (path === '/produce/alerte') {
       world.hits.push({ path, at: Date.now(), body: body ?? {} });
+      if (hold !== null) await hold;
       if (world.alerte === 'outage') return new Response('unavailable', { status: 503 });
-      if (body === null || !PlatformEventSchema.safeParse(body).success) return Response.json({ ok: false, reason: 'malformed' }, { status: 400 });
+      if (!alerteLisible(body)) return Response.json({ ok: false, reason: 'malformed' }, { status: 400 });
       const repeat = world.hits.filter((h) => h.path === path && JSON.stringify(h.body) === JSON.stringify(body)).length > 1;
       return Response.json({ ok: true, duplicate: repeat });
     }
@@ -388,6 +438,39 @@ describe('an alert beside an existing wire never slows it', () => {
     expect(w.shop.find((h) => h.body['stage'] === 'en_route')!.at - retap).toBeLessThan(5_000);
   }, 60_000);
 
+  it('an act that arms its wire while the alarm waits on an alert send keeps its wake: the arrival goes at once, not at the alert’s retry', async () => {
+    const w = world({ alerte: 'outage' });
+    const dir = freshDir('pendant');
+    const O = 'ord-detect-pendant';
+    const mf = boot(dir, w, { bindings: { EVIDENCE_AGING_MS: '1000' }, shop: true });
+    await sealed(mf, O);
+    expect((await ops(mf, '/ops/transit/depart', { orderId: O, command_id: `dep-${O}` })).json).toMatchObject({ ok: true, status: 'departed' });
+    await waitFor('the departure message', () => w.shop.some((h) => h.body['stage'] === 'en_route'));
+
+    // The proof's watch wakes a second after the evidence, and its alert send is held open.
+    hold = new Promise<void>((r) => { release = r; });
+    await evidenceUndecided(mf, O);
+    await waitFor('the alert send, held', () => hitsOf(w, '/produce/alerte').length === 1);
+
+    // The rider taps « Je suis arrivé » while that send waits.
+    let pendantLaPasse = false;
+    const enCours = ops(mf, '/ops/transit/arrive', { orderId: O, command_id: `arr-${O}` }).then((r) => {
+      pendantLaPasse = hold !== null;
+      return r;
+    });
+    await new Promise((r) => setTimeout(r, 1_000));
+    const tap = Date.now();
+    hold = null;
+    release();
+    const arrivee = await enCours;
+    expect(arrivee.json, arrivee.text).toMatchObject({ ok: true });
+    expect(pendantLaPasse, 'the act was answered while the alarm still waited on the alert').toBe(true);
+
+    await waitFor('the arrival message', () => w.shop.some((h) => h.body['stage'] === 'arrivee'), 75_000);
+    const envoyee = w.shop.find((h) => h.body['stage'] === 'arrivee')!.at;
+    expect(envoyee - tap, `arrival sent +${envoyee - tap} ms after the tap`).toBeLessThan(5_000);
+  }, 120_000);
+
   it('a decision that closes the proof’s watch leaves a waiting wire its wake', async () => {
     const w = world({ shopRefusEnRoute: 1 });
     const dir = freshDir('fermeture');
@@ -414,6 +497,39 @@ describe('an alert beside an existing wire never slows it', () => {
     expect((readRow(dir, TRANSIT_OUTBOX_KEY) as Json)['en_route']).toMatchObject({ status: 'delivered', attempts: 2 });
     expect(readRow(dir, ALERTE_PREUVE_KEY), 'decided evidence leaves no alert').toBeUndefined();
   }, 60_000);
+});
+
+describe('the logistics stand-in is no kinder than the real door', () => {
+  const evenement = (payload: Json, serverTime = '2026-11-28T08:00:00.000Z'): Json => ({
+    name: 'reconciliation.alert.v1',
+    envelope: { command_id: 'alerte-x', correlation_id: 'corr-x', aggregateVersion: 0, actor: 'custody-service:ops-monitor', serverTime, version: '1' },
+    payload,
+  });
+  const garde = { scenario: 'impossible_custody', order_id: 'ord-x', package_id: 'pkg-x', task_id: 'task-x', detail: 'command_log_tampered' };
+  const preuve = { scenario: 'evidence_not_validated_aging', order_id: 'ord-x', task_id: 'task-x', submitted_at: '2026-11-28T07:00:00.000Z', age_min: 60 };
+
+  it('it reads the two alerts custody writes, and refuses what logistics’ lireAlerte refuses', () => {
+    expect(alerteLisible(evenement(garde))).toBe(true);
+    expect(alerteLisible(evenement({ scenario: 'impossible_custody', order_id: 'ord-x', detail: 'replay_diverged' }))).toBe(true);
+    expect(alerteLisible(evenement(preuve))).toBe(true);
+    for (const [pourquoi, corps] of [
+      ['not a canonical event', { name: 'reconciliation.alert.v1', payload: garde }],
+      ['another event name', { ...evenement(garde), name: 'ops.observation.v1' }],
+      ['a scenario logistics does not read', evenement({ ...garde, scenario: 'ready_package_no_task' })],
+      ['a key outside the scenario’s own', evenement({ ...garde, extra: 'x' })],
+      ['a detail outside the six reasons', evenement({ ...garde, detail: 'something_else' })],
+      ['no order', evenement({ ...garde, order_id: undefined })],
+      ['a blank order', evenement({ ...garde, order_id: '   ' })],
+      ['an order longer than 256', evenement({ ...garde, order_id: 'o'.repeat(257) })],
+      ['a package id that is not one', evenement({ ...garde, package_id: 7 })],
+      ['a proof alert with a detail', evenement({ ...preuve, detail: 'command_log_tampered' })],
+      ['a submission time that is not a time', evenement({ ...preuve, submitted_at: 'hier' })],
+      ['a negative age', evenement({ ...preuve, age_min: -1 })],
+      ['an age that is not whole', evenement({ ...preuve, age_min: 1.5 })],
+    ] as const) {
+      expect(alerteLisible(corps), pourquoi).toBe(false);
+    }
+  });
 });
 
 describe('the proof window can shrink for a test and never loosen', () => {

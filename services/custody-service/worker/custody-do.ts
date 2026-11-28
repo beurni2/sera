@@ -837,6 +837,8 @@ function niveauPanne(p: Panne): 'warn' | 'error' {
 export class CustodyDO {
   private loaded = false;
   private chain: OrderChain | null = null;
+  /** True while an alarm pass runs: the slot then reads empty, yet the pass will set the next wake itself. */
+  private passeEnCours = false;
   private log: LoggedCommand[] = [];
   private spine: CustodySpine | null = null;
   /** Non-null once the rebuilt ledger stops matching the head this object
@@ -1210,9 +1212,23 @@ export class CustodyDO {
   /** The impossible-custody alert, raised from the route that refused: written
    *  once, then the alarm armed now unless it is already due sooner. */
   private async leverAlerteGarde(detail: string, orderId: string | null): Promise<void> {
-    if (orderId === null || !(await this.ecrireAlerteGarde(detail, orderId))) return;
+    if (orderId === null) return;
+    if (await this.ecrireAlerteGarde(detail, orderId)) {
+      const slot = await this.state.storage.getAlarm();
+      if (slot === null || slot > Date.now()) await this.state.storage.setAlarm(Date.now());
+      return;
+    }
+    // Written by an earlier request whose wake may have been refused: while it
+    // waits unsent, a free slot is taken again at once, never a later one. A
+    // detector's wake counts as free only for a row never sent — once sent,
+    // that wake is the row's own retry, and taking it would undo its backoff.
+    // A pass in flight is sending the row and will set its retry itself.
+    if (this.passeEnCours) return;
+    const row = await this.state.storage.get<AlerteOutbox>(ALERTE_GARDE_KEY);
+    if (row?.status !== 'pending') return;
     const slot = await this.state.storage.getAlarm();
-    if (slot === null || slot > Date.now()) await this.state.storage.setAlarm(Date.now());
+    const libre = slot === null || (row.attempts === 0 && slot === (await this.state.storage.get<number>(REVEIL_DETECTEUR_KEY)));
+    if (libre && (slot === null || slot > Date.now())) await this.state.storage.setAlarm(Date.now());
   }
 
   /**
@@ -1331,6 +1347,15 @@ export class CustodyDO {
    * settlement truth and silence would be a lie about money.
    */
   async alarm(): Promise<void> {
+    this.passeEnCours = true;
+    try {
+      await this.passe();
+    } finally {
+      this.passeEnCours = false;
+    }
+  }
+
+  private async passe(): Promise<void> {
     // VRAI-ROUTE → COURSE-LIVRÉE — THREE wires, one alarm, independent state
     // (the storefront worker's own three-outbox precedent): the eligibility
     // signal, the transit facts and the course-livrée confirmation each keep
@@ -1366,16 +1391,40 @@ export class CustodyDO {
     if (attempts > 0) {
       const backoffMs = Math.min(30_000 * 2 ** Math.min(attempts, 7), 3_600_000);
       if (detecteur < Date.now() + backoffMs) await this.reveilDetecteur(detecteur);
-      else await this.state.storage.setAlarm(Date.now() + backoffMs).catch((e) => this.rearmeEchoue(e));
+      else {
+        // An act that armed its wire while this pass waited on a send keeps
+        // its wake: the backoff never pushes it back (logistics' alarm, same rule).
+        const deja = await this.state.storage.getAlarm().catch(() => null);
+        const at = Date.now() + backoffMs;
+        if (deja !== null && deja <= at) await this.garderReveil(deja);
+        else await this.state.storage.setAlarm(at).catch((e) => this.rearmeEchoue(e));
+      }
     } else if (detecteur !== Infinity) {
       await this.reveilDetecteur(detecteur);
     }
   }
 
-  /** A detector's own wake on the shared alarm, remembered so `reveilLibre` knows it. */
+  /**
+   * A detector's own wake on the shared alarm, remembered so `reveilLibre`
+   * knows it — and never later than a wake already set: an act may have armed
+   * its wire while the pass waited on a send, and that wake stands.
+   */
   private async reveilDetecteur(at: number): Promise<void> {
+    const deja = await this.state.storage.getAlarm().catch(() => null);
+    if (deja !== null && deja <= at) return this.garderReveil(deja);
     await this.state.storage.put(REVEIL_DETECTEUR_KEY, at);
     await this.state.storage.setAlarm(at).catch((e) => this.rearmeEchoue(e));
+  }
+
+  /**
+   * An earlier wake stands. The record names it the detector's only if it
+   * already was (a proof's watch armed meanwhile); any other is an act's wake
+   * for its wire, so the remembered detector wake — the one that started this
+   * pass — is dropped, and the slot no longer reads as free. The detectors
+   * lose nothing: the earlier wake's own pass re-arms them.
+   */
+  private async garderReveil(deja: number): Promise<void> {
+    if (deja !== (await this.state.storage.get<number>(REVEIL_DETECTEUR_KEY))) await this.state.storage.delete(REVEIL_DETECTEUR_KEY);
   }
 
   /**
