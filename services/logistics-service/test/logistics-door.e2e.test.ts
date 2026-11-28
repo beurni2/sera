@@ -123,7 +123,7 @@ describe('the three doors — separation, uniformity, fail-closed', () => {
   it('GET /health answers unauthenticated with the provenance stamp and NOTHING else', async () => {
     const res = await call(mf, 'GET', '/health', {});
     expect(res.status).toBe(200);
-    expect(res.json).toEqual({ ok: true, service: 'logistics-service', release: 'dev', canon: 'dev' });
+    expect(res.json).toEqual({ ok: true, service: 'logistics-service', release: 'dev', canon: 'dev', intakeSplit: false });
   });
 
   it('ops routes refuse no-bearer, wrong-bearer AND the intake secret with ONE identical 401', async () => {

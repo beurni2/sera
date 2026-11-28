@@ -177,3 +177,127 @@ describe('fail-closed — no intake key set at all', () => {
     }
   });
 });
+
+/*
+ * ═══ THE FOUNDER'S SWAP, STEP BY STEP — and Séra's health check says when it is done ═══
+ *
+ * He runs it in three steps: set both producer keys on Séra, move each
+ * producer onto its own value, delete the shared key. Séra's side only ever
+ * sees two states besides « before »: shared + both producer keys, then both
+ * producer keys alone. `/health` answers one presence flag so he can see the
+ * last step took — never a value, a length, or which key is missing — and the
+ * founder's door and the rider's door must not move in any state.
+ */
+
+const OPS = 'test-ops-cles-producteurs';
+
+const get = async (m: Miniflare, path: string, key: string | null) => {
+  const headers: Record<string, string> = {};
+  if (key !== null) headers['Authorization'] = `Bearer ${key}`;
+  const res = await m.dispatchFetch(`http://logistics${path}`, { headers });
+  return { status: res.status, json: (await res.json()) as Record<string, unknown> };
+};
+
+const sante = (intakeSplit: boolean) => ({ ok: true, service: 'logistics-service', release: 'dev', canon: 'dev', intakeSplit });
+
+/** The founder's door and the rider's door answer as they always have, whatever the intake keys are doing. */
+async function portesVoisinesIntactes(m: Miniflare, tag: string, clesIntake: readonly string[]): Promise<void> {
+  const riderId = `rider-${tag}`;
+  expect((await post(m, '/ops/riders', OPS, { riderId, displayName: riderId, phoneAlias: `alias-${tag}`, certified: true })).status).toBe(200);
+  const mint = await post(m, '/ops/rider-code/mint', OPS, { riderId });
+  expect(mint.status).toBe(200);
+  const code = mint.json['code'] as string;
+  expect((await get(m, '/ops/riders', OPS)).status).toBe(200);
+  expect((await get(m, '/rider/moi', code)).status).toBe(200);
+  for (const cle of clesIntake) {
+    const ops = await get(m, '/ops/riders', cle);
+    expect(ops.status).toBe(401);
+    expect(ops.json).toEqual({ error: 'unauthorized' });
+    expect((await get(m, '/rider/moi', cle)).status).toBe(401);
+  }
+  // Neither the founder's key nor a rider's code opens an intake door.
+  for (const cle of [OPS, code]) {
+    expect((await post(m, '/intake/funding', cle, funding(`o-voisin-f-${tag}`))).status).toBe(401);
+    expect((await post(m, '/intake/readiness', cle, readiness(`o-voisin-r-${tag}`))).status).toBe(401);
+  }
+}
+
+describe("the founder's swap — step 0, the shared key alone", () => {
+  const mf = boot({ SERA_OPS_SECRET: OPS, SERA_INTAKE_SECRET: SHARED });
+
+  it('/health says the swap is not done', async () => {
+    const h = await get(mf, '/health', null);
+    expect(h.status).toBe(200);
+    expect(h.json).toEqual(sante(false));
+  }, 60_000);
+
+  it.each(DOORS)('$path — the shared key opens it', async ({ path, body }) => {
+    expect((await post(mf, path, SHARED, body(`o-etape0-${path}`))).status).not.toBe(401);
+  }, 60_000);
+
+  it("the founder's door and the rider's door are unmoved", async () => {
+    await portesVoisinesIntactes(mf, 'etape0', [SHARED]);
+  }, 60_000);
+});
+
+describe("the founder's swap — step 1, both producer keys set beside the shared one", () => {
+  const mf = boot({ SERA_OPS_SECRET: OPS, SERA_INTAKE_SECRET: SHARED, SERA_INTAKE_SHOP_SECRET: SHOP, SERA_INTAKE_BOUTIK_SECRET: BOUTIK });
+
+  it('/health still says the swap is not done', async () => {
+    const h = await get(mf, '/health', null);
+    expect(h.status).toBe(200);
+    expect(h.json).toEqual(sante(false));
+  }, 60_000);
+
+  it("the founder's door and the rider's door are unmoved", async () => {
+    await portesVoisinesIntactes(mf, 'etape1', [SHARED, SHOP, BOUTIK]);
+  }, 60_000);
+});
+
+describe("the founder's swap — step 3, the shared key deleted", () => {
+  const mf = boot({ SERA_OPS_SECRET: OPS, SERA_INTAKE_SHOP_SECRET: SHOP, SERA_INTAKE_BOUTIK_SECRET: BOUTIK });
+
+  it('/health says the swap is done', async () => {
+    const h = await get(mf, '/health', null);
+    expect(h.status).toBe(200);
+    expect(h.json).toEqual(sante(true));
+  }, 60_000);
+
+  it.each(DOORS)('$path — the old shared value gets the one 401', async ({ path, body }) => {
+    const res = await post(mf, path, SHARED, body(`o-etape3-old-${path}`));
+    expect(res.status).toBe(401);
+    expect(res.json).toEqual({ error: 'unauthorized' });
+  }, 60_000);
+
+  it.each(DOORS.filter((d) => d.owner !== 'aucun'))("$path — each producer still opens only its own door; the other producer's key gets the one 401", async ({ path, owner, body }) => {
+    const own = owner === 'shop' ? SHOP : BOUTIK;
+    const other = owner === 'shop' ? BOUTIK : SHOP;
+    expect((await post(mf, path, own, body(`o-etape3-own-${path}`))).status).not.toBe(401);
+    const crossed = await post(mf, path, other, body(`o-etape3-cross-${path}`));
+    expect(crossed.status).toBe(401);
+    expect(crossed.json).toEqual({ error: 'unauthorized' });
+  }, 60_000);
+
+  it("the founder's door and the rider's door are unmoved", async () => {
+    await portesVoisinesIntactes(mf, 'etape3', [SHARED, SHOP, BOUTIK]);
+  }, 60_000);
+});
+
+describe('the health flag reads presence only — both producer keys set and the shared key gone', () => {
+  // Only the producer keys themselves count, never a next value; an empty key opens nothing, so it counts as absent.
+  const CAS = [
+    { label: 'only the Shop+ key, shared deleted', bindings: { SERA_INTAKE_SHOP_SECRET: SHOP }, split: false },
+    { label: 'only the Boutik+ key, shared deleted', bindings: { SERA_INTAKE_BOUTIK_SECRET: BOUTIK }, split: false },
+    { label: 'both producer keys, shared set empty', bindings: { SERA_INTAKE_SHOP_SECRET: SHOP, SERA_INTAKE_BOUTIK_SECRET: BOUTIK, SERA_INTAKE_SECRET: '' }, split: true },
+    { label: 'a producer key set empty, shared deleted', bindings: { SERA_INTAKE_SHOP_SECRET: '', SERA_INTAKE_BOUTIK_SECRET: BOUTIK }, split: false },
+    { label: 'producer keys only as next values, shared deleted', bindings: { SERA_INTAKE_SHOP_SECRET_NEXT: SHOP, SERA_INTAKE_BOUTIK_SECRET_NEXT: BOUTIK }, split: false },
+    { label: 'no intake key at all', bindings: {}, split: false },
+  ];
+
+  it.each(CAS)('$label → intakeSplit $split', async ({ bindings, split }) => {
+    const mf = boot(bindings);
+    const h = await get(mf, '/health', null);
+    expect(h.status).toBe(200);
+    expect(h.json).toEqual(sante(split));
+  }, 60_000);
+});

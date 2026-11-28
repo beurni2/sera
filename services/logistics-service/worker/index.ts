@@ -80,6 +80,17 @@ export interface Env {
    * unset ⇒ this door refuses everything with the one uniform 401.
    */
   readonly SERA_COURSE_LIVREE_SECRET?: string;
+  /**
+   * Each checked key's next value, set only while that key changes, so a
+   * sender can move to the new value before the old one is dropped and no
+   * request is refused in between. Opens exactly the doors its key opens.
+   * The shared SERA_INTAKE_SECRET has none: it is being retired, not changed.
+   */
+  readonly SERA_OPS_SECRET_NEXT?: string;
+  readonly SERA_INTAKE_SHOP_SECRET_NEXT?: string;
+  readonly SERA_INTAKE_BOUTIK_SECRET_NEXT?: string;
+  readonly SERA_RIDER_VERIFY_SECRET_NEXT?: string;
+  readonly SERA_COURSE_LIVREE_SECRET_NEXT?: string;
 }
 
 const BEARER_PREFIX = 'Bearer ';
@@ -106,14 +117,23 @@ function unauthorized(): Response {
   return Response.json({ error: 'unauthorized' }, { status: 401 });
 }
 
-async function authorized(request: Request, secret: string | undefined): Promise<boolean> {
+/**
+ * `next` is the key's next value while it changes — required, so every door
+ * says which next value it accepts (or `undefined`, for none).
+ */
+async function authorized(request: Request, secret: string | undefined, next: string | undefined): Promise<boolean> {
   const configured = secret ?? '';
+  const configuredNext = next ?? '';
   const header = request.headers.get('Authorization') ?? '';
   const provided = header.startsWith(BEARER_PREFIX) ? header.slice(BEARER_PREFIX.length) : '';
-  // The compare runs unconditionally so timing does not reveal whether a
-  // secret exists; the length guard keeps it fail-closed.
-  const match = await timingSafeEqual(provided, configured);
-  return configured.length > 0 && match;
+  // Both compares run unconditionally, and both finish before either result
+  // is read, so timing reveals neither whether a value exists nor which one
+  // matched; each length guard keeps its own value fail-closed.
+  const [match, matchNext] = await Promise.all([
+    timingSafeEqual(provided, configured),
+    timingSafeEqual(provided, configuredNext),
+  ]);
+  return (configured.length > 0 && match) || (configuredNext.length > 0 && matchNext);
 }
 
 /**
@@ -127,15 +147,18 @@ async function intakeAuthorized(request: Request, env: Env, pathname: string): P
   // tasks for one order and must close before any producer is wired to it
   // (JOURNAL, SE-LIVE-2c's named prerequisite). Only the shared key opens it,
   // and only until the founder deletes that key.
-  const own =
+  // A producer's next value is chosen in the same branch as its key, so it
+  // can never open the other producer's doors.
+  const [own, ownNext] =
     pathname === '/intake/funding'
-      ? env.SERA_INTAKE_SHOP_SECRET
+      ? [env.SERA_INTAKE_SHOP_SECRET, env.SERA_INTAKE_SHOP_SECRET_NEXT]
       : pathname === '/intake/task-ready'
-        ? undefined
-        : env.SERA_INTAKE_BOUTIK_SECRET;
+        ? [undefined, undefined]
+        : [env.SERA_INTAKE_BOUTIK_SECRET, env.SERA_INTAKE_BOUTIK_SECRET_NEXT];
   const [byOwner, byShared] = await Promise.all([
-    authorized(request, own),
-    authorized(request, env.SERA_INTAKE_SECRET),
+    authorized(request, own, ownNext),
+    // The shared key is being retired: it gets no next value.
+    authorized(request, env.SERA_INTAKE_SECRET, undefined),
   ]);
   return byOwner || byShared;
 }
@@ -238,12 +261,18 @@ async function repondre(request: Request, env: Env): Promise<Response> {
     if (request.method === 'GET' && url.pathname === '/health') {
       // Unauthenticated liveness for the post-deploy provenance probe — no
       // queue data, no rider data, nothing enumerable.
+      // `intakeSplit` tells the founder his intake key swap is finished: each
+      // producer holds its own key and the shared one is gone. Presence only,
+      // of the keys themselves (never a next value) — an empty key opens
+      // nothing, so it counts as absent. Never a value, a length, or which one.
+      const pose = (v: string | undefined): boolean => (v ?? '').length > 0;
       return withCors(
         Response.json({
           ok: true,
           service: 'logistics-service',
           release: __SERA_RELEASE__,
           canon: __SERA_CANON__,
+          intakeSplit: pose(env.SERA_INTAKE_SHOP_SECRET) && pose(env.SERA_INTAKE_BOUTIK_SECRET) && !pose(env.SERA_INTAKE_SECRET),
         }),
         request,
         env,
@@ -251,7 +280,7 @@ async function repondre(request: Request, env: Env): Promise<Response> {
     }
 
     if (url.pathname === '/authority/dispatch' || url.pathname.startsWith('/ops/')) {
-      if (!(await authorized(request, env.SERA_OPS_SECRET))) {
+      if (!(await authorized(request, env.SERA_OPS_SECRET, env.SERA_OPS_SECRET_NEXT))) {
         return withCors(unauthorized(), request, env);
       }
       // Preserved authority-route discipline: non-POST never reaches the object.
@@ -273,7 +302,7 @@ async function repondre(request: Request, env: Env): Promise<Response> {
      * it refuses everything with the one uniform 401.
      */
     if (url.pathname.startsWith('/verify/')) {
-      if (!(await authorized(request, env.SERA_RIDER_VERIFY_SECRET))) {
+      if (!(await authorized(request, env.SERA_RIDER_VERIFY_SECRET, env.SERA_RIDER_VERIFY_SECRET_NEXT))) {
         return withCors(unauthorized(), request, env);
       }
       return withCors(await stub().fetch(request), request, env);
@@ -288,7 +317,7 @@ async function repondre(request: Request, env: Env): Promise<Response> {
      * name so the sender can stop. Fail-closed: unset secret ⇒ the one 401.
      */
     if (url.pathname.startsWith('/produce/')) {
-      if (!(await authorized(request, env.SERA_COURSE_LIVREE_SECRET))) {
+      if (!(await authorized(request, env.SERA_COURSE_LIVREE_SECRET, env.SERA_COURSE_LIVREE_SECRET_NEXT))) {
         return withCors(unauthorized(), request, env);
       }
       return withCors(await stub().fetch(request), request, env);

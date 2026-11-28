@@ -59,6 +59,16 @@ entrypoint = "AudioRead"
 #   founder deletes it (the changeover window). `wrangler secret put`, piped,
 #   the founder's alone — never [vars].
 
+# A KEY CHANGES WITH NO GAP — five optional NEXT secrets, no new binding:
+#   · SERA_OPS_SECRET_NEXT · SERA_INTAKE_SHOP_SECRET_NEXT ·
+#     SERA_INTAKE_BOUTIK_SECRET_NEXT · SERA_RIDER_VERIFY_SECRET_NEXT ·
+#     SERA_COURSE_LIVREE_SECRET_NEXT — each set only while its key changes:
+#     put the new value here as _NEXT, move the sender onto it, then make it
+#     the key itself and delete the _NEXT. While set it opens exactly the
+#     doors its key opens; unset or empty it opens nothing.
+#   The shared SERA_INTAKE_SECRET has NO _NEXT: it is being retired, not
+#   changed. `wrangler secret put`, piped, the founder's alone — never [vars].
+
 # ═══════════════════════════════════════════════════════════════════════════
 # THE SERVICE'S LOG — one line per request, one per fault, never a person's data.
 # ═══════════════════════════════════════════════════════════════════════════
