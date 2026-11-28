@@ -3,6 +3,87 @@ Continuity ledger per CTO charter §6/§6bis. Every entry is evidence-grounded.
 
 Format per entry:
 
+## 2026-11-28 · HEURE-SERVEUR-1 + DETECTEURS-1 + JOURNAL-SERVICES-1 + PHOTO-PREUVE-1 — Séra's clock dates the rider's acts; the problem detectors run live; both services keep a log; the rider's proof photo fits its budget · lane S · on the branch, NOT merged, NOT deployed
+
+**Founder.** « done, now you can start the next batch » (2026-11-28 00:38 UTC), batch 7 of the plan he approved: « The server, not the rider's phone, sets the time on pickup and delivery records. A fact dated in the future is refused. The problem detectors run on the live service. », « Every service, one lane per app. Each one keeps a log of what it did and what went wrong, with no personal data in it. » and « Photos sent and downloaded are held to their phone budgets ». Boutik+ holds the supplier's photographs to their budgets; this repository holds the rider's proof photo.
+
+**Lane.** Lane S, local commits in order on `a686787`: `8feac56`, `12265c1` (clock); `e9672c3`, `e72a3bf` (detectors); `1a9b16f` (logs); `d506f62` (detectors, the review's fix); `1b2eb47`, `8b8b913` (proof photo); `f8919cc` (logs, the review's test fixes); `28733c7` (proof photo, the review's fixes). Integrated on `claude/project-thread-jqj97g` commit for commit, unchanged, on `838ecbe`: `c907ade`, `a6f2ee9`, `5d86718`, `85415f4`, `c8e9176`, `9a8e598`, `06e5918`, `64b8ac4`, `3533bdb`, `f65b8fe`; files byte-identical to the lane's `28733c7`.
+
+**Spec.**
+- Sera-Build-Spec SE-I06 (l.38): « Offline evidence may be queued, but **custody/delivery validation + financial release remain pending until authoritative server ack**. »; SE-I04 (l.36): « Every package has **exactly one current custodian** »; the boundary (l.63): « **Evidence supports, never releases** ».
+- Execution Contract §6 (l.127): « **Alert when (minimum):** … a ready package has no task past SLA · a package has an impossible custody sequence · evidence is uploaded but not validated · … »; §6 (l.126) « **Standards:** structured logs »; §3: a mock delivers events out of order and late.
+- `docs/PERF-BUDGETS.md` l.41: « Evidence-upload time | 3 photos ≤ 300 KB each … »; l.12-14: the reference device « Android Go class, 2GB RAM ».
+- This repository's own precedent on the rider door: the instant is the Worker's clock and the body's `at` is ignored (the refusal ladder). The SOS board's rule: a signal persists until the founder's ack, and the ack is his act only.
+- CLAUDE.md Law 3 (custody; evidence never releases), Law 5 (fixed windows, no inference), Law 7 (performance budgets enforced), §9.8 (no stand-in kinder than the real service).
+
+**What changed.**
+- *Clock (custody and logistics).* On the rider door the check, the seal, transit, the delivery evidence, the drop and the door inspection are dated by the custody Worker's own clock; the instant a request carries is still checked as an instant, then ignored. The founder's console and the services keep the instant they send. The logistics intake refuses, by name (422 `as_of_in_future`), a funding or readiness fact dated more than five minutes ahead of its own clock, before anything is read or written. A cancel lands over any non-cancelled fact of any age, and once stored no later non-cancelled fact re-opens the order (200 `applied:false`, `order_cancelled`); an older redelivery is still `older_fact_ignored`. A closed course keeps the same rules.
+- *Detectors (custody and logistics).* Three alerts the founder reads and closes, never an act on custody or money:
+  - a damaged custody record raises `impossible_custody` once per order, at the gate that already refuses to act on it (its answer is byte-identical), sent to logistics over a new wire `/produce/alerte`;
+  - a delivery proof left undecided raises `evidence_not_validated_aging` after 30 minutes (the policy's window; a test may set it shorter, never longer), and a decision before then drops it;
+  - a parcel ready with no course for 60 minutes shows `ready_package_no_task`, computed at read time, once per readiness episode.
+  - `GET /ops/alertes` lists them on the logistics ops door, and `POST /ops/alertes/ack` (`{id, by}`) closes one: 200, 404 `alerte_inconnue`, 400, or 401 at the door. The custody alarm keeps a wake already set when it is earlier, the rule the logistics alarm already follows, so an alert never delays a rider's wire. The custody tests' logistics stand-in refuses everything the real door refuses.
+- *Logs (custody and logistics).* One JSON line per request through this repository's `packages/observability`: the route template (never the path, never the query), the method from a closed set, the status, the duration and a correlation id cut to 64. Custody names the order its door resolved, and only in the shape Shop+ mints; logistics names none. Levels: 5xx error; 401, 403, 413 and 429 warn; otherwise info. A thrown request writes one error line by the error's class and is thrown on unchanged. Each fault that passed in silence now says so by name (`outbox_undelivered` with its attempts and the far side's status or a plain reason, `alarm_rearm_failed`, `request_failed`, and the best-effort reads and relays), changing no answer, retry or row. No pickup code, drop code, seal id, rider code or id, buyer pin, landmark, voice note or position in any line. `[observability]` on in both `wrangler.toml` at full sampling, queries redacted, the per-invocation log off.
+- *Proof photo (rider app).* The pickup photo is saved at quality 0.6, then 0.5, then 0.4, at long edge 1600, then 1440, then 1280 (the legibility floor), resizing the image already rendered; the first save within 307 200 B is the one sent, so a photo that fits today leaves byte-identical to today. At the floor, or when a smaller step cannot be made, the last readable save leaves anyway: a byte budget never blocks the rider. A save the app cannot read still means no photo, as before. Each native image and render it steps past is released, in a `finally`. While the photo is made and sent, « Un instant… » (the catalog's existing line) takes the photo button's place. No catalog or kit change.
+
+**Evidence.**
+- Lane: every new test red first for the right reason, then green.
+- Mutations, each red with its anchor matched once, restored byte-identical:
+  - clock: the rider clock, the future check, cancel-wins, stored-cancel;
+  - detectors: ten, plus six on the review's fix;
+  - logs: eight;
+  - photo: the ladder's loop, the budget, the floor, a kinder double, the pending state, the releases.
+- The manipulator double prices each save from a bits-per-pixel table measured once outside the repository; every bound cell is at or above the measured maximum, and a kinder setting fails its own certification.
+- Coordinator: each diff read line by line; decisive tests re-run at each lane head on fresh bundles; its own mutations (cancel-wins on the clock, a step's release on the photo) went red. Full board on the integrated head: ALL GATES GREEN, typecheck and tests uncached (rider app 586, custody 321, logistics 421, dispatch console 97).
+
+**Verifier.** One fresh-context pass per slice, handled once, never re-verified.
+- Clock: 0 blocker, 0 major, 0 minor, 6 notes; three test notes fixed (`12265c1`), one journalled below, the rest in the private record.
+- Detectors: 1 major and 3 notes. The major was an alert send that could set its wake over a rider's earlier one, delaying the arrival message by a minute (inside this batch, never deployed). It is fixed in `d506f62` with two notes; the third is journalled below.
+- Logs: pass with notes, 3 minor test gaps fixed in `f8919cc`.
+- Proof photo: pass with notes; 3 minors and 2 notes fixed (`28733c7`): renders released, the step rendered from the image never the camera's file, a step that fails leaves the last readable save, and one size bound. The other 2 notes are journalled below.
+
+**Release.** logistics-deploy (it must know `/produce/alerte` before custody sends to it), then custody-deploy, both from the branch's green head, then the merge, which publishes the rider app.
+
+**Still open.**
+- Clock: the phone's own capture time and the inspection's start and end stay in the command log only, never as the record's time.
+- Clock: Boutik+'s readiness stand-in still says Séra answers only 200 or 400. A 422 is retried there, which is safe; a later Boutik+ slice brings it in line.
+- Detectors: the founder's console shows these alerts only with the Boutik+ follow-up that comes right after this merge. Alerts persist until acked, so nothing is lost meanwhile.
+- Detectors: alerts and acks are kept and listed in full.
+- Detectors: a course taken back hides an un-acked ready line for its window.
+- Detectors: the ready line's start is the producers' own date, bounded by the five-minute rule.
+- Detectors: the 30-minute ceiling on the test window is proven by a pure test only.
+- Detectors: a damaged record's alert wake also sends any row still pending on that record, as the alarm always has.
+- Logs: whether the logging service adds anything of its own to each line is checked on one real line after the release, before anyone says the log holds no address.
+- Logs: an empty inbound correlation header is logged as an empty string, not minted. The same is true in Shop+ and Boutik+; one fix later in each logger.
+- Logs: six read-only log tests that start no Worker carry no explicit time limit.
+- Photo: the 1280 floor rests on a 70 cm framing rule of thumb. Legibility by a person on a real photo is not tested. The time per save on a low-end phone and iOS's quality scale are not measured.
+- Photo: the upload-time and « resumable across drops » rows are out of scope.
+- Photo: an older installed app keeps sending one 0.6 save, and the media service's own ceiling still accepts it.
+- Photo: the per-save 1600 px and base64 checks are held by reading, and the « no second camera » guard relies on the screen re-rendering between taps, as each touch on a phone does.
+- Photo: the first render's release and the last image's release are held by reading: no test makes the first render or a save fail. The double's context release and its armed failed render are exercised by the walks, not certified in the double's own test.
+- Other open items are held in the private batch record until their fixes deploy.
+
+---
+
+## 2026-11-27 · SORTIES-SURES-1 + COURSE-VRAIE-1 — MERGED; rider app PUBLISHED
+
+**Founder.** « Release all five » (2026-11-27 22:43 UTC, decision card, on the batch 6 report), which named for Séra: the merge only, which updates the rider app. Neither service changed in this batch, so custody-deploy and logistics-deploy were not run.
+
+**Merge.** platform-contracts PR #5 merged first (`b36e360`). PR #12 merged as `a686787` (merge commit, the branch shas kept; its tree is byte-identical to the PR head `7bf11cf`, green in ci 240).
+
+**On main.**
+- ci 241, first attempt RED: two real-Worker tests that this batch did not touch ran past vitest's 5 s default on a slow runner — custody « refuses every route that is not one of the two rider acts » (5003 ms) and logistics « a return-key arm still in flight when the course closes does not bring the return back » (8051 ms). 279 of 280 custody tests passed. expo-preview 169 was skipped, as designed: nothing ships from a red ci.
+- The failed job was re-run once (attempt 2): green.
+- expo-preview 170 (id 46079851741) green from that green ci: the decision step let main's newest commit ship, and the rider-app preview update was published with the message `main@a686787…`. A skipped run did not block the later one, as the publish concurrency was built to do.
+
+**Not checked.** The live services were not called from here. The rider app on a real phone is the check of COURSE-VRAIE-1.
+
+**Follow-on.** Those two tests get the explicit timeout their real-Worker siblings carry (as the 600-read storage test got in `b29cd7f`), so a slow runner cannot turn main red.
+
+**Still open.** As named in the slice entries below. Other open items are held in the private batch record until their fixes deploy.
+
+---
+
 ## 2026-11-27 · SORTIES-SURES-1 — a service goes live only from a green commit, with the founder's approval; the rider app publishes only after green checks; the delivery key is written only when asked; a rollback page; the board and a live check every day · lane O5 · on the branch, NOT merged, NOT deployed
 
 **Founder.** « Go on for batch 6 » (2026-11-27 19:38 UTC), batch 6 of the plan he approved: « A service goes live only after its checks passed on that exact version, with your approval in front of it. Apps publish only after green checks. The delivery-key step stops rewriting the key blind. One page per app says how to roll back, and we practise it once. The boards run every day, not only when someone pushes. A daily watch checks that the live services run `main`. » His card on the GitHub approval is still open; this is built on its recommended answer (service releases wait for his approval; app updates need green checks only).

@@ -235,7 +235,10 @@ async function routeJusquAuDrop(
   code: string,
   prefix: string,
   dropCode: string,
+  /** A time the rider's requests claim — custody must never record it. */
+  at?: string,
 ): Promise<void> {
+  const dit = at === undefined ? {} : { at };
   await attendreChaine(custody, orderId);
   const { session } = appPorts(logistics);
   const moi = await session.signIn(code);
@@ -248,12 +251,12 @@ async function routeJusquAuDrop(
 
   const verified = await riderCustody(custody, '/rider/verification', code, {
     orderId, command_id: `${prefix}-v`, presentedPickupCode: pv,
-    checkResults: ALL_PASS, dwellSec: 150, evidenceBundleId: `ev-${prefix}`,
+    checkResults: ALL_PASS, dwellSec: 150, evidenceBundleId: `ev-${prefix}`, ...dit,
   });
   expect(verified.status, JSON.stringify(verified.json)).toBe(200);
 
   const began = await riderCustody(custody, '/rider/custody/begin', code, {
-    orderId, command_id: `${prefix}-b`, custodySealId: sc, sealPhotoRefs: [],
+    orderId, command_id: `${prefix}-b`, custodySealId: sc, sealPhotoRefs: [], ...dit,
   });
   expect(began.status, JSON.stringify(began.json)).toBe(200);
   const chain = began.json['chain'] as Json;
@@ -273,11 +276,12 @@ async function routeJusquAuDrop(
       taskId: chain['task_id'], packageId: chain['package_id'], custodySealId: sc,
       artifacts: [], capturedAt: '2026-08-13T10:00:00.000Z',
     },
+    ...dit,
   });
   expect(evidence.status, JSON.stringify(evidence.json)).toBe(200);
 
   const drop = await riderCustody(custody, '/rider/delivery/drop', code, {
-    orderId, command_id: `${prefix}-d`, dropCode,
+    orderId, command_id: `${prefix}-d`, dropCode, ...dit,
   });
   expect(drop.status, JSON.stringify(drop.json)).toBe(200);
   expect(drop.json).toMatchObject({ ok: true, status: 'custody_with_customer' });
@@ -346,6 +350,41 @@ describe('COURSE-LIVRÉE — the seam, end to end, and the rider walks free', ()
     const again = await courseConfiee(logistics, 'ord-livree-seam-2', RIDER, 's2');
     expect(again.assignmentId).toBeTruthy();
     expect(await moiAssignment(logistics, again.code)).not.toBeNull();
+  }, 120_000);
+
+  it('the rider’s requests claim 2020: the course closes on Séra’s clock, on the logistics ledger and in the fleet count', async () => {
+    const hold: Hold = {};
+    spawnLogistics(hold);
+    spawnCustody(hold, mkdtempSync(join(tmpdir(), 'course-livree-custody-heure-')));
+    const logistics = hold.logistics!;
+    const custody = hold.custody!;
+
+    const O = 'ord-livree-heure-1';
+    const RIDER = 'rider-livree-heure';
+    const { code } = await courseConfiee(logistics, O, RIDER, 'h1');
+    const before = Date.now();
+    await routeJusquAuDrop(custody, logistics, O, code, 'h1', 'DROP-LIVREE-HEURE', '2020-01-01T00:00:00.000Z');
+    const dropped = Date.now();
+
+    let assignment: unknown = 'unread';
+    for (let i = 0; i < 80; i += 1) {
+      assignment = await moiAssignment(logistics, code);
+      if (assignment === null) break;
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    expect(assignment, 'the course closed').toBeNull();
+
+    // ASK THE LEDGER: the instant logistics recorded the delivery at.
+    const probe = await livreeDoor(logistics, LIVREE_KEY, { orderId: O, command_id: 'probe-heure', at: T });
+    expect(probe.json).toMatchObject({ ok: true, status: 'deja_livree' });
+    const deliveredAt = (probe.json['assignment'] as Json)['deliveredAt'];
+    expect(typeof deliveredAt).toBe('string');
+    const t = Date.parse(deliveredAt as string);
+    expect(t >= before - 2_000 && t <= dropped + 2_000, `deliveredAt=${String(deliveredAt)} must be Séra's clock at the drop`).toBe(true);
+
+    // The fleet book counts it among this fortnight's deliveries.
+    const flotte = await ops(logistics, '/ops/flotte');
+    expect((flotte['utilisation'] as Json)['livrees'], JSON.stringify(flotte['utilisation'])).toBe(1);
   }, 120_000);
 
   it('an order the book never carried settles as aucune_course — 200, never a retrying refusal', async () => {

@@ -1,4 +1,5 @@
-import { CustodyDO } from './custody-do.js';
+import { CORRELATION_HEADER, correlationIdFrom, createLogger } from '@sera/observability';
+import { CustodyDO, idJournal, nomErreur } from './custody-do.js';
 import { PackageClaimDO } from './package-claim-do.js';
 
 export { CustodyDO, PackageClaimDO };
@@ -224,6 +225,35 @@ const PRODUCE_ROUTES: ReadonlySet<string> = new Set([
 // no money and pays nothing; the provider's confirmation still must name it.
 const PRODUCE_SHOP_ROUTES: ReadonlySet<string> = new Set(['POST /secrets/arm', 'POST /door-signal', 'POST /door-reference']);
 
+/* ═══ THE SERVICE'S LOG — one line per request, never a person's data ═══ */
+
+const SERVICE_NAME = 'custody-service';
+/** The Shop+ logger's own cap, kept here so a caller's header cannot fill a line. */
+const CORRELATION_ID_MAX = 64;
+
+/** The object's own routes, each opened on the founder's door. */
+const ROUTES_OBJET = [
+  '/attestations', '/colis/perdu', '/custodian', '/custody/begin', '/delivery/decide', '/delivery/drop',
+  '/delivery/evidence', '/door-reference', '/door-signal', '/door/expire', '/door/inspection', '/door/refusal',
+  '/drop-code/lock', '/drop-code/unlock', '/events', '/ledger', '/ledger/verify', '/liability-claims',
+  '/order/open', '/return/apply', '/return/claim', '/return/handover', '/return/open', '/secrets/arm',
+  '/transit/arrive', '/transit/depart', '/verification', '/wires/reviver',
+];
+const cheminsDe = (routes: ReadonlySet<string>): string[] => [...routes].map((r) => r.slice(r.indexOf(' ') + 1));
+/** Every path a door opens. A line names one of these, never the path as it came in. */
+const ROUTES: ReadonlySet<string> = new Set([
+  '/health',
+  ...ROUTES_OBJET.map((r) => `/ops${r}`),
+  ...cheminsDe(RIDER_ROUTES).map((r) => `/rider${r}`),
+  ...cheminsDe(PRODUCE_ROUTES).map((r) => `/produce${r}`),
+  ...cheminsDe(PRODUCE_SHOP_ROUTES).map((r) => `/produce-shop${r}`),
+]);
+
+const routeDe = (pathname: string): string => (ROUTES.has(pathname) ? pathname : 'unmatched');
+const METHODES = new Set(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']);
+/** A refused key, a refused act, a body too big, a ceiling reached: worth a look, not a fault. */
+const STATUTS_AVERTIS = new Set([401, 403, 413, 429]);
+
 async function timingSafeEqual(a: string, b: string): Promise<boolean> {
   const enc = new TextEncoder();
   const keyBytes = crypto.getRandomValues(new Uint8Array(32));
@@ -280,7 +310,44 @@ function orderIdOf(url: URL, body: unknown): string | null {
 }
 
 export default {
+  // THE SERVICE'S LOG — every request writes ONE line; the answer leaves untouched.
   async fetch(request: Request, env: Env): Promise<Response> {
+    const debut = Date.now();
+    const route = routeDe(new URL(request.url).pathname);
+    const method = METHODES.has(request.method) ? request.method : 'OTHER';
+    // The order the door resolved, filled in by the router once and never read again from the request.
+    const resolu: { orderId?: string } = {};
+    let res: Response;
+    try {
+      res = await repondre(request, env, resolu);
+    } catch (e) {
+      // Said once, then thrown on unchanged: the caller gets the runtime's own answer.
+      createLogger({ service: SERVICE_NAME, correlationId: correlationIdFrom(request).slice(0, CORRELATION_ID_MAX) }).error('request', {
+        route,
+        method,
+        status: 500,
+        durationMs: Date.now() - debut,
+        ...idJournal(resolu.orderId),
+        error: nomErreur(e),
+      });
+      throw e;
+    }
+    const correlationId = (res.headers.get(CORRELATION_HEADER) ?? correlationIdFrom(request)).slice(0, CORRELATION_ID_MAX);
+    const niveau = res.status >= 500 ? 'error' : STATUTS_AVERTIS.has(res.status) ? 'warn' : 'info';
+    createLogger({ service: SERVICE_NAME, correlationId })[niveau]('request', {
+      route,
+      method,
+      status: res.status,
+      durationMs: Date.now() - debut,
+      ...idJournal(resolu.orderId),
+    });
+    return res;
+  },
+};
+
+// The Worker's routes, unchanged; kept at their former indentation so the
+// move into this function is the only change to them.
+async function repondre(request: Request, env: Env, resolu: { orderId?: string }): Promise<Response> {
     const url = new URL(request.url);
 
     if (request.method === 'GET' && url.pathname === '/health') {
@@ -400,6 +467,7 @@ export default {
     if (orderId === null) {
       return Response.json({ ok: false, reason: 'order_id_required' }, { status: 400 });
     }
+    resolu.orderId = orderId;
     if (!isUsableOrderId(orderId)) {
       return Response.json({ ok: false, reason: 'order_id_not_usable' }, { status: 400 });
     }
@@ -462,5 +530,4 @@ export default {
     } catch {
       return Response.json({ ok: false, reason: 'custody_object_unavailable' }, { status: 503 });
     }
-  },
-};
+}

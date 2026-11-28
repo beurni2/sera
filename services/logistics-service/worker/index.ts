@@ -1,4 +1,5 @@
-import { LOGISTICS_BOOK_NAME, LogisticsDO } from './logistics-do.js';
+import { CORRELATION_HEADER, correlationIdFrom, createLogger } from '@sera/observability';
+import { LOGISTICS_BOOK_NAME, LogisticsDO, nomErreur } from './logistics-do.js';
 
 export { LogisticsDO };
 
@@ -165,8 +166,69 @@ function withCors(response: Response, request: Request, env: Env): Response {
   return out;
 }
 
+/* ═══ THE SERVICE'S LOG — one line per request, never an id, never a person's data ═══ */
+
+const SERVICE_NAME = 'logistics-service';
+/** The Shop+ logger's own cap, kept here so a caller's header cannot fill a line. */
+const CORRELATION_ID_MAX = 64;
+
+/** Every path the book answers. A line names one of these, never the path as it came in. */
+const ROUTES: ReadonlySet<string> = new Set([
+  '/health',
+  '/authority/dispatch',
+  '/intake/funding', '/intake/ramassage/verify', '/intake/readiness', '/intake/retour/verify', '/intake/task-ready',
+  '/ops/a-preparer', '/ops/alertes', '/ops/alertes/ack', '/ops/assign', '/ops/assignment/take-back', '/ops/board',
+  '/ops/colis/perdu', '/ops/expire-due', '/ops/flotte', '/ops/flotte/cout', '/ops/flotte/hypotheses', '/ops/flotte/moto',
+  '/ops/flotte/moto/confier', '/ops/flotte/moto/entree', '/ops/order/retirer', '/ops/remise/debloquer', '/ops/reprogrammer',
+  '/ops/retour/decider', '/ops/rider-code/mint', '/ops/rider-code/reveal', '/ops/rider-code/revoke', '/ops/rider-codes',
+  '/ops/riders', '/ops/riders/certify', '/ops/riders/remove', '/ops/shift/exception', '/ops/shift/exceptions', '/ops/sos',
+  '/ops/sos/ack', '/ops/stockage', '/ops/task',
+  '/produce/alerte', '/produce/course-livree', '/produce/course-retournee', '/produce/reprogrammation', '/produce/retour-ouvert',
+  '/rider/ack-privacy', '/rider/assignment/ack', '/rider/assignment/decline', '/rider/moi', '/rider/repere-audio',
+  '/rider/shift/end', '/rider/shift/start', '/rider/sos',
+  '/verify/rider-code',
+]);
+
+const routeDe = (pathname: string): string => (ROUTES.has(pathname) ? pathname : 'unmatched');
+const METHODES = new Set(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']);
+/** A refused key, a refused act, a body too big, a ceiling reached: worth a look, not a fault. */
+const STATUTS_AVERTIS = new Set([401, 403, 413, 429]);
+
 export default {
+  // THE SERVICE'S LOG — every request writes ONE line; the answer leaves untouched.
   async fetch(request: Request, env: Env): Promise<Response> {
+    const debut = Date.now();
+    const route = routeDe(new URL(request.url).pathname);
+    const method = METHODES.has(request.method) ? request.method : 'OTHER';
+    let res: Response;
+    try {
+      res = await repondre(request, env);
+    } catch (e) {
+      // Said once, then thrown on unchanged: the caller gets the runtime's own answer.
+      createLogger({ service: SERVICE_NAME, correlationId: correlationIdFrom(request).slice(0, CORRELATION_ID_MAX) }).error('request', {
+        route,
+        method,
+        status: 500,
+        durationMs: Date.now() - debut,
+        error: nomErreur(e),
+      });
+      throw e;
+    }
+    const correlationId = (res.headers.get(CORRELATION_HEADER) ?? correlationIdFrom(request)).slice(0, CORRELATION_ID_MAX);
+    const niveau = res.status >= 500 ? 'error' : STATUTS_AVERTIS.has(res.status) ? 'warn' : 'info';
+    createLogger({ service: SERVICE_NAME, correlationId })[niveau]('request', {
+      route,
+      method,
+      status: res.status,
+      durationMs: Date.now() - debut,
+    });
+    return res;
+  },
+};
+
+// The Worker's routes, unchanged; kept at their former indentation so the
+// move into this function is the only change to them.
+async function repondre(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const stub = () => env.LOGISTICS.get(env.LOGISTICS.idFromName(LOGISTICS_BOOK_NAME));
 
@@ -249,5 +311,4 @@ export default {
     }
 
     return withCors(Response.json({ ok: false, reason: 'not_found' }, { status: 404 }), request, env);
-  },
-};
+}

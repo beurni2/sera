@@ -630,11 +630,11 @@ export default function App() {
       setCapturing(true);
       /**
        * ⚠ A CAMERA THAT NEVER ANSWERS MUST NOT LOCK THE SCREEN. While
-       * `capturing` is true both the photo button and the send are disabled —
-       * so a `launchCameraAsync` that never settles (a killed camera app, a
-       * permission dialog the OS loses) left the rider with a screen they could
-       * not use and no way out. Every other network call in this app is
-       * bounded; this one was not.
+       * `capturing` is true the photo button gives way to « Un instant… » and
+       * the send is disabled — so a `launchCameraAsync` that never settles (a
+       * killed camera app, a permission dialog the OS loses) left the rider
+       * with a screen they could not use and no way out. Every other network
+       * call in this app is bounded; this one was not.
        */
       let settled = false;
       const giveUp = setTimeout(() => {
@@ -3674,10 +3674,15 @@ export default function App() {
                             const key = captureIssueKey(captureIssue);
                             return key === undefined ? null : <FasoBody>{t(key)}</FasoBody>;
                           })()}
-                          <FasoSecondaryButton
-                            label={t(verifyBundleId !== null ? 'photo.retake' : 'photo.take')}
-                            onPress={() => takePhoto((art) => setVerifyBundleId(art.ref))}
-                          />
+                          {/* The wait is said; no second tap opens a second camera. */}
+                          {capturing ? (
+                            <FasoPendingNotice lines={[t('acts.sending')]} />
+                          ) : (
+                            <FasoSecondaryButton
+                              label={t(verifyBundleId !== null ? 'photo.retake' : 'photo.take')}
+                              onPress={() => takePhoto((art) => setVerifyBundleId(art.ref))}
+                            />
+                          )}
                           {/* Offered, never demanded — the send below never
                               waits on this photo. */}
                           <FasoBody>{t('verify.photo_facultative')}</FasoBody>

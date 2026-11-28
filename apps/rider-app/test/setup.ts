@@ -1,4 +1,6 @@
 import * as expoAudio from './doubles/expo-audio';
+import * as expoImageManipulator from './doubles/expo-image-manipulator';
+import * as expoImagePicker from './doubles/expo-image-picker';
 
 /**
  * ═══ RENDU-RÉEL — the `require` Metro gives the app, and vitest does not ═══
@@ -19,6 +21,9 @@ import * as expoAudio from './doubles/expo-audio';
  */
 const NATIVE: Record<string, unknown> = {
   'expo-audio': expoAudio,
+  // `expoPhotoSource` requires both lazily too; unarmed, each throws.
+  'expo-image-manipulator': expoImageManipulator,
+  'expo-image-picker': expoImagePicker,
 };
 
 /**

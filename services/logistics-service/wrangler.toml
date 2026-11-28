@@ -58,3 +58,23 @@ entrypoint = "AudioRead"
 #   The shared SERA_INTAKE_SECRET keeps opening every intake door until the
 #   founder deletes it (the changeover window). `wrangler secret put`, piped,
 #   the founder's alone — never [vars].
+
+# ═══════════════════════════════════════════════════════════════════════════
+# THE SERVICE'S LOG — one line per request, one per fault, never a person's data.
+# ═══════════════════════════════════════════════════════════════════════════
+# The Worker writes its OWN structured lines (route template, method, status,
+# duration, correlation id; an order id in Shop+'s minted shape on a fault
+# line only). Every line is kept (`head_sampling_rate = 1`): a fault seen
+# once is the one that matters.
+#
+# `invocation_logs = false` on purpose: the platform's own per-invocation
+# record carries the raw URL — a cost query, an order id a caller typed — and
+# that is exactly what the Worker's line leaves out. `redact_query_string =
+# true` is the second lock if that record is ever switched back on.
+[observability]
+enabled = true
+head_sampling_rate = 1
+redact_query_string = true
+
+[observability.logs]
+invocation_logs = false
