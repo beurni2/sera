@@ -67,8 +67,8 @@ export function withinBucketBound(width: number, height: number): boolean {
 
 /** PERF-BUDGETS « Evidence-upload time »: 3 photos ≤ 300 KB each (KB = 1024). */
 export const EVIDENCE_BUDGET_BYTES = 300 * 1024;
-/** 0.6 first, so a photo that fits today leaves byte-identical; below 0.4 the
- *  measured code began to misread at small edges. */
+/** 0.6 first, so a photo that fits today leaves byte-identical; 0.4 is the
+ *  lowest quality ruled for this slice. */
 export const EVIDENCE_QUALITY_STEPS = [0.6, 0.5, 0.4] as const;
 /** The legibility floor: about 7 px tall for 4 mm print on a carton framed at
  *  70 cm — a rule of thumb, not a reading test. */
