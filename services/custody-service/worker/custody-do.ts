@@ -1,5 +1,6 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { PackageLostEventSchema, PlatformEventSchema, type PlatformEvent } from '@platform/contracts';
+import { createLogger, type Logger } from '@sera/observability';
 import { CustodySpine, type ChainIds } from '../src/custody-spine.js';
 import { ACTIVE_PICKUP_VERIFICATION_POLICY, type VerificationInput } from '../src/pickup-verification-policy.js';
 import type { DoorInspectionInput } from '../src/door-flow.js';
@@ -793,6 +794,46 @@ function malformed(reason = 'malformed'): Response {
   return Response.json({ ok: false, reason }, { status: 400 });
 }
 
+/* ═══ THE SERVICE'S LOG — one line per request, one per fault, never a person's data ═══ */
+
+const SERVICE_NAME = 'custody-service';
+
+/**
+ * The order shape Shop+ mints (its storefront's `FORME_ID.orderId`). A line
+ * names an order only when the value has this exact shape, so an id a caller
+ * made up never reaches the log, whatever it holds.
+ */
+const FORME_ORDRE = /^ord-quote-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** The order a log line may carry: in its minted shape, else none. */
+export function idJournal(id: unknown): { orderId: string } | Record<string, never> {
+  return typeof id === 'string' && FORME_ORDRE.test(id) ? { orderId: id } : {};
+}
+
+/** The service's logger on the order's own chain, else on a fresh one. */
+export function journalService(id?: unknown): Logger {
+  const ids = idJournal(id);
+  return createLogger({ service: SERVICE_NAME, correlationId: 'orderId' in ids ? `corr-${ids.orderId}` : crypto.randomUUID() });
+}
+
+/** An error's class name only: its message can carry the very data it failed on. */
+export function nomErreur(e: unknown): string {
+  return e instanceof Error ? e.name : 'non_error';
+}
+
+/** Why a wire's try did not deliver: the far side's status (never its body), or a plain reason. */
+type Panne = { readonly status: number } | { readonly reason: 'no_answer' | 'not_configured' };
+
+function panneDe(res: Response): Panne {
+  return { status: res.status };
+}
+
+/** A refused key and a wire never configured wait on a person: error. Every other miss retries: warn. */
+function niveauPanne(p: Panne): 'warn' | 'error' {
+  if ('status' in p) return p.status === 401 || p.status === 403 ? 'error' : 'warn';
+  return p.reason === 'not_configured' ? 'error' : 'warn';
+}
+
 export class CustodyDO {
   private loaded = false;
   private chain: OrderChain | null = null;
@@ -1195,7 +1236,7 @@ export class CustodyDO {
       body: { orderId: this.chain.order_id, command_id: `reprogrammation-${this.chain.order_id}`, at: ladder.attempt.at, outcome: ladder },
     } satisfies RetourOutbox);
     if (await this.reveilLibre()) {
-      await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
+      await this.state.storage.setAlarm(Date.now()).catch((e) => this.rearmeEchoue(e));
     }
     return 'armed';
   }
@@ -1231,7 +1272,7 @@ export class CustodyDO {
       return 'present';
     }
     if (await this.reveilLibre()) {
-      await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
+      await this.state.storage.setAlarm(Date.now()).catch((e) => this.rearmeEchoue(e));
     }
     return heal;
   }
@@ -1241,13 +1282,45 @@ export class CustodyDO {
     let response: Response;
     try {
       response = await this.route(request);
-    } catch {
+    } catch (e) {
       // In-memory state may hold a command that was applied but never
       // persisted; drop it and rebuild from the durable log next request.
       this.loaded = false;
+      const orderId = await this.ordreJournal();
+      journalService(orderId).error('request_failed', { ...idJournal(orderId), error: nomErreur(e) });
       return Response.json({ ok: false, reason: 'internal_error' }, { status: 500 });
     }
     return response;
+  }
+
+  /** The order this file names, read from the stored chain row only when a
+   *  line is about to be written; a read that fails leaves the line unnamed. */
+  private async ordreJournal(): Promise<string | undefined> {
+    try {
+      return (await this.state.storage.get<OrderChain>(CHAIN_KEY))?.order_id;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** One line for a send that did not land, or for a row coming to rest with
+   *  nothing configured. It names the wire, never the body it carries. */
+  private async nonLivre(outbox: string, attempts: number, panne: Panne, stage?: 'en_route' | 'arrivee'): Promise<void> {
+    const orderId = await this.ordreJournal();
+    journalService(orderId)[niveauPanne(panne)]('outbox_undelivered', {
+      outbox,
+      ...(stage === undefined ? {} : { stage }),
+      ...idJournal(orderId),
+      attempts,
+      ...panne,
+    });
+  }
+
+  /** Nothing retries a lost re-arm by itself: the wire waits for the next
+   *  request to this file, so the miss is said at error. */
+  private async rearmeEchoue(e: unknown): Promise<void> {
+    const orderId = await this.ordreJournal();
+    journalService(orderId).error('alarm_rearm_failed', { ...idJournal(orderId), error: nomErreur(e) });
   }
 
   /**
@@ -1293,7 +1366,7 @@ export class CustodyDO {
     if (attempts > 0) {
       const backoffMs = Math.min(30_000 * 2 ** Math.min(attempts, 7), 3_600_000);
       if (detecteur < Date.now() + backoffMs) await this.reveilDetecteur(detecteur);
-      else await this.state.storage.setAlarm(Date.now() + backoffMs).catch(() => undefined);
+      else await this.state.storage.setAlarm(Date.now() + backoffMs).catch((e) => this.rearmeEchoue(e));
     } else if (detecteur !== Infinity) {
       await this.reveilDetecteur(detecteur);
     }
@@ -1302,7 +1375,7 @@ export class CustodyDO {
   /** A detector's own wake on the shared alarm, remembered so `reveilLibre` knows it. */
   private async reveilDetecteur(at: number): Promise<void> {
     await this.state.storage.put(REVEIL_DETECTEUR_KEY, at);
-    await this.state.storage.setAlarm(at).catch(() => undefined);
+    await this.state.storage.setAlarm(at).catch((e) => this.rearmeEchoue(e));
   }
 
   /**
@@ -1386,9 +1459,11 @@ export class CustodyDO {
         ...outbox,
         status: 'unsendable_no_config',
       } satisfies EligibilityOutbox);
+      await this.nonLivre(ELIGIBILITY_OUTBOX_KEY, outbox.attempts, { reason: 'not_configured' });
       return 0;
     }
     let delivered = false;
+    let panne: Panne = { reason: 'no_answer' };
     try {
       // The host is a placeholder — a service binding routes by BINDING, and
       // Shop+'s Worker reads only the path.
@@ -1398,6 +1473,7 @@ export class CustodyDO {
         body: JSON.stringify(outbox.event),
       }));
       delivered = res.ok;
+      panne = panneDe(res);
     } catch {
       delivered = false;
     }
@@ -1414,6 +1490,7 @@ export class CustodyDO {
       ...outbox,
       attempts,
     } satisfies EligibilityOutbox);
+    await this.nonLivre(ELIGIBILITY_OUTBOX_KEY, attempts, panne);
     return attempts;
   }
 
@@ -1430,9 +1507,11 @@ export class CustodyDO {
         ...outbox,
         status: 'unsendable_no_config',
       } satisfies RefusOutbox);
+      await this.nonLivre(REFUS_OUTBOX_KEY, outbox.attempts, { reason: 'not_configured' });
       return 0;
     }
     let delivered = false;
+    let panne: Panne = { reason: 'no_answer' };
     try {
       const res = await shop.fetch(new Request('https://shop/fulfillment/progress', {
         method: 'POST',
@@ -1440,6 +1519,7 @@ export class CustodyDO {
         body: JSON.stringify(outbox.event),
       }));
       delivered = res.ok;
+      panne = panneDe(res);
     } catch {
       delivered = false;
     }
@@ -1456,6 +1536,7 @@ export class CustodyDO {
       ...outbox,
       attempts,
     } satisfies RefusOutbox);
+    await this.nonLivre(REFUS_OUTBOX_KEY, attempts, panne);
     return attempts;
   }
 
@@ -1467,9 +1548,11 @@ export class CustodyDO {
     const secret = this.env.SHOP_PROGRESS_SECRET ?? '';
     if (shop === undefined || secret === '') {
       await this.state.storage.put(LOST_OUTBOX_KEY, { ...outbox, status: 'unsendable_no_config' } satisfies LostOutbox);
+      await this.nonLivre(LOST_OUTBOX_KEY, outbox.attempts, { reason: 'not_configured' });
       return 0;
     }
     let delivered = false;
+    let panne: Panne = { reason: 'no_answer' };
     try {
       const res = await shop.fetch(new Request('https://shop/fulfillment/progress', {
         method: 'POST',
@@ -1477,11 +1560,13 @@ export class CustodyDO {
         body: JSON.stringify(outbox.event),
       }));
       delivered = res.ok;
+      panne = panneDe(res);
     } catch {
       delivered = false;
     }
     const attempts = outbox.attempts + 1;
     await this.state.storage.put(LOST_OUTBOX_KEY, { ...outbox, status: delivered ? 'delivered' : 'pending', attempts } satisfies LostOutbox);
+    if (!delivered) await this.nonLivre(LOST_OUTBOX_KEY, attempts, panne);
     return delivered ? 0 : attempts;
   }
 
@@ -1494,7 +1579,7 @@ export class CustodyDO {
       await this.state.storage.put(LOST_OUTBOX_KEY, { ...row, status: 'pending' } satisfies LostOutbox);
     }
     if (await this.reveilLibre()) {
-      await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
+      await this.state.storage.setAlarm(Date.now()).catch((e) => this.rearmeEchoue(e));
     }
   }
 
@@ -1513,9 +1598,11 @@ export class CustodyDO {
       if (shop === undefined || secret === '') {
         outbox[stage] = { ...row, status: 'unsendable_no_config' };
         changed = true;
+        await this.nonLivre(TRANSIT_OUTBOX_KEY, row.attempts, { reason: 'not_configured' }, stage);
         continue;
       }
       let delivered = false;
+      let panne: Panne = { reason: 'no_answer' };
       try {
         const res = await shop.fetch(new Request('https://shop/fulfillment/transit', {
           method: 'POST',
@@ -1523,13 +1610,17 @@ export class CustodyDO {
           body: JSON.stringify(row.body),
         }));
         delivered = res.ok;
+        panne = panneDe(res);
       } catch {
         delivered = false;
       }
       const attempts = row.attempts + 1;
       outbox[stage] = { ...row, status: delivered ? 'delivered' : 'pending', attempts };
       changed = true;
-      if (!delivered) worst = Math.max(worst, attempts);
+      if (!delivered) {
+        worst = Math.max(worst, attempts);
+        await this.nonLivre(TRANSIT_OUTBOX_KEY, attempts, panne, stage);
+      }
     }
     if (changed) await this.state.storage.put(TRANSIT_OUTBOX_KEY, outbox);
     return worst;
@@ -1566,7 +1657,7 @@ export class CustodyDO {
     if (Object.keys(revive).length === 0) return;
     await this.state.storage.put(revive);
     if (await this.reveilLibre()) {
-      await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
+      await this.state.storage.setAlarm(Date.now()).catch((e) => this.rearmeEchoue(e));
     }
   }
 
@@ -1588,9 +1679,11 @@ export class CustodyDO {
     const secret = this.env.SERA_COURSE_LIVREE_SECRET ?? '';
     if (logistics === undefined || secret === '') {
       await this.state.storage.put(key, { ...outbox, status: 'unsendable_no_config' } satisfies RetourOutbox);
+      await this.nonLivre(key, outbox.attempts, { reason: 'not_configured' });
       return 0;
     }
     let delivered = false;
+    let panne: Panne = { reason: 'no_answer' };
     try {
       const res = await logistics.fetch(new Request(`https://logistics${path}`, {
         method: 'POST',
@@ -1598,11 +1691,13 @@ export class CustodyDO {
         body: JSON.stringify(outbox.body),
       }));
       delivered = res.ok;
+      panne = panneDe(res);
     } catch {
       delivered = false;
     }
     const attempts = outbox.attempts + 1;
     await this.state.storage.put(key, { ...outbox, status: delivered ? 'delivered' : 'pending', attempts } satisfies RetourOutbox);
+    if (!delivered) await this.nonLivre(key, attempts, panne);
     return delivered ? 0 : attempts;
   }
 
@@ -1619,7 +1714,7 @@ export class CustodyDO {
     if (Object.keys(revive).length === 0) return;
     await this.state.storage.put(revive);
     if (await this.reveilLibre()) {
-      await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
+      await this.state.storage.setAlarm(Date.now()).catch((e) => this.rearmeEchoue(e));
     }
   }
 
@@ -1639,9 +1734,11 @@ export class CustodyDO {
         ...outbox,
         status: 'unsendable_no_config',
       } satisfies CourseLivreeOutbox);
+      await this.nonLivre(COURSE_LIVREE_OUTBOX_KEY, outbox.attempts, { reason: 'not_configured' });
       return 0;
     }
     let delivered = false;
+    let panne: Panne = { reason: 'no_answer' };
     try {
       // The host is a placeholder — a service binding routes by BINDING, and
       // the logistics Worker reads only the path.
@@ -1651,6 +1748,7 @@ export class CustodyDO {
         body: JSON.stringify(outbox.body),
       }));
       delivered = res.ok;
+      panne = panneDe(res);
     } catch {
       delivered = false;
     }
@@ -1660,6 +1758,7 @@ export class CustodyDO {
       status: delivered ? 'delivered' : 'pending',
       attempts,
     } satisfies CourseLivreeOutbox);
+    if (!delivered) await this.nonLivre(COURSE_LIVREE_OUTBOX_KEY, attempts, panne);
     return delivered ? 0 : attempts;
   }
 
@@ -1674,7 +1773,7 @@ export class CustodyDO {
     if (!(await this.reveilLibre())) return;
     outbox[stage] = { ...row, status: 'pending' };
     await this.state.storage.put(TRANSIT_OUTBOX_KEY, outbox);
-    await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
+    await this.state.storage.setAlarm(Date.now()).catch((e) => this.rearmeEchoue(e));
   }
 
   /**
@@ -1907,8 +2006,8 @@ export class CustodyDO {
     }
     await this.state.storage.put(puts);
     this.log = next;
-    if (armRefus || armRetour || armDrop || armLost) await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
-    if (prendReveil && veille !== undefined) await this.state.storage.setAlarm(veille.due).catch(() => undefined);
+    if (armRefus || armRetour || armDrop || armLost) await this.state.storage.setAlarm(Date.now()).catch((e) => this.rearmeEchoue(e));
+    if (prendReveil && veille !== undefined) await this.state.storage.setAlarm(veille.due).catch((e) => this.rearmeEchoue(e));
   }
 
   /** The head implied by a given log, with the CURRENT rebuilt ledger. */
@@ -2093,7 +2192,10 @@ export class CustodyDO {
     if (failure !== null) {
       // The founder is told, once. Nothing here may change the answer below:
       // a write that fails is simply tried again by the next request.
-      await this.leverAlerteGarde(failure, objectName ?? this.chain?.order_id ?? null).catch(() => undefined);
+      const nommee = objectName ?? this.chain?.order_id ?? null;
+      await this.leverAlerteGarde(failure, nommee).catch((e) => {
+        journalService(nommee).error('alerte_raise_failed', { ...idJournal(nommee), error: nomErreur(e) });
+      });
       if (request.method === 'GET' && pathname === '/ledger/verify') {
         // A REAL verdict, not a refusal — and answered HERE, before the
         // « order not open » guard, because a file whose chain row is gone is
@@ -2784,7 +2886,7 @@ export class CustodyDO {
           [TRANSIT_KEY]: { ...transit, departedAt: at, departedBy: actor } satisfies TransitRecord,
           [TRANSIT_OUTBOX_KEY]: outbox,
         });
-        await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
+        await this.state.storage.setAlarm(Date.now()).catch((e) => this.rearmeEchoue(e));
         return Response.json({ ok: true, status: 'departed', at });
       }
       if (transit.arrivedAt !== undefined) {
@@ -2808,7 +2910,7 @@ export class CustodyDO {
         [TRANSIT_KEY]: { ...transit, arrivedAt: at, arrivedBy: actor } satisfies TransitRecord,
         [TRANSIT_OUTBOX_KEY]: outbox,
       });
-      await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
+      await this.state.storage.setAlarm(Date.now()).catch((e) => this.rearmeEchoue(e));
       return Response.json({ ok: true, status: 'arrived', at });
     }
 

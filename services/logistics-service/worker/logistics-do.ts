@@ -1,4 +1,5 @@
 import { DeliveryTaskSchema, PlatformEventSchema } from '@platform/contracts';
+import { createLogger, type Logger } from '@sera/observability';
 import {
   archiveLeaseTasks,
   decideLease,
@@ -711,6 +712,50 @@ export interface LogisticsObjectEnv {
   readonly MEDIA_AUDIO?: { fetch(request: Request): Promise<Response> };
 }
 
+/* ═══ THE SERVICE'S LOG — one line per fault, never a person's data ═══ */
+
+const SERVICE_NAME = 'logistics-service';
+
+/**
+ * The order shape Shop+ mints (its storefront's `FORME_ID.orderId`). A fault
+ * line names an order only when the value has this exact shape, so an id a
+ * producer made up never reaches the log, whatever it holds.
+ */
+const FORME_ORDRE = /^ord-quote-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** The order a fault line may carry: in its minted shape, else none. */
+function idJournal(id: unknown): { orderId: string } | Record<string, never> {
+  return typeof id === 'string' && FORME_ORDRE.test(id) ? { orderId: id } : {};
+}
+
+/** The service's logger on the order's own chain, else on a fresh one. */
+function journalService(id?: unknown): Logger {
+  const ids = idJournal(id);
+  return createLogger({ service: SERVICE_NAME, correlationId: 'orderId' in ids ? `corr-${ids.orderId}` : crypto.randomUUID() });
+}
+
+/** An error's class name only: its message can carry the very data it failed on. */
+export function nomErreur(e: unknown): string {
+  return e instanceof Error ? e.name : 'non_error';
+}
+
+/** Why a wire's try did not deliver: custody's status (never its body), or a plain reason. */
+type Panne = { readonly status: number } | { readonly reason: 'no_answer' | 'timeout' | 'not_configured' | 'no_supplier' };
+
+function panneDe(res: Response): Panne {
+  return { status: res.status };
+}
+
+function panneJetee(e: unknown): Panne {
+  return { reason: e instanceof Error && e.name === 'TimeoutError' ? 'timeout' : 'no_answer' };
+}
+
+/** A refused key and a rest that waits on a person: error. Every other miss retries: warn. */
+function niveauPanne(p: Panne): 'warn' | 'error' {
+  if ('status' in p) return p.status === 401 || p.status === 403 ? 'error' : 'warn';
+  return p.reason === 'not_configured' || p.reason === 'no_supplier' ? 'error' : 'warn';
+}
+
 export class LogisticsDO {
   private loaded = false;
   private leaseState: LeaseAuthorityState = emptyLeaseState();
@@ -1258,7 +1303,8 @@ export class LogisticsDO {
         asOf: now,
       };
       return 'known';
-    } catch {
+    } catch (e) {
+      journalService(orderId).warn('custody_read_failed', { ...idJournal(orderId), error: nomErreur(e) });
       return 'unknown';
     }
   }
@@ -1338,7 +1384,8 @@ export class LogisticsDO {
         const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
         if (!res.ok || body === null || body['ok'] !== true || typeof body['locked'] !== 'boolean') return null;
         return body['locked'] === true ? { since: typeof body['since'] === 'string' ? body['since'] : '' } : false;
-      } catch {
+      } catch (e) {
+        journalService(orderId).warn('custody_read_failed', { ...idJournal(orderId), error: nomErreur(e) });
         return null;
       }
     }));
@@ -1475,8 +1522,9 @@ export class LogisticsDO {
           body: JSON.stringify({ orderId }),
         }));
         await res.text();
-      } catch {
+      } catch (e) {
         // Not this read's affair: the next read asks again.
+        journalService(orderId).warn('custody_revive_failed', { ...idJournal(orderId), error: nomErreur(e) });
       }
     }));
     return due.length;
@@ -1500,9 +1548,11 @@ export class LogisticsDO {
         if (row.armRest !== 'no_config') {
           this.retours[assignmentId] = { ...row, armRest: 'no_config' };
           changed = true;
+          this.nonLivre(SNAP_RETOURS, row.orderId, row.armAttempts, { reason: 'not_configured' });
         }
         continue;
       }
+      let panne: Panne = { reason: 'no_answer' };
       const arm = async (orderId: string, kind: string, secret: string, suffix: string): Promise<boolean> => {
         try {
           const res = await custody.fetch(new Request('https://custody/produce/secrets/arm', {
@@ -1512,8 +1562,10 @@ export class LogisticsDO {
             // Same alarm as the pickup road: a stall here would hold it too.
             signal: AbortSignal.timeout(CUSTODY_READ_TIMEOUT_MS),
           }));
+          panne = panneDe(res);
           return res.ok;
-        } catch {
+        } catch (e) {
+          panne = panneJetee(e);
           return false;
         }
       };
@@ -1521,11 +1573,16 @@ export class LogisticsDO {
       // the bag (each ledger consumes them for itself at the handover); an
       // article already armed is not asked again.
       const armes = new Set(row.armes ?? []);
+      // The article whose arm did not land, if one did not.
+      let enEchec: string | undefined;
       for (const orderId of row.orderIds ?? [row.orderId]) {
         if (armes.has(orderId)) continue;
         const rider = await arm(orderId, 'rider_return_confirmation', row.codeRetour, 'rider');
         const seller = rider && (await arm(orderId, 'seller_return_acceptance', row.codeFournisseur, 'seller'));
-        if (!seller) break;
+        if (!seller) {
+          enEchec = orderId;
+          break;
+        }
         armes.add(orderId);
       }
       // ⚠ MERGE ONTO THE CURRENT ROW, NOT THE ONE CAPTURED BEFORE THE AWAITS.
@@ -1542,6 +1599,7 @@ export class LogisticsDO {
       this.retours[assignmentId] = next;
       changed = true;
       if (next.armPhase !== 'done') worst = Math.max(worst, next.armAttempts);
+      if (enEchec !== undefined && next.armPhase !== 'done') this.nonLivre(SNAP_RETOURS, enEchec, next.armAttempts, panne);
     }
     if (changed) await this.state.storage.put(SNAP_RETOURS, this.retours);
     return worst;
@@ -1570,6 +1628,7 @@ export class LogisticsDO {
         if (row.rest !== 'no_config') {
           this.custodyOutbox[orderId] = { ...row, rest: 'no_config' };
           changed = true;
+          this.nonLivre(SNAP_CUSTODY_OUTBOX, orderId, row.attempts, { reason: 'not_configured' }, row.phase === 'arm' ? 'arm' : 'open');
         }
         continue;
       }
@@ -1577,11 +1636,13 @@ export class LogisticsDO {
         if (row.rest !== 'no_supplier') {
           this.custodyOutbox[orderId] = { ...row, rest: 'no_supplier' };
           changed = true;
+          this.nonLivre(SNAP_CUSTODY_OUTBOX, orderId, row.attempts, { reason: 'no_supplier' }, row.phase === 'arm' ? 'arm' : 'open');
         }
         continue;
       }
       const next: CustodyProduceRow = { ...row, rest: 'none' };
       let refus: unknown;
+      let panne: Panne = { reason: 'no_answer' };
       const post = async (path: string, body: unknown): Promise<boolean> => {
         try {
           const res = await custody.fetch(new Request(`https://custody${path}`, {
@@ -1593,9 +1654,11 @@ export class LogisticsDO {
             // replays a write that did land, so nothing is doubled.
             signal: AbortSignal.timeout(CUSTODY_READ_TIMEOUT_MS),
           }));
+          panne = panneDe(res);
           if (!res.ok) refus = ((await res.json().catch(() => null)) as Record<string, unknown> | null)?.['reason'];
           return res.ok;
-        } catch {
+        } catch (e) {
+          panne = panneJetee(e);
           return false;
         }
       };
@@ -1649,6 +1712,7 @@ export class LogisticsDO {
       this.custodyOutbox[orderId] = next;
       changed = true;
       if (next.phase !== 'done') worst = Math.max(worst, next.attempts);
+      if (next.phase !== 'done') this.nonLivre(SNAP_CUSTODY_OUTBOX, orderId, next.attempts, panne, next.phase === 'arm' ? 'arm' : 'open');
     }
     if (changed) await this.state.storage.put(SNAP_CUSTODY_OUTBOX, this.custodyOutbox);
     return replaced ? Math.max(worst, await this.flushCustodyProduce()) : worst;
@@ -1660,7 +1724,7 @@ export class LogisticsDO {
   private async reviveCustodyProduce(): Promise<void> {
     if (!Object.values(this.custodyOutbox).some((r) => r.phase !== 'done')) return;
     if ((await this.state.storage.getAlarm()) !== null) return;
-    await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
+    await this.state.storage.setAlarm(Date.now()).catch((e) => this.rearmeEchoue(e));
   }
 
   /**
@@ -1695,7 +1759,7 @@ export class LogisticsDO {
     const swept = await this.dispatch.expireDue(now);
     let moved = false;
     for (const ended of swept.requeued) moved = this.desarmer(ended) || moved;
-    if (moved) await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
+    if (moved) await this.state.storage.setAlarm(Date.now()).catch((e) => this.rearmeEchoue(e));
     return swept;
   }
 
@@ -1711,7 +1775,7 @@ export class LogisticsDO {
       // re-arm, an assign) keeps it: the backoff never pushes it back.
       const deja = await this.state.storage.getAlarm().catch(() => null);
       const at = Date.now() + backoffMs;
-      await this.state.storage.setAlarm(deja === null ? at : Math.min(deja, at)).catch(() => undefined);
+      await this.state.storage.setAlarm(deja === null ? at : Math.min(deja, at)).catch((e) => this.rearmeEchoue(e));
     }
   }
 
@@ -1724,6 +1788,7 @@ export class LogisticsDO {
       // In-memory state may hold a half-applied mutation that was never
       // persisted — drop it and reload from the last durable truth.
       this.loaded = false;
+      journalService().error('request_failed', { error: nomErreur(erreur) });
       // A door that saves on its own (a close, a shift) is named like the save below.
       if (erreur instanceof SauvegardeRefusee) return Response.json({ ok: false, reason: 'persist_failed' }, { status: 500 });
       return Response.json({ ok: false, reason: 'internal_error' }, { status: 500 });
@@ -1731,17 +1796,36 @@ export class LogisticsDO {
     if (request.method !== 'GET') {
       try {
         await this.persist();
-      } catch {
+      } catch (e) {
         // The storage refused the write: memory now holds a change that was
         // never stored. Serving it would split what riders and the board see
         // from what survives the next eviction, and every later write would
         // re-send the same refused value — so the change is dropped, the
         // next request reloads from storage, and this one fails by name.
         this.loaded = false;
+        journalService().error('request_failed', { error: nomErreur(e) });
         return Response.json({ ok: false, reason: 'persist_failed' }, { status: 500 });
       }
     }
     return response;
+  }
+
+  /** One line for a send into custody that did not land, or for a row coming
+   *  to rest. It names the wire and its fixed phase, never the body it carries. */
+  private nonLivre(outbox: string, orderId: string, attempts: number, panne: Panne, phase?: 'open' | 'arm'): void {
+    journalService(orderId)[niveauPanne(panne)]('outbox_undelivered', {
+      outbox,
+      ...(phase === undefined ? {} : { phase }),
+      ...idJournal(orderId),
+      attempts,
+      ...panne,
+    });
+  }
+
+  /** Nothing retries a lost re-arm by itself: the wire waits for the next
+   *  act on the book, so the miss is said at error. */
+  private rearmeEchoue(e: unknown): void {
+    journalService().error('alarm_rearm_failed', { error: nomErreur(e) });
   }
 
   private async route(request: Request): Promise<Response> {
@@ -2429,7 +2513,7 @@ export class LogisticsDO {
               : {}),
           };
         }
-        await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
+        await this.state.storage.setAlarm(Date.now()).catch((e) => this.rearmeEchoue(e));
       } else {
         await this.reviveCustodyProduce();
       }
@@ -2530,7 +2614,7 @@ export class LogisticsDO {
         );
       }
       if (!outcome.duplicate && this.desarmer(outcome.assignment)) {
-        await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
+        await this.state.storage.setAlarm(Date.now()).catch((e) => this.rearmeEchoue(e));
       }
       // MANIFESTE-1 — « cancelled task can't leave custody inventory »: the
       // course is off the book, so the LEDGER is asked now, and its fresh
@@ -3234,7 +3318,7 @@ export class LogisticsDO {
         this.reschedules.forgetOrder(orderId);
         await this.state.storage.put(SNAP_RETOURS, this.retours);
         if ((await this.state.storage.getAlarm()) === null) {
-          await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
+          await this.state.storage.setAlarm(Date.now()).catch((e) => this.rearmeEchoue(e));
         }
         return Response.json({ ok: true, status: 'retour_complete' });
       }
@@ -3253,7 +3337,7 @@ export class LogisticsDO {
       this.reschedules.forgetOrder(orderId);
       await this.state.storage.put(SNAP_RETOURS, this.retours);
       if ((await this.state.storage.getAlarm()) === null) {
-        await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
+        await this.state.storage.setAlarm(Date.now()).catch((e) => this.rearmeEchoue(e));
       }
       return Response.json({ ok: true, status: 'retour_ouvert' });
     }
@@ -3537,8 +3621,9 @@ export class LogisticsDO {
           for (const id of membres) {
             try {
               await (await relayer(id)).text();
-            } catch {
+            } catch (e) {
               // Best effort: the archive already says the course is lost.
+              journalService(id).error('custody_relay_failed', { ...idJournal(id), error: nomErreur(e) });
             }
           }
         }
@@ -3713,7 +3798,8 @@ export class LogisticsDO {
         let answer: Response;
         try {
           answer = await media.fetch(new Request(`https://media/${ref}`, { method: 'GET', headers: range === null ? {} : { Range: range } }));
-        } catch {
+        } catch (e) {
+          journalService().warn('media_read_failed', { error: nomErreur(e) });
           return absent;
         }
         if (answer.status !== 200 && answer.status !== 206 && answer.status !== 416) return absent;
@@ -3857,7 +3943,7 @@ export class LogisticsDO {
         }
         const outcome = await this.dispatch.decline(assignmentId, 'server_confirmed', now);
         if (!outcome.ok) return Response.json(outcome, { status: 409 });
-        if (!outcome.pending && this.desarmer(assignment)) await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
+        if (!outcome.pending && this.desarmer(assignment)) await this.state.storage.setAlarm(Date.now()).catch((e) => this.rearmeEchoue(e));
         return Response.json(outcome);
       }
       return Response.json({ ok: false, reason: 'not_found' }, { status: 404 });
