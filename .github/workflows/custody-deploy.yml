@@ -253,7 +253,12 @@ jobs:
             VALUE="${!NAME:-}"
             if [ -n "$VALUE" ]; then
               printf '%s' "$VALUE" | pnpm exec wrangler secret put "$NAME"
-              echo "::warning title=Changement de clé en cours::$NAME is set — the old and the new value of ${NAME%_NEXT} both open its doors. To finish: once every sender presents the new value, put it in ${NAME%_NEXT}, delete $NAME from this repository's secrets, and run this workflow again."
+              case "$NAME" in
+                SERA_PRODUCE_SECRET_NEXT)
+                  echo "::warning title=Changement de clé en cours::$NAME is set — the old and the new value of ${NAME%_NEXT} both open its doors. The Séra delivery service sends this key from the same repository secret, so finish in this order: (1) put the new value in ${NAME%_NEXT}; (2) run logistics-deploy — NOT this workflow — so The Séra delivery service sends the new value; (3) only then delete $NAME from this repository's secrets and run this workflow again. Running this workflow between (1) and (2) would refuse The Séra delivery service's old value." ;;
+                *)
+                  echo "::warning title=Changement de clé en cours::$NAME is set — the old and the new value of ${NAME%_NEXT} both open its doors. To finish: once every sender presents the new value, put it in ${NAME%_NEXT}, delete $NAME from this repository's secrets, and run this workflow again." ;;
+              esac
             elif grep -q "\"name\": *\"$NAME\"" <<<"$LISTED"; then
               printf 'y\n' | pnpm exec wrangler secret delete "$NAME"
               echo "$NAME: deleted from the Worker — only ${NAME%_NEXT} opens its doors now"

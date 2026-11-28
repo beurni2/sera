@@ -66,6 +66,11 @@ entrypoint = "AudioRead"
 #     put the new value here as _NEXT, move the sender onto it, then make it
 #     the key itself and delete the _NEXT. While set it opens exactly the
 #     doors its key opens; unset or empty it opens nothing.
+#   SERA_RIDER_VERIFY_SECRET and SERA_COURSE_LIVREE_SECRET are SENT by
+#   custody-service from the same repository secret, so their change runs:
+#   _NEXT here · the new value in the key · custody-deploy FIRST · only then
+#   delete the _NEXT and deploy this Worker (earlier, it refuses custody's
+#   old value).
 #   The shared SERA_INTAKE_SECRET has NO _NEXT: it is being retired, not
 #   changed. `wrangler secret put`, piped, the founder's alone — never [vars].
 

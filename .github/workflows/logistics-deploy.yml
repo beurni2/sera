@@ -191,12 +191,12 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "$SHOP_KEY" ]; then
-            echo "::warning title=Clé intake Shop+ non posée::SERA_INTAKE_SHOP_SECRET absent — /intake/funding still opens to the shared SERA_INTAKE_SECRET only (step 1 of the key swap not done)."
+            echo "::warning title=Clé intake Shop+ non posée::SERA_INTAKE_SHOP_SECRET is not in this repository's secrets, so this run does not write it; the Worker keeps whatever it already holds (step 1 of the key swap not done, or the key was removed here)."
           else
             printf '%s' "$SHOP_KEY" | pnpm exec wrangler secret put SERA_INTAKE_SHOP_SECRET
           fi
           if [ -z "$BOUTIK_KEY" ]; then
-            echo "::warning title=Clé intake Boutik+ non posée::SERA_INTAKE_BOUTIK_SECRET absent — Boutik+'s intake doors still open to the shared SERA_INTAKE_SECRET only (step 1 of the key swap not done)."
+            echo "::warning title=Clé intake Boutik+ non posée::SERA_INTAKE_BOUTIK_SECRET is not in this repository's secrets, so this run does not write it; the Worker keeps whatever it already holds (step 1 of the key swap not done, or the key was removed here)."
           else
             printf '%s' "$BOUTIK_KEY" | pnpm exec wrangler secret put SERA_INTAKE_BOUTIK_SECRET
           fi
@@ -219,7 +219,7 @@ jobs:
             exit 0
           fi
           if [ -z "$SHOP_KEY" ] || [ -z "$BOUTIK_KEY" ]; then
-            echo "::warning title=Porte intake NON armée::SERA_INTAKE_SECRET absent and a producer key is missing — that producer's intake doors refuse everything (fail-closed) until its key is set and this workflow re-dispatched."
+            echo "::warning title=Échange de clés : clé producteur manquante::SERA_INTAKE_SECRET is gone from this repository but a producer key is missing here, so NOTHING is deleted: if the Worker still holds the shared key, it still opens every intake door (the swap is not done); if it does not, that producer's doors refuse everything. Set the missing producer key and run this workflow again."
             exit 0
           fi
           # Step 3: both producers have their own key and the repository no
@@ -306,7 +306,12 @@ jobs:
             VALUE="${!NAME:-}"
             if [ -n "$VALUE" ]; then
               printf '%s' "$VALUE" | pnpm exec wrangler secret put "$NAME"
-              echo "::warning title=Changement de clé en cours::$NAME is set — the old and the new value of ${NAME%_NEXT} both open its doors. To finish: once every sender presents the new value, put it in ${NAME%_NEXT}, delete $NAME from this repository's secrets, and run this workflow again."
+              case "$NAME" in
+                SERA_RIDER_VERIFY_SECRET_NEXT|SERA_COURSE_LIVREE_SECRET_NEXT)
+                  echo "::warning title=Changement de clé en cours::$NAME is set — the old and the new value of ${NAME%_NEXT} both open its doors. Séra custody sends this key from the same repository secret, so finish in this order: (1) put the new value in ${NAME%_NEXT}; (2) run custody-deploy — NOT this workflow — so Séra custody sends the new value; (3) only then delete $NAME from this repository's secrets and run this workflow again. Running this workflow between (1) and (2) would refuse Séra custody's old value." ;;
+                *)
+                  echo "::warning title=Changement de clé en cours::$NAME is set — the old and the new value of ${NAME%_NEXT} both open its doors. To finish: once every sender presents the new value, put it in ${NAME%_NEXT}, delete $NAME from this repository's secrets, and run this workflow again." ;;
+              esac
             elif grep -q "\"name\": *\"$NAME\"" <<<"$LISTED"; then
               printf 'y\n' | pnpm exec wrangler secret delete "$NAME"
               echo "$NAME: deleted from the Worker — only ${NAME%_NEXT} opens its doors now"
