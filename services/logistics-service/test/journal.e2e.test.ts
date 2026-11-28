@@ -373,6 +373,7 @@ describe('the logistics service writes ONE structured line per request — and n
       ['/ops/alertes', lit(OPS), '/ops/alertes', 200],
       ['/ops/alertes/ack', poste({ id: `evidence_not_validated_aging:${O2}`, by: 'fondateur' }, OPS), '/ops/alertes/ack', 404],
       ['/produce/alerte', poste(alerte(O2, 'task-gabarit-2'), LIVREE_L), '/produce/alerte', 200],
+      ['/rider/moi', lit('QXCODEINCONNU'), '/rider/moi', 401],
     ];
     const reponses: Reponse[] = [];
     for (const [path, init] of cas) reponses.push(await appel(path, init));
@@ -466,6 +467,8 @@ describe('a delivery that does not land writes ONE line per try — on both side
     let B: Miniflare;
     const Ob = minted();
     const Ob2 = minted();
+    /** An order id the shop never mints: no line may carry it. */
+    const Ob3 = 'QXORDTAPE-b3';
     let code = '';
 
     beforeAll(async () => {
@@ -478,6 +481,7 @@ describe('a delivery that does not land writes ONE line per try — on both side
       code = (await confier(B, Ob, 'rider-qxcoursier-b1', 'b1', 'supplier-qxfourn-b1')).code;
       // A readiness that never named its supplier: that row rests.
       await confier(B, Ob2, 'rider-qxcoursier-b2', 'b2', undefined);
+      await confier(B, Ob3, 'rider-qxcoursier-b3', 'b3', 'supplier-qxfourn-b3');
     }, 120_000);
     afterAll(async () => {
       await stop(B);
@@ -499,6 +503,23 @@ describe('a delivery that does not land writes ONE line per try — on both side
       });
       expect(mine.map((l) => l['attempts'])).toEqual(suite(mine.length));
       expect(lignesDans(recusC).some((l) => l['route'] === '/produce/order/open' && l['status'] === 401 && l['orderId'] === undefined)).toBe(true);
+    }, 60_000);
+
+    it('an order id the shop never mints is never written: its refused wire still writes its line, on a fresh correlation id and no order', async () => {
+      const mine = await attendre(recusB, (l) => l['msg'] === 'outbox_undelivered' && l['outbox'] === SNAP_CUSTODY_OUTBOX && !('orderId' in l));
+      expect(mine[0]).toEqual({
+        ts: expect.any(String),
+        level: 'error',
+        correlation_id: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/),
+        service: SERVICE,
+        msg: 'outbox_undelivered',
+        outbox: SNAP_CUSTODY_OUTBOX,
+        phase: 'open',
+        attempts: 1,
+        status: 401,
+      });
+      expect(mine.map((l) => l['attempts'])).toEqual(suite(mine.length));
+      expect(recusB.filter((m) => m.includes(Ob3))).toEqual([]);
     }, 60_000);
 
     it('a row whose supplier was never named says so once, as it comes to rest', async () => {
