@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Miniflare } from 'miniflare';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, describe, expect, it } from 'vitest';
 
 /**
  * ═══ SÉRA'S OWN CLOCK DATES EVERY RIDER ACT ═══
@@ -51,6 +51,11 @@ function freshDir(tag: string): string {
   dirs.push(d);
   return d;
 }
+// Disposed after each test, passed or failed: a failed assertion must not leave workerd running.
+const live: Miniflare[] = [];
+afterEach(async () => {
+  await Promise.all(live.splice(0).map((m) => m.dispose()));
+});
 afterAll(() => {
   for (const d of dirs) rmSync(d, { recursive: true, force: true });
 });
@@ -81,7 +86,7 @@ function logisticsStub(world: LogisticsWorld) {
 }
 
 function boot(dir: string, world: LogisticsWorld): Miniflare {
-  return new Miniflare({
+  const mf = new Miniflare({
     modules: true,
     scriptPath: SCRIPT,
     compatibilityDate: '2025-07-05',
@@ -97,6 +102,8 @@ function boot(dir: string, world: LogisticsWorld): Miniflare {
       SERA_COURSE_LIVREE_SECRET: LIVREE_KEY,
     },
   });
+  live.push(mf);
+  return mf;
 }
 
 async function call(mf: Miniflare, method: string, path: string, auth: string, body?: unknown): Promise<{ status: number; json: Json }> {
@@ -142,10 +149,11 @@ function within(iso: unknown, before: number, after: number): boolean {
 
 /**
  * One rider act through the rider door carrying a 2020 `at`, then the same
- * act again under the same command id carrying a 2021 `at`. Returns what the
- * act ADDED to the ledger and the events, and the window it ran in.
+ * act again under the same command id carrying a 2021 `at`, then a DIFFERENT
+ * act under that id (`autre` changes its content). Returns what the act ADDED
+ * to the ledger and the events, and the window it ran in.
  */
-async function riderAct(mf: Miniflare, orderId: string, path: string, body: Json) {
+async function riderAct(mf: Miniflare, orderId: string, path: string, body: Json, autre: Json) {
   const avant = await recorded(mf, orderId);
   const before = Date.now();
   const res = await call(mf, 'POST', `/rider${path}`, RIDER_CODE, { orderId, ...body, at: PAST });
@@ -164,6 +172,15 @@ async function riderAct(mf: Miniflare, orderId: string, path: string, body: Json
   const rejoue = await recorded(mf, orderId);
   expect(rejoue.entries, `${path} resend writes nothing`).toEqual(apres.entries);
   expect(rejoue.events.length, `${path} resend emits nothing`).toBe(apres.events.length);
+
+  // Another act under the same id: refused by name, nothing written — the time
+  // is the only field a resend may change.
+  const conflit = await call(mf, 'POST', `/rider${path}`, RIDER_CODE, { orderId, ...body, ...autre, at: PAST });
+  expect(conflit.status, `${path} other content ${JSON.stringify(conflit.json)}`).toBe(409);
+  expect(conflit.json).toEqual({ ok: false, reason: 'command_id_reused_with_other_content' });
+  const apresConflit = await recorded(mf, orderId);
+  expect(apresConflit.entries, `${path} other content writes nothing`).toEqual(apres.entries);
+  expect(apresConflit.events.length, `${path} other content emits nothing`).toBe(apres.events.length);
   return { res, entries, events, before, after };
 }
 
@@ -195,12 +212,12 @@ describe('a rider act is dated by Séra’s clock, whatever time the request car
 
     const verify = await riderAct(mf, O, '/verification', {
       command_id: 'v-h1', presentedPickupCode: 'PICKUP-H1', checkResults: ALL_PASS, dwellSec: 150, evidenceBundleId: 'ev-h1',
-    });
+    }, { evidenceBundleId: 'ev-h1-autre' });
     expect(verify.res.json).toMatchObject({ ok: true, kind: 'accepted' });
     expectServerDated('/verification', verify);
     expect(verify.events.map((e) => e['name'])).toContain('pickup.verification_recorded.v1');
 
-    const seal = await riderAct(mf, O, '/custody/begin', { command_id: 'b-h1', custodySealId: 'SEAL-H1', sealPhotoRefs: [] });
+    const seal = await riderAct(mf, O, '/custody/begin', { command_id: 'b-h1', custodySealId: 'SEAL-H1', sealPhotoRefs: [] }, { custodySealId: 'SEAL-H1-AUTRE' });
     expect(seal.res.json).toMatchObject({ ok: true, status: 'custody_with_courier', riderId: RIDER });
     expectServerDated('/custody/begin', seal);
     expect(seal.events.map((e) => e['name'])).toContain('custody.transferred_to_courier.v1');
@@ -208,12 +225,12 @@ describe('a rider act is dated by Séra’s clock, whatever time the request car
     const evidence = await riderAct(mf, O, '/delivery/evidence', {
       command_id: 'e-h1',
       bundle: { taskId: `task-${O}`, packageId: `pkg-${O}`, custodySealId: 'SEAL-H1', artifacts: [], capturedAt: T },
-    });
+    }, { bundle: { taskId: `task-${O}`, packageId: `pkg-${O}`, custodySealId: 'SEAL-H1', artifacts: [], capturedAt: ALSO_PAST } });
     expect(evidence.res.json).toMatchObject({ ok: true, status: 'evidence_recorded' });
     expectServerDated('/delivery/evidence', evidence);
     expect(evidence.events.map((e) => e['name'])).toContain('delivery.evidence_submitted.v1');
 
-    const drop = await riderAct(mf, O, '/delivery/drop', { command_id: 'd-h1', dropCode: 'DROP-H1' });
+    const drop = await riderAct(mf, O, '/delivery/drop', { command_id: 'd-h1', dropCode: 'DROP-H1' }, { dropCode: 'DROP-H1-AUTRE' });
     expect(drop.res.json).toMatchObject({ ok: true, status: 'custody_with_customer' });
     expectServerDated('/delivery/drop', drop);
     expect(drop.events.map((e) => e['name'])).toContain('delivery.validated.v1');
@@ -238,7 +255,6 @@ describe('a rider act is dated by Séra’s clock, whatever time the request car
     expect(within(dropRow?.['at'], drop.before, drop.after), `drop row at=${String(dropRow?.['at'])}`).toBe(true);
     expect(JSON.stringify(att)).not.toContain('2020-01-01');
     expect(JSON.stringify(att)).not.toContain('2021-06-01');
-    await mf.dispose();
   }, 60_000);
 
   it('a door inspection is dated by Séra’s clock, so the retry window it opens runs from now and a rider’s expiry tap is refused', async () => {
@@ -258,7 +274,7 @@ describe('a rider act is dated by Séra’s clock, whatever time the request car
       packageOpened: false, manufacturerSealOpened: false, custodySealIntact: true,
       buyerAccepts: false, refusalColumn: 'buyer_risk',
       startedAt: T, completedAt: T, evidenceBundleId: 'eb-door-h2',
-    });
+    }, { evidenceBundleId: 'eb-door-h2-autre' });
     expect(inspection.res.json).toMatchObject({ ok: true, kind: 'invalid_rejection' });
     expectServerDated('/door/inspection', inspection);
     const windowExpiresAt = (((inspection.res.json['ladder'] as Json)['outcome'] as Json)['attempt'] as Json)['windowExpiresAt'];
@@ -275,7 +291,6 @@ describe('a rider act is dated by Séra’s clock, whatever time the request car
     const att = (await call(mf, 'GET', `/ops/attestations?orderId=${O}`, OPS)).json;
     const row = (att['doorActs'] as Json[]).find((r) => r['command_id'] === 'i-h2');
     expect(within(row?.['at'], inspection.before, inspection.after), `inspection row at=${String(row?.['at'])}`).toBe(true);
-    await mf.dispose();
   }, 60_000);
 
   it('the founder’s own door keeps the instant he attests', async () => {
@@ -294,6 +309,5 @@ describe('a rider act is dated by Séra’s clock, whatever time the request car
     const added = (await recorded(mf, O)).entries.slice(before);
     expect(added.length).toBeGreaterThan(0);
     expect(added.map((e) => e['at'])).toEqual(added.map(() => T));
-    await mf.dispose();
   }, 60_000);
 });

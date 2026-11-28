@@ -79,6 +79,8 @@ type Doors = ReturnType<typeof doors>;
 
 const iso = (offsetMs: number): string => new Date(Date.now() + offsetMs).toISOString();
 const MINUTE = 60_000;
+/** « Dated ahead » is always relative to the test's own clock, so it never expires. */
+const UN_AN = 365 * 24 * 60 * MINUTE;
 const LOC = { zone: 'Zogona, Ouagadougou', landmark: "À l'échangeur", directions: '', maskedRelay: '' };
 const fenetre = () => ({ start: iso(0), end: iso(8 * 60 * MINUTE) });
 
@@ -98,11 +100,11 @@ async function aPreparer(d: Doors): Promise<Json[]> {
 const refusedInFuture = { status: 422, json: { ok: false, reason: 'as_of_in_future' } };
 
 describe('a producer fact dated ahead of Séra’s clock is refused by name and stores nothing', () => {
-  it('funding: 2030 is refused; the true fact that follows is applied and the order reaches « à préparer » alone', async () => {
+  it('funding: a year ahead is refused; the true fact that follows is applied and the order reaches « à préparer » alone', async () => {
     const d = doors(spawn());
     const O = 'ord-heure-futur-f';
-    // Dated 2030 and naming a package: neither the date nor the package may stick.
-    expect(await funded(d, O, '2030-01-01T00:00:00.000Z', { package: { packageId: 'col-heure', orderIds: [O, 'ord-heure-autre'] } }))
+    // Dated a year ahead and naming a package: neither the date nor the package may stick.
+    expect(await funded(d, O, iso(UN_AN), { package: { packageId: 'col-heure', orderIds: [O, 'ord-heure-autre'] } }))
       .toEqual(refusedInFuture);
     expect(await ready(d, O, iso(0))).toEqual({ status: 200, json: { ok: true, orderId: O, applied: true } });
     expect((await aPreparer(d)).map((r) => r['orderId'])).not.toContain(O);
@@ -115,11 +117,11 @@ describe('a producer fact dated ahead of Séra’s clock is refused by name and 
     expect(ligne).not.toHaveProperty('colis');
   }, 60_000);
 
-  it('readiness: 2030 is refused; the true fact that follows is applied', async () => {
+  it('readiness: a year ahead is refused; the true fact that follows is applied', async () => {
     const d = doors(spawn());
     const O = 'ord-heure-futur-r';
     expect(await funded(d, O, iso(0))).toEqual({ status: 200, json: { ok: true, orderId: O, applied: true } });
-    expect(await ready(d, O, '2030-01-01T00:00:00.000Z')).toEqual(refusedInFuture);
+    expect(await ready(d, O, iso(UN_AN))).toEqual(refusedInFuture);
     expect((await aPreparer(d)).map((r) => r['orderId'])).not.toContain(O);
     expect(await ready(d, O, iso(0))).toEqual({ status: 200, json: { ok: true, orderId: O, applied: true } });
     expect((await aPreparer(d)).map((r) => r['orderId'])).toContain(O);
@@ -183,8 +185,8 @@ describe('an order whose course already closed keeps the same two rules', () => 
     expect(livree.json).toMatchObject({ ok: true, status: 'livree' });
 
     // Dated ahead: refused, and nothing kept — the next true facts apply.
-    expect(await funded(d, O, '2030-01-01T00:00:00.000Z')).toEqual(refusedInFuture);
-    expect(await ready(d, O, '2030-01-01T00:00:00.000Z')).toEqual(refusedInFuture);
+    expect(await funded(d, O, iso(UN_AN))).toEqual(refusedInFuture);
+    expect(await ready(d, O, iso(UN_AN))).toEqual(refusedInFuture);
     const plusTard = new Date(Date.parse(fundedAt) + 1_000).toISOString();
     expect(await funded(d, O, plusTard)).toEqual({ status: 200, json: { ok: true, orderId: O, applied: true } });
     expect(await ready(d, O, plusTard)).toEqual({ status: 200, json: { ok: true, orderId: O, applied: true } });
