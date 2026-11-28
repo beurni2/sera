@@ -403,6 +403,33 @@ interface RiderCodeRecord {
 const isStr = (v: unknown): v is string => typeof v === 'string' && v.trim().length > 0;
 const isIso = (v: unknown): v is string => typeof v === 'string' && Number.isFinite(Date.parse(v));
 
+/**
+ * How far ahead of THIS Worker's clock a producer fact may be dated. Shop+ and
+ * Boutik+ stamp `asOf` with their own Worker's clock — two server clocks,
+ * never a phone — so honest skew is seconds. The intake keeps the newest fact
+ * per order, so a fact dated further ahead would outrank every true fact after
+ * it; this bound keeps a stamped-ahead fact from outranking a true one for
+ * longer than this window. Refused by name (422), never acknowledged: both
+ * senders keep a refused row pending and retry it.
+ */
+const AS_OF_MAX_AHEAD_MS = 5 * 60_000;
+const dateEnAvance = (asOf: string): boolean => Date.parse(asOf) > Date.now() + AS_OF_MAX_AHEAD_MS;
+
+/**
+ * Why a funding fact is acknowledged but not applied, or null to apply it. A
+ * cancel is final on this wire (Shop+ sends it once, after the order's one
+ * « funded », when the supplier refuses): it lands over a non-cancel fact of
+ * ANY age, so no earlier fact's date can outrank it, and no later non-cancel
+ * fact re-opens admission (SE-I02). Otherwise an older redelivery never wins.
+ */
+function financementIgnore(stored: FundingFact | undefined, incoming: FundingFact): 'older_fact_ignored' | 'order_cancelled' | null {
+  if (stored === undefined) return null;
+  if (incoming.status === 'cancelled' && stored.status !== 'cancelled') return null;
+  if (Date.parse(incoming.asOf) < Date.parse(stored.asOf)) return 'older_fact_ignored';
+  if (stored.status === 'cancelled' && incoming.status !== 'cancelled') return 'order_cancelled';
+  return null;
+}
+
 async function sha256Hex(value: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
@@ -1581,6 +1608,8 @@ export class LogisticsDO {
        */
       const colis = lireColis(body['package'], orderId);
       if (colis === 'malformed') return Response.json({ ok: false, reason: 'package_malformed' }, { status: 400 });
+      // Before anything is read or written: a refused fact changes nothing, its package included.
+      if (dateEnAvance(body['asOf'] as string)) return Response.json({ ok: false, reason: 'as_of_in_future' }, { status: 422 });
       const fermee = await this.archiveDe(orderId);
       if (fermee !== undefined) {
         // A CLOSED order's facts live in its record: the same rules, the same
@@ -1590,9 +1619,8 @@ export class LogisticsDO {
           return Response.json({ ok: false, reason: 'package_contradicts_stored' }, { status: 409 });
         }
         const fait: FundingFact = { status, paymentMode: body['paymentMode'] as string, asOf: body['asOf'] as string, stale: (body['stale'] as boolean | undefined) ?? false };
-        if (fermee.funding !== undefined && Date.parse(fait.asOf) < Date.parse(fermee.funding.asOf)) {
-          return Response.json({ ok: true, orderId, applied: false, reason: 'older_fact_ignored' });
-        }
+        const ignoreFerme = financementIgnore(fermee.funding, fait);
+        if (ignoreFerme !== null) return Response.json({ ok: true, orderId, applied: false, reason: ignoreFerme });
         this.aEcrire[`${COURSE_PREFIX}${orderId}`] = { ...fermee, funding: fait, ...(fermee.colis === undefined && colis !== undefined ? { colis } : {}) } satisfies CourseArchive;
         return Response.json({ ok: true, orderId, applied: true });
       }
@@ -1610,10 +1638,8 @@ export class LogisticsDO {
       // At-least-once producers REDELIVER. A fact older than the stored one
       // is acknowledged but never applied — a replayed 'funded' from before
       // a 'cancelled' must not re-open admission (SE-I02; verifier finding).
-      const stored = this.fundingFacts[orderId];
-      if (stored !== undefined && Date.parse(incoming.asOf) < Date.parse(stored.asOf)) {
-        return Response.json({ ok: true, orderId, applied: false, reason: 'older_fact_ignored' });
-      }
+      const ignore = financementIgnore(this.fundingFacts[orderId], incoming);
+      if (ignore !== null) return Response.json({ ok: true, orderId, applied: false, reason: ignore });
       this.fundingFacts[orderId] = incoming;
       return Response.json({ ok: true, orderId, applied: true });
     }
@@ -1631,6 +1657,7 @@ export class LogisticsDO {
       ) {
         return malformed();
       }
+      if (dateEnAvance(body['asOf'] as string)) return Response.json({ ok: false, reason: 'as_of_in_future' }, { status: 422 });
       const orderId = body['orderId'] as string;
       const incoming: ReadinessFact = {
         ready: body['ready'] as boolean,

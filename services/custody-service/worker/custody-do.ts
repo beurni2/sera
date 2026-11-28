@@ -2300,7 +2300,8 @@ export class CustodyDO {
         },
         // HASHED AT THE DOOR — the presented code dies with this request.
         presentedPickupCodeDigest: digestSecret(body['presentedPickupCode'] as string),
-        at: (body['at'] as string | undefined) ?? new Date().toISOString(),
+        // Rider-attributed: THIS Worker's clock (the ladder's law, `/door/refusal`).
+        at: riderFromDoor ? new Date().toISOString() : ((body['at'] as string | undefined) ?? new Date().toISOString()),
       };
       const prior = this.priorFor(cmd);
       if (prior.kind === 'duplicate') return this.replayOutcome(prior.outcome, cmd);
@@ -2481,7 +2482,8 @@ export class CustodyDO {
         // what `consume` must be handed (SE-LIVE-3's digest-at-the-door law).
         custodySealDigest: digestSecret(body['custodySealId'] as string),
         sealPhotoRefs: refs.map((r) => (r as string).trim()),
-        at: (body['at'] as string | undefined) ?? new Date().toISOString(),
+        // Rider-attributed: THIS Worker's clock (the ladder's law, `/door/refusal`).
+        at: riderFromDoor ? new Date().toISOString() : ((body['at'] as string | undefined) ?? new Date().toISOString()),
       };
       const prior = this.priorFor(cmd);
       if (prior.kind === 'duplicate') return this.replayOutcome(prior.outcome, cmd);
@@ -2660,7 +2662,8 @@ export class CustodyDO {
         evidence: { ...bundle, custodySealId: digestSecret(bundle['custodySealId'] as string) },
         attribution: doorRider !== null && doorRider !== '' ? 'rider_authenticated' : 'founder_attested',
         ...(doorRider !== null && doorRider !== '' ? { riderId: doorRider } : {}),
-        at: (body['at'] as string | undefined) ?? new Date().toISOString(),
+        // Rider-attributed: THIS Worker's clock (the ladder's law, `/door/refusal`).
+        at: doorRider !== null && doorRider !== '' ? new Date().toISOString() : ((body['at'] as string | undefined) ?? new Date().toISOString()),
       };
       const prior = this.priorFor(cmd);
       if (prior.kind === 'duplicate') {
@@ -2751,7 +2754,8 @@ export class CustodyDO {
         dropCodeDigest: digestSecret(body['dropCode'] as string),
         attribution: doorRider !== null && doorRider !== '' ? 'rider_authenticated' : 'founder_attested',
         ...(doorRider !== null && doorRider !== '' ? { riderId: doorRider } : {}),
-        at: (body['at'] as string | undefined) ?? new Date().toISOString(),
+        // Rider-attributed: THIS Worker's clock (the ladder's law, `/door/refusal`).
+        at: doorRider !== null && doorRider !== '' ? new Date().toISOString() : ((body['at'] as string | undefined) ?? new Date().toISOString()),
       };
       const prior = this.priorFor(cmd);
       if (prior.kind === 'duplicate') {
@@ -2872,7 +2876,8 @@ export class CustodyDO {
         },
         attribution: doorRider !== null && doorRider !== '' ? 'rider_authenticated' : 'founder_attested',
         ...(doorRider !== null && doorRider !== '' ? { riderId: doorRider } : {}),
-        at: (body['at'] as string | undefined) ?? new Date().toISOString(),
+        // Rider-attributed: THIS Worker's clock (the ladder's law, `/door/refusal`).
+        at: doorRider !== null && doorRider !== '' ? new Date().toISOString() : ((body['at'] as string | undefined) ?? new Date().toISOString()),
       };
       const prior = this.priorFor(cmd);
       if (prior.kind === 'duplicate') return this.replayOutcome(prior.outcome, cmd);
