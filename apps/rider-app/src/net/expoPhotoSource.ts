@@ -1,5 +1,5 @@
 import { bytesFromBase64, type PhotoSource } from './evidence-capture';
-import { EVIDENCE_MAX_EDGE, resizeForEvidence } from './photo-bounds';
+import { EVIDENCE_MAX_EDGE, resizeForEvidence, saveWithinEvidenceBudget } from './photo-bounds';
 
 /**
  * ⚠ LOADED ON FIRST USE, NEVER AT IMPORT — and this is not style, it is what
@@ -38,9 +38,9 @@ function imageManipulator(): ManipulatorModule {
 /**
  * SE-LIVE-4c-vii · the DEVICE binding for the proof photo — the same thin-I/O
  * shape `expoConnectivity` uses for the network. It is the only file that
- * touches the camera, it holds no rule, and it never runs under vitest (the
- * port is tested with a fake that hands back bytes; the size DECISION lives in
- * `photo-bounds.ts`, which is pure and is tested).
+ * touches the camera and it holds no rule: the size and byte DECISIONS live in
+ * `photo-bounds.ts`, which is pure and is tested. Under vitest it runs only in
+ * the walks, over the camera and manipulator doubles in `test/doubles/`.
  *
  * FOUNDER RULING (2026-08-07): « build the photo capture ».
  *
@@ -99,22 +99,40 @@ export const expoPhotoSource: PhotoSource = {
     const resize = resizeForEvidence(asset.width, asset.height);
     if (resize !== null) context.resize(resize);
     const rendered = await context.renderAsync();
-    const saved = await rendered.saveAsync({
-      // Evidence, not photography: it has to leave the stall on a bad network.
-      compress: 0.6,
-      // The manipulator decodes to a platform bitmap and re-encodes, so whatever
-      // the camera wrote — HEIC included — the bucket only ever sees JPEG.
-      format: SaveFormat.JPEG,
-      base64: true,
-    });
 
-    // A derivative that came back outside the bound is not proof we may send;
-    // the bucket would refuse it and the rider would be told to retake a photo
-    // that can never be accepted. Refusing here says something true instead.
-    if (saved.width > EVIDENCE_MAX_EDGE || saved.height > EVIDENCE_MAX_EDGE) return null;
+    // Evidence, not photography: it has to leave the stall on a bad network,
+    // so it is saved lighter, then smaller, until it fits its budget — and at
+    // the legibility floor it leaves anyway (`saveWithinEvidenceBudget`).
+    let current = rendered;
+    const bytes = await saveWithinEvidenceBudget(
+      rendered,
+      async (image, compress) => {
+        const saved = await image.saveAsync({
+          compress,
+          // The manipulator decodes to a platform bitmap and re-encodes, so whatever
+          // the camera wrote — HEIC included — the bucket only ever sees JPEG.
+          format: SaveFormat.JPEG,
+          base64: true,
+        });
 
-    const encoded = saved.base64;
-    if (typeof encoded !== 'string' || encoded === '') return null;
-    return bytesFromBase64(encoded);
+        // A derivative that came back outside the bound is not proof we may send;
+        // the bucket would refuse it and the rider would be told to retake a photo
+        // that can never be accepted. Refusing here says something true instead.
+        if (saved.width > EVIDENCE_MAX_EDGE || saved.height > EVIDENCE_MAX_EDGE) return null;
+
+        const encoded = saved.base64;
+        if (typeof encoded !== 'string' || encoded === '') return null;
+        return bytesFromBase64(encoded);
+      },
+      async (image, step) => {
+        const smaller = await ImageManipulator.manipulate(image).resize(step).renderAsync();
+        // Each native bitmap is freed once nothing will read it again, so a low-end phone never holds several.
+        image.release();
+        current = smaller;
+        return smaller;
+      },
+    );
+    current.release();
+    return bytes;
   },
 };
