@@ -83,6 +83,15 @@ export interface Env {
    */
   readonly SERA_PRODUCE_SECRET?: string;
   readonly SHOP_ARM_SECRET?: string;
+  /**
+   * Each checked key's next value, set only while that key changes, so a
+   * sender can move to the new value before the old one is dropped and no
+   * request is refused in between. Opens exactly the doors its key opens,
+   * under the same allowlist and the same kind check.
+   */
+  readonly SERA_CUSTODY_OPS_SECRET_NEXT?: string;
+  readonly SERA_PRODUCE_SECRET_NEXT?: string;
+  readonly SHOP_ARM_SECRET_NEXT?: string;
 }
 
 const BEARER_PREFIX = 'Bearer ';
@@ -274,14 +283,23 @@ function unauthorized(): Response {
   return Response.json({ error: 'unauthorized' }, { status: 401 });
 }
 
-async function authorized(request: Request, secret: string | undefined): Promise<boolean> {
+/**
+ * `next` is the key's next value while it changes — required, so every door
+ * says which next value it accepts.
+ */
+async function authorized(request: Request, secret: string | undefined, next: string | undefined): Promise<boolean> {
   const configured = secret ?? '';
+  const configuredNext = next ?? '';
   const header = request.headers.get('Authorization') ?? '';
   const provided = header.startsWith(BEARER_PREFIX) ? header.slice(BEARER_PREFIX.length) : '';
-  // Unconditional compare so timing never reveals whether a secret exists;
-  // the length guard keeps it fail-closed.
-  const match = await timingSafeEqual(provided, configured);
-  return configured.length > 0 && match;
+  // Both compares run unconditionally, and both finish before either result
+  // is read, so timing reveals neither whether a value exists nor which one
+  // matched; each length guard keeps its own value fail-closed.
+  const [match, matchNext] = await Promise.all([
+    timingSafeEqual(provided, configured),
+    timingSafeEqual(provided, configuredNext),
+  ]);
+  return (configured.length > 0 && match) || (configuredNext.length > 0 && matchNext);
 }
 
 /** The order this request concerns — it names the object, so it is required
@@ -444,11 +462,15 @@ async function repondre(request: Request, env: Env, resolu: { orderId?: string }
       if (!routes.has(`${request.method} ${stripped}`)) {
         return Response.json({ ok: false, reason: 'not_found' }, { status: 404 });
       }
-      const key = produceShopPath ? env.SHOP_ARM_SECRET : env.SERA_PRODUCE_SECRET;
-      if (!(await authorized(request, key))) return unauthorized();
+      // Each door's next value is chosen with its key, so one producer's next
+      // value can never open the other producer's door.
+      const [key, keyNext] = produceShopPath
+        ? [env.SHOP_ARM_SECRET, env.SHOP_ARM_SECRET_NEXT]
+        : [env.SERA_PRODUCE_SECRET, env.SERA_PRODUCE_SECRET_NEXT];
+      if (!(await authorized(request, key, keyNext))) return unauthorized();
     } else if (!url.pathname.startsWith('/ops/')) {
       return Response.json({ ok: false, reason: 'not_found' }, { status: 404 });
-    } else if (!(await authorized(request, env.SERA_CUSTODY_OPS_SECRET))) {
+    } else if (!(await authorized(request, env.SERA_CUSTODY_OPS_SECRET, env.SERA_CUSTODY_OPS_SECRET_NEXT))) {
       return unauthorized();
     }
 

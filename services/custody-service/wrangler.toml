@@ -89,6 +89,19 @@ service = "logistics-service"
 #     piped, the founder's alone — never [vars]. Unset here ⇒ the wire rests
 #     honestly (`unsendable_no_config`) and a replayed drop revives it.
 
+# A KEY CHANGES WITH NO GAP — three optional NEXT secrets, no new binding:
+#   · SERA_CUSTODY_OPS_SECRET_NEXT · SERA_PRODUCE_SECRET_NEXT ·
+#     SHOP_ARM_SECRET_NEXT — each set only while its key changes: put the new
+#     value here as _NEXT, move the sender onto it, then make it the key
+#     itself and delete the _NEXT. While set it opens exactly the doors its
+#     key opens, under the same allowlist and kind check; unset or empty it
+#     opens nothing. The keys this Worker only SENDS have none here.
+#   SERA_PRODUCE_SECRET is SENT by logistics-service from the same
+#   repository secret, so its change runs: _NEXT here · the new value in the
+#   key · logistics-deploy FIRST · only then delete the _NEXT and deploy this
+#   Worker (earlier, it refuses the delivery service's old value).
+#   `wrangler secret put`, piped, the founder's alone — never [vars].
+
 # ═══════════════════════════════════════════════════════════════════════════
 # THE SERVICE'S LOG — one line per request, one per fault, never a person's data.
 # ═══════════════════════════════════════════════════════════════════════════

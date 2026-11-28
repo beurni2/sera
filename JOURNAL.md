@@ -3,6 +3,57 @@ Continuity ledger per CTO charter §6/§6bis. Every entry is evidence-grounded.
 
 Format per entry:
 
+## 2026-11-28 · CLE-SUIVANTE-1 + ECHANGE-CLES-INTAKE-1 — every key the two services check can change with no gap; the deploy finishes the intake key swap and the health check says when it is done · lane S · on the branch, NOT merged, NOT deployed
+
+**Founder.** « you can start the next batch » (2026-11-28 06:17 UTC), batch 8 of the plan he approved: « During a change, the old and new keys both work for a short window, so nothing stops. » and « Your three-step key swap for Séra's intake doors, with my step-by-step guide. Séra's health check then shows when the swap is done. »
+
+**Lane.** Lane S, slice S18, one local commit `f388c03` on `bc7aa3c`, integrated unchanged as `8b6df80`. The deploy workflows are the coordinator's own commit `c03fd4c`; the review's fixes are in this entry's commit.
+
+**Spec.**
+- Execution Contract §3: « Token/contract versions support **overlapping validation windows** + explicit **deprecation/retirement**. »; §11: « secrets management · **key rotation incl. attribution-token signing key (custody, rotation, overlapping windows, compromise response, version retirement)** ».
+- Shop-Plus-Build-Spec §5.2: « **no app writes another domain's truth.** »
+- The batch 8 key rule: a Worker that checks a key `X` also accepts `X_NEXT` while it is set; it passes iff (`X` non-empty and equal) or (`X_NEXT` non-empty and equal); both constant-time compares always run; `X_NEXT` opens exactly what `X` opens; the one 401 is unchanged; nothing says which value matched. The retiring shared intake key gets no `_NEXT`.
+
+**What changed.**
+- *Next keys (both Workers).* `authorized(request, secret, next)` runs both house compares together and only then combines them; each value is fail-closed on its own. Logistics: `SERA_OPS_SECRET`, `SERA_RIDER_VERIFY_SECRET`, `SERA_COURSE_LIVREE_SECRET`, `SERA_INTAKE_SHOP_SECRET`, `SERA_INTAKE_BOUTIK_SECRET`, each with its `_NEXT`, chosen in the same branch as its key, so a producer's next value never opens the other producer's doors. The task-ready door takes no producer key and no next value. Custody: `SERA_CUSTODY_OPS_SECRET`, `SERA_PRODUCE_SECRET`, `SHOP_ARM_SECRET`, each with its `_NEXT`, under the same allowlist and kind check.
+- *Health.* Logistics `/health` gains one presence flag, `intakeSplit`: true only when both producer keys are set and the shared key is absent. Never a value, a length, or which key is missing.
+- *Deploys (coordinator).* The logistics deploy writes the two producer keys first, keeps the shared key while the repository holds it, and deletes it from the Worker only when both producer keys are set and the repository no longer holds it. Its provenance check prints whether the swap is finished. Both deploys write each `X_NEXT` while the repository holds it and delete it from the Worker once it does not, after every primary key is written, and warn « Changement de clé en cours » while one is set. The secret list is captured before any match, so a short read can never make it look failed.
+
+**Evidence.**
+- Lane: every new test red first for the right reason, then green; mutations, each with its anchor matched once, restored byte-identical.
+- Coordinator: diff read line by line; decisive tests re-run at the lane head. Full board on `8b6df80` in a fresh clone: every gate green. Typecheck and tests uncached: custody 339, logistics 479, rider app 586, dispatch console 97. The dispatch console's browser harness first failed on the board only because the sandbox lacked that Playwright build's browser; re-run with the installed one through the config's `PW_EXECUTABLE`, 43 of 43 passed.
+- One seam test crosses both real Workers mid-change, every checker holding old and next and every sender on next, and asks both ledgers.
+
+**Verifier.** One fresh-context pass, handled once, never re-verified: 0 blocker, 1 major, 1 minor, 2 notes. It ran 18 mutations of its own, all red.
+- Major, fixed here: for the three keys one Séra Worker sends to the other from the same repository secret (`SERA_RIDER_VERIFY_SECRET` and `SERA_COURSE_LIVREE_SECRET`, sent by custody; `SERA_PRODUCE_SECRET`, sent by logistics), the printed procedure did not say which Worker to deploy first. Followed literally, it would refuse the sender's old value. The warning now prints the order for those keys (new value in the key, the SENDER's deploy first, only then delete the `_NEXT` and deploy the checker), and both `wrangler.toml` comments say the same. Simulated against a stand-in tool: each of the three keys prints its own order, every other key the general one.
+- Minor, fixed here: the intake warnings now describe the repository, not what the Worker holds. With the shared key gone from the repository but a producer key missing, nothing is deleted, and the warning says the shared key may still open every door.
+- Note, journalled: every deploy now needs `wrangler secret list` to answer. If it fails, the job goes red after every key is written and before provenance, and the shared key is left in place.
+- Note, journalled: right after step 3 the health check can still be answered by the previous version for a moment, so the finished line can lag one run. It errs toward « not finished ».
+
+**Release.** After the founder's « go »: logistics-deploy and custody-deploy from the branch's green head, then the merge. The swap itself is his, in his guide's order. No key changes value in this release.
+
+**Still open.**
+- A rollback to a version from before this batch, in the middle of a key change, ignores `_NEXT`. The private guide says to roll back only before or after a change.
+- Other open items are held in the private batch record until their fixes deploy.
+
+---
+
+## 2026-11-28 · HEURE-SERVEUR-1 + DETECTEURS-1 + JOURNAL-SERVICES-1 + PHOTO-PREUVE-1 — DEPLOYED and MERGED; rider app PUBLISHED
+
+**Founder.** « Release everything » (2026-11-28 05:13 UTC, decision card, on the batch 7 report), which named for Séra: the delivery service, then the custody service, from the branch, then the merge, which updates the rider app. Logistics first: it must know the new alert wire before custody sends to it. Each deploy waited for his approval on GitHub before it ran.
+
+**Deployed from the branch at `24f00b1`.**
+- logistics-deploy 42 (id 46111162352) green: every key armed as on the previous deploy, and « PROVENANCE OK — live logistics Worker is 24f00b141f0e78b8e0ce4f8d0b74176a872653d0 speaking canon 3.28.0. »
+- custody-deploy 31 (id 46111688396) green, after logistics: every key armed as on the previous deploy, the delivery key left as it is (« The delivery key was left as it is »), and « PROVENANCE OK — live custody Worker is 24f00b141f0e78b8e0ce4f8d0b74176a872653d0 speaking canon 3.28.0. »
+
+**Merge.** PR #13 merged as `64dc021` (merge commit, the branch shas kept; its tree is byte-identical to the PR head `24f00b1`, green in ci 242). On main: ci 243 green · expo-preview 171 (id 46112214041) green, the rider-app preview update published from main's newest commit, both on their first attempt.
+
+**Not checked.** The live services were not called from here. Whether the logging service adds anything of its own to each line is read on one real line before anyone says the log holds no address. The first real pickup photo on a low-end phone is the check of PHOTO-PREUVE-1.
+
+**Still open.** As named in the slice entry below. Other open items are held in the private batch record until their fixes deploy.
+
+---
+
 ## 2026-11-28 · HEURE-SERVEUR-1 + DETECTEURS-1 + JOURNAL-SERVICES-1 + PHOTO-PREUVE-1 — Séra's clock dates the rider's acts; the problem detectors run live; both services keep a log; the rider's proof photo fits its budget · lane S · on the branch, NOT merged, NOT deployed
 
 **Founder.** « done, now you can start the next batch » (2026-11-28 00:38 UTC), batch 7 of the plan he approved: « The server, not the rider's phone, sets the time on pickup and delivery records. A fact dated in the future is refused. The problem detectors run on the live service. », « Every service, one lane per app. Each one keeps a log of what it did and what went wrong, with no personal data in it. » and « Photos sent and downloaded are held to their phone budgets ». Boutik+ holds the supplier's photographs to their budgets; this repository holds the rider's proof photo.
