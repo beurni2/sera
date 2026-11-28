@@ -3,6 +3,22 @@ Continuity ledger per CTO charter §6/§6bis. Every entry is evidence-grounded.
 
 Format per entry:
 
+## 2026-11-28 · HEURE-SERVEUR-1 + DETECTEURS-1 + JOURNAL-SERVICES-1 + PHOTO-PREUVE-1 — DEPLOYED and MERGED; rider app PUBLISHED
+
+**Founder.** « Release everything » (2026-11-28 05:13 UTC, decision card, on the batch 7 report), which named for Séra: the delivery service, then the custody service, from the branch, then the merge, which updates the rider app. Logistics first: it must know the new alert wire before custody sends to it. Each deploy waited for his approval on GitHub before it ran.
+
+**Deployed from the branch at `24f00b1`.**
+- logistics-deploy 42 (id 46111162352) green: every key armed as on the previous deploy, and « PROVENANCE OK — live logistics Worker is 24f00b141f0e78b8e0ce4f8d0b74176a872653d0 speaking canon 3.28.0. »
+- custody-deploy 31 (id 46111688396) green, after logistics: every key armed as on the previous deploy, the delivery key left as it is (« The delivery key was left as it is »), and « PROVENANCE OK — live custody Worker is 24f00b141f0e78b8e0ce4f8d0b74176a872653d0 speaking canon 3.28.0. »
+
+**Merge.** PR #13 merged as `64dc021` (merge commit, the branch shas kept; its tree is byte-identical to the PR head `24f00b1`, green in ci 242). On main: ci 243 green · expo-preview 171 (id 46112214041) green, the rider-app preview update published from main's newest commit, both on their first attempt.
+
+**Not checked.** The live services were not called from here. Whether the logging service adds anything of its own to each line is read on one real line before anyone says the log holds no address. The first real pickup photo on a low-end phone is the check of PHOTO-PREUVE-1.
+
+**Still open.** As named in the slice entry below. Other open items are held in the private batch record until their fixes deploy.
+
+---
+
 ## 2026-11-28 · HEURE-SERVEUR-1 + DETECTEURS-1 + JOURNAL-SERVICES-1 + PHOTO-PREUVE-1 — Séra's clock dates the rider's acts; the problem detectors run live; both services keep a log; the rider's proof photo fits its budget · lane S · on the branch, NOT merged, NOT deployed
 
 **Founder.** « done, now you can start the next batch » (2026-11-28 00:38 UTC), batch 7 of the plan he approved: « The server, not the rider's phone, sets the time on pickup and delivery records. A fact dated in the future is refused. The problem detectors run on the live service. », « Every service, one lane per app. Each one keeps a log of what it did and what went wrong, with no personal data in it. » and « Photos sent and downloaded are held to their phone budgets ». Boutik+ holds the supplier's photographs to their budgets; this repository holds the rider's proof photo.
