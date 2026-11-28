@@ -1,8 +1,9 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
-import { PackageLostEventSchema } from '@platform/contracts';
+import { PackageLostEventSchema, PlatformEventSchema, type PlatformEvent } from '@platform/contracts';
 import { CustodySpine, type ChainIds } from '../src/custody-spine.js';
 import { ACTIVE_PICKUP_VERIFICATION_POLICY, type VerificationInput } from '../src/pickup-verification-policy.js';
 import type { DoorInspectionInput } from '../src/door-flow.js';
+import { OPS_AGING_POLICY_V1, type OpsObservation } from '../src/ops-monitor.js';
 
 /**
  * ═══ CustodyDO — ONE OBJECT PER ORDER, and the ledger is its memory ═══
@@ -156,6 +157,9 @@ export interface CustodyObjectEnv {
   /** The key to logistics' `/produce/` door; `wrangler secret put` on BOTH
    *  Workers, the founder's alone. Unset ⇒ the wire rests honestly. */
   readonly SERA_COURSE_LIVREE_SECRET?: string;
+  /** A SHORTER proof window for tests only (`fenetrePreuveMs`); set by no
+   *  wrangler.toml, so the deployed Worker keeps the policy's 30 minutes. */
+  readonly EVIDENCE_AGING_MS?: string;
 }
 
 /**
@@ -288,6 +292,68 @@ interface LostOutbox {
   event: unknown;
 }
 const LOST_OUTBOX_KEY = 'custody:lost-outbox:v1';
+
+/**
+ * THE DETECTORS (Execution Contract §6: « a package has an impossible custody
+ * sequence · evidence is uploaded but not validated »). One row per problem,
+ * raised ONCE per order and sent to logistics' `/produce/alerte` as a
+ * canonical `reconciliation.alert.v1`; the founder reads it there and only he
+ * closes it. The wire is `flushLogisticsWire`'s, unchanged — own row, own
+ * attempts, the same key, `res.ok` alone decides — and its attempts never
+ * join the existing wires' backoff (see `alarm`). Neither row repairs,
+ * decides or releases anything: runbook 04, « La reprise est HUMAINE ».
+ */
+const ALERTE_GARDE_KEY = 'custody:alerte-garde-outbox:v1';
+const ALERTE_PREUVE_KEY = 'custody:alerte-preuve-outbox:v1';
+type AlerteOutbox = Omit<RetourOutbox, 'body'> & { body: PlatformEvent };
+
+/**
+ * The proof's watch, written in the SAME put as an accepted evidence act and
+ * closed in the same put as the validated decision. If no decision lands, the
+ * alarm finds it open at `due` and raises the evidence alert. `avant` is what
+ * the alarm slot held before the watch took it — present only when it did —
+ * so a decision can put the slot back exactly as it was.
+ */
+interface VeillePreuve {
+  orderId: string;
+  taskId: string;
+  submittedAt: string;
+  due: number;
+  avant?: number | null;
+  close?: true;
+}
+const VEILLE_PREUVE_KEY = 'custody:veille-preuve:v1';
+/** The wake a detector last put on the shared alarm. A recovery site treats a
+ *  slot holding exactly this as free (`reveilLibre`), so no detector wake
+ *  ever delays an existing wire. */
+const REVEIL_DETECTEUR_KEY = 'custody:reveil-detecteur:v1';
+
+/**
+ * The proof's window: `ops-aging-policy.v1`'s 30 minutes, or a SHORTER value
+ * a test sets (`EVIDENCE_AGING_MS`). Anything above the policy, missing or
+ * unreadable is the policy: the window can shrink for a test, never loosen.
+ */
+export function fenetrePreuveMs(raw: string | undefined): number {
+  const policy = OPS_AGING_POLICY_V1.evidenceDecisionAgingMin * 60_000;
+  const n = Number(raw ?? '');
+  return Number.isSafeInteger(n) && n > 0 && n <= policy ? n : policy;
+}
+
+/** One alert, one id per order and problem: a resend is the same alert at logistics. */
+function alerteEvent(scenario: OpsObservation['scenario'], orderId: string, correlationId: string, at: string, payload: Record<string, unknown>): PlatformEvent {
+  return PlatformEventSchema.parse({
+    name: 'reconciliation.alert.v1',
+    envelope: {
+      command_id: `alerte-${scenario}-${orderId}`,
+      correlation_id: correlationId,
+      aggregateVersion: 0,
+      actor: 'custody-service:ops-monitor',
+      serverTime: at,
+      version: '1',
+    },
+    payload: { scenario, order_id: orderId, ...payload },
+  });
+}
 
 interface CustodyHead {
   /**
@@ -1103,6 +1169,14 @@ export class CustodyDO {
     }
   }
 
+  /** The impossible-custody alert, raised from the route that refused: written
+   *  once, then the alarm armed now unless it is already due sooner. */
+  private async leverAlerteGarde(detail: string, orderId: string | null): Promise<void> {
+    if (orderId === null || !(await this.ecrireAlerteGarde(detail, orderId))) return;
+    const slot = await this.state.storage.getAlarm();
+    if (slot === null || slot > Date.now()) await this.state.storage.setAlarm(Date.now());
+  }
+
   /**
    * REPROGRAMMATION-2 — THE RESCHEDULE WIRE HEALS ITSELF ON WAKE. The arm
    * lives in `commit()`, so an order that was already in `reschedule` when
@@ -1123,7 +1197,7 @@ export class CustodyDO {
       status: 'pending', attempts: 0,
       body: { orderId: this.chain.order_id, command_id: `reprogrammation-${this.chain.order_id}`, at: ladder.attempt.at, outcome: ladder },
     } satisfies RetourOutbox);
-    if ((await this.state.storage.getAlarm()) === null) {
+    if (await this.reveilLibre()) {
       await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
     }
     return 'armed';
@@ -1159,7 +1233,7 @@ export class CustodyDO {
     } else {
       return 'present';
     }
-    if ((await this.state.storage.getAlarm()) === null) {
+    if (await this.reveilLibre()) {
       await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
     }
     return heal;
@@ -1205,10 +1279,100 @@ export class CustodyDO {
     const reprogPending = await this.flushLogisticsWire(REPROGRAMMATION_OUTBOX_KEY, '/produce/reprogrammation');
     const lostPending = await this.flushLost();
     const attempts = Math.max(eligibilityPending, transitPending, livreePending, refusPending, retourOuvertPending, retourneePending, reprogPending, lostPending);
+    // THE DETECTORS — after every existing wire and OUTSIDE its max: an alert
+    // that keeps failing must never push another wire's retry later. The
+    // next wake is the earliest of the wires' own backoff (today's, unchanged)
+    // and the detectors' own; with no detector row it is today's exactly.
+    await this.veillerPreuve();
+    const alertes = Math.max(
+      await this.flushLogisticsWire(ALERTE_GARDE_KEY, '/produce/alerte'),
+      await this.flushLogisticsWire(ALERTE_PREUVE_KEY, '/produce/alerte'),
+    );
+    const veille = await this.state.storage.get<VeillePreuve>(VEILLE_PREUVE_KEY);
+    const detecteur = Math.min(
+      alertes > 0 ? Date.now() + Math.min(30_000 * 2 ** Math.min(alertes, 7), 3_600_000) : Infinity,
+      veille !== undefined && veille.close !== true ? veille.due : Infinity,
+    );
     if (attempts > 0) {
       const backoffMs = Math.min(30_000 * 2 ** Math.min(attempts, 7), 3_600_000);
-      await this.state.storage.setAlarm(Date.now() + backoffMs).catch(() => undefined);
+      if (detecteur < Date.now() + backoffMs) await this.reveilDetecteur(detecteur);
+      else await this.state.storage.setAlarm(Date.now() + backoffMs).catch(() => undefined);
+    } else if (detecteur !== Infinity) {
+      await this.reveilDetecteur(detecteur);
     }
+  }
+
+  /** A detector's own wake on the shared alarm, remembered so `reveilLibre` knows it. */
+  private async reveilDetecteur(at: number): Promise<void> {
+    await this.state.storage.put(REVEIL_DETECTEUR_KEY, at);
+    await this.state.storage.setAlarm(at).catch(() => undefined);
+  }
+
+  /**
+   * Is the alarm free for a wire: empty, or holding only a detector's wake?
+   * The recovery sites below arm a wire only when nothing is scheduled —
+   * whatever is scheduled will flush it — and a detector's wake may be half
+   * an hour away, so it must count as nothing. With no detector wake ever
+   * stored this is exactly « the slot is empty ».
+   */
+  private async reveilLibre(): Promise<boolean> {
+    const slot = await this.state.storage.getAlarm();
+    return slot === null || slot === (await this.state.storage.get<number>(REVEIL_DETECTEUR_KEY));
+  }
+
+  /**
+   * The proof's watch at its wake. A file that cannot vouch for itself gets
+   * the impossible-custody alert and never the proof alert (its log is not
+   * evidence of anything); otherwise evidence with no validated decision on
+   * the ledger raises ONE proof alert. Loads the record only when a watch is
+   * due. Decides nothing, releases nothing — the decision stays a human's.
+   */
+  private async veillerPreuve(): Promise<void> {
+    const veille = await this.state.storage.get<VeillePreuve>(VEILLE_PREUVE_KEY);
+    if (veille === undefined) return;
+    if (veille.close !== true) {
+      if (Date.now() < veille.due) return;
+      await this.ensureLoaded();
+      const failure = this.integrityFailure ?? (this.chain !== null && this.chain.order_id !== veille.orderId ? 'chain_does_not_name_this_object' : null);
+      if (failure !== null) {
+        await this.ecrireAlerteGarde(failure, veille.orderId);
+      } else if (
+        !this.spine!.ledger.all().some((e) => e.kind === 'validation_decision' && e.payload['result'] === 'validated')
+        && (await this.state.storage.get(ALERTE_PREUVE_KEY)) === undefined
+      ) {
+        const at = new Date().toISOString();
+        await this.state.storage.put(ALERTE_PREUVE_KEY, {
+          status: 'pending',
+          attempts: 0,
+          body: alerteEvent('evidence_not_validated_aging', veille.orderId, this.chain!.correlation_id, at, {
+            task_id: veille.taskId,
+            submitted_at: veille.submittedAt,
+            age_min: Math.floor((Date.parse(at) - Date.parse(veille.submittedAt)) / 60_000),
+          }),
+        } satisfies AlerteOutbox);
+      }
+    }
+    await this.state.storage.delete(VEILLE_PREUVE_KEY);
+  }
+
+  /**
+   * The impossible-custody row, written once per order: the first sight of a
+   * file that cannot vouch for itself raises it, and every later one finds it
+   * already there. Package and task are named only from a chain that names
+   * this order — a misfiled chain is another order's file.
+   */
+  private async ecrireAlerteGarde(detail: string, orderId: string): Promise<boolean> {
+    if ((await this.state.storage.get(ALERTE_GARDE_KEY)) !== undefined) return false;
+    const own = this.chain !== null && this.chain.order_id === orderId ? this.chain : null;
+    await this.state.storage.put(ALERTE_GARDE_KEY, {
+      status: 'pending',
+      attempts: 0,
+      body: alerteEvent('impossible_custody', orderId, own?.correlation_id ?? `ops-${orderId}`, new Date().toISOString(), {
+        ...(own !== null ? { package_id: own.package_id, task_id: own.task_id } : {}),
+        detail,
+      }),
+    } satisfies AlerteOutbox);
+    return true;
   }
 
   /** The eligibility wire, exactly as SE-LIVE-5a shipped it — returns the
@@ -1332,7 +1496,7 @@ export class CustodyDO {
     if (row.status === 'unsendable_no_config') {
       await this.state.storage.put(LOST_OUTBOX_KEY, { ...row, status: 'pending' } satisfies LostOutbox);
     }
-    if ((await this.state.storage.getAlarm()) === null) {
+    if (await this.reveilLibre()) {
       await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
     }
   }
@@ -1404,7 +1568,7 @@ export class CustodyDO {
     }
     if (Object.keys(revive).length === 0) return;
     await this.state.storage.put(revive);
-    if ((await this.state.storage.getAlarm()) === null) {
+    if (await this.reveilLibre()) {
       await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
     }
   }
@@ -1457,7 +1621,7 @@ export class CustodyDO {
     }
     if (Object.keys(revive).length === 0) return;
     await this.state.storage.put(revive);
-    if ((await this.state.storage.getAlarm()) === null) {
+    if (await this.reveilLibre()) {
       await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
     }
   }
@@ -1510,7 +1674,7 @@ export class CustodyDO {
     const outbox = (await this.state.storage.get<TransitOutbox>(TRANSIT_OUTBOX_KEY)) ?? {};
     const row = outbox[stage];
     if (row === undefined || row.status === 'delivered') return;
-    if ((await this.state.storage.getAlarm()) !== null) return;
+    if (!(await this.reveilLibre())) return;
     outbox[stage] = { ...row, status: 'pending' };
     await this.state.storage.put(TRANSIT_OUTBOX_KEY, outbox);
     await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
@@ -1717,9 +1881,42 @@ export class CustodyDO {
       Object.assign(puts, dropRows);
       armDrop = Object.keys(dropRows).length > 0;
     }
+    /**
+     * The proof's watch rides the evidence's own put, and the validated
+     * decision closes it in ITS own put: a decision that never lands leaves
+     * it open for the alarm. It takes the alarm slot only when the slot is
+     * empty or later than its window — never pushing an earlier wake back.
+     */
+    const armsNow = armRefus || armRetour || armDrop || armLost;
+    let veille: VeillePreuve | undefined;
+    if (cmd.kind === 'delivery_evidence' && outcome.httpStatus === 200 && this.chain !== null) {
+      const now = Date.now();
+      const due = now + fenetrePreuveMs(this.env.EVIDENCE_AGING_MS);
+      const slot = armsNow ? now : await this.state.storage.getAlarm();
+      veille = {
+        orderId: this.chain.order_id, taskId: this.chain.task_id, submittedAt: new Date(now).toISOString(), due,
+        ...(slot === null || slot > due ? { avant: slot } : {}),
+      };
+      puts[VEILLE_PREUVE_KEY] = veille;
+      if (veille.avant !== undefined) puts[REVEIL_DETECTEUR_KEY] = due;
+    }
+    let veilleClose: VeillePreuve | undefined;
+    if (cmd.kind === 'decide_validation' && outcome.httpStatus === 200 && outcome.body['result'] === 'validated') {
+      const ouverte = await this.state.storage.get<VeillePreuve>(VEILLE_PREUVE_KEY);
+      if (ouverte !== undefined && ouverte.close !== true) {
+        veilleClose = ouverte;
+        puts[VEILLE_PREUVE_KEY] = { ...ouverte, close: true } satisfies VeillePreuve;
+      }
+    }
     await this.state.storage.put(puts);
     this.log = next;
     if (armRefus || armRetour || armDrop || armLost) await this.state.storage.setAlarm(Date.now()).catch(() => undefined);
+    if (veille?.avant !== undefined) await this.state.storage.setAlarm(veille.due).catch(() => undefined);
+    // The slot still holds the watch's wake and nothing else since: put back what it held.
+    if (veilleClose?.avant !== undefined && (await this.state.storage.getAlarm()) === veilleClose.due) {
+      if (veilleClose.avant === null) await this.state.storage.deleteAlarm().catch(() => undefined);
+      else await this.state.storage.setAlarm(veilleClose.avant).catch(() => undefined);
+    }
   }
 
   /** The head implied by a given log, with the CURRENT rebuilt ledger. */
@@ -1902,6 +2099,9 @@ export class CustodyDO {
 
     const failure = this.integrityFailure ?? (misfiled ? 'chain_does_not_name_this_object' : null);
     if (failure !== null) {
+      // The founder is told, once. Nothing here may change the answer below:
+      // a write that fails is simply tried again by the next request.
+      await this.leverAlerteGarde(failure, objectName ?? this.chain?.order_id ?? null).catch(() => undefined);
       if (request.method === 'GET' && pathname === '/ledger/verify') {
         // A REAL verdict, not a refusal — and answered HERE, before the
         // « order not open » guard, because a file whose chain row is gone is

@@ -430,6 +430,103 @@ function financementIgnore(stored: FundingFact | undefined, incoming: FundingFac
   return null;
 }
 
+/**
+ * THE FOUNDER'S ALERTS (Execution Contract §6: « a ready package has no task
+ * past SLA · a package has an impossible custody sequence · evidence is
+ * uploaded but not validated »). Custody raises its two over
+ * `/produce/alerte`; each is stored here once, first wins. The ready parcel's
+ * is computed from this book at each read. Only the founder closes one, on
+ * the ops door, and a closed alert stays closed.
+ */
+const ALERTE_PREFIX = 'alerte:v1:';
+const ALERTE_ACK_PREFIX = 'alerte-ack:v1:';
+/**
+ * How long a ready parcel may wait with no course before it is a problem: the
+ * 60 minutes of runbook 03's window, the same number Boutik+ holds itself to
+ * (`fulfillment-aging-policy.v2`, `readyPackageNoTaskMin`). Written here only.
+ */
+const PRET_SANS_COURSE_MS = 60 * 60_000;
+/** The six ways a custody file fails to vouch for itself — the only details an
+ *  impossible-custody alert may carry. */
+const RAISONS_GARDE = [
+  'existing_command_log_without_chain',
+  'head_missing_for_existing_record',
+  'chain_tampered',
+  'command_log_tampered',
+  'replay_diverged',
+  'chain_does_not_name_this_object',
+];
+const idAlerte = (v: unknown): v is string => isStr(v) && v.length <= 256;
+
+/** One alert as the founder reads it. `detail` only on impossible_custody. */
+interface AlerteVue {
+  id: string;
+  scenario: 'ready_package_no_task' | 'impossible_custody' | 'evidence_not_validated_aging';
+  orderId: string;
+  packageId?: string;
+  orderIds?: string[];
+  taskId?: string;
+  since: string;
+  detail?: string;
+}
+interface AlerteAck {
+  acknowledgedAt: string;
+  acknowledgedBy: string;
+}
+type AlerteStockee = AlerteVue & { recuAt: string } & Partial<AlerteAck>;
+
+/**
+ * Custody's alert, read strictly: the canonical event, its name, and for each
+ * scenario exactly the payload keys custody writes — anything else is a
+ * producer bug and is refused (400), never stored half-read. `since` is
+ * custody's own instant: when it first saw the damage, or when it recorded
+ * the evidence.
+ */
+function lireAlerte(raw: unknown): AlerteVue | null {
+  const parsed = PlatformEventSchema.safeParse(raw);
+  if (!parsed.success || parsed.data.name !== 'reconciliation.alert.v1') return null;
+  const p = parsed.data.payload;
+  const orderId = p['order_id'];
+  if (!idAlerte(orderId)) return null;
+  const seules = (keys: readonly string[]): boolean => Object.keys(p).every((k) => keys.includes(k));
+  const facultatif = (k: string): boolean => p[k] === undefined || idAlerte(p[k]);
+  if (p['scenario'] === 'impossible_custody') {
+    const detail = p['detail'];
+    const since = parsed.data.envelope.serverTime;
+    if (!seules(['scenario', 'order_id', 'package_id', 'task_id', 'detail']) || !facultatif('package_id') || !facultatif('task_id')) return null;
+    if (typeof detail !== 'string' || !RAISONS_GARDE.includes(detail) || !isIso(since)) return null;
+    return {
+      id: `impossible_custody:${orderId}`,
+      scenario: 'impossible_custody',
+      orderId,
+      ...(p['package_id'] !== undefined ? { packageId: p['package_id'] as string } : {}),
+      ...(p['task_id'] !== undefined ? { taskId: p['task_id'] as string } : {}),
+      since,
+      detail,
+    };
+  }
+  if (p['scenario'] === 'evidence_not_validated_aging') {
+    const since = p['submitted_at'];
+    const age = p['age_min'];
+    if (!seules(['scenario', 'order_id', 'task_id', 'submitted_at', 'age_min']) || !facultatif('task_id')) return null;
+    if (!isIso(since) || typeof age !== 'number' || !Number.isSafeInteger(age) || age < 0) return null;
+    return {
+      id: `evidence_not_validated_aging:${orderId}`,
+      scenario: 'evidence_not_validated_aging',
+      orderId,
+      ...(p['task_id'] !== undefined ? { taskId: p['task_id'] as string } : {}),
+      since,
+    };
+  }
+  return null;
+}
+
+/** The founder's view of a stored alert: what it is, and the ack once he gave it. */
+function vueAlerte(stored: AlerteStockee): AlerteVue {
+  const { recuAt: _recu, acknowledgedAt: _at, acknowledgedBy: _by, ...vue } = stored;
+  return vue;
+}
+
 async function sha256Hex(value: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
@@ -705,6 +802,106 @@ export class LogisticsDO {
   /** COLIS-FOURNISSEUR-1 — every order a course carries (the first names it). */
   private ordresDeCourse(assignment: { assignmentId: string; orderId: string }): string[] {
     return this.colisCourses[assignment.assignmentId]?.orderIds ?? [assignment.orderId];
+  }
+
+  /** The founder's « à préparer » list: every paid, ready order with no
+   *  course, one line per package. `/ops/a-preparer` answers it, and the
+   *  ready-parcel alert reads the same lines. */
+  private lignesAPreparer() {
+    const withTask = new Set(
+      this.queue
+        .snapshot()
+        // COURSE-REPRISE: a taken-back course leaves its order TASK-LESS in
+        // every sense that matters — it must reappear here or the founder
+        // can never re-compose it. ONLY that status is exempt: a
+        // closed_rescheduled order is replaced by its follow-up task
+        // automatically and must not surface twice.
+        .tasks.filter(([, queued]) => queued.status !== 'closed_taken_back')
+        .map(([, queued]) => queued.orderId),
+    );
+    // COLIS-FOURNISSEUR-1 — a package's course covers every order in it.
+    for (const id of [...withTask]) {
+      const v = this.voyageursDe(id);
+      if (Array.isArray(v)) for (const membre of v) withTask.add(membre);
+    }
+    const pret = (orderId: string): boolean => {
+      const fact = this.fundingFacts[orderId];
+      // PORTE-DISPATCH (2026-08-13): the SAME two-mode admission as the
+      // compose gate (ADMITTED_PAYMENT_MODES) — a funded+ready door order
+      // must appear on the founder's list; an unknown mode stays off it.
+      if (fact === undefined || fact.status !== 'funded' || fact.stale || !ADMITTED_PAYMENT_MODES.includes(fact.paymentMode)) return false;
+      const readiness = this.readinessFacts[orderId];
+      return readiness !== undefined && readiness.ready && !readiness.stale;
+    };
+    const attente = Object.entries(this.fundingFacts)
+      .flatMap(([orderId, fact]) => {
+        if (withTask.has(orderId) || !pret(orderId)) return [];
+        /**
+         * COLIS-FOURNISSEUR-1 — a package is ONE line, under its first
+         * travelling order, and only once EVERY order in it is paid and
+         * ready: the founder composes one course for the whole bag, never
+         * half of it.
+         */
+        const voyage = this.voyageursDe(orderId);
+        if (voyage === 'incomplet' || voyage[0] !== orderId || !voyage.every(pret)) return [];
+        const colis = this.colisDe[orderId];
+        return [{
+          orderId,
+          paymentMode: fact.paymentMode,
+          fundedAsOf: fact.asOf,
+          readyAsOf: this.readinessFacts[orderId]?.asOf ?? null,
+          ...(colis !== undefined && voyage.length > 1 ? { colis: { packageId: colis.packageId, orderIds: voyage } } : {}),
+        }];
+      })
+      .sort((a, b) => (a.orderId < b.orderId ? -1 : 1));
+    return attente;
+  }
+
+  /**
+   * The ready parcels that have waited the window with no course: one per
+   * « à préparer » line. The wait counts from the LATEST instant the line's
+   * facts carry — each order's funding and readiness `asOf`, and the moment a
+   * course carrying it was taken back, which starts a new episode with a new
+   * id. Those `asOf` are the producers' own clocks (Séra stores no receive
+   * time), so a fact that arrives late makes the alert earlier, never later.
+   */
+  private alertesPret(nowMs: number): AlerteVue[] {
+    const reprises = this.book
+      .snapshot()
+      .assignments.map(([, r]) => r)
+      .filter((r) => r.status === 'taken_back_by_dispatch' && r.takenBackAt !== undefined);
+    return this.lignesAPreparer().flatMap((ligne) => {
+      const orderIds = 'colis' in ligne && ligne.colis !== undefined ? ligne.colis.orderIds : [ligne.orderId];
+      const instants = [
+        ...orderIds.flatMap((id) => [this.fundingFacts[id]?.asOf, this.readinessFacts[id]?.asOf]),
+        ...reprises.filter((r) => this.ordresDeCourse(r).some((id) => orderIds.includes(id))).map((r) => r.takenBackAt),
+      ].filter(isIso);
+      const since = instants.reduce((a, b) => (Date.parse(b) > Date.parse(a) ? b : a));
+      if (nowMs - Date.parse(since) < PRET_SANS_COURSE_MS) return [];
+      return [{
+        id: `ready_package_no_task:${ligne.orderId}:${since}`,
+        scenario: 'ready_package_no_task' as const,
+        orderId: ligne.orderId,
+        ...('colis' in ligne && ligne.colis !== undefined ? { packageId: ligne.colis.packageId, orderIds } : {}),
+        since,
+      }];
+    });
+  }
+
+  /** Every open alert: custody's stored ones not yet closed, and the ready
+   *  parcels whose episode the founder has not closed — oldest first. */
+  private async alertesOuvertes(): Promise<AlerteVue[]> {
+    const stored = [...(await this.state.storage.list<AlerteStockee>({ prefix: ALERTE_PREFIX })).values()]
+      .filter((a) => a.acknowledgedAt === undefined)
+      .map(vueAlerte);
+    const pret = this.alertesPret(Date.now());
+    const closes = new Set<string>();
+    for (let k = 0; k < pret.length; k += 128) {
+      const keys = pret.slice(k, k + 128).map((a) => `${ALERTE_ACK_PREFIX}${a.id}`);
+      for (const key of (await this.state.storage.get(keys)).keys()) closes.add(key);
+    }
+    return [...stored, ...pret.filter((a) => !closes.has(`${ALERTE_ACK_PREFIX}${a.id}`))]
+      .sort((a, b) => Date.parse(a.since) - Date.parse(b.since) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   }
 
   /** Custody began on one of the course's orders: its last word names a courier or the customer. */
@@ -2848,53 +3045,40 @@ export class LogisticsDO {
     }
 
     if (request.method === 'GET' && pathname === '/ops/a-preparer') {
-      const withTask = new Set(
-        this.queue
-          .snapshot()
-          // COURSE-REPRISE: a taken-back course leaves its order TASK-LESS in
-          // every sense that matters — it must reappear here or the founder
-          // can never re-compose it. ONLY that status is exempt: a
-          // closed_rescheduled order is replaced by its follow-up task
-          // automatically and must not surface twice.
-          .tasks.filter(([, queued]) => queued.status !== 'closed_taken_back')
-          .map(([, queued]) => queued.orderId),
-      );
-      // COLIS-FOURNISSEUR-1 — a package's course covers every order in it.
-      for (const id of [...withTask]) {
-        const v = this.voyageursDe(id);
-        if (Array.isArray(v)) for (const membre of v) withTask.add(membre);
+      return Response.json({ ok: true, attente: this.lignesAPreparer() });
+    }
+
+    if (request.method === 'GET' && pathname === '/ops/alertes') {
+      return Response.json({ ok: true, alertes: await this.alertesOuvertes() });
+    }
+
+    /**
+     * The founder closes an alert — his act alone, on the ops door. Only an
+     * alert that is really raised can be closed (404 `alerte_inconnue`
+     * otherwise); a second ack answers the first one, unchanged.
+     */
+    if (request.method === 'POST' && pathname === '/ops/alertes/ack') {
+      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      const id = body?.['id'];
+      const by = body?.['by'];
+      if (!isStr(id) || id.length > 1024 || !idAlerte(by)) return malformed();
+      const inconnue = () => Response.json({ ok: false, reason: 'alerte_inconnue' }, { status: 404 });
+      if (id.startsWith('ready_package_no_task:')) {
+        const deja = await this.state.storage.get<AlerteVue & AlerteAck>(`${ALERTE_ACK_PREFIX}${id}`);
+        if (deja !== undefined) return Response.json({ ok: true, duplicate: true, alerte: deja });
+        const levee = this.alertesPret(Date.now()).find((a) => a.id === id);
+        if (levee === undefined) return inconnue();
+        const alerte = { ...levee, acknowledgedAt: now, acknowledgedBy: by };
+        await this.state.storage.put(`${ALERTE_ACK_PREFIX}${id}`, alerte);
+        return Response.json({ ok: true, duplicate: false, alerte });
       }
-      const pret = (orderId: string): boolean => {
-        const fact = this.fundingFacts[orderId];
-        // PORTE-DISPATCH (2026-08-13): the SAME two-mode admission as the
-        // compose gate (ADMITTED_PAYMENT_MODES) — a funded+ready door order
-        // must appear on the founder's list; an unknown mode stays off it.
-        if (fact === undefined || fact.status !== 'funded' || fact.stale || !ADMITTED_PAYMENT_MODES.includes(fact.paymentMode)) return false;
-        const readiness = this.readinessFacts[orderId];
-        return readiness !== undefined && readiness.ready && !readiness.stale;
-      };
-      const attente = Object.entries(this.fundingFacts)
-        .flatMap(([orderId, fact]) => {
-          if (withTask.has(orderId) || !pret(orderId)) return [];
-          /**
-           * COLIS-FOURNISSEUR-1 — a package is ONE line, under its first
-           * travelling order, and only once EVERY order in it is paid and
-           * ready: the founder composes one course for the whole bag, never
-           * half of it.
-           */
-          const voyage = this.voyageursDe(orderId);
-          if (voyage === 'incomplet' || voyage[0] !== orderId || !voyage.every(pret)) return [];
-          const colis = this.colisDe[orderId];
-          return [{
-            orderId,
-            paymentMode: fact.paymentMode,
-            fundedAsOf: fact.asOf,
-            readyAsOf: this.readinessFacts[orderId]?.asOf ?? null,
-            ...(colis !== undefined && voyage.length > 1 ? { colis: { packageId: colis.packageId, orderIds: voyage } } : {}),
-          }];
-        })
-        .sort((a, b) => (a.orderId < b.orderId ? -1 : 1));
-      return Response.json({ ok: true, attente });
+      const stored = await this.state.storage.get<AlerteStockee>(`${ALERTE_PREFIX}${id}`);
+      if (stored === undefined) return inconnue();
+      if (stored.acknowledgedAt !== undefined) {
+        return Response.json({ ok: true, duplicate: true, alerte: { ...vueAlerte(stored), acknowledgedAt: stored.acknowledgedAt, acknowledgedBy: stored.acknowledgedBy } });
+      }
+      await this.state.storage.put(`${ALERTE_PREFIX}${id}`, { ...stored, acknowledgedAt: now, acknowledgedBy: by } satisfies AlerteStockee);
+      return Response.json({ ok: true, duplicate: false, alerte: { ...vueAlerte(stored), acknowledgedAt: now, acknowledgedBy: by } });
     }
 
     if (request.method === 'POST' && pathname === '/ops/expire-due') {
@@ -2971,6 +3155,21 @@ export class LogisticsDO {
      * producer bug, and a repeating refusal in both Workers' logs is the
      * eligibility wire's own taxonomy for it.
      */
+    /**
+     * Custody's two alerts arrive here, on custody's own key. A readable alert
+     * is stored once and answered 200 — a resend is the same alert, 200
+     * `duplicate` — so the sender can stop; an unreadable one is a producer
+     * bug and the one 400. The first copy stands: a resend never moves `since`.
+     */
+    if (request.method === 'POST' && pathname === '/produce/alerte') {
+      const alerte = lireAlerte(await request.json().catch(() => null));
+      if (alerte === null) return malformed();
+      const key = `${ALERTE_PREFIX}${alerte.id}`;
+      if ((await this.state.storage.get(key)) !== undefined) return Response.json({ ok: true, duplicate: true });
+      await this.state.storage.put(key, { ...alerte, recuAt: now } satisfies AlerteStockee);
+      return Response.json({ ok: true, duplicate: false });
+    }
+
     if (request.method === 'POST' && pathname === '/produce/course-livree') {
       const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
       if (body === null || !isStr(body['command_id']) || !isStr(body['orderId']) || !isIso(body['at'])) {
